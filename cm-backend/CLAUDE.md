@@ -675,6 +675,32 @@ v0 is defined as the product shipped to the first real beta user. All six stages
 
 **Reconsider if.** A future seam matches conditions 1 and 2 but NOT 3, and the cost of forcing it through the atomic pattern outweighs the benefits. Most likely emergence: where the second table's `code` / unique value isn't actually needed across both tables, the seam can be modelled as a separate-entity write instead.
 
+### D-37 — Auth0 is the single platform token authority; each service verifies locally (2026-07-18)
+
+**Resolves.** FN-AB-22.
+
+**What.** Auth0 is the single token issuer and authentication authority for the whole Ithina platform. Every downstream service (DIS, and future apps) verifies Auth0-issued tokens locally against Auth0's JWKS: one issuer, one JWKS, one audience family, and no service issues its own tokens. Customer Master (this admin-backend) owns the identity LIFECYCLE (it creates the Auth0 users, Auth0 Organizations, and the CM tenant/user rows, and stamps the identity claims) but is NOT in the per-request authentication hot path. "Auth only through Auth0/CM" means a single trusted authority in the sense of Meaning A (CM owns identity issuance and lifecycle), NOT request-time introspection (no service calls CM to validate a token per request). Non-auth data continues to flow DB-to-DB via mirror-sync, unchanged.
+
+**Why.** Local JWKS verification keeps CM off the request hot path: no per-request latency or availability coupling, and CM is not a single point of failure for every authenticated request across the platform. Each service stays independently verifiable against one IdP, which is the standard pattern for a multi-service platform with a central identity provider. The rejected alternative, request-time introspection through CM, would make CM a hard dependency of every authenticated request platform-wide and couple every service's availability to CM.
+
+**How to apply.** D-07's stub-to-real swap proceeds as a local-verify `Auth0Client` behind the existing `verify(jwt_string) -> AuthContext` seam (`src/admin_backend/auth/auth0.py`, Step 8.3); no handler-code change. Downstream services (DIS) verify against the same Auth0 JWKS independently; DIS's existing DB-pull mirror-sync of CM's `core.tenants` / `core.stores` is unaffected and remains the data path. CM's new Stage 3 work is the identity-lifecycle side (Auth0 Management API user and Organization creation, claim stamping); CM does NOT gain a token-introspection endpoint.
+
+**Reconsider if.** A concrete requirement emerges that local JWKS verification cannot satisfy, e.g. immediate cross-service revocation shorter than the token TTL that forces request-time introspection, or a token-exchange / delegation pattern that needs a central broker. Revisit the hot-path stance then. The identity-lifecycle-ownership stance is independent and stands regardless.
+
+**Affects.** D-07 (Auth0 ownership: confirmed as a local-verify swap), D-24 (identity-only JWT: preserved; see D-38), D-26 (RS256 via `pyjwt[crypto]`: unchanged).
+
+### D-38 — Claim-based tenant resolution; Auth0 Organizations model tenants (2026-07-18)
+
+**Resolves.** FN-AB-02.
+
+**What.** Tenant resolution is claim-based. The Auth0-issued token carries `tenant_id` + `user_type` (plus `user_id` + `email`), preserving D-24's identity-only claim shape unchanged. Downstream services resolve the tenant directly from the verified claim; there is NO per-request database lookup to map a token to a tenant. Auth0 Organizations model tenants: an Auth0 Organization is the native tenant boundary and carries user-to-tenant membership, so a user's tenant context comes from their Organization membership, surfaced into the `tenant_id` claim at issuance.
+
+**Why.** Claim-based resolution keeps the per-request path free of a DB round-trip for tenant identity (consistent with D-24's reasoning that identity is stable and safe to embed, while permissions are not), and keeps CM off the hot path (D-37). Auth0 Organizations provide a first-class, IdP-native tenant boundary and membership model rather than reinventing user-tenant mapping in application tables, and align the `tenant_id` claim with an Auth0-managed source. The rejected alternative (a per-request DB lookup to resolve tenant) adds latency and couples every request to a CM/DB read.
+
+**How to apply.** The `tenant_id` claim continues to populate `app.tenant_id` for RLS (AI-MT-03) exactly as under stub auth; `StubAuthClient` and the future `Auth0Client` produce the same `AuthContext` shape (D-24), so no handler change is required. Identity provisioning (Stage 3) creates one Auth0 Organization per tenant and an Organization membership per user, and stamps `tenant_id` (the CM tenant id) + `user_type` into `app_metadata` so both reach the token. PLATFORM users carry NULL `tenant_id` (cross-tenant) per D-24, unchanged.
+
+**Reconsider if.** A user legitimately needs simultaneous membership in multiple tenants within a single session (rare in retail; D-02 already separates users physically per audience), or Auth0 Organizations prove too limiting for the tenant-membership model. Revisit the resolution mechanism then. The identity-only claim shape (D-24) is a separate invariant and is not loosened by this decision.
+
 ---
 
 ## Forward-notes (parked items)
@@ -685,9 +711,9 @@ These are visible so you do not try to redesign around them. **Do not act on any
 
 Strict ("data + processing + access stays in region") vs storage-only. Decide before EU paying customers go live.
 
-### FN-AB-02 — Auth0 integration ownership
+### FN-AB-02 — Auth0 integration ownership (RESOLVED by D-37 + D-38)
 
-Who owns Auth0 across Ithina, claim shape, tenant resolution pattern (claim-based vs DB-lookup), connection strategy. Decide before MVP launch.
+**Resolved (2026-07-18):** D-37 sets Auth0 as the single platform token authority, verified locally by each service against Auth0's JWKS, with admin-backend/CM owning the identity lifecycle rather than the per-request hot path. D-38 locks claim-based tenant resolution with Auth0 Organizations modelling tenants, preserving D-24's identity-only claim shape. Original forward-note text preserved for historical record: Who owns Auth0 across Ithina, claim shape, tenant resolution pattern (claim-based vs DB-lookup), connection strategy. Decide before MVP launch.
 
 ### FN-AB-05 — Audit log storage location
 
@@ -957,7 +983,7 @@ tenants router header summary, distinct from the dashboard's KPI
 grid. Both coexist.
 
 ---
-### FN-AB-22 — Auth0 scope expansion: admin-backend as platform auth gate
+### FN-AB-22 — Auth0 scope expansion: admin-backend as platform auth gate (RESOLVED by D-37)
 
 **Note.** Stage 3 entry is currently scoped to a vanilla Auth0 swap (Step 8.3), replacing the stub-auth dependency. However, a broader scope direction is under consideration: admin-backend becomes the sole owner and gate of authentication for the whole platform (not just the admin surface). Under this framing, other platform services would validate Auth0 tokens via admin-backend rather than directly, making admin-backend the central trust anchor.
 
@@ -966,7 +992,7 @@ survives unchanged. Settling these belongs at Stage 3 kickoff, not now.
 
 **Affects.** D-07 (Auth0 ownership), D-24 (JWT identity-only), D-26 (RS256 via pyjwt[crypto]), Stage 3 scope,and the architecture.md Authorisation section rewrite landed alongside Section 6.9 close (replaced the post-Stage-2 stub with the RBAC enforcement subsection + pointer to architecture_RBAC.md).
 
-**Resolution.** Expected at Stage 3 kickoff. Will be resolved by a D-XX entry that either confirms the expanded scope or explicitly declines it.
+**Resolution.** RESOLVED by D-37 (2026-07-18): Meaning A confirmed. Auth0 is the single platform token authority; every service (admin-backend, DIS, future apps) verifies Auth0-issued tokens locally against Auth0's JWKS. admin-backend/CM owns the identity lifecycle (creates Auth0 users, Organizations, and CM tenant/user rows, stamps claims) but is NOT a request-time introspection gate. The broader "admin-backend as request-time gate for the whole platform" framing is explicitly declined. D-24's identity-only JWT posture survives unchanged; claim shape and tenant resolution are settled by D-38.
 
 ### FN-AB-23 — Impersonation read-only enforcement (during PLATFORM-impersonating-TENANT sessions)
 

@@ -3684,10 +3684,13 @@ test-cleanup discipline.
 
 ---
 
-> Note: Stage 3 scope is currently the vanilla Auth0 swap (Step 8.3).
-> An expansion under consideration — admin-backend as the
-> platform-wide auth gate — is flagged as FN-AB-22 in CLAUDE.md, to
-> be settled at Stage 3 kickoff.
+> Note: Stage 3 scope is the vanilla Auth0 swap (Step 8.3) plus the
+> identity-lifecycle work implied by D-37 / D-38 (Auth0 user, Organization,
+> and tenant provisioning + claim stamping). The platform-auth-authority
+> question (was FN-AB-22) is RESOLVED in CLAUDE.md by D-37: Auth0 is the
+> single token authority, verified locally by each service; admin-backend/CM
+> owns identity lifecycle, not a request-time gate. Claim shape and tenant
+> resolution (was FN-AB-02) are resolved by D-38.
 ## Step 8.3 — Auth0 swap
 
 **Status.** TODO
