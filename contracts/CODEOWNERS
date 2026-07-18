@@ -1,0 +1,17 @@
+# CODEOWNERS, Cortex v3 contracts
+#
+# Shared repo. Amit (value swimlane) owns the contract DEFINITIONS for all of
+# C1-C6; Customer Master (Sanjeev) implements against them. Confirmed at the
+# Amit/Sanjeev walkthrough: the earlier provisional plan for Sanjeev to take
+# ownership of C1/C3/C4/C5 on onboarding is superseded. Authoring the contract
+# shape stays with Amit; CM conforms to it. No team handle is invented here.
+
+* @amitboni
+
+# Contract definitions (C1-C6), all owned by Amit:
+/machine-auth/  @amitboni
+/spine-events/  @amitboni
+/action-ledger/ @amitboni
+/merge/         @amitboni
+/consent/       @amitboni
+/pack/          @amitboni

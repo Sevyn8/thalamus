@@ -1,0 +1,21 @@
+{
+  "id": "retail",
+  "version": "0.1.0",
+  "engine_compat": ">=0.1.0 <0.2.0",
+  "vertical": "retail",
+  "description": "Retail pack v0.1, hand-written here to be representative of the DIS-extracted shape (canonical field catalog plus DIS-shaped mapping rules). The real artifact is produced by extraction from live DIS code at Gate G1.",
+  "content_digests": {
+    "canonical_schema": "3f92be6c7f0012f0f840133c7dd15504c6d9f27315b3caa9eed50cb48020defd",
+    "mapping_rules": "fd119255ac5eaa3a7a6ffb5e5ebfc2054b44ae5134789f46d9f0316289e14390",
+    "validation_quarantine_refs": "daa4f570a5b7aab7cfea93d778e51ae100b130c493544d987faeb5faf32ad02f",
+    "kpi_definitions": "5e23f455bd4ef1500c969cabb96cda0225ecf2115ae54e93fce32bd02d10fddc"
+  },
+  "signature": {
+    "scheme": "cosign",
+    "key_type": "kms-keypair",
+    "signed": false,
+    "key_ref": null,
+    "value": null,
+    "note": "placeholder; cosign signing over artifact bytes and loader verification land with registry v0 (V3-PACK-FR-003, V3-PACK-FR-005)"
+  }
+}

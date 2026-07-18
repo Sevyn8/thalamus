@@ -1,0 +1,49 @@
+# Build artifacts
+node_modules
+.next
+out
+build
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Env files (NEXT_PUBLIC_USE_MOCKS comes via build-arg, not .env)
+.env
+.env.*
+!.env.example
+
+# Dev secrets — keys flow into runtime via Cloud Run env vars, not the image
+keys
+*.pem
+
+# Project docs / prompts (not needed in the image)
+*.md
+!README.md
+Docs
+Prompts
+
+# IDE / OS noise
+.DS_Store
+.idea
+.vscode
+*.swp
+
+# Test / coverage
+coverage
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Build state
+tsconfig.tsbuildinfo
+
+# Deploy artifacts (don't recurse into self)
+Dockerfile
+.dockerignore
+deploy-dev.sh
+DEPLOY.md

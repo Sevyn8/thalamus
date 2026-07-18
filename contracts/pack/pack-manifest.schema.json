@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.sevyn8/pack/pack-manifest.schema.json",
+  "title": "C6 Pack Manifest",
+  "description": "Language-neutral manifest for an Atlas pack artifact (architecture-spec section 3 contract 6; V3-PACK-FR-001..003). The manifest is the signed, integrity-bearing header of a pack: identity, SemVer version, engine-compat range, per-section content digests, and a signature block. It is producer-language-agnostic: a Python-extracted (DIS) pack and a TS-authored (Cortex) pack emit the same manifest shape. Field names are snake_case by convention (matching the DIS mapping_rules and the funnel stage shape); a TS producer normalizes camelCase to snake_case at serialization.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "version", "engine_compat", "content_digests", "signature"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Pack identifier, lowercase kebab-case (for example retail or insurance-cac).",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "version": {
+      "type": "string",
+      "description": "Pack version, SemVer (V3-PACK-FR-002). Distinct from the DIS mapping_version_id and the version int inside mapping_rules; see README versioning note.",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
+    },
+    "engine_compat": {
+      "type": "string",
+      "description": "SemVer range of engines this pack is compatible with (V3-PACK-FR-003). The exact range grammar is enforced by the loader's semver library; this pattern only guards the character set.",
+      "minLength": 1,
+      "pattern": "^[0-9A-Za-z.\\-+ ~^<>=|*xX]+$"
+    },
+    "vertical": {
+      "type": "string",
+      "description": "Optional vertical tag (for example retail, insurance)."
+    },
+    "description": {
+      "type": "string"
+    },
+    "content_digests": {
+      "type": "object",
+      "description": "Per-payload-section SHA-256 over the canonicalized section bytes (JSON, sorted keys, compact separators, UTF-8). Keys are payload section names; the loader recomputes and compares before use.",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    },
+    "signature": {
+      "type": "object",
+      "description": "Signature block. Scheme is cosign over the artifact bytes; the v0 key type is a KMS key-pair (V3-PACK-FR-003). This contract RECORDS the scheme; it does not implement signing. At skeleton stage signed is false and key_ref/value are null.",
+      "additionalProperties": false,
+      "required": ["scheme", "key_type", "signed"],
+      "properties": {
+        "scheme": {
+          "const": "cosign"
+        },
+        "key_type": {
+          "const": "kms-keypair"
+        },
+        "signed": {
+          "type": "boolean"
+        },
+        "key_ref": {
+          "type": ["string", "null"],
+          "description": "KMS key resource reference used to sign; null until signed."
+        },
+        "value": {
+          "type": ["string", "null"],
+          "description": "Detached signature (base64) over the artifact bytes; null until signed."
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

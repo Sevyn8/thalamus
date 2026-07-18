@@ -1,0 +1,365 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.sevyn8/pack/pack-payload.schema.json",
+  "title": "C6 Pack Payload",
+  "description": "Language-neutral payload sections of an Atlas pack (architecture-spec section 2.3; V3-PACK-FR-001). Every section is OPTIONAL at skeleton stage and typed when present. Sections are pack CONTENT (Tier 2); this schema defines their SHAPE, not their values. SCOPE GUARD (V3 today): date tokens and quarantine RULES are engine-global, NOT per-vertical, so they are deliberately absent from this schema. A pack may carry validation_quarantine_refs (references to engine-global or pack-declared suites), never the date-token table or quarantine rule bodies. additionalProperties is false so an over-reaching producer that tries to ship date_tokens or quarantine_rules is rejected.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "canonical_schema": {
+      "description": "Neutral canonical schema (Tier 2). NOT a Pydantic or TS type: either an embedded JSON Schema or a field-catalog list. PII classification per field where known.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["style"],
+      "properties": {
+        "style": { "enum": ["json-schema", "field-catalog"] },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "type"],
+            "properties": {
+              "name": { "type": "string" },
+              "type": { "type": "string" },
+              "pii": { "type": "boolean" },
+              "description": { "type": "string" }
+            }
+          }
+        },
+        "schema": {
+          "type": "object",
+          "description": "Embedded JSON Schema when style is json-schema."
+        }
+      }
+    },
+    "mapping_rules": {
+      "description": "Source-to-canonical mapping rule sets. Reuses the existing DIS shape (version, rename, normalize, cast, derive) so the DIS loader parses pack-delivered rules with no shape change.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "rules"],
+        "properties": {
+          "id": { "type": "string" },
+          "template_type": { "type": "string" },
+          "rules": { "$ref": "#/$defs/mapping_rule_set" }
+        }
+      }
+    },
+    "validation_quarantine_refs": {
+      "description": "References to validation and quarantine suites. REFS ONLY. Quarantine RULES and the date-token table are engine-global today (scope guard); the pack points at them, it does not embed them.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "ref"],
+        "properties": {
+          "id": { "type": "string" },
+          "ref": { "type": "string" },
+          "kind": { "enum": ["validation", "quarantine"] }
+        }
+      }
+    },
+    "kpi_definitions": {
+      "description": "Pack KPI and metric definitions (D01 gold layer; V3-INS-FR-003 for CAC).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key"],
+        "properties": {
+          "key": { "type": "string" },
+          "expression": { "type": "string" },
+          "description": { "type": "string" },
+          "unit": { "type": "string" }
+        }
+      }
+    },
+    "funnel_stages": {
+      "description": "Ordered funnel stage set. The neutral FunnelStage shape (vertical-agnostic; @cortex/cac-types FunnelStage). The concrete stage list is pack content, never shared types (ADR-CAC-002).",
+      "type": "array",
+      "items": { "$ref": "#/$defs/funnel_stage" }
+    },
+    "cost_ontology": {
+      "description": "Cost-line-to-stage assignment with allocation rule (the funnel-economics cost-line input shape minus the runtime amount). Allocation basis is a per-cost-line attribute, not a stage attribute.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/cost_line" }
+    },
+    "benchmark_values": {
+      "description": "Cold-start benchmark values (industry benchmarks for cold start). Keyed numeric targets, for example sourced composite CVRs.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "value"],
+        "properties": {
+          "key": { "type": "string" },
+          "value": { "type": "number" },
+          "unit": { "type": "string" },
+          "source": { "type": "string" }
+        }
+      }
+    },
+    "scoring_rule_refs": {
+      "description": "References to scoring rules (A06 format). Refs only at v0; rule bodies are intelligence-plane content.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "ref"],
+        "properties": {
+          "id": { "type": "string" },
+          "ref": { "type": "string" }
+        }
+      }
+    },
+    "model_refs": {
+      "description": "References to models the pack binds to (A02/A04: signed, versioned, engine-compat-declared).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "version"],
+        "properties": {
+          "name": { "type": "string" },
+          "version": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "mapping_rule_set": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version"],
+      "description": "The DIS mapping rule shape. `version` here is the rule-set version int, distinct from the pack SemVer version and the DIS mapping_version_id.",
+      "$comment": "The normalize/derive/cast op vocabulary below is a CLOSED set sourced from DIS libs/dis-mapping (the SourceMapping model and its validate_normalize_args / validate_derive_generator_args / validate_cast_spec). It encodes the language-neutral semantic both a TS producer and the Python (DIS) consumer must agree on: the op/generator/cast NAMES and their REQUIRED ARGS. A fixture that passes here must load as a DIS SourceMapping in vocabulary terms; an unknown op or a missing required arg is rejected. Adding or renaming an op, generator, cast type, or required arg is a contract version change, not an editorial edit. DIS value-level rules (e.g. separator-must-be-one-char, normalize-before-cast composition typing, decimal precision/scale ranges) are deliberately NOT encoded here: they are DIS implementation details, not the shared shape.",
+      "properties": {
+        "version": { "type": "integer", "minimum": 1 },
+        "rename": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "normalize": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/normalize_op" }
+          }
+        },
+        "cast": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/cast_spec" }
+        },
+        "derive": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/derive_list" }
+        }
+      }
+    },
+    "normalize_op": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "description": "One atomic normalize-vocabulary op (DIS NORMALIZE_OPS). `op` is a closed enum; `args` carries the op's declared args with additionalProperties false (unknown args are rejected, mirroring DIS extra-forbid).",
+      "properties": {
+        "op": {
+          "enum": [
+            "parse_date",
+            "parse_datetime",
+            "parse_decimal",
+            "parse_percent",
+            "parse_integer",
+            "parse_boolean",
+            "map_enum",
+            "null_tokens",
+            "normalize_whitespace",
+            "normalize_case"
+          ]
+        },
+        "args": { "type": "object" }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["op"], "properties": { "op": { "const": "parse_date" } } },
+          "then": {
+            "required": ["args"],
+            "properties": { "args": { "type": "object", "additionalProperties": false, "required": ["format"], "properties": { "format": {} } } }
+          }
+        },
+        {
+          "if": { "required": ["op"], "properties": { "op": { "const": "parse_datetime" } } },
+          "then": {
+            "required": ["args"],
+            "properties": { "args": { "type": "object", "additionalProperties": false, "required": ["format", "timezone"], "properties": { "format": {}, "timezone": {} } } }
+          }
+        },
+        {
+          "if": { "required": ["op"], "properties": { "op": { "const": "parse_decimal" } } },
+          "then": {
+            "required": ["args"],
+            "properties": { "args": { "type": "object", "additionalProperties": false, "required": ["decimal_separator", "thousands_separator"], "properties": { "decimal_separator": {}, "thousands_separator": {} } } }
+          }
+        },
+        {
+          "if": { "required": ["op"], "properties": { "op": { "const": "parse_percent" } } },
+          "then": {
+            "required": ["args"],
+            "properties": { "args": { "type": "object", "additionalProperties": false, "required": ["decimal_separator", "thousands_separator"], "properties": { "decimal_separator": {}, "thousands_separator": {} } } }
+          }
+        },
+        {
+          "if": { "required": ["op"], "properties": { "op": { "const": "parse_integer" } } },
+          "then": {
+            "required": ["args"],
+            "properties": { "args": { "type": "object", "additionalProperties": false, "required": ["thousands_separator"], "properties": { "thousands_separator": {} } } }
+          }
+        },
+        {
+          "if": { "required": ["op"], "properties": { "op": { "const": "parse_boolean" } } },
+          "then": {
+            "required": ["args"],
+            "properties": { "args": { "type": "object", "additionalProperties": false, "required": ["true_values", "false_values"], "properties": { "true_values": {}, "false_values": {} } } }
+          }
+        },
+        {
+          "if": { "required": ["op"], "properties": { "op": { "const": "map_enum" } } },
+          "then": {
+            "required": ["args"],
+            "properties": { "args": { "type": "object", "additionalProperties": false, "required": ["mapping"], "properties": { "mapping": {}, "case_insensitive": {} } } }
+          }
+        },
+        {
+          "if": { "required": ["op"], "properties": { "op": { "const": "null_tokens" } } },
+          "then": {
+            "required": ["args"],
+            "properties": { "args": { "type": "object", "additionalProperties": false, "required": ["tokens"], "properties": { "tokens": {} } } }
+          }
+        },
+        {
+          "if": { "required": ["op"], "properties": { "op": { "const": "normalize_whitespace" } } },
+          "then": {
+            "properties": { "args": { "type": "object", "additionalProperties": false, "properties": { "trim": {}, "collapse": {} } } }
+          }
+        },
+        {
+          "if": { "required": ["op"], "properties": { "op": { "const": "normalize_case" } } },
+          "then": {
+            "required": ["args"],
+            "properties": { "args": { "type": "object", "additionalProperties": false, "required": ["mode"], "properties": { "mode": {} } } }
+          }
+        }
+      ]
+    },
+    "derive_generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "description": "A derive generator op (DIS DERIVE_GENERATOR_OPS). A derive list MUST start with one of these; `op` is a closed enum and `args` carries the generator's required args.",
+      "properties": {
+        "op": { "enum": ["copy", "constant", "date_from_datetime"] },
+        "args": { "type": "object" }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["op"], "properties": { "op": { "const": "copy" } } },
+          "then": {
+            "required": ["args"],
+            "properties": { "args": { "type": "object", "additionalProperties": false, "required": ["source_column"], "properties": { "source_column": {} } } }
+          }
+        },
+        {
+          "if": { "required": ["op"], "properties": { "op": { "const": "constant" } } },
+          "then": {
+            "required": ["args"],
+            "properties": { "args": { "type": "object", "additionalProperties": false, "required": ["value"], "properties": { "value": {} } } }
+          }
+        },
+        {
+          "if": { "required": ["op"], "properties": { "op": { "const": "date_from_datetime" } } },
+          "then": {
+            "required": ["args"],
+            "properties": { "args": { "type": "object", "additionalProperties": false, "required": ["source_column"], "properties": { "source_column": {} } } }
+          }
+        }
+      ]
+    },
+    "derive_list": {
+      "type": "array",
+      "minItems": 1,
+      "description": "A derive target's ORDERED op list: a generator at position 0, then zero or more normalize-vocabulary ops (DIS bounds derive to the normalize vocabulary). One composition rule is STRUCTURAL and encoded below (date_from_datetime admits no following op); the copy/constant composition rules are not expressible in JSON Schema and stay DIS-loader-enforced.",
+      "prefixItems": [ { "$ref": "#/$defs/derive_generator" } ],
+      "items": { "$ref": "#/$defs/normalize_op" },
+      "allOf": [
+        {
+          "$comment": "STRUCTURAL type-flow rule from DIS SourceMapping._validate_derive_list: every normalize-vocabulary op is typed string -> string, while date_from_datetime yields a date, so a date cannot feed a string-consuming normalize op and DIS rejects ANY op following a date_from_datetime generator. That generator's output type is fixed by the op (unconditional, no value or cross-section dependency), so the rule is decidable from shape alone and is encoded here as 'a date_from_datetime list has exactly one element'. The analogous copy/constant rules are deliberately NOT encoded: copy's output type is the source column's cast type (a reference into the sibling cast section, inexpressible in JSON Schema) and constant's is the literal value's python type; both remain DIS-loader-enforced.",
+          "if": {
+            "prefixItems": [
+              { "required": ["op"], "properties": { "op": { "const": "date_from_datetime" } } }
+            ]
+          },
+          "then": { "maxItems": 1 }
+        }
+      ]
+    },
+    "cast_spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "description": "A cast target type (DIS CastType). `type` is a closed enum; the decimal(p,s) form requires precision and scale, and no other type may carry them.",
+      "properties": {
+        "type": { "enum": ["string", "integer", "decimal", "date", "datetime", "boolean"] },
+        "precision": { "type": "integer" },
+        "scale": { "type": "integer" }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["type"], "properties": { "type": { "const": "decimal" } } },
+          "then": { "required": ["precision", "scale"] },
+          "else": { "properties": { "precision": false, "scale": false } }
+        }
+      ]
+    },
+    "funnel_stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["n", "key", "canonical_event", "benchmark_step_cvr"],
+      "properties": {
+        "n": { "type": "integer", "minimum": 1 },
+        "key": { "type": "string", "minLength": 1 },
+        "canonical_event": { "type": "string", "minLength": 1 },
+        "benchmark_step_cvr": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "cost_line_group": { "type": "string", "minLength": 1 },
+        "derived": { "type": "boolean" }
+      }
+    },
+    "cost_line": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "stage", "mode"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "stage": { "type": "string", "minLength": 1 },
+        "mode": { "enum": ["direct", "allocated", "fixed"] },
+        "basis": { "enum": ["volume", "leads", "customers", "equal", "revenue"] },
+        "leakage_flag": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "$comment": "Non-direct cost lines must declare a basis (the primitive spreads by basis).",
+          "if": {
+            "properties": { "mode": { "enum": ["allocated", "fixed"] } }
+          },
+          "then": {
+            "required": ["basis"]
+          }
+        }
+      ]
+    }
+  }
+}

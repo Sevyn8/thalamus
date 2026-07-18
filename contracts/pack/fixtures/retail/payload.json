@@ -1,0 +1,64 @@
+{
+  "canonical_schema": {
+    "style": "field-catalog",
+    "fields": [
+      { "name": "store_id", "type": "string", "pii": false, "description": "Store identifier (load-bearing identity from Customer Master)." },
+      { "name": "sku_id", "type": "string", "pii": false },
+      { "name": "source_sale_timestamp", "type": "datetime", "pii": false },
+      { "name": "event_date", "type": "date", "pii": false, "description": "Derived from source_sale_timestamp." },
+      { "name": "quantity", "type": "integer", "pii": false },
+      { "name": "unit_retail_price", "type": "decimal", "pii": false },
+      { "name": "unit_cost", "type": "decimal", "pii": false },
+      { "name": "currency", "type": "string", "pii": false }
+    ]
+  },
+  "mapping_rules": [
+    {
+      "id": "sale_pos_v1",
+      "template_type": "sales",
+      "rules": {
+        "version": 1,
+        "rename": {
+          "sold_at": "source_sale_timestamp",
+          "sku": "sku_id",
+          "store": "store_id",
+          "qty": "quantity",
+          "price": "unit_retail_price"
+        },
+        "normalize": {
+          "source_sale_timestamp": [
+            { "op": "parse_datetime", "args": { "format": "%d-%m-%Y %H:%M:%S", "timezone": "UTC" } }
+          ]
+        },
+        "cast": {
+          "source_sale_timestamp": { "type": "datetime" },
+          "quantity": { "type": "integer" },
+          "unit_retail_price": { "type": "decimal", "precision": 12, "scale": 2 }
+        },
+        "derive": {
+          "event_date": [
+            { "op": "date_from_datetime", "args": { "source_column": "source_sale_timestamp" } }
+          ]
+        }
+      }
+    }
+  ],
+  "validation_quarantine_refs": [
+    { "id": "invalid_quantity", "ref": "engine:quarantine/invalid-numeric", "kind": "quarantine" },
+    { "id": "sales_required_fields", "ref": "engine:validation/required-fields", "kind": "validation" }
+  ],
+  "kpi_definitions": [
+    {
+      "key": "units_sold",
+      "expression": "sum(quantity)",
+      "description": "Total units sold over the period.",
+      "unit": "units"
+    },
+    {
+      "key": "gross_revenue",
+      "expression": "sum(quantity * unit_retail_price)",
+      "description": "Gross retail revenue over the period.",
+      "unit": "currency"
+    }
+  ]
+}

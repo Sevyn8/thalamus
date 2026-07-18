@@ -1,0 +1,21 @@
+{
+  "id": "insurance-cac",
+  "version": "0.1.0",
+  "engine_compat": ">=0.1.0 <0.2.0",
+  "vertical": "insurance",
+  "description": "Insurance CAC pack, derived from Cortex services/industry/insurance-cac (TS-authored), serialized to the neutral artifact format. Proves cross-language format-neutrality: a TS producer emits the same artifact a Python consumer validates.",
+  "content_digests": {
+    "funnel_stages": "7ddc3de44210c851ce02d581452c278522004c63c343eaf4521422e35666aa13",
+    "cost_ontology": "08698b04fbc679eeca2120b2c8400b6933ed545d1b3d90b5fc855913d889440f",
+    "benchmark_values": "700b3025b4a512c7aee3f38bb662f4fb915cffc68132df372426575946a43953",
+    "kpi_definitions": "898ee07038a50547157bb039e15f35e81f45c3169dd6c42bc71d8620b2cdb91f"
+  },
+  "signature": {
+    "scheme": "cosign",
+    "key_type": "kms-keypair",
+    "signed": false,
+    "key_ref": null,
+    "value": null,
+    "note": "placeholder; cosign signing over artifact bytes and loader verification land with registry v0 (V3-PACK-FR-003, V3-PACK-FR-005)"
+  }
+}
