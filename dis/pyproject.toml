@@ -91,6 +91,11 @@ dev = [
   "streaming-consumer",
   "dis-ui-server",
 
+  # Connectors (repo-root siblings) join the workspace so uv sync installs them
+  # editable alongside the dis packages they reuse.
+  "thalamus-connector-sdk",
+  "thalamus-square",
+
   # Import-graph contracts (slice-05): forbidden imports between the pure
   # pipeline libs and the I/O-bearing libs. Run via `make lint` (lint-imports).
   "import-linter>=2.0",
@@ -126,6 +131,8 @@ known-first-party = [
   "csv_ingest_worker",
   "streaming_consumer",
   "dis_ui_server",
+  "thalamus_connector_sdk",
+  "thalamus_square",
 ]
 
 [tool.mypy]
@@ -165,7 +172,13 @@ markers = [
 # alone cannot prove the absence of runtime I/O — that is additionally held by
 # the no-I/O contract test (tests/contract/) plus review.
 [tool.importlinter]
-root_packages = ["dis_enrichment", "dis_mapping", "dis_validation"]
+root_packages = [
+  "dis_enrichment",
+  "dis_mapping",
+  "dis_validation",
+  "thalamus_connector_sdk",
+  "thalamus_square",
+]
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
@@ -230,6 +243,20 @@ forbidden_modules = [
   "redis",
 ]
 
+# Connectors are receivers; the pure pipeline libs (mapping/validation/enrichment) are
+# the inherited downstream and must never be reached into from the receiver tier.
+[[tool.importlinter.contracts]]
+name = "thalamus_connector_sdk must not import the pure pipeline libs"
+type = "forbidden"
+source_modules = ["thalamus_connector_sdk"]
+forbidden_modules = ["dis_mapping", "dis_validation", "dis_enrichment"]
+
+[[tool.importlinter.contracts]]
+name = "thalamus_square must not import the pure pipeline libs"
+type = "forbidden"
+source_modules = ["thalamus_square"]
+forbidden_modules = ["dis_mapping", "dis_validation", "dis_enrichment"]
+
 [tool.uv]
 package = false
 
@@ -253,6 +280,11 @@ members = [
   "services/csv-ingest-worker",
   "services/streaming-consumer",
   "services/dis-ui-server",
+  # Connectors live at the repo root (sibling of dis/); they join this workspace so
+  # they resolve the reused dis packages (csv-ingest-worker bronze/publisher, dis-rls,
+  # dis-storage, dis-audit) as workspace members.
+  "../connectors/sdk",
+  "../connectors/thalamus-square",
 ]
 
 [tool.uv.sources]
@@ -274,3 +306,5 @@ mirror-sync-consumer = { workspace = true }
 csv-ingest-worker = { workspace = true }
 streaming-consumer = { workspace = true }
 dis-ui-server = { workspace = true }
+thalamus-connector-sdk = { workspace = true }
+thalamus-square = { workspace = true }

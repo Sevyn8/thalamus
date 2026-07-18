@@ -45,6 +45,7 @@ check:
 
 test:
 	uv run pytest
+	uv run pytest -c pyproject.toml ../connectors
 
 # mypy --strict gate (slice-9d): ENFORCING and growing. A package is added to
 # MYPY_PACKAGES in the SAME commit that clears it; the list only ever grows.
@@ -69,6 +70,8 @@ MYPY_PACKAGES = \
 	services/dis-ui-server \
 	services/mirror-sync-consumer \
 	services/streaming-consumer \
+	../connectors/sdk \
+	../connectors/thalamus-square \
 	tests \
 	tools
 
@@ -79,11 +82,11 @@ mypy:
 	done
 
 lint: mypy
-	uv run ruff check .
+	uv run ruff check --config pyproject.toml . ../connectors
 	uv run lint-imports
 
 format:
-	uv run ruff format .
+	uv run ruff format --config pyproject.toml . ../connectors
 
 db-migrate:
 	uv run alembic upgrade head

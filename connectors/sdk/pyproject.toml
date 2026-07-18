@@ -1,0 +1,36 @@
+[project]
+name = "thalamus-connector-sdk"
+version = "0.0.0"
+description = "Thalamus connector SDK: the vendor-agnostic adapter Protocol and the ConnectorPipeline that feeds the existing DIS pipeline via Path A (CSV into bronze, then reuse of csv-ingest-worker's bronze and publisher seams). Reads identity and trace_id off the trigger, never mints them, and never imports dis_core.identity."
+requires-python = ">=3.12"
+dependencies = [
+  # DisError root, UUIDv7, timestamps, logging.
+  "dis-core",
+  # The bronze write goes through the RLS-aware session (hard rules 1 and 12).
+  "dis-rls",
+  # GCS object write + build_object_path/split_object_uri (hard rule 9, D53).
+  "dis-storage",
+  # Fire-and-forget audit to audit.events (hard rule 11); the FailureCode vocabulary.
+  "dis-audit",
+  # The fail-loud PII gate (hard rule 2, D40) reused off the CSV worker.
+  "dis-pii",
+  # Reused bronze sink (BronzeRow/find_prior/insert_row/mark_published), the
+  # IngressReadyEnvelope + Publisher seam, the connector-health emit, and the
+  # ingress.ready topic name. Design debt: depending on a service package from an
+  # SDK is a smell; the clean end state extracts bronze.py/publisher.py into a lib.
+  "csv-ingest-worker",
+  # Async engine + connection for the bronze write (psycopg v3 async).
+  "sqlalchemy[asyncio]>=2.0.36",
+  "psycopg[binary]>=3.2",
+  # ingress.ready publisher (emulator-or-ambient).
+  "google-cloud-pubsub>=2.23",
+  # Typed trigger + envelope models.
+  "pydantic>=2.9",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/thalamus_connector_sdk"]
