@@ -1,6 +1,6 @@
 # Slice: thin end-to-end Square snapshot (offline)
 
-Status: PLAN for review. No implementation code until approved.
+Status: backend spine (steps 1-5) LANDED in commit 011851e. Steps 6-7 (ver2 screen) remain.
 
 ## Objective
 
@@ -254,25 +254,29 @@ The import-linter forbidden contracts (thalamus_square and thalamus_connector_sd
 import dis_mapping / dis_validation / dis_enrichment) continue to hold: the transport and
 fake import only the SDK types and the Square receiver, never the pure pipeline libs.
 
-## Open / unresolved
+## Landed / remaining
 
-Status: PLAN ONLY. None of this slice is implemented. No spine, no ver2 screen, no BFF
-activation lifecycle, no tests exist; the working tree carries only this document.
+Landed (steps 1-5, the backend spine), commit 011851e, proven by
+`connectors/thalamus-square/tests/integration/test_e2e_snapshot.py`
+(`test_spine_offline_pull_lands_canonical_for_w001_and_dedups`): provision to offline pull
+(fake SquareApi) to the inherited streaming-consumer pipeline to canonical for W-001, with
+dedup, self-cleaning per D100.
 
-Unresolved gates (must be answered before any code):
+Resolved gates:
 
-1. Activation model. Option A (STAGED-create plus a new activate endpoint that fires
-   `mapping.changed`) does not exist and conflicts with D88 (create-as-ACTIVE); it needs a
-   recorded decision extending or superseding D88 before it can be coded, and it is a
-   backend slice, not a UI-screen step. Option B (ver2 calls the existing create-as-ACTIVE
-   endpoint) reaches the same canonical outcome with no D88 change and no new endpoints,
-   because the streaming consumer reads the ACTIVE mapping per-lookup by `template_id`
-   (no `mapping.changed` needed). Choice pending.
-2. Spine not built. Steps 1-5 (the trigger transport, the fake SquareApi, the offline pull)
-   were never written; steps 6-7 depend on them.
-3. Target identity. The correct seeded target is store `W-001`
-   (`store_id 019e5e3c-b633-7344-93c7-83fb205285ea`, zabka-group, PLN / INCLUSIVE), NOT
-   `zab-waw-001` / `WAW-001`, which does not exist in the seed or live identity_mirror.
+1. Activation model: Option B chosen. ver2/provisioning uses create-as-ACTIVE; D88 unchanged;
+   no STAGED-create, no activate endpoint, no `mapping.changed` publish. The streaming
+   consumer reads the ACTIVE mapping per-lookup by `template_id`.
+2. Spine built (provisioning.py, dev_transport.py, fakes.py, the two tests).
+3. Target confirmed: store `W-001`, `store_id 019e5e3c-b633-7344-93c7-83fb205285ea`,
+   zabka-group, PLN / INCLUSIVE (`zab-waw-001` / `WAW-001` never existed).
+
+Remaining:
+
+- Steps 6-7: the ver2 onboarding screen (calls `POST /sources` + `POST /mapping-templates`
+  create-as-ACTIVE, renders `GET /connector-health`), plus the minimal ver2 auth-viability
+  fix (the dev token already carries user_type/iss/aud; the real gaps are the `/api` proxy
+  target 8080 and a seeded buc-ees/zabka persona carrying the internal UUIDs). No RS256/JWKS.
 
 Deferred follow-ups (record, do not implement in this slice):
 
