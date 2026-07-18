@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from csv_ingest_worker.audit import WorkerAudit
 from csv_ingest_worker.bronze import (
+    DIS_CHANNEL,
     BronzeRow,
     PriorIngest,
     find_prior,
@@ -132,6 +133,7 @@ class IngestPipeline:
                 payload_sha256=payload_sha256,
                 tenant_id=str(event.tenant_id),
                 trace_id=str(event.trace_id),
+                dis_channel=DIS_CHANNEL,
             )
         if prior is not None:
             return await self._handle_duplicate(event, prior, data, lap)

@@ -90,6 +90,11 @@ class BronzeRow:
     original_filename: str | None
     received_at: datetime
     processing_status: ProcessingStatus
+    # Ingress-channel provenance. Defaults to the CSV worker's value so
+    # csv-ingest-worker (which constructs BronzeRow without passing it) is
+    # byte-for-byte unchanged; the connector SDK passes dis_channel="api".
+    # content_type stays hardcoded text/csv: both channels land CSV.
+    dis_channel: str = DIS_CHANNEL
 
 
 def _require_key_component(name: str, value: str, *, tenant_id: str, trace_id: str) -> None:
@@ -110,6 +115,7 @@ async def find_prior(
     payload_sha256: str,
     tenant_id: str,
     trace_id: str,
+    dis_channel: str = DIS_CHANNEL,
 ) -> PriorIngest | None:
     """The dedup lookup: most recent same-key row within the window, or None.
 
@@ -135,7 +141,7 @@ async def find_prior(
         {
             "spid": upload_session_id,
             "sha": payload_sha256,
-            "channel": DIS_CHANNEL,
+            "channel": dis_channel,
             "cutoff": cutoff,
         },
     )
@@ -172,7 +178,7 @@ async def insert_row(conn: AsyncConnection, row: BronzeRow) -> None:
             "tenant_id": row.tenant_id,
             "store_id": row.store_id,
             "source_id": row.source_id,
-            "dis_channel": DIS_CHANNEL,
+            "dis_channel": row.dis_channel,
             "trace_id": row.trace_id,
             "gcs_uri": row.gcs_uri,
             "payload_size_bytes": row.payload_size_bytes,
