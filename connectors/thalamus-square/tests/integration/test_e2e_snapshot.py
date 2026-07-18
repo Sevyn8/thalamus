@@ -12,10 +12,13 @@ Proves the manually-demonstrated spine as a durable test:
 - dedup: same run-key => duplicate_noop, no new bronze, canonical unchanged; a new run-key =>
   a new bronze row and a canonical upsert (still 2 rows, refreshed).
 
-D100: the test deletes every row it creates (canonical, bronze, audit, config.sources,
-config.source_mappings, connector_health) in a finally, returning the shared DB to baseline.
-The receiver reads connector_run_id off the trigger and mints none (D54); only the transport
-derives it.
+D100: the test sweeps everything it could create - keyed by (tenant_id, source_id), not by a
+captured id, so a re-run over provisioning's idempotent path is also cleaned - in a finally,
+returning the shared DB to baseline. FK-safe order matters: every table that references
+config.source_mappings via mapping_version_id (canonical/staging snapshot + sale + change
+events, quarantined_rows) is cleared before the source_mappings row, else its DELETE FK-fails
+and the whole cleanup rolls back. The receiver reads connector_run_id off the trigger and mints
+none (D54); only the transport derives it.
 """
 
 from __future__ import annotations
@@ -173,25 +176,87 @@ async def _drive_consumer(
         await engine.dispose()
 
 
-def _cleanup(admin: Engine, traces: list[UUID]) -> None:
-    """Delete every row this test created; return the shared DB to baseline (D100)."""
+# Tables that reference config.source_mappings via mapping_version_id (FK). EVERY one must be
+# cleared before the source_mappings row, or its DELETE raises a FK violation, the single
+# cleanup transaction rolls back, and the source_mappings row is left as residue (the D100
+# failure). canonical.store_sku_current_position is the only one the happy path writes, but an
+# intermittently quarantined / staged row also holds a reference, so all seven are swept.
+_MAPPING_VERSION_CHILDREN: tuple[str, ...] = (
+    "canonical.store_sku_current_position",
+    "canonical.store_sku_sale_events",
+    "canonical.store_sku_change_events",
+    "staging.store_sku_current_position",
+    "staging.store_sku_sale_events",
+    "staging.store_sku_change_events",
+    "quarantine.quarantined_rows",
+)
+
+
+def _cleanup(admin: Engine) -> None:
+    """Return the shared DB to baseline (D100), keyed by (tenant_id, source_id) - NOT by any
+    id this run captured. Provisioning is idempotent (ON CONFLICT / the ACTIVE-exists guard),
+    so on a re-run it can hit a PRE-EXISTING row it never created; deleting by a captured
+    template_id/trace would miss it. Keying by (tenant, source) sweeps the row whether or not
+    THIS run wrote it.
+
+    FK-safe order is load-bearing: clear every mapping_version_id child (canonical/staging
+    snapshot + sale + change events, and quarantined_rows) BEFORE config.source_mappings, then
+    bronze, connector_health, source_mappings, sources. audit.events has no FK back to bronze
+    or source_mappings, so it is scoped by the trace_id of this source's bronze events (plus
+    this mapping) and deleted first (re-run safe, no captured trace list).
+    """
+    params = {"t": str(_TENANT), "s": _SOURCE}
+    mv_scope = (
+        "mapping_version_id IN (SELECT mapping_version_id FROM config.source_mappings "
+        "WHERE tenant_id = CAST(:t AS uuid) AND source_id = :s)"
+    )
     with admin.begin() as conn:
+        # RLS scope for the NOBYPASSRLS fallback (admin_url unset -> the user URL). A superuser
+        # POSTGRES_ADMIN_URL ignores these; harmless either way.
+        conn.execute(sa.text("SELECT set_config('app.user_type', 'TENANT', true)"))
+        conn.execute(sa.text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(_TENANT)})
+
+        # audit.events has no source_id and no FK back to bronze/source_mappings, so it is
+        # scoped three ways (all keyed off this source, never a captured id), covering every
+        # audit shape this test emits:
+        #   * trace_id in this source's bronze traces -> the RECEIVED / PII_TOKENIZED events,
+        #     which carry a null data_ingress_event_id but share the pull's trace;
+        #   * data_ingress_event_id in this source's bronze -> the DUPLICATE_NOOP event, whose
+        #     own trace never wrote bronze but which points at the PRIOR bronze row it deduped;
+        #   * mapping_version_id in this mapping -> the consumer's canonical-write events.
+        # Runs before bronze / source_mappings are deleted so all three subqueries still resolve.
         conn.execute(
             sa.text(
-                "DELETE FROM canonical.store_sku_current_position "
-                "WHERE tenant_id = CAST(:t AS uuid) AND sku_id LIKE 'ZAB-%'"
+                "DELETE FROM audit.events "
+                "WHERE trace_id IN (SELECT trace_id FROM bronze.data_ingress_events WHERE source_id = :s) "
+                "OR data_ingress_event_id IN "
+                "  (SELECT id FROM bronze.data_ingress_events WHERE source_id = :s) "
+                f"OR {mv_scope}"
             ),
-            {"t": str(_TENANT)},
+            params,
         )
-        conn.execute(sa.text("DELETE FROM bronze.data_ingress_events WHERE source_id = :s"), {"s": _SOURCE})
-        if traces:
-            conn.execute(
-                sa.text("DELETE FROM audit.events WHERE trace_id = ANY(CAST(:tr AS uuid[]))"),
-                {"tr": [str(t) for t in traces]},
-            )
-        conn.execute(sa.text("DELETE FROM config.source_mappings WHERE source_id = :s"), {"s": _SOURCE})
-        conn.execute(sa.text("DELETE FROM config.sources WHERE source_id = :s"), {"s": _SOURCE})
-        conn.execute(sa.text("DELETE FROM telemetry.connector_health WHERE source_id = :s"), {"s": _SOURCE})
+        for table in _MAPPING_VERSION_CHILDREN:
+            conn.execute(sa.text(f"DELETE FROM {table} WHERE {mv_scope}"), params)
+
+        conn.execute(sa.text("DELETE FROM bronze.data_ingress_events WHERE source_id = :s"), params)
+        conn.execute(
+            sa.text(
+                "DELETE FROM telemetry.connector_health "
+                "WHERE tenant_id = CAST(:t AS uuid) AND source_id = :s"
+            ),
+            params,
+        )
+        conn.execute(
+            sa.text(
+                "DELETE FROM config.source_mappings "
+                "WHERE tenant_id = CAST(:t AS uuid) AND source_id = :s"
+            ),
+            params,
+        )
+        conn.execute(
+            sa.text("DELETE FROM config.sources WHERE tenant_id = CAST(:t AS uuid) AND source_id = :s"),
+            params,
+        )
 
 
 def _drain_ingress_ready() -> None:
@@ -214,15 +279,15 @@ def _drain_ingress_ready() -> None:
 async def test_spine_offline_pull_lands_canonical_for_w001_and_dedups() -> None:
     _require_env("POSTGRES_URL")
     admin = _admin_engine()
-    provisioned = provision(
-        url=_require_env("POSTGRES_URL"), tenant_id=_TENANT, store_code=_STORE_CODE, source_id=_SOURCE
-    )
-    template_id = provisioned.template_id
-    traces: list[UUID] = []
     try:
+        # provision INSIDE the try so the finally sweeps its writes even if it partially
+        # succeeds (source registered) before a later step raises.
+        provisioned = provision(
+            url=_require_env("POSTGRES_URL"), tenant_id=_TENANT, store_code=_STORE_CODE, source_id=_SOURCE
+        )
+        template_id = provisioned.template_id
         # --- bootstrap run: offline pull -> inherited pipeline -> canonical ---
         boot_run_id, boot_trace, boot_out = await _run_pull(template_id, run_key="e2e-bootstrap")
-        traces.append(boot_trace)
         assert boot_out.disposition == "ingested"
         assert boot_out.bronze_id is not None
         consume = await _drive_consumer(
@@ -241,7 +306,6 @@ async def test_spine_offline_pull_lands_canonical_for_w001_and_dedups() -> None:
 
         # --- dedup: SAME run-key => duplicate_noop, no new bronze, canonical unchanged ---
         same_run_id, same_trace, same_out = await _run_pull(template_id, run_key="e2e-bootstrap")
-        traces.append(same_trace)
         assert same_run_id == boot_run_id  # stable id, no wall-clock
         assert same_out.disposition == "duplicate_noop"
         assert _bronze_count(admin) == 1  # no second bronze row
@@ -249,7 +313,6 @@ async def test_spine_offline_pull_lands_canonical_for_w001_and_dedups() -> None:
 
         # --- new intended run: NEW run-key => not deduped (new bronze), canonical upserts ---
         new_run_id, new_trace, new_out = await _run_pull(template_id, run_key="e2e-refresh")
-        traces.append(new_trace)
         assert new_run_id != boot_run_id
         assert new_out.disposition == "ingested"
         assert new_out.bronze_id is not None
@@ -263,6 +326,6 @@ async def test_spine_offline_pull_lands_canonical_for_w001_and_dedups() -> None:
         assert len(refreshed) == 2  # same SKUs upserted in place (natural-key), not duplicated
         assert all(str(r["trace_id"]) == str(new_trace) for r in refreshed)  # the refresh wrote them
     finally:
-        _cleanup(admin, traces)
+        _cleanup(admin)
         _drain_ingress_ready()
         admin.dispose()

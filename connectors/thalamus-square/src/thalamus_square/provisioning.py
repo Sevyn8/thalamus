@@ -41,8 +41,14 @@ class ProvisionResult:
 
 
 def snapshot_mapping_rules() -> dict[str, object]:
-    """A valid SourceMapping document for the snapshot template, derived from
-    SNAPSHOT_HEADER (identity rename + decimal normalize/cast on the numeric columns).
+    """A valid SourceMapping document for the snapshot template, derived from SNAPSHOT_HEADER.
+
+    EQUIVALENT BY CONSTRUCTION to what the BFF ``POST /mapping-templates`` produces from the
+    same per-column intent (identity ``src_key -> dest_key``, decimal separator on the numeric
+    columns): ``translate_columns_to_mapping_rules`` emits a ``cast`` for EVERY known column, so
+    this mirrors it exactly - a decimal cast (precision/scale from the canonical model) on the
+    numeric columns, and a type-only string cast (precision/scale null) on the text columns.
+    The `tests/unit/test_provisioning_equivalence.py` drift guard asserts this equality.
 
     currency is renamed through but its value is enrichment-owned (the store's), so the
     streaming consumer overwrites it (D95); tax_treatment is enrichment-only and not mapped.
@@ -52,10 +58,13 @@ def snapshot_mapping_rules() -> dict[str, object]:
         column: [{"op": "parse_decimal", "args": {"decimal_separator": ".", "thousands_separator": None}}]
         for column in _DECIMAL_CASTS
     }
-    cast = {
-        column: {"type": "decimal", "precision": precision, "scale": scale}
-        for column, (precision, scale) in _DECIMAL_CASTS.items()
-    }
+    cast: dict[str, dict[str, object]] = {}
+    for column in SNAPSHOT_HEADER:
+        if column in _DECIMAL_CASTS:
+            precision, scale = _DECIMAL_CASTS[column]
+            cast[column] = {"type": "decimal", "precision": precision, "scale": scale}
+        else:
+            cast[column] = {"type": "string", "precision": None, "scale": None}
     return {"version": 1, "rename": rename, "normalize": normalize, "cast": cast, "derive": {}}
 
 

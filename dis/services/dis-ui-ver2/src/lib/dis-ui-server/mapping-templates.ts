@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 
 import type { AuthSnapshot } from '../../auth/AuthSnapshot'
-import { getJson, patchJson } from './client'
+import { getJson, patchJson, postJson } from './client'
 import { isRealMode } from './mode'
 
 // Mapping-template endpoints (slice 14b, D68): a mapping is a TEMPLATE - a version lineage
@@ -85,13 +85,33 @@ export type MappingTemplateDetail = MappingTemplate & {
   versions: MappingTemplateVersion[]
 }
 
-// Create/edit request bodies (T10), shaped to the real contracts
-// (schemas/mapping_templates.py:MappingTemplateCreate / MappingTemplatePatch). `mapping_rules`
-// travels as the raw D49 document (= SourceMappingRules). PATCH carries at least one field.
+// Create/edit request bodies, shaped to the real contracts
+// (schemas/mapping_templates.py:MappingTemplateCreate / MappingTemplatePatch).
+//
+// CREATE is COLUMN-based, not raw-rules: the client posts one MappingColumn per source
+// column (src_key -> dest_key, plus per-column format hints) and the BFF derives the
+// SourceMapping document server-side (translate_columns_to_mapping_rules). This is the
+// seam that keeps the UI-provisioned mapping equivalent to the spine's: the spine's
+// provisioning.snapshot_mapping_rules() is asserted equal to translate(columns) for the
+// SAME columns (connectors/.../test_provisioning_equivalence.py). PATCH still carries the
+// raw D49 document (edit path, unchanged).
+export type MappingColumn = {
+  src_key: string
+  dest_key: string
+  // Numeric columns carry a decimal separator so the BFF emits a parse_decimal normalize.
+  src_decimal_separator?: '.' | ','
+  src_thousand_separator?: '.' | ',' | "'"
+  src_datetime_format?: string
+  src_is_percentage?: boolean
+}
 export type MappingTemplateCreate = {
   source_id: string
   template_name: string
-  mapping_rules: SourceMappingRules
+  // The packet axis (D68 / Slice 14d): 'sales' | 'inventory_change' | 'snapshot'.
+  template_type: string
+  columns: MappingColumn[]
+  // PLATFORM impersonation target; the tenant path never sets it.
+  acting_for_tenant_id?: string
 }
 export type MappingTemplatePatch = {
   template_name?: string
@@ -506,6 +526,35 @@ export async function patchMappingTemplate(
     body.template_name ?? 'Template',
     body.mapping_rules ?? EMPTY_RULES,
     false, // edit writes a DRAFT (the D17 lifecycle for changes)
+  )
+}
+
+// A fixed UUID for the fixture-mode synthesized create (no persistence; local dev/test only).
+const SYNTH_CREATE_TEMPLATE_ID = '0190ac10-5a00-7000-8a00-0000000000c1'
+
+// POST /api/v1/mapping-templates -> MappingTemplateDetail. Create-as-ACTIVE (D88): the BFF
+// writes the v1 ACTIVE in one step (no staged/activate ceremony). The body is COLUMN-based;
+// the BFF derives + validates the SourceMapping server-side. Real mode posts; fixture mode
+// synthesizes a v1 ACTIVE detail from the columns (rename = src_key -> dest_key) so local dev
+// and tests work with no backend.
+export async function createMappingTemplate(
+  body: MappingTemplateCreate,
+): Promise<MappingTemplateDetail> {
+  if (isRealMode()) {
+    return normalizeDetail(
+      await postJson<RawMappingTemplateDetail>('/api/v1/mapping-templates', body),
+    )
+  }
+  const rules: SourceMappingRules = {
+    ...EMPTY_RULES,
+    rename: Object.fromEntries(body.columns.map((c) => [c.src_key, c.dest_key])),
+  }
+  return synthV1Detail(
+    SYNTH_CREATE_TEMPLATE_ID,
+    body.source_id,
+    body.template_name,
+    rules,
+    true, // create writes the v1 ACTIVE (create-as-ACTIVE, D88)
   )
 }
 

@@ -2,14 +2,16 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { PERSONAS } from '../auth/dev/personas'
+import { signStubToken } from '../auth/dev/signStubToken'
 import { useAuth } from '../auth/useAuth'
 
-// Dev-only login. Logs in the chosen persona with its PRE-SUPPLIED dev-stub token
-// (baked at build via VITE_STUB_TOKEN_* build args), hands it to AuthProvider via
-// login(), and navigates to the protected home. No client-side minting and no real
-// Customer Master here; this route is dev/staging only. Token handling (the persona
-// -> pre-supplied token -> login() flow) mirrors services/dis-ui verbatim; only the
-// presentation is a minimal local adaptation (no design-system primitives copied).
+// Dev-only login. Mints the chosen persona's dev-stub token AT RUNTIME via
+// signStubToken (HMAC, byte-identical secret/iss/aud to the backend verifier), hands
+// it to AuthProvider via login(), and navigates to the protected home. Runtime minting
+// (over the older pre-baked VITE_STUB_TOKEN_* build args) means the token always carries
+// the persona's current claims - notably the real seeded tenant_id/store_id UUIDs the
+// backend RLS keys on - so real mode against a live BFF authorizes correctly without a
+// rebuild. signStubToken refuses to run in a production bundle. Dev/staging only.
 export function DevLogin() {
   const { login } = useAuth()
   const navigate = useNavigate()
@@ -22,19 +24,12 @@ export function DevLogin() {
       setError('Unknown persona')
       return
     }
-    // Per-persona pre-supplied dev-stub tokens, baked at build time via VITE_ build
-    // args (literal import.meta.env accesses so Vite statically replaces them). No
-    // client-side minting: each persona logs in with its own pre-supplied token.
-    const PERSONA_TOKENS: Record<string, string | undefined> = {
-      tenant: import.meta.env.VITE_STUB_TOKEN_TENANT,
-      ops: import.meta.env.VITE_STUB_TOKEN_OPS,
-    }
-    const token = PERSONA_TOKENS[persona.id]
-    if (token === undefined || token === '') {
-      setError('Could not sign in with the selected persona')
-      return
-    }
     try {
+      // Mint the persona's stub token at runtime (HMAC; secret/iss/aud match the
+      // backend verifier). The claims - including the seeded tenant_id/store_id UUIDs
+      // the RLS keys on - come straight from the persona, so no rebuild is needed to
+      // change them.
+      const token = await signStubToken(persona)
       await login(token)
       navigate('/', { replace: true })
     } catch {

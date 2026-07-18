@@ -13,6 +13,7 @@ import { DataQuality } from './DataQuality'
 import { DevLogin } from './DevLogin'
 import { IngestionRuns } from './IngestionRuns'
 import { NotificationsRoute } from './NotificationsRoute'
+import { OnboardSquare } from './OnboardSquare'
 import { SchemaDrift } from './SchemaDrift'
 import { SourceTemplates } from './SourceTemplates'
 import { Sources } from './Sources'
@@ -39,6 +40,9 @@ export function AppRoutes() {
           <Route path="/audit" element={<Audit />} />
           <Route path="/notifications" element={<NotificationsRoute />} />
           <Route path="/connect" element={<Connect />} />
+          {/* Onboard Square (e2e slice steps 6-7) - provisions the api-source + ACTIVE snapshot
+              template via the real BFF, then views connector health. Does not fire a pull. */}
+          <Route path="/onboard-square" element={<OnboardSquare />} />
           {/* Ingestion Runs — real (GET /api/v1/runs over bronze, D111). */}
           <Route path="/ingestion-runs" element={<IngestionRuns />} />
           {/* Canonical Explorer — real (GET /api/v1/canonical/store-sku-positions). */}

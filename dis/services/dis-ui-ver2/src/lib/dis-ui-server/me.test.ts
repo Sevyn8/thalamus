@@ -52,11 +52,16 @@ describe('getMe (fixture mode)', () => {
 // Mirrors dis-ui EXACTLY: only the tenant persona's sub resolves a fixture; the ops persona's
 // sub ('anjali') does NOT (the D37 sub/key mismatch, deliberately not reconciled).
 describe('persona -> fixture keying (dis-ui-matched, incl. D37 gap)', () => {
-  it('tenant persona sub resolves a fixture', () => {
+  it('tenant persona sub resolves a fixture (profile tenant_id is the external display code, distinct from the token UUID)', () => {
     const fixture = ME_FIXTURES[tenant.sub]
     expect(fixture).toBeDefined()
     expect(fixture.user_id).toBe(tenant.sub)
-    expect(fixture.tenant_id).toBe(tenant.tenant_id)
+    // The /me profile carries the external tenant DISPLAY code (a Customer Master concern);
+    // the persona's tenant_id is now the internal RLS UUID the token claim carries (steps 6-7,
+    // real mode). They are DELIBERATELY distinct (the D37 external<->UUID gap), so the profile
+    // fixture is keyed/resolved by sub, not by the token's tenant UUID.
+    expect(fixture.tenant_id).toBe('t_acme9k2l1mn4')
+    expect(fixture.tenant_id).not.toBe(tenant.tenant_id)
   })
 
   it('ops persona sub does NOT resolve a fixture (D37)', () => {
