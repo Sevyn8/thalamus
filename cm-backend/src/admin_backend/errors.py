@@ -822,6 +822,32 @@ class ProvisioningUnavailableError(AdminBackendError):
     code = "PROVISIONING_UNAVAILABLE"
 
 
+class UserNotProvisionedError(AdminBackendError):
+    """Send-invitation was requested for a user that has no Auth0 identity yet.
+
+    Distinct from ProvisioningUnavailableError: the deployment IS configured,
+    but this specific user was never provisioned in Auth0 (Slice 2c), so there
+    is no user_id to generate a password-change ticket for. It is a precondition
+    failure (provision-before-send), not a caller-input error and not a server
+    fault, so it carries its own 409 + specific code. Direct AdminBackendError
+    subclass for that reason (mirrors ProvisioningUnavailableError).
+    """
+
+    public_message = "The user has not been provisioned in Auth0 yet"
+    http_status = 409
+    code = "USER_NOT_PROVISIONED"
+
+
+class EmailSendError(ServerError):
+    """An outbound email send (SendGrid) failed (transport or non-202).
+
+    ServerError so the client sees the generic INTERNAL_ERROR / 500; the
+    specific failure (status, provider) is captured in ``internal_message`` +
+    ``context`` for the log line. Mirrors Auth0ManagementError for upstream
+    faults; per D-41 an email failure never surfaces as a raw unhandled 500.
+    """
+
+
 def build_error_payload(
     exc: AdminBackendError, request_id: str | None
 ) -> tuple[int, dict[str, Any], dict[str, str]]:

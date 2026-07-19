@@ -34,6 +34,7 @@ from admin_backend.auth.auth0 import Auth0Client
 from admin_backend.auth.auth0_management import Auth0ManagementClient
 from admin_backend.auth.protocol import AuthClient
 from admin_backend.auth.stub import StubAuthClient
+from admin_backend.email_sender import SendGridEmailSender
 from admin_backend.config import get_settings
 from admin_backend.db.engine import (
     assert_app_role_no_bypassrls,
@@ -124,10 +125,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         mgmt_client = Auth0ManagementClient(settings)
     app.state.mgmt_client = mgmt_client
 
+    # SendGrid email sender (Slice 2d-send, D-41). Constructed ONCE here, only
+    # when a SendGrid API key is present; STUB / unconfigured leaves it None
+    # (the send-invitation endpoint then returns 503, never a raw 500).
+    email_sender: SendGridEmailSender | None = None
+    if settings.sendgrid_api_key:
+        email_sender = SendGridEmailSender(settings)
+    app.state.email_sender = email_sender
+
     yield
 
     if app.state.mgmt_client is not None:
         await app.state.mgmt_client.aclose()
+    if app.state.email_sender is not None:
+        await app.state.email_sender.aclose()
     await engine.dispose()
 
 

@@ -173,6 +173,8 @@ _ACTION_LABELS: dict[str, str] = {
     "SET_STATUS": "Set status",
     # Slice 2d-accept (D-40): self-service invite-accept (INVITED -> ACTIVE).
     "ACCEPT_INVITATION": "Accepted invitation",
+    # Slice 2d-send (D-41): staff sends the invitation (sets invited_at).
+    "SEND_INVITATION": "Sent invitation",
 }
 
 

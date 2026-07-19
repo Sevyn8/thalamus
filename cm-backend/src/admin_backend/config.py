@@ -115,6 +115,15 @@ class Settings(BaseSettings):
     auth0_mgmt_client_id: str | None = None
     auth0_mgmt_client_secret: str | None = None
     auth0_mgmt_audience: str | None = None
+    # SendGrid email + Auth0 ticket redirect (Slice 2d-send, D-41). CM's first
+    # outbound-email integration. Left permissive here; the send-invitation
+    # action requires sendgrid_api_key + auth0_ticket_result_url at send time
+    # (raising ProvisioningUnavailableError if unset), consistent with the
+    # auth0_mgmt_* posture. sendgrid_from_email must be a SendGrid-verified
+    # sender identity (an operator step). Unused in STUB mode.
+    sendgrid_api_key: str | None = None
+    sendgrid_from_email: str = "noreply@sevyn8.com"
+    auth0_ticket_result_url: str | None = None
     # The Auth0 database-connection name create_user targets (Slice 2c). Left
     # None here: it is tenant Auth0 config, not derivable, and NOT required
     # merely because AUTH_CLIENT_MODE=AUTH0. The tenant-user provisioning action

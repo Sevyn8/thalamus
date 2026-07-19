@@ -294,3 +294,48 @@ async def test_transport_error_maps_to_typed_error(settings: Settings) -> None:
     rec.responder = responder
     with pytest.raises(Auth0ManagementError):
         await _client(settings, rec).create_organization(name="org-x", display_name="X")
+
+
+# ---------------------------------------------------------------------------
+# Password-change ticket (Slice 2d-send)
+# ---------------------------------------------------------------------------
+
+
+async def test_create_password_change_ticket_request_and_parse(settings: Settings) -> None:
+    def responder(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/v2/tickets/password-change"
+        assert _body(request) == {
+            "user_id": "auth0|abc",
+            "result_url": "https://app.sevyn8.com/welcome",
+        }
+        return httpx.Response(
+            201, json={"ticket": "https://sevyn8.us.auth0.com/lo/reset?ticket=xyz"}
+        )
+
+    rec = _Recorder()
+    rec.responder = responder
+    url = await _client(settings, rec).create_password_change_ticket(
+        user_id="auth0|abc", result_url="https://app.sevyn8.com/welcome"
+    )
+    assert url == "https://sevyn8.us.auth0.com/lo/reset?ticket=xyz"
+
+
+async def test_create_password_change_ticket_missing_ticket_field(settings: Settings) -> None:
+    rec = _Recorder()
+    rec.responder = lambda r: httpx.Response(201, json={})  # no "ticket" key
+    with pytest.raises(Auth0ManagementError):
+        await _client(settings, rec).create_password_change_ticket(
+            user_id="auth0|abc", result_url="https://app.sevyn8.com/welcome"
+        )
+
+
+async def test_create_password_change_ticket_non_success_maps_to_typed_error(
+    settings: Settings,
+) -> None:
+    rec = _Recorder()
+    rec.responder = lambda r: httpx.Response(400, json={"error": "bad"})
+    with pytest.raises(Auth0ManagementError):
+        await _client(settings, rec).create_password_change_ticket(
+            user_id="auth0|abc", result_url="https://app.sevyn8.com/welcome"
+        )

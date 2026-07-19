@@ -1423,3 +1423,83 @@ class TenantUsersRepo:
             )
 
         return result_row, TransitionResult.OK
+
+    async def mark_invited(
+        self,
+        session: AsyncSession,
+        user_id: UUID,
+        *,
+        actor_user_id: UUID,
+        auth: AuthContext | None = None,
+        request_id: UUID | None = None,
+    ) -> tuple[TenantUserDetailRow | None, TransitionResult]:
+        """Record that an invitation was sent: set ``invited_at`` (Slice 2d-send,
+        D-41). Called only AFTER a successful ticket generation + email send, so
+        ``invited_at`` is the "invite sent" marker.
+
+        Sets ``invited_at = now()`` plus the PLATFORM ``updated_by`` actor pair
+        (AI-TU-08); it does NOT touch ``status`` / ``auth0_sub`` /
+        ``invitation_accepted_at``, so the row stays INVITED and both the
+        auth0_sub and invitation-accepted CHECKs are unaffected (``invited_at``
+        itself has no CHECK). Returns ``(None, NOT_FOUND)`` if the row vanished
+        (racy delete), else ``(row, OK)``. SELECT FOR UPDATE locks the row.
+        """
+        schema = get_settings().db_schema
+
+        row = await session.execute(
+            text(
+                f"SELECT tenant_id, full_name FROM {schema}.tenant_users "
+                "WHERE id = :user_id FOR UPDATE"
+            ),
+            {"user_id": user_id},
+        )
+        current = row.first()
+        if current is None:
+            return None, TransitionResult.NOT_FOUND
+        tenant_id = UUID(str(current.tenant_id))
+        full_name_snapshot = str(current.full_name)
+
+        await session.execute(
+            text(
+                f"""
+                UPDATE {schema}.tenant_users
+                   SET invited_at = now(),
+                       updated_by_user_id = :actor,
+                       updated_by_user_type = CAST('PLATFORM'
+                                              AS {schema}.actor_user_type_enum)
+                 WHERE id = :user_id
+                """
+            ),
+            {"actor": actor_user_id, "user_id": user_id},
+        )
+
+        session.expire_all()
+        result_row = await self.get_by_id(session, user_id)
+
+        if (
+            auth is not None
+            and request_id is not None
+            and result_row is not None
+        ):
+            tenant_name = await self._tenant_name_for(session, tenant_id)
+            await emit_audit_event(
+                session,
+                auth=auth,
+                action="SEND_INVITATION",
+                resource_type="TENANT_USER",
+                resource_id=user_id,
+                resource_label=full_name_snapshot,
+                result_type=AuditResultType.SUCCESS,
+                details={"invited_at": "set"},
+                tenant_id=tenant_id,
+                tenant_name=tenant_name,
+                request_id=request_id,
+                route_to_platform=False,
+            )
+        elif auth is not None or request_id is not None:
+            raise ValueError(
+                "auth and request_id must be provided together for audit "
+                "emission, or both omitted for repo-level test paths"
+            )
+
+        return result_row, TransitionResult.OK

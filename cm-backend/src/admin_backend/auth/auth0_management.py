@@ -287,3 +287,31 @@ class Auth0ManagementClient:
         )
         self._raise_for_status(resp, "update_user_app_metadata", expected=(200,))
         return Auth0User.model_validate(resp.json())
+
+    async def create_password_change_ticket(
+        self, *, user_id: str, result_url: str
+    ) -> str:
+        """Generate a password-change ticket for a pre-created user; returns the
+        ticket URL (Slice 2d-send, D-41). Auth0 does not send an email for
+        tickets; CM delivers the URL via SendGrid. Failures map to
+        Auth0ManagementError.
+        """
+        resp = await self._send(
+            "POST",
+            "tickets/password-change",
+            operation="create_password_change_ticket",
+            json={"user_id": user_id, "result_url": result_url},
+        )
+        # Auth0 returns 201 Created for tickets; accept 200 defensively.
+        self._raise_for_status(
+            resp, "create_password_change_ticket", expected=(200, 201)
+        )
+        data = resp.json()
+        try:
+            ticket: str = data["ticket"]
+        except (KeyError, TypeError) as e:
+            raise Auth0ManagementError(
+                "Auth0 password-change ticket response missing 'ticket'",
+                operation="create_password_change_ticket",
+            ) from e
+        return ticket

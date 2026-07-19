@@ -69,6 +69,7 @@ from admin_backend.errors import (
     SelfEditForbiddenError,
     TenantNotFoundError,
     TenantUserNotFoundError,
+    UserNotProvisionedError,
 )
 from admin_backend.models.permission import (
     PermissionAction,
@@ -755,4 +756,96 @@ async def accept_invitation(
     # Self-row guard (defensive): the flow only ever acts on auth.user_id, so
     # the loaded row's id must equal it. Never accept another user's row.
     assert row.user.id == auth.user_id
+    return _detail_from_row(row)
+
+
+@router.post("/{user_id}/send-invitation", response_model=TenantUserRead)
+async def send_invitation(
+    user_id: UUID,
+    request: Request,
+    _: None = Depends(require(
+        ModuleCode.ADMIN,
+        PermissionResource.USERS,
+        PermissionAction.CONFIGURE,
+        PermissionScope.GLOBAL,
+        audience="PLATFORM",
+    )),
+    auth: AuthContext = Depends(get_auth_context),
+    session: AsyncSession = Depends(get_tenant_session_dep),
+) -> Any:
+    """Send the invitation email for a provisioned INVITED tenant-user
+    (Slice 2d-send, D-41). PLATFORM staff action.
+
+    Generates an Auth0 password-change ticket for the 2c-provisioned Auth0 user
+    (re-looked-up by email, since ``auth0_sub`` is deliberately NULL until
+    accept), emails the ticket URL via SendGrid, then sets ``invited_at`` on the
+    committed row. Order is deliberate (DB-first, D-39): the ticket + email
+    happen BEFORE the ``invited_at`` write, so a send failure leaves
+    ``invited_at`` NULL and the action is retriable.
+
+    Errors: 404 if the row is not visible; 503 ``PROVISIONING_UNAVAILABLE`` if
+    email / ticket / result_url is not configured; 409 ``USER_NOT_PROVISIONED``
+    if the user has no Auth0 identity yet (run provision-auth0 first); 500 if
+    ticket generation or email send fails upstream (``invited_at`` stays NULL).
+    """
+    detail = await _repo.get_by_id(session, user_id)
+    if detail is None:
+        raise TenantUserNotFoundError(
+            f"Tenant user {user_id} not visible to this session",
+            user_id=str(user_id),
+        )
+    user = detail.user
+
+    mgmt = getattr(request.app.state, "mgmt_client", None)
+    email_sender = getattr(request.app.state, "email_sender", None)
+    settings = getattr(request.app.state, "settings", None) or get_settings()
+    result_url = settings.auth0_ticket_result_url
+    if (
+        mgmt is None
+        or email_sender is None
+        or not settings.sendgrid_api_key
+        or not result_url
+    ):
+        raise ProvisioningUnavailableError(
+            "send-invitation is not configured (Auth0 management client, "
+            "SendGrid, or ticket result_url is missing)",
+            user_id=str(user_id),
+        )
+
+    # auth0_sub is NULL until accept, so re-lookup the Auth0 user by email.
+    # None means the user was never provisioned in Auth0 (2c) -> precondition.
+    auth0_user = await mgmt.get_user_by_email(user.email)
+    if auth0_user is None:
+        raise UserNotProvisionedError(
+            f"tenant user {user_id} has no Auth0 identity yet; run "
+            "provision-auth0 before sending the invitation",
+            user_id=str(user_id),
+        )
+
+    # Ticket + email BEFORE the invited_at write (DB-first; failure -> retriable).
+    ticket_url = await mgmt.create_password_change_ticket(
+        user_id=auth0_user.user_id, result_url=result_url
+    )
+    await email_sender.send_email(
+        to=user.email,
+        subject="Your Ithina invitation",
+        body=(
+            "You have been invited to Ithina. Set your password to accept your "
+            f"invitation: {ticket_url}"
+        ),
+    )
+
+    row, result = await _repo.mark_invited(
+        session,
+        user_id,
+        actor_user_id=auth.user_id,
+        auth=auth,
+        request_id=request.state.request_id,
+    )
+    if result is TransitionResult.NOT_FOUND:  # racy delete after the load
+        raise TenantUserNotFoundError(
+            f"Tenant user {user_id} not visible to this session",
+            user_id=str(user_id),
+        )
+    assert row is not None
     return _detail_from_row(row)
