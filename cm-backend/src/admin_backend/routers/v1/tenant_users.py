@@ -57,12 +57,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from admin_backend.auth.anchor_deps import get_tenant_user_anchor
 from admin_backend.auth.context import AuthContext
 from admin_backend.auth.permissions import require
+from admin_backend.auth.provisioning import provision_tenant_user
+from admin_backend.config import get_settings
 from admin_backend.dependencies import get_auth_context, get_tenant_session_dep
 from admin_backend.errors import (
     DuplicateRoleAssignmentInRequestError,
     EmptyPatchError,
     InvalidSortKeyClientError,
     InvalidStateTransitionError,
+    ProvisioningUnavailableError,
     SelfEditForbiddenError,
     TenantNotFoundError,
     TenantUserNotFoundError,
@@ -80,7 +83,8 @@ from admin_backend.repositories.tenant_users import (
     TenantUserListRow,
     TenantUsersRepo,
 )
-from admin_backend.repositories.tenants import TransitionResult
+from admin_backend.repositories.tenants import TenantsRepo, TransitionResult
+from admin_backend.schemas.provisioning import TenantUserProvisionResult
 from admin_backend.schemas.tenant import Pagination
 from admin_backend.schemas.tenant_user import (
     RoleAssignmentItem,
@@ -97,6 +101,8 @@ router = APIRouter(prefix="/tenant-users", tags=["tenant-users"])
 
 # Stateless instance reused across requests (mirrors PlatformUsersRepo).
 _repo = TenantUsersRepo()
+# Read-only tenant lookups for provisioning (org display_name from tenant name).
+_tenants_repo = TenantsRepo()
 
 
 # TenantUserNotFoundError moved to admin_backend.errors at Step 6.9.3.2 so
@@ -635,3 +641,68 @@ async def activate_tenant_user(
         )
     assert row is not None
     return _detail_from_row(row)
+
+
+@router.post(
+    "/{user_id}/provision-auth0", response_model=TenantUserProvisionResult
+)
+async def provision_tenant_user_auth0(
+    user_id: UUID,
+    request: Request,
+    _: None = Depends(require(
+        ModuleCode.ADMIN,
+        PermissionResource.USERS,
+        PermissionAction.CONFIGURE,
+        PermissionScope.GLOBAL,
+        audience="PLATFORM",
+    )),
+    session: AsyncSession = Depends(get_tenant_session_dep),
+) -> TenantUserProvisionResult:
+    """Provision the Auth0 identity for this tenant_users row (Slice 2c, D-39).
+
+    Defensively get-or-create the tenant Organization, get-or-create the Auth0
+    user by email, add Org membership, and stamp app_metadata
+    (tenant_id / user_type / cm_user_id). Auth0-side only: reads the committed
+    tenant_user + tenant rows under the PLATFORM session and calls Auth0; writes
+    NOTHING to the CM DB (the row stays INVITED with auth0_sub NULL; invite-send
+    and accept are Slice 2d). Idempotent via natural-key lookup-before-create.
+
+    Returns 404 if the user is not visible; 503 ``PROVISIONING_UNAVAILABLE`` if
+    the management client or the Auth0 database-connection name is unconfigured.
+    """
+    detail = await _repo.get_by_id(session, user_id)
+    if detail is None:
+        raise TenantUserNotFoundError(
+            f"Tenant user {user_id} not visible to this session",
+            user_id=str(user_id),
+        )
+    user = detail.user
+    tenant = await _tenants_repo.get_by_id(session, user.tenant_id)
+    if tenant is None:  # pragma: no cover - FK guarantees the tenant exists
+        raise TenantNotFoundError(
+            f"Tenant {user.tenant_id} for user {user_id} not visible",
+            tenant_id=str(user.tenant_id),
+        )
+    mgmt = getattr(request.app.state, "mgmt_client", None)
+    if mgmt is None:
+        raise ProvisioningUnavailableError(
+            "Auth0 management client is not configured; cannot provision",
+            user_id=str(user_id),
+        )
+    settings = getattr(request.app.state, "settings", None) or get_settings()
+    connection = settings.auth0_mgmt_db_connection
+    if not connection:
+        raise ProvisioningUnavailableError(
+            "auth0_mgmt_db_connection is not configured; cannot create the "
+            "Auth0 user",
+            user_id=str(user_id),
+        )
+    return await provision_tenant_user(
+        mgmt,
+        connection=connection,
+        tenant_id=user.tenant_id,
+        cm_user_id=user.id,
+        email=user.email,
+        tenant_name=tenant.name,
+        display_code=tenant.display_code,
+    )

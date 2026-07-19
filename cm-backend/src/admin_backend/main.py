@@ -31,6 +31,7 @@ from admin_backend.audit.emit import (
     route_template_for_request,
 )
 from admin_backend.auth.auth0 import Auth0Client
+from admin_backend.auth.auth0_management import Auth0ManagementClient
 from admin_backend.auth.protocol import AuthClient
 from admin_backend.auth.stub import StubAuthClient
 from admin_backend.config import get_settings
@@ -110,8 +111,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         auth_client = Auth0Client(settings)
     app.state.auth_client = auth_client
 
+    # Auth0 Management client (Slice 2c provisioning, D-39). Constructed ONCE
+    # here, and only in AUTH0 mode with M2M creds present; STUB mode leaves it
+    # None (the provisioning endpoints then return 503 PROVISIONING_UNAVAILABLE,
+    # never a raw 500). The provisioning handlers read it off app.state.
+    mgmt_client: Auth0ManagementClient | None = None
+    if (
+        settings.auth_client_mode == "AUTH0"
+        and settings.auth0_mgmt_client_id
+        and settings.auth0_mgmt_client_secret
+    ):
+        mgmt_client = Auth0ManagementClient(settings)
+    app.state.mgmt_client = mgmt_client
+
     yield
 
+    if app.state.mgmt_client is not None:
+        await app.state.mgmt_client.aclose()
     await engine.dispose()
 
 

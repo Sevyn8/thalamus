@@ -115,6 +115,12 @@ class Settings(BaseSettings):
     auth0_mgmt_client_id: str | None = None
     auth0_mgmt_client_secret: str | None = None
     auth0_mgmt_audience: str | None = None
+    # The Auth0 database-connection name create_user targets (Slice 2c). Left
+    # None here: it is tenant Auth0 config, not derivable, and NOT required
+    # merely because AUTH_CLIENT_MODE=AUTH0. The tenant-user provisioning action
+    # requires it at run time (raising ProvisioningUnavailableError if unset),
+    # consistent with the auth0_mgmt_* creds posture. Unused in STUB mode.
+    auth0_mgmt_db_connection: str | None = None
 
     # Application
     app_region: Literal["EU", "US", "LOCAL"] = "LOCAL"

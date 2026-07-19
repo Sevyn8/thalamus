@@ -28,11 +28,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from admin_backend.auth.anchor_deps import get_tenant_anchor
 from admin_backend.auth.context import AuthContext
 from admin_backend.auth.permissions import require
+from admin_backend.auth.provisioning import provision_tenant_organization
 from admin_backend.dependencies import get_auth_context, get_tenant_session_dep
 from admin_backend.errors import (
     EmptyPatchError,
     InvalidSortKeyClientError,
     InvalidStateTransitionError,
+    ProvisioningUnavailableError,
     TenantNotFoundError,
 )
 from admin_backend.models.permission import (
@@ -60,6 +62,7 @@ from admin_backend.schemas.tenant import (
     TenantsListResponse,
     TenantsStatsResponse,
 )
+from admin_backend.schemas.provisioning import TenantOrgProvisionResult
 
 
 router = APIRouter(prefix="/tenants", tags=["tenants"])
@@ -459,3 +462,46 @@ async def activate_tenant(
         )
     assert row is not None
     return _detail_from_row(row)
+
+
+@router.post(
+    "/{tenant_id}/provision-auth0", response_model=TenantOrgProvisionResult
+)
+async def provision_tenant_auth0(
+    tenant_id: UUID,
+    request: Request,
+    _: None = Depends(require(
+        ModuleCode.ADMIN,
+        PermissionResource.TENANTS,
+        PermissionAction.CONFIGURE,
+        PermissionScope.GLOBAL,
+        audience="PLATFORM",
+    )),
+    session: AsyncSession = Depends(get_tenant_session_dep),
+) -> TenantOrgProvisionResult:
+    """Get-or-create the Auth0 Organization for this tenant (Slice 2c, D-39).
+
+    Auth0-side only: reads the committed tenant row under the PLATFORM session
+    and calls Auth0; writes NOTHING to the CM DB. Idempotent via the
+    deterministic Organization name derived from ``tenant_id``. Returns 404 if
+    the tenant is not visible, 503 ``PROVISIONING_UNAVAILABLE`` if the Auth0
+    management client is not configured (STUB mode / no M2M creds).
+    """
+    tenant = await _repo.get_by_id(session, tenant_id)
+    if tenant is None:
+        raise TenantNotFoundError(
+            f"Tenant {tenant_id} not visible to this session",
+            tenant_id=str(tenant_id),
+        )
+    mgmt = getattr(request.app.state, "mgmt_client", None)
+    if mgmt is None:
+        raise ProvisioningUnavailableError(
+            "Auth0 management client is not configured; cannot provision",
+            tenant_id=str(tenant_id),
+        )
+    return await provision_tenant_organization(
+        mgmt,
+        tenant_id=tenant.id,
+        tenant_name=tenant.name,
+        display_code=tenant.display_code,
+    )

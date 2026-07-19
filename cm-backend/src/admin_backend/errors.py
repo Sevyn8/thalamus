@@ -804,6 +804,24 @@ class Auth0ManagementError(ServerError):
     """
 
 
+class ProvisioningUnavailableError(AdminBackendError):
+    """Auth0 provisioning was requested but is not available in this process.
+
+    Raised when the provisioning action runs without a constructed
+    Auth0ManagementClient (STUB mode, or AUTH0 mode without M2M creds), or
+    without the required auth0_mgmt_db_connection. It is neither the caller's
+    fault (not a ClientError) nor an unexpected server fault (not the generic
+    INTERNAL_ERROR of ServerError): it is an operational-capability signal, so
+    it carries its own 503 status and a specific code rather than a generic
+    500. Subclassed directly off AdminBackendError for that reason; the
+    exception handler reads http_status / public_message / code the same way.
+    """
+
+    public_message = "Auth0 provisioning is not available in this environment"
+    http_status = 503
+    code = "PROVISIONING_UNAVAILABLE"
+
+
 def build_error_payload(
     exc: AdminBackendError, request_id: str | None
 ) -> tuple[int, dict[str, Any], dict[str, str]]:
