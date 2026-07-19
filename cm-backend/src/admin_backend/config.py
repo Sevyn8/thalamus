@@ -93,6 +93,13 @@ class Settings(BaseSettings):
     jwt_public_key_path: Path = Path("keys/jwt_public.pem")
     jwt_private_key_path: Path = Path("keys/jwt_private.pem")
     token_default_ttl_seconds: int = 3600
+    # Auth0 (AUTH_CLIENT_MODE=AUTH0): the JWKS endpoint Auth0Client fetches
+    # RS256 signing keys from. Left None here and derived from jwt_issuer by
+    # derive_auth0_jwks_url below (the Auth0 convention <issuer>.well-known/
+    # jwks.json; issuer ends with '/'), overridable via env for a custom
+    # domain or non-standard path. Unused in STUB mode. iss / aud are reused
+    # from jwt_issuer / jwt_audience; no separate auth0_issuer / auth0_audience.
+    auth0_jwks_url: str | None = None
 
     # Application
     app_region: Literal["EU", "US", "LOCAL"] = "LOCAL"
@@ -176,6 +183,15 @@ class Settings(BaseSettings):
                     f"Production JWT_ISSUER must end with '/' "
                     f"(Auth0 convention); got: {self.jwt_issuer}"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def derive_auth0_jwks_url(self) -> "Settings":
+        # Default the JWKS endpoint to the Auth0 convention derived from the
+        # issuer (which ends with '/'), unless explicitly overridden. Applies
+        # in every mode; harmless and unused under STUB.
+        if self.auth0_jwks_url is None:
+            self.auth0_jwks_url = f"{self.jwt_issuer}.well-known/jwks.json"
         return self
 
 

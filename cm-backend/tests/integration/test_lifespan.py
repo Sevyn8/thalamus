@@ -13,8 +13,8 @@
     L4: assert_app_role_no_bypassrls raising AppRolePrivilegeError
         propagates out of lifespan. Engine is still created (it
         precedes the check); auth_client is not.
-    L5: AUTH_CLIENT_MODE=AUTH0 reaches the lifespan and raises
-        NotImplementedError carrying the new pending-Auth0 message.
+    L5: AUTH_CLIENT_MODE=AUTH0 constructs an Auth0Client in the
+        lifespan (Slice 1); app.state.auth_client satisfies AuthClient.
 
 L2-L5 must NOT use get_settings() (Step 2.3 wrapped Settings in an
 @lru_cache; cached values would survive across tests in the same
@@ -31,6 +31,8 @@ import pytest_asyncio
 from fastapi import FastAPI
 from pydantic import ValidationError
 
+from admin_backend.auth.auth0 import Auth0Client
+from admin_backend.auth.protocol import AuthClient
 from admin_backend.config import Settings, get_settings
 from admin_backend.errors import AppRolePrivilegeError
 from admin_backend.main import create_app, lifespan
@@ -150,27 +152,25 @@ async def test_l4_privilege_gate_raise_propagates() -> None:
 
 
 # ---------------------------------------------------------------------------
-# L5: AUTH0 mode reaches lifespan and raises pending-Auth0 message
+# L5: AUTH0 mode constructs Auth0Client in the lifespan (Slice 1)
 # ---------------------------------------------------------------------------
 
 
-async def test_l5_auth0_mode_raises_with_pending_message(
+async def test_l5_auth0_mode_constructs_auth0_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AUTH_CLIENT_MODE=AUTH0 reaches the lifespan and raises
-    NotImplementedError mentioning the pending Auth0 work."""
-    monkeypatch.setenv("ENVIRONMENT", "production")
+    """AUTH_CLIENT_MODE=AUTH0 constructs an Auth0Client in the lifespan
+    (Slice 1 replaced the old pending-Auth0 NotImplementedError). The
+    lifespan completes; app.state.auth_client is an Auth0Client that
+    satisfies the AuthClient Protocol. PyJWKClient is lazy, so no
+    network call is made and the real Auth0 tenant is never hit."""
     monkeypatch.setenv("AUTH_CLIENT_MODE", "AUTH0")
     monkeypatch.setenv("JWT_ISSUER", "https://ithina.us.auth0.com/")
 
     app = create_app()
-    with pytest.raises(NotImplementedError) as exc_info:
-        async with lifespan(app):
-            pytest.fail("lifespan body should not run for AUTH0 mode")
-    msg = str(exc_info.value)
-    assert "Auth0Client" in msg
-    assert "pending" in msg.lower()
-
-    # Engine was created before the auth-client branch, so dispose it.
-    if hasattr(app.state, "engine"):
-        await app.state.engine.dispose()
+    async with lifespan(app):
+        auth_client = app.state.auth_client
+        assert isinstance(auth_client, Auth0Client)
+        assert isinstance(auth_client, AuthClient)
+        assert app.state.engine is not None
+        assert app.state.session_factory is not None

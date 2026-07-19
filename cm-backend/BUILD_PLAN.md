@@ -3693,8 +3693,12 @@ test-cleanup discipline.
 > resolution (was FN-AB-02) are resolved by D-38.
 ## Step 8.3 — Auth0 swap
 
-**Status.** TODO
+**Status.** DONE-LOCAL (Auth0Client implementation landed 2026-07-19; dev deploy + stub-disable remain).
 **Owner.** CLAUDE_CODE
+
+**Landed (Slice 1: the implementation half of this step).** `src/admin_backend/auth/auth0.py` (`Auth0Client`, local JWKS verify via `PyJWKClient` with built-in caching so a warm verify does no network call); the `AuthClient` Protocol in `auth/protocol.py` that both `StubAuthClient` and `Auth0Client` satisfy (the STUB-vs-AUTH0 substitution is covered by mypy --strict at the seam); the `main.py` AUTH0 branch that constructs `Auth0Client` (the pending-Auth0 `NotImplementedError` is removed); the one new setting `auth0_jwks_url` (derived default `f"{jwt_issuer}.well-known/jwks.json"`, override allowed); claim namespace `https://sevyn8.com`. iss/aud reuse `jwt_issuer`/`jwt_audience` (no separate auth0_issuer/auth0_audience). `Auth0Client` returns the same `AuthContext` as the stub (D-24 identity-only). Implements D-07's config-only swap; conforms to D-37 (local verify, CM off the per-request hot path) and D-38 (claim-based tenant resolution). Tests: 19 offline `test_auth0.py` unit tests (fixture JWKS; the real Auth0 tenant is never hit) plus the updated lifespan L5 (`test_l5_auth0_mode_constructs_auth0_client`); full suite 911 passed. StubAuthClient remains the dev/test default.
+
+**Remaining (to fully close this step).** Update Secret Manager with the Auth0 JWKS URL / issuer / audience; re-deploy to Cloud Run dev; disable the stub in dev env vars (set `AUTH_CLIENT_MODE=AUTH0`); verify a real Auth0-issued JWT against the dev backend. That last check depends on the Auth0 tenant stamping the four `https://sevyn8.com/*` identity claims, which is the Slice 2 provisioning work (D-38).
 
 **Goal.** Replace stub auth with Auth0 in dev environment. (Previously labeled "(conditional)" — under the new Stage model, Auth0 is in v0 so the qualifier no longer applies.)
 
