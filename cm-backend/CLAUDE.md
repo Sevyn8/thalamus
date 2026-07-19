@@ -701,6 +701,24 @@ v0 is defined as the product shipped to the first real beta user. All six stages
 
 **Reconsider if.** A user legitimately needs simultaneous membership in multiple tenants within a single session (rare in retail; D-02 already separates users physically per audience), or Auth0 Organizations prove too limiting for the tenant-membership model. Revisit the resolution mechanism then. The identity-only claim shape (D-24) is a separate invariant and is not loosened by this decision.
 
+### D-39 — Auth0 provisioning is a separate, explicit, DB-first, idempotent action (2026-07-19)
+
+**What.** Auth0 identity provisioning is performed by a SEPARATE, EXPLICIT provisioning action, NOT inline in the tenant / tenant-user create request. The create endpoints are unchanged: they write the DB row (a `tenants` row, or a `tenant_users` row forced to INVITED with `auth0_sub` NULL) and commit at dependency teardown as today. A distinct provisioning action then operates on the already-committed row to create the Auth0 Organization (for a tenant) and the Auth0 user + Organization membership + `app_metadata` claim stamping (for a tenant-user).
+
+- **Consistency model: DB-first.** INVITED with `auth0_sub` NULL is a first-class, valid, terminal-safe state (per `ck_tenant_users_auth0_sub_consistency`) meaning "in DB, not yet in Auth0." An Auth0 failure during provisioning leaves a legitimate INVITED row that a retry completes; no atomicity between the DB and Auth0 is required or attempted. Provisioning is separated from create precisely to avoid entangling an external call with the request transaction, which commits only at dependency teardown (`db/session.py`, after the handler returns), leaving no clean post-commit hook in-handler.
+- **Idempotency: natural-key lookup-before-create.** Provisioning is safe to retry: the Auth0 Organization is looked up by a deterministic name derived from the CM `tenant_id`, the Auth0 user by email. No idempotency-key table is introduced.
+- **Org timing.** The Auth0 Organization is created at tenant provisioning (Organizations model tenants, D-38), not lazily.
+- **Invite-accept.** CM learns `auth0_sub` via an invite-accept path (Auth0 native invitation; a CM callback -> `accept_invitation(user_id, auth0_sub)` flipping INVITED -> ACTIVE and setting `auth0_sub` + `invitation_accepted_at` atomically, honoring both CHECK constraints). The callback-auth mechanism is a detailed-design item resolved when that sub-slice (2d) is built.
+- **M2M token.** The Management-API access token (client-credentials grant, "Cortex CM Backend M2M" app) is cached in-memory and refreshed on expiry; all Management / token failures map to typed errors, never a raw 500 (mirrors the Slice-1 `Auth0Client` posture).
+
+**Why.** CM had no decision covering external-service calls, idempotency, or DB-to-external consistency (none in D-01..D-38). Separate-explicit provisioning keeps the create path and its transaction convention (the dependency owns the commit) untouched, uses the schema's existing INVITED-with-null-`auth0_sub` state as the safe DB-first checkpoint, and makes provisioning independently retriable against a committed row. Rejected alternatives: inline-in-handler (fires the Auth0 call pre-commit, since commit is at teardown), Auth0-first (orphan Auth0 user/org if the DB write fails), and an outbox/worker (no such infrastructure exists; overkill for a staff-driven flow per D-12).
+
+**How to apply.** Slice 2 builds: (2b) an `Auth0ManagementClient` behind a seam (fake-injectable in tests, per the Slice-1 discipline; adds a runtime HTTP dependency); (2c) the explicit provisioning action operating on committed rows; (2d) the invite-accept endpoint + `accept_invitation` repo method; (2e) email reconciliation (FN-AB-40). Settings add `auth0_mgmt_client_id` / `auth0_mgmt_client_secret` / a Management audience (Secret Manager sourced), with their own validation (the existing `production_*` validators do not cover them).
+
+**Reconsider if.** Self-serve tenant onboarding becomes a requirement (the D-12 reconsider trigger), which would likely demand automatic provisioning and possibly an outbox/worker for consistency at volume; or a requirement emerges for strict atomicity between the CM row and the Auth0 identity that INVITED-as-checkpoint cannot satisfy.
+
+**Affects.** Resolves the external-call / idempotency / DB-to-external-consistency gap previously unaddressed in D-01..D-38. Advances FN-AB-39 (invite-accept) and FN-AB-40 (email reconciliation) from deferred to scheduled (Slice 2d / 2e). Conforms to D-37 (CM owns identity lifecycle), D-38 (Organizations model tenants, claim stamping), D-12 (staff-driven onboarding), D-02 (platform / tenant user separation preserved in Auth0 provisioning).
+
 ---
 
 ## Forward-notes (parked items)
@@ -1130,7 +1148,9 @@ Two implementation options, both rejected at 6.10.1 design time:
 
 Resolution criterion: either a v0 deferred-cleanup pass bundles the column-based DDL migration with similar soft-delete additions on other tables, OR product/UX surfaces a hard requirement to cancel invitations not accepted within N days. Tracked as BUILD_PLAN.md Step 6.10.3.
 
-### FN-AB-39 — Auth0 invite-accept flow (INVITED -> ACTIVE)
+### FN-AB-39 — Auth0 invite-accept flow (INVITED -> ACTIVE) (SCHEDULED: Slice 2d per D-39)
+
+**Scheduled (2026-07-19):** D-39 moves this from deferred to scheduled as Slice 2d (the invite-accept endpoint + a new `accept_invitation(user_id, auth0_sub)` repo method flipping INVITED -> ACTIVE and setting `auth0_sub` + `invitation_accepted_at` atomically). The callback-auth mechanism is the detailed-design item resolved when 2d is built. Original forward-note text follows for historical record.
 
 Step 6.10.1 leaves INVITED -> ACTIVE as the Auth0 invite-accept callback path (out of v0 scope; Stage 3 territory per BUILD_PLAN.md). The explicit `/activate` endpoint refuses to take that transition (returns 409 `INVALID_STATE_TRANSITION`) so the v0 contract stays uniform with the suspend matrix.
 
@@ -1138,7 +1158,9 @@ When Stage 3 lands, the callback path must populate `auth0_sub` AND `invitation_
 
 Resolution at Stage 3 Auth0 integration.
 
-### FN-AB-40 — Email-change Auth0 reconciliation
+### FN-AB-40 — Email-change Auth0 reconciliation (SCHEDULED: Slice 2e per D-39)
+
+**Scheduled (2026-07-19):** D-39 moves this from deferred to scheduled as Slice 2e (email reconciliation between `tenant_users.email` and the Auth0 user record). Original forward-note text follows for historical record.
 
 Step 6.10.1's PATCH allows email change on a tenant_user. Under stub auth (D-07), this is a pure DB-side write: the JWT carries identity claims only (per D-24); email changes don't affect the JWT.
 
