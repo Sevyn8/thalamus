@@ -171,6 +171,8 @@ _ACTION_LABELS: dict[str, str] = {
     # Step 6.16.7 LD8 : SET_STATUS label changes "Status change" ->
     # "Set status" for the audit list-view redesign.
     "SET_STATUS": "Set status",
+    # Slice 2d-accept (D-40): self-service invite-accept (INVITED -> ACTIVE).
+    "ACCEPT_INVITATION": "Accepted invitation",
 }
 
 

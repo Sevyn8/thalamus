@@ -1315,3 +1315,111 @@ class TenantUsersRepo:
             )
 
         return result_row, TransitionResult.OK
+
+    async def accept_invitation(
+        self,
+        session: AsyncSession,
+        user_id: UUID,
+        *,
+        auth0_sub: str,
+        actor_user_id: UUID,
+        auth: AuthContext | None = None,
+        request_id: UUID | None = None,
+    ) -> tuple[TenantUserDetailRow | None, TransitionResult]:
+        """Accept an invitation: flip INVITED -> ACTIVE for one row (D-40).
+
+        Distinct from ``transition()`` because the column writes differ: this
+        sets ``auth0_sub`` and ``invitation_accepted_at`` together with
+        ``status='ACTIVE'`` (both required to satisfy
+        ``ck_tenant_users_auth0_sub_consistency`` and
+        ``ck_tenant_users_invitation_accepted_consistency`` when leaving
+        INVITED), and records a TENANT ``updated_by`` actor pair, the
+        sanctioned AI-TU-04 exception per D-40 (the accepting tenant user is
+        the actor on their own row).
+
+        Returns ``(row | None, result)``:
+          - ``(None, NOT_FOUND)`` when the row is missing or RLS-filtered.
+          - ``(None, INVALID_STATE)`` when the row is not INVITED (re-accept on
+            an ACTIVE / SUSPENDED row is rejected, not a silent no-op).
+          - ``(row, OK)`` after a successful accept.
+
+        ``auth0_sub`` comes from the caller's cryptographically verified token
+        (``AuthContext.sub``); ``actor_user_id`` is the accepting user's own id
+        (``AuthContext.user_id``). SELECT FOR UPDATE locks the row inside the
+        request transaction.
+        """
+        schema = get_settings().db_schema
+
+        row = await session.execute(
+            text(
+                f"SELECT status, tenant_id, full_name "
+                f"FROM {schema}.tenant_users "
+                "WHERE id = :user_id FOR UPDATE"
+            ),
+            {"user_id": user_id},
+        )
+        current = row.first()
+        if current is None:
+            return None, TransitionResult.NOT_FOUND
+        if str(current.status) != "INVITED":
+            return None, TransitionResult.INVALID_STATE
+        tenant_id = UUID(str(current.tenant_id))
+        full_name_snapshot = str(current.full_name)
+
+        await session.execute(
+            text(
+                f"""
+                UPDATE {schema}.tenant_users
+                   SET status = CAST('ACTIVE'
+                                AS {schema}.tenant_user_status_enum),
+                       auth0_sub = :auth0_sub,
+                       invitation_accepted_at = now(),
+                       updated_by_user_id = :actor,
+                       updated_by_user_type = CAST('TENANT'
+                                              AS {schema}.actor_user_type_enum)
+                 WHERE id = :user_id
+                """
+            ),
+            {
+                "auth0_sub": auth0_sub,
+                "actor": actor_user_id,
+                "user_id": user_id,
+            },
+        )
+
+        # Raw UPDATE bypasses SA ORM; expire so the in-session identity-map
+        # entry doesn't return stale status / auth0_sub.
+        session.expire_all()
+        result_row = await self.get_by_id(session, user_id)
+
+        # Success-path audit emission (same-transaction). TENANT actor per D-40.
+        if (
+            auth is not None
+            and request_id is not None
+            and result_row is not None
+        ):
+            tenant_name = await self._tenant_name_for(session, tenant_id)
+            await emit_audit_event(
+                session,
+                auth=auth,
+                action="ACCEPT_INVITATION",
+                resource_type="TENANT_USER",
+                resource_id=user_id,
+                resource_label=full_name_snapshot,
+                result_type=AuditResultType.SUCCESS,
+                details=build_success_details_for_transition(
+                    before_status="INVITED",
+                    after_status="ACTIVE",
+                ),
+                tenant_id=tenant_id,
+                tenant_name=tenant_name,
+                request_id=request_id,
+                route_to_platform=False,
+            )
+        elif auth is not None or request_id is not None:
+            raise ValueError(
+                "auth and request_id must be provided together for audit "
+                "emission, or both omitted for repo-level test paths"
+            )
+
+        return result_row, TransitionResult.OK

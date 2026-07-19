@@ -16,10 +16,15 @@ Adding an endpoint without either a gate or an allowlist entry is a
 deploy-time error by design — the discipline test fails the build. See
 "Note on gate allowlist coupling" in CLAUDE.md.
 
-v0 exempt set (8 paths):
+v0 exempt set (9 paths):
   - ``/api/v1/me/permissions`` — caller-state; gating against the
     caller's own permission set is circular.
   - ``/api/v1/me/can-do`` — caller-state, same.
+  - ``/api/v1/tenant-users/me/accept-invitation`` — self-service
+    invite-accept (Slice 2d-accept, D-40). Authenticated by the token
+    (AuthMiddleware) but NOT permission-gated: an INVITED user holds no
+    role assignments, so a require() gate would always deny. The user
+    acts only on their own row (id = the verified token's user_id).
   - ``/api/v1/lookups`` — reference data; any authenticated user.
   - ``/api/v1/permissions`` — catalogue; any authenticated user.
   - ``/api/v1/permission-matrix`` — catalogue render-grid; any
@@ -42,6 +47,7 @@ from __future__ import annotations
 GATE_EXEMPT_PATHS: frozenset[str] = frozenset({
     "/api/v1/me/permissions",
     "/api/v1/me/can-do",
+    "/api/v1/tenant-users/me/accept-invitation",
     "/api/v1/lookups",
     "/api/v1/permissions",
     "/api/v1/permission-matrix",

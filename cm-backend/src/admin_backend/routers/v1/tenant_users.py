@@ -706,3 +706,53 @@ async def provision_tenant_user_auth0(
         tenant_name=tenant.name,
         display_code=tenant.display_code,
     )
+
+
+@router.post("/me/accept-invitation", response_model=TenantUserRead)
+async def accept_invitation(
+    request: Request,
+    auth: AuthContext = Depends(get_auth_context),
+    session: AsyncSession = Depends(get_tenant_session_dep),
+) -> Any:
+    """Self-service invite-accept (INVITED -> ACTIVE) per D-40.
+
+    A TENANT self-service action: the accepting user is identified by the
+    VERIFIED TOKEN, never a path/body id. The row id is ``auth.user_id`` and
+    the ``auth0_sub`` is ``auth.sub`` (the raw verified token sub). No PLATFORM
+    ``require()`` gate: an INVITED user holds no role assignments, so any
+    permission gate would deny them. The route is authenticated by
+    ``AuthMiddleware`` (a valid token is required) and is listed in
+    ``GATE_EXEMPT_PATHS`` (the /me/ self-service pattern) so the mandatory-gate
+    -discipline test passes.
+
+    404 if the row is not visible; 409 if it is not in INVITED state (re-accept
+    is rejected, not a silent no-op). Writes are atomic: status=ACTIVE +
+    auth0_sub + invitation_accepted_at + a TENANT updated_by actor pair.
+    """
+    row, result = await _repo.accept_invitation(
+        session,
+        auth.user_id,
+        auth0_sub=auth.sub,
+        actor_user_id=auth.user_id,
+        auth=auth,
+        request_id=request.state.request_id,
+    )
+    if result is TransitionResult.NOT_FOUND:
+        raise TenantUserNotFoundError(
+            f"Tenant user {auth.user_id} not visible to this session",
+            user_id=str(auth.user_id),
+        )
+    if result is TransitionResult.INVALID_STATE:
+        raise InvalidStateTransitionError(
+            (
+                f"tenant_user {auth.user_id} is not in INVITED state; "
+                "an invitation can only be accepted once"
+            ),
+            user_id=str(auth.user_id),
+            target_status="ACTIVE",
+        )
+    assert row is not None
+    # Self-row guard (defensive): the flow only ever acts on auth.user_id, so
+    # the loaded row's id must equal it. Never accept another user's row.
+    assert row.user.id == auth.user_id
+    return _detail_from_row(row)
