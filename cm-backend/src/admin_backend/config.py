@@ -100,6 +100,21 @@ class Settings(BaseSettings):
     # domain or non-standard path. Unused in STUB mode. iss / aud are reused
     # from jwt_issuer / jwt_audience; no separate auth0_issuer / auth0_audience.
     auth0_jwks_url: str | None = None
+    # Auth0 Management API (Slice 2 provisioning, D-39): M2M client-credentials
+    # for the "Cortex CM Backend M2M" app. Left None here on purpose: they are
+    # NOT required merely because AUTH_CLIENT_MODE=AUTH0 (that mode only means
+    # "verify Auth0 tokens" and is exercised without provisioning, e.g. the L5
+    # lifespan test). They are required only where the management client is
+    # actually constructed / used, so Auth0ManagementClient enforces their
+    # presence at construction (raising Auth0ManagementError) rather than a
+    # Settings-load validator that would break AUTH0-verify-only configs.
+    # auth0_mgmt_audience doubles as the Management API base URL (Auth0's
+    # convention: the audience IS https://<domain>/api/v2/); derived from
+    # jwt_issuer when unset. The M2M token endpoint is derived from jwt_issuer
+    # (<issuer>oauth/token) by the client. Unused in STUB mode.
+    auth0_mgmt_client_id: str | None = None
+    auth0_mgmt_client_secret: str | None = None
+    auth0_mgmt_audience: str | None = None
 
     # Application
     app_region: Literal["EU", "US", "LOCAL"] = "LOCAL"
@@ -192,6 +207,16 @@ class Settings(BaseSettings):
         # in every mode; harmless and unused under STUB.
         if self.auth0_jwks_url is None:
             self.auth0_jwks_url = f"{self.jwt_issuer}.well-known/jwks.json"
+        return self
+
+    @model_validator(mode="after")
+    def derive_auth0_mgmt_audience(self) -> "Settings":
+        # Default the Management audience (also the API base URL) to the Auth0
+        # convention derived from the issuer (which ends with '/'), unless
+        # explicitly overridden. Harmless derivation; unused unless the
+        # management client is constructed.
+        if self.auth0_mgmt_audience is None:
+            self.auth0_mgmt_audience = f"{self.jwt_issuer}api/v2/"
         return self
 
 

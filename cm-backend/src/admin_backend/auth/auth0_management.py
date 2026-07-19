@@ -1,0 +1,289 @@
+"""Auth0ManagementClient: thin M2M client for the Auth0 Management API v2.
+
+Slice 2b. A small seam over ``httpx`` for the Management operations Slice 2c
+will compose into tenant / tenant-user provisioning (D-39). This module does
+NOT wire into any handler and does NOT hit the live Auth0 tenant at
+construction; provisioning hooks land in 2c.
+
+Auth: client-credentials (M2M) grant against the Management audience using the
+"Cortex CM Backend M2M" app. The access token is cached in-memory and refreshed
+on expiry (mirrors the Slice-1 Auth0Client posture). Every token / HTTP /
+parse failure maps to a typed ``Auth0ManagementError`` (a ServerError), never a
+raw unhandled 500, per D-39.
+
+Idempotency (D-39) is intentionally NOT baked in here: this client exposes
+plain ``create_*`` and ``get_*`` methods and lets 2c compose the natural-key
+get-or-create (Organization by deterministic name, user by email), keeping the
+client thin.
+
+Seam: the client is fake-injectable two ways. For the client's own offline
+tests, an ``httpx.AsyncClient`` (backed by ``httpx.MockTransport``) is injected
+so the real request-building / response-parsing runs without a network. For
+2c and its tests, ``Auth0ManagementClientProtocol`` lets a fake stand in for
+the whole client (mirrors the Slice-1 ``AuthClient`` Protocol).
+
+Not a guess: ``create_user`` takes ``connection`` as a parameter rather than
+hardcoding a connection name; the database-connection name is tenant Auth0
+config, resolved by 2c (likely a future setting), not assumed here.
+"""
+from __future__ import annotations
+
+import asyncio
+import time
+from typing import Any, Protocol, runtime_checkable
+
+import httpx
+from pydantic import BaseModel, ConfigDict
+
+from admin_backend.config import Settings
+from admin_backend.errors import Auth0ManagementError
+
+# Refresh the M2M token this many seconds BEFORE its stated expiry, so an
+# in-flight call never races the boundary.
+_TOKEN_SKEW_SECONDS = 60
+# Per-request timeout for Management calls.
+_HTTP_TIMEOUT_SECONDS = 10.0
+
+
+class Organization(BaseModel):
+    """An Auth0 Organization, projected to the fields CM uses. Extra Auth0
+    fields (branding, metadata, etc.) are ignored."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    id: str
+    name: str
+    display_name: str | None = None
+
+
+class Auth0User(BaseModel):
+    """An Auth0 user, projected to the fields CM uses. ``user_id`` is the
+    Auth0 ``sub`` that CM stores as ``auth0_sub``."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    user_id: str
+    email: str | None = None
+
+
+@runtime_checkable
+class Auth0ManagementClientProtocol(Protocol):
+    """The Management operations Slice 2c depends on. 2c and its tests inject a
+    fake satisfying this Protocol; mypy --strict covers the substitution."""
+
+    async def create_organization(self, *, name: str, display_name: str) -> Organization: ...
+
+    async def get_organization_by_name(self, name: str) -> Organization | None: ...
+
+    async def create_user(
+        self,
+        *,
+        email: str,
+        connection: str,
+        app_metadata: dict[str, Any] | None = None,
+        email_verified: bool = False,
+    ) -> Auth0User: ...
+
+    async def get_user_by_email(self, email: str) -> Auth0User | None: ...
+
+    async def add_organization_member(self, *, org_id: str, user_id: str) -> None: ...
+
+    async def update_user_app_metadata(
+        self, *, user_id: str, app_metadata: dict[str, Any]
+    ) -> Auth0User: ...
+
+
+class Auth0ManagementClient:
+    """Thin, M2M-authenticated Auth0 Management API v2 client.
+
+    Construction requires M2M credentials; absence raises
+    ``Auth0ManagementError`` (these are not required merely because
+    AUTH_CLIENT_MODE=AUTH0, so the guard lives here, not in Settings).
+    Construction opens no network connection (``httpx.AsyncClient`` is lazy);
+    the live Auth0 tenant is never contacted until a method is awaited.
+    """
+
+    def __init__(
+        self, settings: Settings, *, http_client: httpx.AsyncClient | None = None
+    ) -> None:
+        client_id = settings.auth0_mgmt_client_id
+        client_secret = settings.auth0_mgmt_client_secret
+        audience = settings.auth0_mgmt_audience
+        if not client_id or not client_secret or not audience:
+            raise Auth0ManagementError(
+                "Auth0ManagementClient requires auth0_mgmt_client_id, "
+                "auth0_mgmt_client_secret, and auth0_mgmt_audience",
+                has_client_id=bool(client_id),
+                has_client_secret=bool(client_secret),
+                has_audience=bool(audience),
+            )
+        self._client_id = client_id
+        self._client_secret = client_secret
+        # The Management audience is also the API base URL (Auth0 convention:
+        # audience == https://<domain>/api/v2/). Ends with '/', so relative
+        # paths join under /api/v2/.
+        self._audience = audience
+        # The M2M token endpoint is the issuer's oauth/token (issuer ends '/').
+        self._token_url = f"{settings.jwt_issuer}oauth/token"
+        self._client = http_client or httpx.AsyncClient(
+            base_url=audience, timeout=_HTTP_TIMEOUT_SECONDS
+        )
+        self._token: str | None = None
+        self._token_expiry_monotonic: float = 0.0
+        self._token_lock = asyncio.Lock()
+
+    async def aclose(self) -> None:
+        """Dispose the underlying HTTP client (call at lifespan shutdown)."""
+        await self._client.aclose()
+
+    # -- M2M token ----------------------------------------------------------
+
+    async def _get_token(self) -> str:
+        """Return a cached M2M access token, fetching / refreshing on expiry.
+
+        Serialised by a lock so concurrent callers do not each fetch a token
+        (the warm path returns the cached token without a network call).
+        """
+        async with self._token_lock:
+            now = time.monotonic()
+            if self._token is not None and now < self._token_expiry_monotonic:
+                return self._token
+            try:
+                resp = await self._client.post(
+                    self._token_url,
+                    json={
+                        "client_id": self._client_id,
+                        "client_secret": self._client_secret,
+                        "audience": self._audience,
+                        "grant_type": "client_credentials",
+                    },
+                )
+            except httpx.HTTPError as e:
+                raise Auth0ManagementError(
+                    f"Auth0 M2M token request failed at transport: {e}",
+                    operation="token",
+                ) from e
+            if resp.status_code != 200:
+                raise Auth0ManagementError(
+                    f"Auth0 M2M token endpoint returned {resp.status_code}",
+                    operation="token",
+                    status_code=resp.status_code,
+                )
+            try:
+                data = resp.json()
+                access_token: str = data["access_token"]
+                expires_in = int(data["expires_in"])
+            except (ValueError, KeyError, TypeError) as e:
+                raise Auth0ManagementError(
+                    "Auth0 M2M token response was malformed", operation="token"
+                ) from e
+            self._token = access_token
+            self._token_expiry_monotonic = now + expires_in - _TOKEN_SKEW_SECONDS
+            return access_token
+
+    # -- request helper -----------------------------------------------------
+
+    async def _send(
+        self,
+        method: str,
+        url: str,
+        *,
+        operation: str,
+        json: Any | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> httpx.Response:
+        token = await self._get_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        try:
+            return await self._client.request(
+                method, url, json=json, params=params, headers=headers
+            )
+        except httpx.HTTPError as e:
+            raise Auth0ManagementError(
+                f"Auth0 Management transport error on {operation}: {e}",
+                operation=operation,
+            ) from e
+
+    @staticmethod
+    def _raise_for_status(
+        resp: httpx.Response, operation: str, *, expected: tuple[int, ...]
+    ) -> None:
+        if resp.status_code not in expected:
+            raise Auth0ManagementError(
+                f"Auth0 Management {operation} returned {resp.status_code}",
+                operation=operation,
+                status_code=resp.status_code,
+            )
+
+    # -- Organizations ------------------------------------------------------
+
+    async def create_organization(self, *, name: str, display_name: str) -> Organization:
+        resp = await self._send(
+            "POST",
+            "organizations",
+            operation="create_organization",
+            json={"name": name, "display_name": display_name},
+        )
+        self._raise_for_status(resp, "create_organization", expected=(201,))
+        return Organization.model_validate(resp.json())
+
+    async def get_organization_by_name(self, name: str) -> Organization | None:
+        resp = await self._send(
+            "GET", f"organizations/name/{name}", operation="get_organization_by_name"
+        )
+        if resp.status_code == 404:
+            return None
+        self._raise_for_status(resp, "get_organization_by_name", expected=(200,))
+        return Organization.model_validate(resp.json())
+
+    # -- Users --------------------------------------------------------------
+
+    async def create_user(
+        self,
+        *,
+        email: str,
+        connection: str,
+        app_metadata: dict[str, Any] | None = None,
+        email_verified: bool = False,
+    ) -> Auth0User:
+        body: dict[str, Any] = {
+            "email": email,
+            "connection": connection,
+            "email_verified": email_verified,
+        }
+        if app_metadata is not None:
+            body["app_metadata"] = app_metadata
+        resp = await self._send("POST", "users", operation="create_user", json=body)
+        self._raise_for_status(resp, "create_user", expected=(201,))
+        return Auth0User.model_validate(resp.json())
+
+    async def get_user_by_email(self, email: str) -> Auth0User | None:
+        resp = await self._send(
+            "GET", "users-by-email", operation="get_user_by_email", params={"email": email}
+        )
+        self._raise_for_status(resp, "get_user_by_email", expected=(200,))
+        data = resp.json()
+        if not data:
+            return None
+        return Auth0User.model_validate(data[0])
+
+    async def add_organization_member(self, *, org_id: str, user_id: str) -> None:
+        resp = await self._send(
+            "POST",
+            f"organizations/{org_id}/members",
+            operation="add_organization_member",
+            json={"members": [user_id]},
+        )
+        self._raise_for_status(resp, "add_organization_member", expected=(204,))
+
+    async def update_user_app_metadata(
+        self, *, user_id: str, app_metadata: dict[str, Any]
+    ) -> Auth0User:
+        resp = await self._send(
+            "PATCH",
+            f"users/{user_id}",
+            operation="update_user_app_metadata",
+            json={"app_metadata": app_metadata},
+        )
+        self._raise_for_status(resp, "update_user_app_metadata", expected=(200,))
+        return Auth0User.model_validate(resp.json())

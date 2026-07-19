@@ -14,6 +14,10 @@ dependencies = [
     "pydantic-settings>=2.6",
     "pyjwt[crypto]>=2.8",
     "python-json-logger>=2.0,<4.0",
+    # Runtime HTTP client for the Auth0 Management API (Slice 2b, D-39). Was
+    # previously dev-only (TestClient); promoted to a runtime dependency for
+    # Auth0ManagementClient's outbound calls.
+    "httpx>=0.27",
 ]
 
 [dependency-groups]

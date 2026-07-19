@@ -790,6 +790,20 @@ class AppRolePrivilegeError(ServerError):
     """
 
 
+class Auth0ManagementError(ServerError):
+    """An Auth0 Management API call (or its M2M token fetch) failed.
+
+    Covers token-endpoint failures, non-success Management responses,
+    transport errors, and unparseable payloads, plus a missing-config
+    guard when the management client is constructed without M2M
+    credentials. Inheriting ServerError keeps the client-facing shape
+    generic (INTERNAL_ERROR / generic message) while the specific
+    failure (operation, status, upstream body summary) is captured in
+    ``internal_message`` + ``context`` for the log line. Per D-39, every
+    Management / token failure maps here, never a raw unhandled 500.
+    """
+
+
 def build_error_payload(
     exc: AdminBackendError, request_id: str | None
 ) -> tuple[int, dict[str, Any], dict[str, str]]:
