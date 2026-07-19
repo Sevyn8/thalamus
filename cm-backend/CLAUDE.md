@@ -719,6 +719,20 @@ v0 is defined as the product shipped to the first real beta user. All six stages
 
 **Affects.** Resolves the external-call / idempotency / DB-to-external-consistency gap previously unaddressed in D-01..D-38. Advances FN-AB-39 (invite-accept) and FN-AB-40 (email reconciliation) from deferred to scheduled (Slice 2d / 2e). Conforms to D-37 (CM owns identity lifecycle), D-38 (Organizations model tenants, claim stamping), D-12 (staff-driven onboarding), D-02 (platform / tenant user separation preserved in Auth0 provisioning).
 
+### D-40 — Invite-accept is a user-token self-service TENANT write (the sanctioned AI-TU-04 exception) (2026-07-19)
+
+**What.** The Auth0 invite-accept flow (INVITED -> ACTIVE) is a self-service TENANT action: the accepting tenant user authenticates with their own verified Auth0 token and acts on their own `tenant_users` row. This is the first and sanctioned exception to AI-TU-04 (Phase-1 writes are PLATFORM-actor-only staff writes): the `updated_by_user_type` on the invite-accept UPDATE is TENANT, not PLATFORM, because the tenant user is legitimately the actor on their own row. The accept endpoint is authenticated by the normal `AuthMiddleware` + Slice-1 `Auth0Client` verification (NOT a webhook / shared secret): it reads `auth0_sub` from the verified token's `sub` claim and the target row from the token's `user_id` claim, and MUST guard that the token's `user_id` matches the row being accepted (no cross-user accept).
+
+This also records the deviation from FN-AB-39's original sketch. FN-AB-39 anticipated a `/auth0/callbacks/invite-accepted` webhook shape. CM has no webhook / shared-secret / HMAC inbound-auth pattern (verified: none exists), whereas a user-token-authenticated endpoint reuses the existing middleware + `Auth0Client` verification unchanged and takes `auth0_sub` from a cryptographically verified token rather than an unauthenticated callback. So the accept flow is a user-token-authenticated CM endpoint, not a webhook.
+
+**Why.** The user-token variant reuses Slice-1 verification as the trust anchor (the `auth0_sub` is extracted from a token CM verified against Auth0's JWKS), needs no new inbound-auth mechanism, and is auditable as a normal authenticated request. It is confirmed feasible: `AuthContext.sub` carries the raw token `sub` (= `auth0_sub`) and `AuthContext.user_id` carries the CM `tenant_users.id` (from the namespaced claim produced by the `app_metadata.cm_user_id` that Slice 2c stamps), so a 2c-provisioned INVITED user's token verifies and carries everything the accept needs. An un-provisioned user's token fails verification (missing the `user_id` claim), which correctly prevents accepting before provisioning. The TENANT-actor exception is narrow and safe: the user acts only on their own row, proven by the token's `user_id` matching the row id.
+
+**How to apply.** Slice 2d-accept builds a self-service endpoint (`POST /api/v1/tenant-users/me/accept-invitation`, TENANT-authenticated, self-row guard) and a new repo method `accept_invitation(user_id, auth0_sub)` distinct from `transition()`, atomically setting `status='ACTIVE'`, `auth0_sub`, `invitation_accepted_at = now()`, and `updated_by_user_id` / `updated_by_user_type='TENANT'` (AI-TU-08 actor pair), honoring both `ck_tenant_users_auth0_sub_consistency` and `ck_tenant_users_invitation_accepted_consistency`; re-accept on a non-INVITED row returns INVALID_STATE. Slice 2d-send (sending the invitation + setting `invited_at`) is DEFERRED pending an operator decision on the Auth0 invite mechanism (Organization invitation vs password-change ticket) and email delivery (CM has no email infra); 2d-accept does not depend on it.
+
+**Reconsider if.** A requirement emerges for server-to-server acceptance (e.g. an Auth0 Action must finalize acceptance without a subsequent user request), which would need the webhook + inbound-auth mechanism this decision declined; or AI-TU-04's PLATFORM-only-writes stance is revisited more broadly.
+
+**Affects.** Advances FN-AB-39 (invite-accept): the accept side is now specified (user-token endpoint, this decision); the send side remains scheduled (2d-send). Narrow, sanctioned exception to AI-TU-04 (TENANT self-write on invite-accept). Depends on D-39 (provisioning) and Slice 2c (`app_metadata` stamping) and Slice 1 (`Auth0Client` verification). Conforms to D-37 / D-38.
+
 ---
 
 ## Forward-notes (parked items)
@@ -1148,9 +1162,13 @@ Two implementation options, both rejected at 6.10.1 design time:
 
 Resolution criterion: either a v0 deferred-cleanup pass bundles the column-based DDL migration with similar soft-delete additions on other tables, OR product/UX surfaces a hard requirement to cancel invitations not accepted within N days. Tracked as BUILD_PLAN.md Step 6.10.3.
 
-### FN-AB-39 — Auth0 invite-accept flow (INVITED -> ACTIVE) (SCHEDULED: Slice 2d per D-39)
+### FN-AB-39 — Auth0 invite-accept flow (INVITED -> ACTIVE) (accept side SPECIFIED by D-40; send side SCHEDULED Slice 2d-send)
 
-**Scheduled (2026-07-19):** D-39 moves this from deferred to scheduled as Slice 2d (the invite-accept endpoint + a new `accept_invitation(user_id, auth0_sub)` repo method flipping INVITED -> ACTIVE and setting `auth0_sub` + `invitation_accepted_at` atomically). The callback-auth mechanism is the detailed-design item resolved when 2d is built. Original forward-note text follows for historical record.
+**Accept side specified (2026-07-19, D-40):** the accept flow is a user-token-authenticated CM endpoint (`POST /api/v1/tenant-users/me/accept-invitation`), NOT the `/auth0/callbacks/...` webhook this note originally sketched (CM has no webhook / shared-secret inbound-auth pattern). It reuses the normal `AuthMiddleware` + Slice-1 `Auth0Client` verification, reads `auth0_sub` from the verified token's `sub` and the target row from the token's `user_id`, guards `user_id == row id` (no cross-user accept), and calls a new `accept_invitation(user_id, auth0_sub)` repo method (INVITED -> ACTIVE, setting `auth0_sub` + `invitation_accepted_at` + the TENANT `updated_by` actor pair atomically). This is the sanctioned TENANT-actor exception to AI-TU-04. See D-40. Build target: Slice 2d-accept.
+
+**Send side scheduled (Slice 2d-send):** sending the invitation and setting `invited_at` is deferred pending an operator decision on the Auth0 invite mechanism (Organization invitation vs password-change ticket) and email delivery (CM has no email infra); 2d-accept does not depend on it.
+
+**Scheduled (2026-07-19):** D-39 moves this from deferred to scheduled as Slice 2d (the invite-accept endpoint + a new `accept_invitation(user_id, auth0_sub)` repo method flipping INVITED -> ACTIVE and setting `auth0_sub` + `invitation_accepted_at` atomically). The callback-auth mechanism is the detailed-design item resolved when 2d is built (resolved by D-40: user-token endpoint, not a webhook). Original forward-note text follows for historical record.
 
 Step 6.10.1 leaves INVITED -> ACTIVE as the Auth0 invite-accept callback path (out of v0 scope; Stage 3 territory per BUILD_PLAN.md). The explicit `/activate` endpoint refuses to take that transition (returns 409 `INVALID_STATE_TRANSITION`) so the v0 contract stays uniform with the suspend matrix.
 
