@@ -1,0 +1,20 @@
+# Copy to terraform.tfvars and adjust if needed. terraform.tfvars is gitignored;
+# only this .example is tracked. The variables.tf defaults already carry these
+# real values, so a terraform.tfvars is optional for staging; this file
+# documents the full set and is the template production will diverge from.
+
+project_id      = "sevyn8-thalamus-staging"
+region          = "asia-south1"
+zone            = "asia-south1-c"
+org_id          = "395217984150"
+billing_account = "016691-555E7E-B5AB24"
+
+# state_prefix is documentation only; the real value is hardcoded in backend.tf
+# (bucket = sevyn8-tfstate, prefix = thalamus/staging).
+state_prefix = "thalamus/staging"
+
+labels = {
+  workload    = "thalamus"
+  env         = "staging"
+  cost_center = "sevyn8"
+}

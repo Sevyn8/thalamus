@@ -9,6 +9,11 @@ __pycache__/
 *.tfstate
 *.tfstate.*
 *.bak
+# real terraform var values (never commit; only *.example is tracked)
+terraform.tfvars
+*.auto.tfvars
+crash.log
+crash.*.log
 dist/
 build/
 .next/
@@ -25,3 +30,4 @@ target/
 
 # transient terraform import staging scaffolding (not source)
 infra/_import/
+*.tfplan
