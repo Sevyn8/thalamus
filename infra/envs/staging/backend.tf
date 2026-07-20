@@ -7,7 +7,7 @@
 # exists only as documentation of this value.
 terraform {
   backend "gcs" {
-    bucket = "sevyn8-tfstate"
+    bucket = "sevyn8-thalamus-tfstate"
     prefix = "thalamus/staging"
   }
 }

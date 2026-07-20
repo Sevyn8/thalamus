@@ -54,3 +54,65 @@ variable "labels" {
     cost_center = "sevyn8"
   }
 }
+
+###############################################################################
+# Wave 1: network
+###############################################################################
+
+variable "name_prefix" {
+  type        = string
+  description = "Prefix for shared network resource names."
+  default     = "thalamus"
+}
+
+variable "subnet_cidr" {
+  type        = string
+  description = "Primary subnet CIDR for the shared VPC."
+  default     = "10.20.0.0/24"
+}
+
+variable "connector_cidr" {
+  type        = string
+  description = "The /28 for the Serverless VPC Access connector (must not overlap subnet_cidr)."
+  default     = "10.8.0.0/28"
+}
+
+###############################################################################
+# Wave 1: Cloud SQL (shared instance + shared database + three roles)
+###############################################################################
+
+variable "cloud_sql_instance_name" {
+  type        = string
+  description = "Cloud SQL instance name."
+  default     = "thalamus-pg"
+}
+
+variable "database_name" {
+  type        = string
+  description = "The single shared database name. Neutral; BOTH apps point DATABASE_URL here."
+  default     = "thalamus"
+}
+
+variable "cloud_sql_tier" {
+  type        = string
+  description = "Cloud SQL machine tier. See modules/cloud-sql for the default rationale (db-custom-1-3840, smallest modern ENTERPRISE tier for POSTGRES_16)."
+  default     = "db-custom-1-3840"
+}
+
+variable "cloud_sql_disk_size_gb" {
+  type        = number
+  description = "Cloud SQL data disk size in GB."
+  default     = 10
+}
+
+variable "cloud_sql_availability_type" {
+  type        = string
+  description = "ZONAL for staging; REGIONAL for prod."
+  default     = "ZONAL"
+}
+
+variable "cloud_sql_deletion_protection" {
+  type        = bool
+  description = "Prevent accidental instance destroy."
+  default     = true
+}

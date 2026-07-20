@@ -18,3 +18,16 @@ labels = {
   env         = "staging"
   cost_center = "sevyn8"
 }
+
+# --- Wave 1: network ---
+name_prefix    = "thalamus"
+subnet_cidr    = "10.20.0.0/24"
+connector_cidr = "10.8.0.0/28"
+
+# --- Wave 1: Cloud SQL (shared instance + shared database + three roles) ---
+cloud_sql_instance_name       = "thalamus-pg"
+database_name                 = "thalamus"
+cloud_sql_tier                = "db-custom-1-3840"
+cloud_sql_disk_size_gb        = 10
+cloud_sql_availability_type   = "ZONAL"
+cloud_sql_deletion_protection = true
