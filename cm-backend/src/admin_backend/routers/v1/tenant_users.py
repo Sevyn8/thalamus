@@ -498,6 +498,18 @@ async def patch_tenant_user(
             user_id=str(user_id),
         )
 
+    # Capture the pre-update email so the Auth0 sync (D-42) fires only on a
+    # REAL email change (not a no-op email or a non-email edit). RLS-invisible
+    # -> None -> 404 (the anchor gate also guards this; kept as a defensive
+    # check for the race between this read and the update).
+    before = await _repo.get_by_id(session, user_id)
+    if before is None:
+        raise TenantUserNotFoundError(
+            f"Tenant user {user_id} not visible to this session",
+            user_id=str(user_id),
+        )
+    old_email = before.user.email
+
     # Convert Pydantic RoleAssignmentItem list to (role_id, org_node_id)
     # tuples AND raise 422 on within-request duplicates (Step 6.14 LD5).
     # An empty list is a valid PATCH value (revoke-all); ``roles`` set
@@ -518,6 +530,31 @@ async def patch_tenant_user(
         raise TenantUserNotFoundError(
             f"Tenant user {user_id} not visible to this session",
             user_id=str(user_id),
+        )
+
+    # D-42: keep Auth0 in sync when the email actually changed on an
+    # Auth0-backed user (ACTIVE / SUSPENDED, auth0_sub set). In-request, LAST
+    # operation before return: the email UPDATE is still pending in this
+    # transaction, so an Auth0 failure here raises -> the dependency rolls the
+    # UPDATE back -> both CM and Auth0 stay at the OLD email (clean fail,
+    # retriable). INVITED (auth0_sub NULL) is a pure DB write: no Auth0 call.
+    email_changed = "email" in fields and row.user.email != old_email
+    if email_changed and row.user.auth0_sub is not None:
+        mgmt = getattr(request.app.state, "mgmt_client", None)
+        settings = getattr(request.app.state, "settings", None) or get_settings()
+        connection = settings.auth0_mgmt_db_connection
+        if mgmt is None or not connection:
+            # Do not commit a CM-only email change for an Auth0-backed user.
+            raise ProvisioningUnavailableError(
+                "email change for an Auth0-backed user requires the Auth0 "
+                "management client and auth0_mgmt_db_connection",
+                user_id=str(user_id),
+            )
+        await mgmt.update_user_email(
+            user_id=row.user.auth0_sub,
+            email=row.user.email,
+            connection=connection,
+            email_verified=True,
         )
     return _detail_from_row(row)
 

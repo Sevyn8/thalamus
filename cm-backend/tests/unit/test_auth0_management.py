@@ -339,3 +339,39 @@ async def test_create_password_change_ticket_non_success_maps_to_typed_error(
         await _client(settings, rec).create_password_change_ticket(
             user_id="auth0|abc", result_url="https://app.sevyn8.com/welcome"
         )
+
+
+# ---------------------------------------------------------------------------
+# Update user email (Slice 2e)
+# ---------------------------------------------------------------------------
+
+
+async def test_update_user_email_request_shape_and_success(settings: Settings) -> None:
+    def responder(request: httpx.Request) -> httpx.Response:
+        assert request.method == "PATCH"
+        assert request.url.path.startswith("/api/v2/users/")
+        assert _body(request) == {
+            "email": "new@tenant.test",
+            "connection": "Username-Password-Authentication",
+            "email_verified": True,
+        }
+        return httpx.Response(200, json={"user_id": "auth0|abc", "email": "new@tenant.test"})
+
+    rec = _Recorder()
+    rec.responder = responder
+    result = await _client(settings, rec).update_user_email(
+        user_id="auth0|abc",
+        email="new@tenant.test",
+        connection="Username-Password-Authentication",
+        email_verified=True,
+    )
+    assert result is None
+
+
+async def test_update_user_email_non_success_maps_to_typed_error(settings: Settings) -> None:
+    rec = _Recorder()
+    rec.responder = lambda r: httpx.Response(400, json={"error": "bad"})
+    with pytest.raises(Auth0ManagementError):
+        await _client(settings, rec).update_user_email(
+            user_id="auth0|abc", email="new@tenant.test", connection="conn"
+        )

@@ -315,3 +315,31 @@ class Auth0ManagementClient:
                 operation="create_password_change_ticket",
             ) from e
         return ticket
+
+    async def update_user_email(
+        self,
+        *,
+        user_id: str,
+        email: str,
+        connection: str,
+        email_verified: bool = True,
+    ) -> None:
+        """Update a user's email in Auth0 (Slice 2e, D-42).
+
+        ``connection`` is REQUIRED: the Management API needs it for email
+        updates on database connections. ``email_verified=True`` per D-42
+        (staff-driven authority, no re-verification round trip). Failures map
+        to Auth0ManagementError. Note: a genuine email change invalidates the
+        user's active Auth0 sessions (Auth0's own behavior).
+        """
+        resp = await self._send(
+            "PATCH",
+            f"users/{user_id}",
+            operation="update_user_email",
+            json={
+                "email": email,
+                "connection": connection,
+                "email_verified": email_verified,
+            },
+        )
+        self._raise_for_status(resp, "update_user_email", expected=(200,))
