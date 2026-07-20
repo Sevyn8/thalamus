@@ -7,7 +7,9 @@
 -- connection. The grant statements are identical to the original; only the ROLE
 -- CREATE is gone (Terraform's google_sql_user already created the role).
 --
--- RUN AS: cloudsqlsuperuser (`postgres`), connected to the shared database.
+-- RUN AS: user_admin_backend (the OWNER of core). NOT postgres: Cloud SQL's
+-- cloudsqlsuperuser does not own core and cannot GRANT on it (fails with
+-- 'permission denied for schema core'). Verified 2026-07-20.
 --
 -- WHEN: AFTER CM's Alembic has created core + core.tenants + core.stores.
 -- Ordering dependency (hard): these GRANTs reference core.tenants / core.stores,
