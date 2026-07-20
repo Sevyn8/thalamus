@@ -34,3 +34,18 @@ output "password_secret_ids" {
   value       = module.cloud_sql.password_secret_ids
   description = "Secret Manager ids holding each role's generated password."
 }
+
+output "artifact_registry_url" {
+  value       = module.artifact_registry.repo_url
+  description = "Base URL for image pushes (push cm-backend + DIS images here)."
+}
+
+output "cm_service_url" {
+  value       = module.cm_service.service_url
+  description = "CM Cloud Run URL. Verify with: curl <url>/api/v1/health"
+}
+
+output "cm_service_account_email" {
+  value       = module.cm_service.service_account_email
+  description = "CM runtime SA (holds secretAccessor on the three cm-* secrets)."
+}

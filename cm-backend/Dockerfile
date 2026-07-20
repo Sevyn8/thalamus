@@ -68,12 +68,14 @@ COPY --chown=app:app scripts/smoke_test.py /app/scripts/smoke_test.py
 
 USER app
 
-EXPOSE 8000
+# Documentation only; Cloud Run routes to the port it injects via $PORT.
+EXPOSE 8080
 
-# Default command: run the FastAPI app. Cloud Run / GKE Job overrides CMD with
-# `alembic upgrade head` for schema bring-up.
+# Default command: run the FastAPI app. Honors Cloud Run's injected $PORT
+# (defaults to 8080 for local runs). sh -c expands $PORT; `exec` replaces the
+# shell with uvicorn so SIGTERM reaches the app for graceful shutdown.
+# Cloud Run / GKE Job overrides CMD with `alembic upgrade head` for schema
+# bring-up; the app itself never runs migrations on boot.
 # --log-config will be added at Step 7.2.1 when the JSON log config file lands.
-CMD ["uvicorn", "admin_backend.main:app", \
-     "--host", "0.0.0.0", \
-     "--port", "8000", \
-     "--no-server-header"]
+CMD ["/bin/sh", "-c", \
+     "exec uvicorn admin_backend.main:app --host 0.0.0.0 --port ${PORT:-8080} --no-server-header"]

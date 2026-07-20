@@ -39,3 +39,36 @@ module "cloud_sql" {
   network_id                 = module.network.network_id
   private_service_connection = module.network.private_service_connection
 }
+
+# --- Wave 2: Artifact Registry (shared Docker repo for cm-backend + DIS images) ---
+
+module "artifact_registry" {
+  source = "../../modules/artifact-registry"
+
+  project_id = var.project_id
+  region     = var.region
+}
+
+# --- Wave 2: CM (cm-backend) Cloud Run service (AUTH0 mode) ---
+#
+# Egress to the private Cloud SQL IP rides module.network.vpc_connector_id
+# (thalamus-vpcconn). DATABASE_URL / Auth0 M2M secret / SendGrid key are the
+# out-of-band Secret Manager secrets (cm-database-url,
+# cm-auth0-mgmt-client-secret, cm-sendgrid-api-key), referenced by name.
+
+module "cm_service" {
+  source = "../../modules/cloud-run-service-cm"
+
+  project_id       = var.project_id
+  region           = var.region
+  image            = var.cm_image
+  vpc_connector_id = module.network.vpc_connector_id
+
+  # APP_REGION is a CM residency bucket (EU|US|LOCAL), NOT the GCP region.
+  app_region = var.cm_app_region
+
+  # Lazy Auth0 values, not recorded in the repo; empty until supplied in tfvars.
+  auth0_mgmt_client_id     = var.cm_auth0_mgmt_client_id
+  auth0_mgmt_db_connection = var.cm_auth0_mgmt_db_connection
+  auth0_ticket_result_url  = var.cm_auth0_ticket_result_url
+}

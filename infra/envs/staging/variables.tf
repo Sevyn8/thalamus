@@ -116,3 +116,37 @@ variable "cloud_sql_deletion_protection" {
   description = "Prevent accidental instance destroy."
   default     = true
 }
+
+###############################################################################
+# Wave 2: CM (cm-backend) Cloud Run service
+###############################################################################
+
+variable "cm_image" {
+  type        = string
+  description = "CM container image. Defaults to the v1 tag pushed this session."
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/cm-backend:v1"
+}
+
+variable "cm_app_region" {
+  type        = string
+  description = "CM APP_REGION. Legal values EU|US|LOCAL ONLY (data-residency bucket, NOT the GCP region). asia-south1 is invalid and crashes CM on boot. Confirm the intended bucket."
+  default     = "US"
+}
+
+variable "cm_auth0_mgmt_client_id" {
+  type        = string
+  description = "AUTH0_MGMT_CLIENT_ID ('Cortex CM Backend M2M' client id). Not recorded in the repo; supply here. Lazy (not boot-blocking)."
+  default     = ""
+}
+
+variable "cm_auth0_mgmt_db_connection" {
+  type        = string
+  description = "AUTH0_MGMT_DB_CONNECTION (Auth0 database-connection name). Not recorded in the repo; supply here. Lazy."
+  default     = ""
+}
+
+variable "cm_auth0_ticket_result_url" {
+  type        = string
+  description = "AUTH0_TICKET_RESULT_URL (invite password-set redirect). Not recorded in the repo; supply here. Lazy."
+  default     = ""
+}

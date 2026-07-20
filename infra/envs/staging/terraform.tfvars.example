@@ -31,3 +31,16 @@ cloud_sql_tier                = "db-custom-1-3840"
 cloud_sql_disk_size_gb        = 10
 cloud_sql_availability_type   = "ZONAL"
 cloud_sql_deletion_protection = true
+
+# --- Wave 2: CM (cm-backend) Cloud Run service ---
+cm_image = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/cm-backend:v1"
+
+# APP_REGION is a CM residency bucket (EU|US|LOCAL), NOT the GCP region.
+# asia-south1 is INVALID and crashes CM on boot. Confirm the intended bucket.
+cm_app_region = "US"
+
+# Lazy Auth0 values, not recorded in the repo. CM boots in AUTH0 mode without
+# them; provisioning / invite-send / email-sync fail at run time until set.
+cm_auth0_mgmt_client_id     = ""
+cm_auth0_mgmt_db_connection = ""
+cm_auth0_ticket_result_url  = ""
