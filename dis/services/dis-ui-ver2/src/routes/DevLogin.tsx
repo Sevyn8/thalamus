@@ -1,9 +1,25 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { PERSONAS } from '../auth/dev/personas'
 import { signStubToken } from '../auth/dev/signStubToken'
 import { useAuth } from '../auth/useAuth'
+import { isRealMode } from '../lib/dis-ui-server/mode'
+
+// Real mode (Auth0): no persona picker. Auto-fire the SDK login redirect via the
+// AuthContext login() (which Auth0AuthProvider wires to loginWithRedirect); the
+// rawToken arg is ignored in real mode. Shown only for the moment before redirect.
+function RealModeSignIn() {
+  const { login } = useAuth()
+  useEffect(() => {
+    void login('')
+  }, [login])
+  return (
+    <section className="mx-auto mt-16 max-w-md px-4">
+      <p className="text-sm text-gray-500">Redirecting to sign in...</p>
+    </section>
+  )
+}
 
 // Dev-only login. Mints the chosen persona's dev-stub token AT RUNTIME via
 // signStubToken (HMAC, byte-identical secret/iss/aud to the backend verifier), hands
@@ -16,6 +32,11 @@ export function DevLogin() {
   const { login } = useAuth()
   const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
+
+  // Real mode: skip the persona picker and auto-redirect to Auth0 sign-in.
+  if (isRealMode()) {
+    return <RealModeSignIn />
+  }
 
   async function pick(personaId: string): Promise<void> {
     setError(null)

@@ -4,6 +4,7 @@ import { AuthBoundary } from '../auth/AuthBoundary'
 import { Shell } from '../components/Shell'
 import { Audit } from './Audit'
 import { BatchUpload } from './BatchUpload'
+import { Callback } from './Callback'
 import { CanonicalExplorer } from './CanonicalExplorer'
 import { Connect } from './Connect'
 import { ConnectorHealth } from './ConnectorHealth'
@@ -28,6 +29,8 @@ export function AppRoutes() {
   return (
     <Routes>
       <Route path="/dev/login" element={<DevLogin />} />
+      {/* Auth0 redirect target (real mode); public, outside AuthBoundary. */}
+      <Route path="/callback" element={<Callback />} />
       <Route element={<AuthBoundary />}>
         <Route element={<Shell />}>
           <Route index element={<Dashboard />} />
