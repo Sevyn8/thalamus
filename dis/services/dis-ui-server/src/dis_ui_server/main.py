@@ -29,6 +29,8 @@ from dis_core.logging import configure_logging, get_logger
 from dis_storage import StorageClient
 from dis_ui_server.api import api_router
 from dis_ui_server.audit import UiAudit
+from dis_ui_server.auth.auth0 import Auth0Verifier
+from dis_ui_server.auth.verifier import StubVerifier
 from dis_ui_server.catalog import build_field_catalogs
 from dis_ui_server.config import (
     API_PREFIX,
@@ -51,6 +53,19 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     engine = create_engine_from_config(config)  # lazy: no connection yet
     app.state.config = config
     app.state.engine = engine
+    # Token verifier, mode-selected once per process (mirrors Customer Master's
+    # STUB|AUTH0 auth_client). STUB (default) wraps the HS256 dev stub; AUTH0
+    # builds the RS256/JWKS verifier holding a cached PyJWKClient (no network I/O
+    # at construction; the first verify does the JWKS fetch). scope.py reads this
+    # off app.state and calls .verify; both modes yield the identical Identity.
+    if config.auth_mode == "AUTH0":
+        app.state.verifier = Auth0Verifier(
+            jwks_url=config.auth0_jwks_url,
+            issuer=config.jwt_issuer,
+            audience=config.jwt_audience,
+        )
+    else:
+        app.state.verifier = StubVerifier()
     # Slice 8 upload dependencies — all construction-lazy like the engine (no
     # network I/O until first use), so the liveness/readiness split holds: a
     # missing env var crashloops here, an unreachable backend degrades later.

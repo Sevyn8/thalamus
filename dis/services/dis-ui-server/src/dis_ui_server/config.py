@@ -62,6 +62,15 @@ _POSTGRES_URL = "POSTGRES_URL"
 _CORS_ALLOWED_ORIGINS = "CORS_ALLOWED_ORIGINS"
 _GCS_BUCKET_BRONZE = "GCS_BUCKET_BRONZE"
 _PUBSUB_PROJECT_ID = "PUBSUB_PROJECT_ID"
+# Auth mode + real-Auth0 verify config (13b / D25). DIS_AUTH_MODE selects the
+# token verifier: STUB (default; the HS256 dev stub, local/dev/tests unchanged)
+# or AUTH0 (the RS256/JWKS verifier). JWT_ISSUER / JWT_AUDIENCE are REQUIRED only
+# in AUTH0 mode; AUTH0_JWKS_URL is optional and derived from the issuer when
+# unset (the Auth0 convention, mirroring Customer Master).
+_DIS_AUTH_MODE = "DIS_AUTH_MODE"
+_JWT_ISSUER = "JWT_ISSUER"
+_JWT_AUDIENCE = "JWT_AUDIENCE"
+_AUTH0_JWKS_URL = "AUTH0_JWKS_URL"
 # OPTIONAL (Vertex AI): both unset -> mechanical fallback, never crashloop.
 _GEMINI_VERTEX_PROJECT = "GEMINI_VERTEX_PROJECT"
 _GEMINI_VERTEX_LOCATION = "GEMINI_VERTEX_LOCATION"
@@ -169,6 +178,14 @@ class UiServerConfig:
     postgres_url: str
     gcs_bucket_bronze: str
     pubsub_project_id: str
+    # Auth mode + real-Auth0 verify config (13b / D25). STUB is the default so
+    # local/dev/tests are unchanged; AUTH0 turns on the RS256/JWKS verifier.
+    # jwt_issuer / jwt_audience are None in STUB mode (unused), REQUIRED in AUTH0
+    # mode (from_env raises). auth0_jwks_url is derived from jwt_issuer when unset.
+    auth_mode: str = "STUB"
+    jwt_issuer: str | None = None
+    jwt_audience: str | None = None
+    auth0_jwks_url: str | None = None
     # OPTIONAL Vertex AI config (see module docstring); never required. Both unset -> fallback.
     gemini_vertex_project: str | None = None
     gemini_vertex_location: str | None = None
@@ -200,6 +217,26 @@ class UiServerConfig:
             raise DisError(
                 f"{_PUBSUB_PROJECT_ID} is not set; the CSV upload cannot publish {CSV_RECEIVED_TOPIC!r}"
             )
+        # Auth mode select (13b / D25). Default STUB keeps local/dev/tests on the
+        # HS256 dev stub with no new required env. AUTH0 turns on the RS256/JWKS
+        # verifier and then REQUIRES jwt_issuer + jwt_audience.
+        auth_mode = os.environ.get(_DIS_AUTH_MODE) or "STUB"
+        if auth_mode not in ("STUB", "AUTH0"):
+            raise DisError(
+                f"{_DIS_AUTH_MODE}={auth_mode!r} is not a recognized mode; expected STUB or AUTH0"
+            )
+        jwt_issuer = os.environ.get(_JWT_ISSUER) or None
+        jwt_audience = os.environ.get(_JWT_AUDIENCE) or None
+        auth0_jwks_url = os.environ.get(_AUTH0_JWKS_URL) or None
+        if auth_mode == "AUTH0":
+            if not jwt_issuer:
+                raise DisError(f"{_JWT_ISSUER} is required when {_DIS_AUTH_MODE}=AUTH0")
+            if not jwt_audience:
+                raise DisError(f"{_JWT_AUDIENCE} is required when {_DIS_AUTH_MODE}=AUTH0")
+            # Derive the JWKS endpoint from the issuer (Auth0 convention: the issuer
+            # ends with '/'), mirroring Customer Master, unless explicitly overridden.
+            if auth0_jwks_url is None:
+                auth0_jwks_url = f"{jwt_issuer}.well-known/jwks.json"
         # OPTIONAL: read with no raise. Both unset -> the suggester uses the mechanical
         # fallback; missing Vertex config must never abort startup (FM1/FM2).
         gemini_vertex_project = os.environ.get(_GEMINI_VERTEX_PROJECT) or None
@@ -213,6 +250,10 @@ class UiServerConfig:
             postgres_url=postgres_url,
             gcs_bucket_bronze=gcs_bucket_bronze,
             pubsub_project_id=pubsub_project_id,
+            auth_mode=auth_mode,
+            jwt_issuer=jwt_issuer,
+            jwt_audience=jwt_audience,
+            auth0_jwks_url=auth0_jwks_url,
             gemini_vertex_project=gemini_vertex_project,
             gemini_vertex_location=gemini_vertex_location,
             gemini_impersonate_sa=gemini_impersonate_sa,

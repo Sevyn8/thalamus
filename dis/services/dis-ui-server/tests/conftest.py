@@ -268,6 +268,124 @@ def lenient_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
         yield test_client
 
 
+# -- AUTH0-mode (RS256/JWKS) fixtures -----------------------------------------------
+#
+# Sibling to the HS256 `mint_token` above; the STUB-mode tests are untouched. These
+# drive the AUTH0-mode verifier with a local test RSA keypair: the verifier's
+# PyJWKClient.get_signing_key_from_jwt is monkeypatched to return the test public
+# key (no network JWKS fetch), so RS256 tokens signed by the test private key verify.
+
+_NAMESPACE = "https://sevyn8.com"
+AUTH0_ISSUER = "https://sevyn8.us.auth0.com/"
+AUTH0_AUDIENCE = "https://api.dis.sevyn8.com"
+
+
+class Auth0TokenMinter(Protocol):
+    def __call__(
+        self,
+        *,
+        sub: str = ...,
+        tenant_id: str | None = ...,
+        store_id: str | None = ...,
+        roles: tuple[str, ...] | None = ...,
+        user_type: str | None = ...,
+        expires_in: int = ...,
+        issuer: str = ...,
+        audience: str = ...,
+        private_key: Any = ...,
+        omit: tuple[str, ...] = ...,
+    ) -> str: ...
+
+
+@pytest.fixture(scope="session")
+def auth0_keypair() -> tuple[Any, Any]:
+    """A throwaway RSA keypair for signing/verifying RS256 test tokens."""
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    return private_key, private_key.public_key()
+
+
+@pytest.fixture
+def auth0_mint_token(auth0_keypair: tuple[Any, Any]) -> Auth0TokenMinter:
+    """Mint namespaced RS256 tokens, with knobs for every failure mode.
+
+    Claims are written under the ``https://sevyn8.com`` namespace (Auth0 access
+    tokens only carry namespaced custom claims); ``sub`` is standard. Knobs:
+    ``issuer`` / ``audience`` for wrong-iss / wrong-aud; ``private_key`` to sign
+    with a foreign key (bad-signature); ``omit`` to drop namespaced claims
+    (missing-claim); ``expires_in`` negative for expired.
+    """
+    default_private_key, _ = auth0_keypair
+
+    def _mint(
+        *,
+        sub: str = "auth0|user-1",
+        tenant_id: str | None = TENANT_A,
+        store_id: str | None = None,
+        roles: tuple[str, ...] | None = ("dis:read",),
+        user_type: str | None = "TENANT",
+        expires_in: int = 3600,
+        issuer: str = AUTH0_ISSUER,
+        audience: str = AUTH0_AUDIENCE,
+        private_key: Any = None,
+        omit: tuple[str, ...] = (),
+    ) -> str:
+        now = int(time.time())
+        payload: dict[str, Any] = {
+            "sub": sub,
+            "iss": issuer,
+            "aud": audience,
+            "iat": now,
+            "exp": now + expires_in,
+        }
+        if user_type is not None:
+            payload[f"{_NAMESPACE}/user_type"] = user_type
+        if tenant_id is not None:
+            payload[f"{_NAMESPACE}/tenant_id"] = tenant_id
+        if store_id is not None:
+            payload[f"{_NAMESPACE}/store_id"] = store_id
+        if roles is not None:
+            payload[f"{_NAMESPACE}/roles"] = list(roles)
+        for claim in omit:
+            payload.pop(claim, None)
+        return jwt.encode(payload, private_key or default_private_key, algorithm="RS256")
+
+    return _mint
+
+
+@pytest.fixture
+def auth0_client(
+    monkeypatch: pytest.MonkeyPatch, auth0_keypair: tuple[Any, Any]
+) -> Iterator[TestClient]:
+    """The app in AUTH0 mode, probe routes mounted, JWKS pointed at the test key.
+
+    Sets DIS_AUTH_MODE=AUTH0 + JWT_ISSUER/JWT_AUDIENCE so the lifespan builds the
+    Auth0Verifier; then replaces its PyJWKClient.get_signing_key_from_jwt with one
+    that returns the test public key, so no network JWKS fetch happens.
+    """
+    _, public_key = auth0_keypair
+    set_unit_env(monkeypatch)
+    monkeypatch.setenv("DIS_AUTH_MODE", "AUTH0")
+    monkeypatch.setenv("JWT_ISSUER", AUTH0_ISSUER)
+    monkeypatch.setenv("JWT_AUDIENCE", AUTH0_AUDIENCE)
+
+    class _FakeSigningKey:
+        def __init__(self, key: Any) -> None:
+            self.key = key
+
+    app = create_app(extra_api_routers=[_probe_router()])
+    with TestClient(app) as test_client:
+        # After startup, the verifier exists; point its JWKS resolution at the
+        # test public key (the token's kid is irrelevant to the fake).
+        monkeypatch.setattr(
+            app.state.verifier._jwks_client,
+            "get_signing_key_from_jwt",
+            lambda _raw: _FakeSigningKey(public_key),
+        )
+        yield test_client
+
+
 # -- integration fixtures -----------------------------------------------------------
 
 

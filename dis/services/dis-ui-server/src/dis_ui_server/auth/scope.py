@@ -23,7 +23,7 @@ from fastapi import Depends, Request
 
 from dis_core.errors import AuthTokenError, OpsRoleRequiredError, TenantScopeError
 from dis_ui_server.auth.identity import Identity, UserType
-from dis_ui_server.auth.verifier import verify_token
+from dis_ui_server.auth.verifier import Verifier
 
 OPS_ROLE = "dis:ops"
 
@@ -41,7 +41,8 @@ async def get_current_identity(request: Request) -> Identity:
         raise AuthTokenError("Authorization header missing", reason="missing_bearer")
     if not header.startswith(_BEARER_PREFIX):
         raise AuthTokenError("Authorization header is not a Bearer token", reason="missing_bearer")
-    return verify_token(header[len(_BEARER_PREFIX) :])
+    verifier: Verifier = request.app.state.verifier
+    return verifier.verify(header[len(_BEARER_PREFIX) :])
 
 
 async def require_tenant(

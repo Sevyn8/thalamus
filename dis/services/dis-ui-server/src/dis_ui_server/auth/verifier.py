@@ -21,12 +21,24 @@ material).
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol
 
 import jwt
 
 from dis_core.errors import AuthTokenError
 from dis_ui_server.auth.identity import Identity, UserType
+
+
+class Verifier(Protocol):
+    """The token-verification seam (13b): mode-selectable at startup.
+
+    ``StubVerifier`` (HS256 dev stub, this module) and ``Auth0Verifier``
+    (RS256/JWKS, ``auth0.py``) both satisfy it. ``scope.py`` holds one instance
+    off ``app.state.verifier`` and calls ``verify``; nothing downstream knows
+    which mode is live because both yield the identical :class:`Identity`.
+    """
+
+    def verify(self, raw: str) -> Identity: ...
 
 # Contract §2.1 dev-stub parameters — byte-identical to dis-ui's devStubSecret.ts.
 DEV_STUB_SECRET = "dis-ui-dev-stub-secret-not-for-production"
@@ -120,3 +132,17 @@ def verify_token(raw: str) -> Identity:
         roles=_roles_claim(claims),
         user_type=user_type,
     )
+
+
+class StubVerifier:
+    """STUB-mode verifier: a thin wrapper over :func:`verify_token`.
+
+    The default mode (DIS_AUTH_MODE unset / STUB). Behavior is exactly the
+    existing HS256 dev-stub path, so local dev and the existing tests are
+    unchanged; only the call site moves from a module function to this object
+    (held on ``app.state.verifier``) so the AUTH0 mode can swap in the
+    RS256/JWKS verifier without touching ``scope.py``'s consumers.
+    """
+
+    def verify(self, raw: str) -> Identity:
+        return verify_token(raw)
