@@ -72,3 +72,42 @@ module "cm_service" {
   auth0_mgmt_db_connection = var.cm_auth0_mgmt_db_connection
   auth0_ticket_result_url  = var.cm_auth0_ticket_result_url
 }
+
+# --- Wave 3: DIS (dis-ui-server) durable infra + Cloud Run service ---
+#
+# dis-ui-server needs a bronze bucket (GCS_BUCKET_BRONZE) and the csv.received
+# topic (CSV_RECEIVED_TOPIC) as boot env values, plus the pre-created
+# dis-database-url secret (POSTGRES_URL, private-IP TCP). DB egress rides the
+# shared connector; DIS_EXPECTED_DATABASE=thalamus satisfies the dis-rls guard.
+
+# Bronze bucket: CSV uploads land here. Uniform access + public-access
+# prevention satisfy the org policies. No lifecycle rules (staging, low volume).
+resource "google_storage_bucket" "dis_bronze" {
+  project                     = var.project_id
+  name                        = "thalamus-dis-bronze-staging"
+  location                    = var.region
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+}
+
+# csv.received topic: dis-ui-server publishes the upload envelope here. No
+# subscription in this wave (the consuming worker is a later service).
+resource "google_pubsub_topic" "csv_received" {
+  project = var.project_id
+  name    = "dis-csv-received"
+}
+
+module "dis_ui_server_service" {
+  source = "../../modules/cloud-run-service-dis-ui-server"
+
+  project_id       = var.project_id
+  region           = var.region
+  image            = var.dis_ui_server_image
+  vpc_connector_id = module.network.vpc_connector_id
+
+  # Referencing the inline resources' attributes makes Terraform create the
+  # bucket + topic (and their IAM) before the service.
+  bronze_bucket_name = google_storage_bucket.dis_bronze.name
+  csv_topic_id       = google_pubsub_topic.csv_received.id
+  csv_received_topic = google_pubsub_topic.csv_received.name
+}

@@ -150,3 +150,13 @@ variable "cm_auth0_ticket_result_url" {
   description = "AUTH0_TICKET_RESULT_URL (invite password-set redirect). Not recorded in the repo; supply here. Lazy."
   default     = ""
 }
+
+###############################################################################
+# Wave 3: DIS (dis-ui-server) Cloud Run service
+###############################################################################
+
+variable "dis_ui_server_image" {
+  type        = string
+  description = "dis-ui-server container image. Defaults to the v1 tag pushed this session."
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-server:v1"
+}

@@ -49,3 +49,13 @@ output "cm_service_account_email" {
   value       = module.cm_service.service_account_email
   description = "CM runtime SA (holds secretAccessor on the three cm-* secrets)."
 }
+
+output "dis_ui_server_url" {
+  value       = module.dis_ui_server_service.service_url
+  description = "dis-ui-server Cloud Run URL. Verify liveness with: curl <url>/healthz"
+}
+
+output "dis_ui_server_service_account_email" {
+  value       = module.dis_ui_server_service.service_account_email
+  description = "dis-ui-server runtime SA (secretAccessor on dis-database-url, objectAdmin on bronze, publisher on the csv topic)."
+}

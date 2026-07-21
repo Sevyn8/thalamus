@@ -1,0 +1,100 @@
+###############################################################################
+# cloud-run-service-dis-ui-server variables.
+#
+# Defaults carry the values grounded this session (image tag, DB-name guard
+# override, csv topic short name). POSTGRES_URL is secret-backed by reference
+# (never a value here). The DB connection is private-IP TCP through the VPC
+# connector, so there is NO /cloudsql socket and NO roles/cloudsql.client.
+###############################################################################
+
+variable "project_id" {
+  type        = string
+  description = "GCP project id. Thalamus staging is sevyn8-thalamus-staging; never ithina-dis-cm."
+}
+
+variable "region" {
+  type        = string
+  description = "Region for the Cloud Run service (asia-south1 for Thalamus staging)."
+}
+
+variable "service_name" {
+  type        = string
+  description = "Cloud Run v2 service name."
+  default     = "dis-ui-server"
+}
+
+variable "service_account_id" {
+  type        = string
+  description = "account_id for the dedicated runtime service account (before the @project.iam.gserviceaccount.com suffix)."
+  default     = "dis-ui-server-sa"
+}
+
+variable "image" {
+  type        = string
+  description = "Full container image reference. Defaults to the v1 tag pushed this session."
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-server:v1"
+}
+
+variable "vpc_connector_id" {
+  type        = string
+  description = "Serverless VPC Access connector id (module.network.vpc_connector_id / thalamus-vpcconn). Egress to the private Cloud SQL IP goes through this."
+}
+
+# --- Cloud Run sizing (staging) ---
+
+variable "min_instances" {
+  type        = number
+  description = "Minimum instances. 0 = scale to zero for staging cost."
+  default     = 0
+}
+
+variable "max_instances" {
+  type        = number
+  description = "Maximum instances. Small for staging."
+  default     = 2
+}
+
+variable "cpu" {
+  type        = string
+  description = "CPU limit per instance."
+  default     = "1"
+}
+
+variable "memory" {
+  type        = string
+  description = "Memory limit per instance."
+  default     = "512Mi"
+}
+
+# --- dis-ui-server runtime configuration (plain env; the EXACT names config.py reads) ---
+
+variable "dis_expected_database" {
+  type        = string
+  description = "DIS_EXPECTED_DATABASE. The parameterized dis-rls guard: must be the DB the connection lands in. thalamus for the consolidated deploy; without it /readyz fails."
+  default     = "thalamus"
+}
+
+variable "csv_received_topic" {
+  type        = string
+  description = "CSV_RECEIVED_TOPIC. The provisioned topic short name the app publishes csv.received to. Must equal the inline topic's name."
+  default     = "dis-csv-received"
+}
+
+variable "bronze_bucket_name" {
+  type        = string
+  description = "GCS_BUCKET_BRONZE. The bronze bucket name; also the resource the SA gets storage.objectAdmin on."
+}
+
+variable "csv_topic_id" {
+  type        = string
+  description = "The csv.received topic id (projects/<p>/topics/<name>) the SA gets pubsub.publisher on. Distinct from csv_received_topic (which is the app-facing short name)."
+}
+
+# --- Secret Manager reference (value lives in Secret Manager, created out of
+#     band; TF references it by name only). ---
+
+variable "secret_database_url" {
+  type        = string
+  description = "Secret Manager secret name holding the full SQLAlchemy POSTGRES_URL (private-IP TCP, sslmode=require)."
+  default     = "dis-database-url"
+}

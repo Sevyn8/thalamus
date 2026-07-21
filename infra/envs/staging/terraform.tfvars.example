@@ -44,3 +44,6 @@ cm_app_region = "US"
 cm_auth0_mgmt_client_id     = ""
 cm_auth0_mgmt_db_connection = ""
 cm_auth0_ticket_result_url  = ""
+
+# --- Wave 3: DIS (dis-ui-server) Cloud Run service ---
+dis_ui_server_image = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-server:v1"
