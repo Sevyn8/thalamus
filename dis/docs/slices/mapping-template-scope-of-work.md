@@ -147,7 +147,7 @@ wanted (`mode.ts:6-16`).
 
 ---
 
-## Part B: dis-ui-server scope of work (owned by Sanjeev)
+## Part B: dis-ui-server scope of work
 
 Create and PATCH exist and are tested. The missing capability is promotion: moving
 a template through the lifecycle so a UI-created template can reach the ACTIVE
@@ -291,7 +291,7 @@ assembler, the create call, Go-live, and the promote flows; and a flat list of
 open decisions and any divergence found.
 ```
 
-### Prompt 2: dis-ui-server plan (run by Sanjeev)
+### Prompt 2: dis-ui-server plan
 
 ```
 Plan mode. Review services/dis-ui-server against the attached brief and scope of

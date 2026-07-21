@@ -1,27 +1,17 @@
 # Cortex v3 contracts
 
 The shared, tiny, language-neutral contracts repo (architecture-spec section 4).
-It holds the cross-swimlane interface definitions that Cortex (TS), DIS (Python),
+It holds the interface definitions that Cortex (TS), DIS (Python),
 and Customer Master must all agree on. Schemas and written specs only: no
 service, no loader, no implementation. Implementations conform to these
 contracts; they are not authored here.
-
-## Swimlane note
-
-Shared repo. Amit (value swimlane) owns the contract DEFINITIONS for all of
-C1-C6; Customer Master (Sanjeev) implements against them. Confirmed at the
-Amit/Sanjeev walkthrough: the earlier provisional plan for Sanjeev to take
-ownership of C1/C3/C4/C5 on onboarding is superseded. Authoring the contract
-shape stays with Amit; CM conforms to it. See `CODEOWNERS`. No team handle is
-invented here.
 
 Contracts change only at gate boundaries (architecture-spec section 3); mid-phase
 needs are logged and stubbed around.
 
 ## Branch protection
 
-Branch protection on this repo is deliberately deferred for now (operator
-decision recorded at the Amit/Sanjeev walkthrough). The current unprotected-merge
+Branch protection on this repo is deliberately deferred for now. The current unprotected-merge
 behavior is intentional and recorded here, not an oversight; it is revisited when
 signing becomes load-bearing (see `registry/registry-v0-deferred.md`, D3/D4).
 
