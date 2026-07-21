@@ -50,3 +50,6 @@ dis_ui_server_image = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalam
 
 # --- Wave 3: DIS (csv-ingest-worker) Cloud Run service ---
 csv_ingest_worker_image = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/csv-ingest-worker:v1"
+
+# --- Wave 3: DIS (streaming-consumer) Cloud Run service ---
+streaming_consumer_image = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/streaming-consumer:v1"

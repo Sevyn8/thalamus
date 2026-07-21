@@ -111,6 +111,16 @@ resource "google_pubsub_subscription" "csv_received_sub" {
   ack_deadline_seconds = 30
 }
 
+# Pull subscription on ingress.ready: streaming-consumer consumes from here
+# (completing the pipeline after csv-ingest-worker publishes). Staging plain
+# retry (no dead_letter_policy).
+resource "google_pubsub_subscription" "ingress_ready_sub" {
+  project              = var.project_id
+  name                 = "dis-ingress-ready-sub"
+  topic                = google_pubsub_topic.ingress_ready.id
+  ack_deadline_seconds = 30
+}
+
 module "dis_ui_server_service" {
   source = "../../modules/cloud-run-service-dis-ui-server"
 
@@ -139,4 +149,18 @@ module "csv_ingest_worker_service" {
   bronze_bucket_name = google_storage_bucket.dis_bronze.name
   subscription_id    = google_pubsub_subscription.csv_received_sub.id
   ingress_topic_id   = google_pubsub_topic.ingress_ready.id
+}
+
+module "streaming_consumer_service" {
+  source = "../../modules/cloud-run-service-streaming-consumer"
+
+  project_id       = var.project_id
+  region           = var.region
+  image            = var.streaming_consumer_image
+  vpc_connector_id = module.network.vpc_connector_id
+
+  # Referencing the inline resources makes Terraform create the bucket +
+  # subscription (and their IAM) before the consumer.
+  bronze_bucket_name = google_storage_bucket.dis_bronze.name
+  subscription_id    = google_pubsub_subscription.ingress_ready_sub.id
 }

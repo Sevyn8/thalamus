@@ -166,3 +166,9 @@ variable "csv_ingest_worker_image" {
   description = "csv-ingest-worker container image. Defaults to the v1 tag pushed this session."
   default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/csv-ingest-worker:v1"
 }
+
+variable "streaming_consumer_image" {
+  type        = string
+  description = "streaming-consumer container image. Defaults to the v1 tag pushed this session."
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/streaming-consumer:v1"
+}

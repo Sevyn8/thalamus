@@ -69,3 +69,13 @@ output "csv_ingest_worker_service_account_email" {
   value       = module.csv_ingest_worker_service.service_account_email
   description = "csv-ingest-worker runtime SA (secretAccessor, objectAdmin on bronze, subscriber on the csv sub, publisher on the ingress topic, project pubsub.viewer)."
 }
+
+output "streaming_consumer_url" {
+  value       = module.streaming_consumer_service.service_url
+  description = "streaming-consumer Cloud Run URL (serves /healthz; real work is the pull loop)."
+}
+
+output "streaming_consumer_service_account_email" {
+  value       = module.streaming_consumer_service.service_account_email
+  description = "streaming-consumer runtime SA (secretAccessor, objectViewer on bronze, subscriber on the ingress sub, project pubsub.viewer)."
+}
