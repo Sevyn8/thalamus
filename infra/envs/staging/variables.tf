@@ -158,7 +158,7 @@ variable "cm_auth0_ticket_result_url" {
 variable "dis_ui_server_image" {
   type        = string
   description = "dis-ui-server container image. Defaults to the v1 tag pushed this session."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-server:v1"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-server:v2"
 }
 
 variable "csv_ingest_worker_image" {

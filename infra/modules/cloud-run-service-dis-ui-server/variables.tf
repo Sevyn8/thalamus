@@ -32,7 +32,7 @@ variable "service_account_id" {
 variable "image" {
   type        = string
   description = "Full container image reference. Defaults to the v1 tag pushed this session."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-server:v1"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-server:v2"
 }
 
 variable "vpc_connector_id" {
@@ -72,6 +72,24 @@ variable "dis_expected_database" {
   type        = string
   description = "DIS_EXPECTED_DATABASE. The parameterized dis-rls guard: must be the DB the connection lands in. thalamus for the consolidated deploy; without it /readyz fails."
   default     = "thalamus"
+}
+
+variable "dis_auth_mode" {
+  type        = string
+  description = "DIS_AUTH_MODE. STUB or AUTH0. AUTH0 turns on the RS256/JWKS verifier (real Auth0 tokens); requires jwt_issuer + jwt_audience."
+  default     = "AUTH0"
+}
+
+variable "jwt_issuer" {
+  type        = string
+  description = "JWT_ISSUER. Auth0 tenant issuer (ends with '/'; the backend derives AUTH0_JWKS_URL from it). Required when dis_auth_mode=AUTH0."
+  default     = "https://sevyn8.us.auth0.com/"
+}
+
+variable "jwt_audience" {
+  type        = string
+  description = "JWT_AUDIENCE. The DIS API audience Auth0 tokens are minted for. Required when dis_auth_mode=AUTH0."
+  default     = "https://api.dis.sevyn8.com"
 }
 
 variable "csv_received_topic" {
