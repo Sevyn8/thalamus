@@ -45,7 +45,11 @@ _SERVICE = "dis-rls"
 # on a different port; current_database() is the reliable discriminator. A port
 # check is useless here: under docker port-mapping inet_server_port() reports the
 # container-internal 5432 even for a host connection over 5433.
-_EXPECTED_DATABASE = "ithina_dis_db"
+# DIS database name the guard accepts. Default ithina_dis_db (local/dev);
+# override via DIS_EXPECTED_DATABASE for the consolidated Thalamus deploy
+# where DIS schemas live in the shared "thalamus" database. Guard still
+# rejects any OTHER name; only the expected name is configurable.
+_EXPECTED_DATABASE = os.environ.get("DIS_EXPECTED_DATABASE", "ithina_dis_db")
 
 # Engines whose target + role posture have been verified once. WeakSet so a disposed
 # engine is collected; this holds no connections and is not loop-bound.
@@ -80,7 +84,7 @@ def _check_posture(*, database: str, role: str, rolsuper: bool, rolbypassrls: bo
     if database != _EXPECTED_DATABASE:
         raise RlsContextError(
             f"dis-rls refuses database {database!r}; expected {_EXPECTED_DATABASE!r} "
-            "(DIS on 5433, never Customer Master)",
+            "(the DIS database; never Customer Master)",
             database=database,
             role=role,
         )

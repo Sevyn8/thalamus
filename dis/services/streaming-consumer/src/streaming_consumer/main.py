@@ -18,6 +18,7 @@ callable in both branches, so the Worker Pools switch is config-only.
 from __future__ import annotations
 
 import asyncio
+import os
 
 import uvicorn
 from sqlalchemy import text
@@ -39,7 +40,7 @@ from streaming_consumer.sinks.quarantine import ConsumerQuarantine
 EXIT_OK = 0
 EXIT_CONFIG = 2
 
-_EXPECTED_DB = "ithina_dis_db"
+_EXPECTED_DB = os.environ.get("DIS_EXPECTED_DATABASE", "ithina_dis_db")
 
 _log = get_logger(SERVICE_NAME)
 
@@ -51,7 +52,7 @@ async def _assert_dis_target(engine: AsyncEngine) -> None:
     if current != _EXPECTED_DB:
         raise DisError(
             f"connected to {current!r} but the streaming consumer writes canonical "
-            f"and requires {_EXPECTED_DB!r} (DIS on 5433, never Customer Master); "
+            f"and requires {_EXPECTED_DB!r} (the DIS database; never Customer Master); "
             "check POSTGRES_URL"
         )
 
