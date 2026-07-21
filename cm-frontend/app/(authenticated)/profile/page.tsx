@@ -1,37 +1,35 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { findDevSeedById } from "@/lib/auth/personas";
+import { auth0 } from "@/lib/auth0";
+import { claimsFromSessionUser } from "@/lib/auth/jwt-decode";
+import { buildPersonaFromClaims } from "@/lib/auth/persona-from-claims";
 import { ProfileSecuritySection } from "@/components/profile/ProfileSecuritySection";
 import { ProfileNotificationPrefs } from "@/components/profile/ProfileNotificationPrefs";
 import { initials, avatarTone } from "@/lib/utils/initials";
 import { cn } from "@/lib/utils";
 
-const PERSONA_COOKIE = "__ithina_dev_persona";
-
-// Phase 5f.W.1: ProfilePage is a server component (cookies access),
-// so the JWT-decode flow doesn't apply here directly. Dev seed
-// display values are read from the catalogue cookie, which gives us
-// the same display result as the client-side AuthSnapshot.
-// Per-user role display deferred to /api/v1/role-assignments?user_id
-// wiring; for now show the userType label (Platform admin / Tenant
-// member) per Phase 5f.W.1.
+// ProfilePage is a server component; identity comes from the Auth0 session
+// (namespaced https://sevyn8.com/* claims), not a client-side decode. Per-user
+// role display is deferred to /api/v1/role-assignments; for now show the
+// userType label.
 function userTypeLabel(userType: "PLATFORM" | "TENANT"): string {
   return userType === "PLATFORM" ? "Platform admin" : "Tenant member";
 }
 
 export default async function ProfilePage() {
-  const store = await cookies();
-  const personaId = store.get(PERSONA_COOKIE)?.value ?? null;
-  const user = personaId ? findDevSeedById(personaId) : undefined;
-  if (!user) redirect("/dev/login");
+  const session = await auth0.getSession();
+  const claims = claimsFromSessionUser(
+    session?.user as Record<string, unknown> | null | undefined,
+  );
+  if (!claims) redirect("/auth/login");
+  const user = buildPersonaFromClaims(claims);
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-8 px-6 py-10">
       <header className="flex flex-col gap-1">
         <h1 className="text-display">Profile</h1>
         <p className="text-sm text-muted-foreground">
-          Read-only in v0. Editing lands when Auth0 is wired.
+          Read-only in v0. Editing lands later.
         </p>
       </header>
 

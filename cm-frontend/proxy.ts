@@ -1,59 +1,38 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+import { auth0 } from "@/lib/auth0";
+
 // ============================================================================
-// Auth proxy / middleware. Runs on every request (per the matcher below)
-// before Next.js's file-system routing.
+// Auth middleware (Next 16 renamed middleware -> proxy). Runs on every request
+// per the matcher below, before file-system routing.
 //
-// Phase 5a.3 audit (post-Phase 4 wiring; pre-DIS routes):
-//
-//   - PUBLIC_PREFIXES — paths that bypass auth entirely. /dev (persona
-//     switcher + dev mint shims), /login (Auth0 surface, future), /mfa,
-//     /forgot-password, /accept-invite (auth-flow surfaces). The root "/"
-//     is also public — it just redirects to a dashboard or login depending
-//     on cookie state via app/page.tsx.
-//
-//   - PROTECTED_PREFIXES — paths that require a persona cookie. Two
-//     categories:
-//       (a) Product namespaces: /superadmin (Ithina) and /dis (DIS — added
-//           in Phase 5a.3 ahead of Phase 5b.1's actual routes; protecting
-//           early means an unauth user clicking DIS in the product
-//           switcher lands on /dev/login?from=/dis/... rather than a raw
-//           404 they have no context for).
-//       (b) Product-agnostic auth-required surfaces: /profile,
-//           /notifications, /approvals — top-level pages outside both
-//           product trees but still require auth.
+// Real Auth0 is the ONLY auth path (the dev stub is retired). Flow:
+//   1. auth0.middleware(request) mounts the SDK routes (/auth/login,
+//      /auth/logout, /auth/callback, /auth/profile, /auth/access-token) and
+//      refreshes the session cookie. Its response is returned as-is for /auth/*.
+//   2. Public paths pass through.
+//   3. Protected prefixes require a session; unauthenticated requests are
+//      redirected to /auth/login.
 //
 //   - Note on /ithina/*: there are no /ithina routes in the app tree.
-//     next.config.ts redirects /ithina/:path* → /superadmin/:path* as a
-//     future-proofing hedge. Both Next.js redirects (config-level) and
-//     middleware (proxy.ts) run on every request — see the smoke notes in
-//     the Phase 5a.3 commit for the observed redirect-chain ordering.
+//     next.config.ts redirects /ithina/:path* -> /superadmin/:path*.
 // ============================================================================
 
-// Non-secret marker cookie set by setCurrentPersona() in
-// lib/auth/getAuthToken.ts. Value is just the persona id (e.g. "anjali");
-// the JWT itself never touches the cookie. Middleware uses cookie
-// presence to decide redirect-to-login, NOT for any authn/authz check.
-const PERSONA_COOKIE = "__ithina_dev_persona";
-
 const PUBLIC_PREFIXES = [
-  "/dev",
-  "/login",
+  "/auth", // Auth0 SDK routes (login/logout/callback/profile/access-token)
   "/forgot-password",
   "/accept-invite",
   "/mfa",
 ] as const;
 
-// Protected namespaces. Order doesn't matter (any-match logic). Adding a
-// new product namespace here is the load-bearing step that gates the
-// product behind auth — must happen *before* the routes light up, not
-// after, to avoid a window where unauth requests leak to 404s without
-// the redirect-to-login UX.
+// Protected namespaces. Adding a new product namespace here is the load-bearing
+// step that gates it behind auth; the middleware matcher (below) must also cover
+// it, which it does (it excludes only static assets).
 const PROTECTED_PREFIXES = [
-  "/superadmin",  // Ithina
-  "/dis",         // DIS (Phase 5b.1+ adds the actual routes; protection in place from 5a.3)
-  "/my-ithina",   // Phase 5d.1: launcher route
+  "/superadmin", // Ithina
+  "/dis", // DIS
+  "/my-ithina", // launcher route
   "/profile",
   "/notifications",
   "/approvals",
@@ -68,36 +47,31 @@ function isProtectedPath(pathname: string): boolean {
   return PROTECTED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
-export function proxy(request: NextRequest): NextResponse {
+export async function proxy(request: NextRequest): Promise<NextResponse> {
+  // Always let the SDK mount /auth/* and refresh the session first.
+  const authResponse = await auth0.middleware(request);
+
   const { pathname } = request.nextUrl;
 
-  if (isPublicPath(pathname)) {
-    return NextResponse.next();
+  // /auth/* is handled entirely by the SDK response above.
+  if (pathname.startsWith("/auth/")) {
+    return authResponse;
   }
 
-  if (!isProtectedPath(pathname)) {
-    // Anything unmatched (e.g., asset-shaped paths the matcher didn't
-    // exclude, internal Next.js routes) passes through without auth.
-    // Anything we want to protect must be in PROTECTED_PREFIXES.
-    return NextResponse.next();
+  if (isPublicPath(pathname) || !isProtectedPath(pathname)) {
+    return authResponse;
   }
 
-  // Runtime, non-prefixed env. Middleware runs server-side per request,
-  // so this is read at runtime rather than inlined at build.
-  const authMode = process.env.AUTH_MODE === "auth0" ? "auth0" : "stub";
-
-  if (authMode === "stub") {
-    const hasPersona = !!request.cookies.get(PERSONA_COOKIE)?.value;
-    if (!hasPersona) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/dev/login";
-      url.searchParams.set("from", pathname);
-      return NextResponse.redirect(url);
-    }
-    return NextResponse.next();
+  // Protected path: require a session, else send to Auth0 login.
+  const session = await auth0.getSession(request);
+  if (!session) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/auth/login";
+    url.searchParams.set("returnTo", pathname);
+    return NextResponse.redirect(url);
   }
 
-  return NextResponse.next();
+  return authResponse;
 }
 
 export const config = {

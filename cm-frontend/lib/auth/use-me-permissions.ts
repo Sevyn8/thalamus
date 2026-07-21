@@ -8,11 +8,11 @@ import { meApi } from "@/lib/api/me";
 // (docs/endpoints/me.md): "call once at login or session refresh;
 // cache the result client-side and use it to gate UI elements."
 //
-// Cache keyed on the caller's userId so persona switch triggers a
+// Cache keyed on the caller's userId so a session change triggers a
 // fresh fetch automatically (react-query treats the key change as a
 // new query). Invalidation on 401 happens at AuthBoundary, which
-// clears AuthSnapshot + redirects to /dev/login; the query's stale
-// cache stays in react-query but isn't consumed once Persona is null.
+// clears AuthSnapshot + ends the session via /auth/logout; the query's
+// stale cache stays in react-query but isn't consumed once Persona is null.
 
 export function useMePermissions(userId: string | null) {
   return useQuery({

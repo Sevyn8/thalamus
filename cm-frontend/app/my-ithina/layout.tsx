@@ -10,7 +10,7 @@ import { UserMenu } from "@/components/chrome/UserMenu";
 // persona switching + theme work without forcing the full TopBar.
 //
 // AuthBoundary still gates: unauthenticated visits redirect to
-// /dev/login. ImpersonationBanner is included so demo audiences see
+// /auth/login. ImpersonationBanner is included so demo audiences see
 // the same banner consistency as the rest of the app.
 export default function MyIthinaLayout({ children }: { children: ReactNode }) {
   return (

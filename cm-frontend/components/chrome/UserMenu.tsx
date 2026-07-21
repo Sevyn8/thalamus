@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
@@ -17,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { setAuthSnapshot, useAuthSnapshot } from "@/lib/auth/auth-cache";
-import { clearCurrentPersona } from "@/lib/auth/getAuthToken";
+import { clearAuthToken } from "@/lib/auth/getAuthToken";
 import type { Persona } from "@/lib/auth/personas";
 
 function initialsOf(name: string): string {
@@ -38,17 +37,17 @@ function userTypeLabel(persona: Persona): string {
 }
 
 export function UserMenu() {
-  const router = useRouter();
   const queryClient = useQueryClient();
   const snapshot = useAuthSnapshot();
   const user = snapshot?.user;
   const { theme, setTheme } = useTheme();
 
   function logout() {
-    clearCurrentPersona();
+    clearAuthToken();
     setAuthSnapshot(null);
     queryClient.clear();
-    router.replace("/dev/login");
+    // End the Auth0 session (clears the session cookie + redirects).
+    window.location.href = "/auth/logout";
   }
 
   return (

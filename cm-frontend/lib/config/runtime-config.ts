@@ -1,14 +1,12 @@
 import { useEffect, useSyncExternalStore } from "react";
 
-// Runtime config store. Decouples the API base URL and auth mode from
-// build time: the client learns both from /api/config (a force-dynamic
-// route that reads non-prefixed server env at request time), so the same
-// image can be promoted across projects without a rebuild. Server-side
-// callers read process.env directly and skip the HTTP round-trip.
+// Runtime config store. Decouples the API base URL from build time: the client
+// learns it from /api/config (a force-dynamic route that reads non-prefixed
+// server env at request time), so the same image can be promoted across
+// projects without a rebuild. Server-side callers read process.env directly.
 
 export type RuntimeConfig = {
   apiBaseUrl: string;
-  authMode: string;
 };
 
 const CONFIG_ENDPOINT = "/api/config";
@@ -25,12 +23,11 @@ function notify(): void {
 function readServerConfig(): RuntimeConfig {
   return {
     apiBaseUrl: process.env.API_BASE_URL ?? "",
-    authMode: process.env.AUTH_MODE ?? "stub",
   };
 }
 
-// Fetch + cache the runtime config exactly once. Concurrent callers share
-// the same in-flight promise. On the server the value comes straight from
+// Fetch + cache the runtime config exactly once. Concurrent callers share the
+// same in-flight promise. On the server the value comes straight from
 // process.env (no /api/config round-trip). Safe to await repeatedly.
 export async function ensureRuntimeConfig(): Promise<RuntimeConfig> {
   if (config) return config;
@@ -43,7 +40,7 @@ export async function ensureRuntimeConfig(): Promise<RuntimeConfig> {
   if (inFlight) return inFlight;
 
   inFlight = (async () => {
-    let next: RuntimeConfig = { apiBaseUrl: "", authMode: "stub" };
+    let next: RuntimeConfig = { apiBaseUrl: "" };
     try {
       const res = await fetch(CONFIG_ENDPOINT, { credentials: "omit" });
       if (res.ok) {
@@ -51,7 +48,6 @@ export async function ensureRuntimeConfig(): Promise<RuntimeConfig> {
         next = {
           apiBaseUrl:
             typeof body.apiBaseUrl === "string" ? body.apiBaseUrl : "",
-          authMode: typeof body.authMode === "string" ? body.authMode : "stub",
         };
       }
     } catch {
@@ -68,19 +64,13 @@ export async function ensureRuntimeConfig(): Promise<RuntimeConfig> {
   return inFlight;
 }
 
-// Synchronous accessors. Return the cached value once resolved; on the
-// server they read process.env directly. On the client before the fetch
-// resolves they return the conservative default (empty base, stub mode).
+// Synchronous accessor. Returns the cached value once resolved; on the server
+// reads process.env directly; on the client before the fetch resolves returns
+// the conservative default (empty base).
 export function getApiBaseUrl(): string {
   if (config) return config.apiBaseUrl;
   if (typeof window === "undefined") return process.env.API_BASE_URL ?? "";
   return "";
-}
-
-export function getAuthMode(): string {
-  if (config) return config.authMode;
-  if (typeof window === "undefined") return process.env.AUTH_MODE ?? "stub";
-  return "stub";
 }
 
 function subscribe(listener: () => void): () => void {
@@ -99,8 +89,6 @@ function getServerSnapshot(): RuntimeConfig | null {
 }
 
 // Client hook: triggers the one-time fetch and re-renders when it lands.
-// `ready` is false until the config resolves; consumers gate on it so a
-// client read of authMode never races the fetch.
 export function useRuntimeConfig(): {
   config: RuntimeConfig | null;
   ready: boolean;
