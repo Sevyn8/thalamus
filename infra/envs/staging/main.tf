@@ -90,11 +90,25 @@ resource "google_storage_bucket" "dis_bronze" {
   public_access_prevention    = "enforced"
 }
 
-# csv.received topic: dis-ui-server publishes the upload envelope here. No
-# subscription in this wave (the consuming worker is a later service).
+# csv.received topic: dis-ui-server publishes the upload envelope here.
 resource "google_pubsub_topic" "csv_received" {
   project = var.project_id
   name    = "dis-csv-received"
+}
+
+# ingress.ready topic: csv-ingest-worker publishes here after the bronze write.
+resource "google_pubsub_topic" "ingress_ready" {
+  project = var.project_id
+  name    = "dis-ingress-ready"
+}
+
+# Pull subscription on csv.received: csv-ingest-worker consumes from here.
+# Staging plain retry (no dead_letter_policy).
+resource "google_pubsub_subscription" "csv_received_sub" {
+  project              = var.project_id
+  name                 = "dis-csv-received-sub"
+  topic                = google_pubsub_topic.csv_received.id
+  ack_deadline_seconds = 30
 }
 
 module "dis_ui_server_service" {
@@ -110,4 +124,19 @@ module "dis_ui_server_service" {
   bronze_bucket_name = google_storage_bucket.dis_bronze.name
   csv_topic_id       = google_pubsub_topic.csv_received.id
   csv_received_topic = google_pubsub_topic.csv_received.name
+}
+
+module "csv_ingest_worker_service" {
+  source = "../../modules/cloud-run-service-csv-ingest-worker"
+
+  project_id       = var.project_id
+  region           = var.region
+  image            = var.csv_ingest_worker_image
+  vpc_connector_id = module.network.vpc_connector_id
+
+  # Referencing the inline resources makes Terraform create the bucket + topic +
+  # subscription (and their IAM) before the worker.
+  bronze_bucket_name = google_storage_bucket.dis_bronze.name
+  subscription_id    = google_pubsub_subscription.csv_received_sub.id
+  ingress_topic_id   = google_pubsub_topic.ingress_ready.id
 }

@@ -59,3 +59,13 @@ output "dis_ui_server_service_account_email" {
   value       = module.dis_ui_server_service.service_account_email
   description = "dis-ui-server runtime SA (secretAccessor on dis-database-url, objectAdmin on bronze, publisher on the csv topic)."
 }
+
+output "csv_ingest_worker_url" {
+  value       = module.csv_ingest_worker_service.service_url
+  description = "csv-ingest-worker Cloud Run URL (serves /healthz; real work is the pull loop)."
+}
+
+output "csv_ingest_worker_service_account_email" {
+  value       = module.csv_ingest_worker_service.service_account_email
+  description = "csv-ingest-worker runtime SA (secretAccessor, objectAdmin on bronze, subscriber on the csv sub, publisher on the ingress topic, project pubsub.viewer)."
+}

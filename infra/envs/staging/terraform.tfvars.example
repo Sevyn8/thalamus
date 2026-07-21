@@ -47,3 +47,6 @@ cm_auth0_ticket_result_url  = ""
 
 # --- Wave 3: DIS (dis-ui-server) Cloud Run service ---
 dis_ui_server_image = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-server:v1"
+
+# --- Wave 3: DIS (csv-ingest-worker) Cloud Run service ---
+csv_ingest_worker_image = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/csv-ingest-worker:v1"

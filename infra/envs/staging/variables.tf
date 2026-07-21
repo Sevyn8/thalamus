@@ -160,3 +160,9 @@ variable "dis_ui_server_image" {
   description = "dis-ui-server container image. Defaults to the v1 tag pushed this session."
   default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-server:v1"
 }
+
+variable "csv_ingest_worker_image" {
+  type        = string
+  description = "csv-ingest-worker container image. Defaults to the v1 tag pushed this session."
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/csv-ingest-worker:v1"
+}
