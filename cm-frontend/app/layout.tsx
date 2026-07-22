@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Ithina Superadmin Console",
-  description: "Operator surface for the Ithina retail intelligence platform.",
+  title: "Cortex Superadmin Console",
+  description: "Operator surface for the Cortex retail intelligence platform.",
 };
 
 export default function RootLayout({

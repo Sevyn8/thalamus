@@ -88,7 +88,7 @@ export function Sidebar({ navGroups }: SidebarProps) {
   const brandLine =
     isTenantBrand && persona?.tenantName
       ? persona.tenantName
-      : "Ithina";
+      : "Cortex";
   const brandSub = isTenantBrand ? "Admin" : "Superadmin Console";
 
   useEffect(() => {
@@ -132,7 +132,7 @@ export function Sidebar({ navGroups }: SidebarProps) {
           affordance via the logo. */}
       <Link
         href="/my-ithina"
-        aria-label="Go to My Ithina launcher"
+        aria-label="Go to My Cortex launcher"
         className="flex items-center gap-2 px-4 py-4 transition-colors duration-150 ease-out hover:bg-sidebar-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         {/* Phase 5d.7: real Ithina brandmark replaces the prior

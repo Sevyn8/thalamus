@@ -48,7 +48,7 @@ function Body({ user }: { user: PlatformUser }) {
         <div className="flex min-w-0 flex-col">
           <div className="truncate font-medium">{user.full_name}</div>
           <div className="truncate text-xs text-muted-foreground">{user.email}</div>
-          <div className="truncate text-xs text-muted-foreground">Platform (Ithina)</div>
+          <div className="truncate text-xs text-muted-foreground">Platform (Cortex)</div>
         </div>
       </div>
 

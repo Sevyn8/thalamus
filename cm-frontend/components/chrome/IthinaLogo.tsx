@@ -28,7 +28,7 @@ export function IthinaLogo({
     // eslint-disable-next-line @next/next/no-img-element
     <img
       src="/logo.svg"
-      alt="Ithina"
+      alt="Cortex"
       width={size}
       height={size}
       className={cn("block shrink-0", className)}

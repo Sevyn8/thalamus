@@ -111,7 +111,7 @@ export default function DashboardPage() {
   const tenantName = snapshot?.user?.tenantName;
   const headerTitle = isTenantHeader ? "Admin Dashboard" : "Superadmin Dashboard";
   const headerSubtitle = !isTenantHeader
-    ? "Govern every tenant, module, role and approval rail across Ithina."
+    ? "Govern every tenant, module, role and approval rail across Cortex."
     : tenantName
       ? `Manage users, stores, and access for ${tenantName}.`
       : "Manage your tenant's users, stores, and access.";

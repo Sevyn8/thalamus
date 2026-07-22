@@ -29,11 +29,11 @@ export function TopBar() {
       <div className="flex min-w-0 items-center gap-3">
         <Link
           href="/my-ithina"
-          aria-label="Back to My Ithina launcher"
+          aria-label="Back to My Cortex launcher"
           className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[0.8rem] font-medium text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
           <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
-          <span className="hidden sm:inline">My Ithina</span>
+          <span className="hidden sm:inline">My Cortex</span>
         </Link>
       </div>
 

@@ -88,7 +88,7 @@ export function LauncherTile({
       "block h-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md";
 
     // Absolute URLs point at a separate deployed app (e.g. DIS). Render a
-    // plain anchor opening in a new tab; next/link is for internal routes.
+    // plain anchor navigating in the same tab; next/link is for internal routes.
     const isAbsolute =
       href.startsWith("http://") || href.startsWith("https://");
 
@@ -96,8 +96,6 @@ export function LauncherTile({
       return (
         <a
           href={href}
-          target="_blank"
-          rel="noopener noreferrer"
           aria-label={`Open ${name}`}
           className={linkClassName}
         >
