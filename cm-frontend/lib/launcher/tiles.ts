@@ -59,7 +59,7 @@ export const LAUNCHER_TILES: LauncherTileConfig[] = [
     name: "DIS",
     description: "Data ingestion stack — sources, runs, validation, and recovery.",
     icon: Database,
-    href: "https://dis-ui-10292879382.asia-south1.run.app/dev/login",
+    href: "https://dis-ui-ver2-697546531605.asia-south1.run.app",
     moduleCode: "DIS",
   },
   {
