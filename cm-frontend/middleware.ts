@@ -47,7 +47,7 @@ function isProtectedPath(pathname: string): boolean {
   return PROTECTED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
-export async function proxy(request: NextRequest): Promise<NextResponse> {
+export async function middleware(request: NextRequest): Promise<NextResponse> {
   // Always let the SDK mount /auth/* and refresh the session first.
   const authResponse = await auth0.middleware(request);
 
