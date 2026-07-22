@@ -2,20 +2,23 @@ import { Navigate, Outlet } from 'react-router'
 
 import { useAuth } from './useAuth'
 
-// Gates protected routes. While a stored token is being verified we render a
-// minimal fallback. An unauthenticated user (no token, or a token that was
-// expired, malformed, or had invalid claims, all handled in AuthProvider) is
-// redirected to /dev/login.
-//
-// Real-mode seam (decisions.md D25): when Customer Master tokens replace the stub,
-// an expired token surfaces as a dis-ui-server 401 and the UI is responsible for
-// refresh. Refresh is deferred for this slice; an expired stub simply lands the
-// user back at /dev/login, the dev analog of that re-auth flow.
+// Gates protected routes. The branch ORDER here is load-bearing — 'loading' MUST be
+// handled before any redirect decision:
+//   - 'loading'         The Auth0 SDK is still resolving the session (SSO handshake /
+//                       silent token fetch). Render a placeholder and WAIT. Never make
+//                       an auth-based redirect in this window, or an active SSO session
+//                       gets bounced to /dev/login (and on to CM login) before it
+//                       resolves — the single-login-entry race.
+//   - 'unauthenticated' SDK definitively resolved with no session -> /dev/login, which
+//                       in real mode redirects to CM login.
+//   - 'authenticated'   session present -> render the protected tree.
+// isLoading always settles to authenticated or unauthenticated, so the placeholder is
+// never terminal (no infinite spinner).
 export function AuthBoundary() {
   const { status } = useAuth()
 
   if (status === 'loading') {
-    return <p>Loading...</p>
+    return <p className="mx-auto mt-16 max-w-md px-4 text-sm text-gray-500">Loading...</p>
   }
   if (status === 'unauthenticated') {
     return <Navigate to="/dev/login" replace />
