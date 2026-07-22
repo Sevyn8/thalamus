@@ -59,6 +59,11 @@ ARG VITE_AUTH0_AUDIENCE=""
 ENV VITE_AUTH0_DOMAIN=${VITE_AUTH0_DOMAIN}
 ENV VITE_AUTH0_CLIENT_ID=${VITE_AUTH0_CLIENT_ID}
 ENV VITE_AUTH0_AUDIENCE=${VITE_AUTH0_AUDIENCE}
+# Single login entry point: DIS with no session redirects here (Customer Master's
+# login, which lands on My Cortex) instead of running its own interactive login.
+# Empty default keeps a plain build working; staging passes the real CM URL.
+ARG VITE_CM_LOGIN_URL=""
+ENV VITE_CM_LOGIN_URL=${VITE_CM_LOGIN_URL}
 RUN pnpm build
 
 # --- serve ---

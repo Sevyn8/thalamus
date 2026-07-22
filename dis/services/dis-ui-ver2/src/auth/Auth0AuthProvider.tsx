@@ -42,7 +42,7 @@ function snapshotFromToken(token: string): AuthSnapshot {
 }
 
 export function Auth0AuthProvider({ children }: { children: ReactNode }) {
-  const { isLoading, isAuthenticated, getAccessTokenSilently, loginWithRedirect, logout } = useAuth0()
+  const { isLoading, isAuthenticated, getAccessTokenSilently, logout } = useAuth0()
   const [snapshot, setSnapshot] = useState<AuthSnapshot | null>(null)
   // The access token is fetched asynchronously after Auth0 reports authenticated;
   // until it is written to storage, client.ts would have no bearer, so we hold the
@@ -94,16 +94,20 @@ export function Auth0AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       status,
       snapshot,
-      // In real mode the rawToken arg is ignored: sign-in is the Auth0 redirect flow.
+      // Customer Master (CM) is the single login entry point. This branch is only
+      // reached with NO DIS session (an existing SSO session makes isAuthenticated
+      // true, so the silent-token path above handles it without ever calling login).
+      // Instead of DIS running its own interactive Auth0 login, redirect to CM's
+      // login (which lands on My Cortex). The rawToken arg is ignored in real mode.
       async login() {
-        await loginWithRedirect()
+        window.location.href = import.meta.env.VITE_CM_LOGIN_URL ?? window.location.origin
       },
       logout() {
         clearToken()
         void logout({ logoutParams: { returnTo: window.location.origin } })
       },
     }),
-    [status, snapshot, loginWithRedirect, logout],
+    [status, snapshot, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

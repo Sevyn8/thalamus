@@ -34,6 +34,9 @@ substitutions:
   _VITE_AUTH0_DOMAIN: ""
   _VITE_AUTH0_CLIENT_ID: ""
   _VITE_AUTH0_AUDIENCE: ""
+  # Single login entry point: CM login URL DIS redirects to when it has no session.
+  # Pass at submit time; empty default keeps a plain build working.
+  _VITE_CM_LOGIN_URL: ""
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -65,6 +68,8 @@ steps:
       - VITE_AUTH0_CLIENT_ID=${_VITE_AUTH0_CLIENT_ID}
       - --build-arg
       - VITE_AUTH0_AUDIENCE=${_VITE_AUTH0_AUDIENCE}
+      - --build-arg
+      - VITE_CM_LOGIN_URL=${_VITE_CM_LOGIN_URL}
       - -t
       - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/dis-ui-ver2:$SHORT_SHA
       - -t
