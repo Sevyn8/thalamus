@@ -65,6 +65,24 @@ export function getAuthToken(): string | null {
   return token ?? null;
 }
 
+// Async accessor that GUARANTEES the token has been fetched before it resolves,
+// mirroring ensureRuntimeConfig() in lib/api/client.ts. apiFetch awaits this so an
+// authenticated request never fires during the early-load window (before the store
+// is warmed) with a missing Authorization header -> spurious 401 / auto-logout.
+//
+// - Already cached (truthy) -> return it immediately.
+// - Otherwise delegate to prefetchAuthToken(), which fetches /api/access-token
+//   exactly once and dedupes concurrent callers via the shared in-flight promise
+//   (the token-fetch logic is NOT duplicated here). Then read the resolved cache.
+// - No session (endpoint empty/401) resolves the cache to null; we return null
+//   WITHOUT throwing, so unauthenticated contexts (login page) are unaffected.
+export async function ensureAuthToken(): Promise<string | null> {
+  const cached = getAuthToken();
+  if (cached) return cached;
+  await prefetchAuthToken();
+  return getAuthToken();
+}
+
 // Clear the cached token (used on logout so a stale token is not attached).
 export function clearAuthToken(): void {
   token = undefined;

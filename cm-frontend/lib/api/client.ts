@@ -1,5 +1,5 @@
 import type { ApiErrorBody } from "./types";
-import { getAuthToken } from "@/lib/auth/getAuthToken";
+import { ensureAuthToken } from "@/lib/auth/getAuthToken";
 import { ensureRuntimeConfig, getApiBaseUrl } from "@/lib/config/runtime-config";
 
 export class ApiError extends Error {
@@ -57,7 +57,12 @@ export async function apiFetch<T>(
 
   const fetchInit = init ?? {};
   const url = resolveUrl(path);
-  const token = getAuthToken();
+  // Guarantee the session token is fetched+cached before the request fires
+  // (same dedupe/cache discipline as ensureRuntimeConfig above). For an
+  // authenticated session the token is now populated before the header is set,
+  // closing the early-load window that sent headerless requests -> 401. No
+  // session resolves to null and the Authorization header is simply omitted.
+  const token = await ensureAuthToken();
 
   const headers = new Headers(fetchInit.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
