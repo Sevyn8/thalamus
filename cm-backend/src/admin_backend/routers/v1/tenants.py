@@ -464,6 +464,56 @@ async def activate_tenant(
     return _detail_from_row(row)
 
 
+@router.post("/{tenant_id}/complete-onboarding", response_model=TenantDetail)
+async def complete_tenant_onboarding(
+    tenant_id: UUID,
+    request: Request,
+    _: None = Depends(require(
+        ModuleCode.ADMIN,
+        PermissionResource.TENANTS,
+        PermissionAction.CONFIGURE,
+        PermissionScope.GLOBAL,
+        audience="PLATFORM",
+    )),
+    auth: AuthContext = Depends(get_auth_context),
+    session: AsyncSession = Depends(get_tenant_session_dep),
+) -> Any:
+    """Complete a tenant's onboarding. Platform-only.
+
+    Same gate as POST / PATCH /tenants (``ADMIN.TENANTS.CONFIGURE.GLOBAL``,
+    PLATFORM audience; held by SUPER_ADMIN + PLATFORM_ADMIN). Completing
+    onboarding is a provisioning action, not an emergency OVERRIDE like
+    suspend / activate (flag 1).
+
+    Moves the tenant ONBOARDING -> TRIAL and stamps
+    ``tenant_onboarding.completed_by_user_id`` / ``completed_at``
+    atomically. Allowed source: ONBOARDING only. Any other current status
+    returns 409 ``INVALID_STATE_TRANSITION``; a missing / RLS-filtered
+    tenant returns 404 ``TENANT_NOT_FOUND`` (RLS-as-404 per D-17).
+    """
+    row, result = await _repo.complete_onboarding(
+        session,
+        tenant_id,
+        actor_user_id=auth.user_id,
+    )
+    if result is TransitionResult.NOT_FOUND:
+        raise TenantNotFoundError(
+            f"Tenant {tenant_id} not visible to this session",
+            tenant_id=str(tenant_id),
+        )
+    if result is TransitionResult.INVALID_STATE:
+        raise InvalidStateTransitionError(
+            (
+                f"tenant {tenant_id} cannot complete onboarding from its "
+                "current status (only ONBOARDING is allowed)"
+            ),
+            tenant_id=str(tenant_id),
+            target_status="TRIAL",
+        )
+    assert row is not None
+    return _detail_from_row(row)
+
+
 @router.post(
     "/{tenant_id}/provision-auth0", response_model=TenantOrgProvisionResult
 )

@@ -105,8 +105,8 @@ def test_l1_get_lookups_returns_all_requested_lists(app_client, settings):
     assert tiers[0]["display_name"] == "Enterprise"
     assert tiers[0]["display_order"] == 1
 
-    # tenant_region: 2 rows.
-    assert len(lookups["tenant_region"]) == 2
+    # tenant_region: 3 rows (Slice 1 added INDIA to US, EU).
+    assert len(lookups["tenant_region"]) == 3
 
     # tenant_status: 5 rows in display_order.
     assert [s["code"] for s in lookups["tenant_status"]] == [

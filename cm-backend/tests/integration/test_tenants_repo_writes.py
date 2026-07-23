@@ -102,6 +102,15 @@ async def cleanup_tenants(
                 ),
                 {"ids": created},
             )
+            # Slice 1: ``repo.create`` now provisions a 1:1
+            # tenant_onboarding row (flag 5b); FK ON DELETE RESTRICT.
+            await session.execute(
+                text(
+                    f"DELETE FROM {schema}.tenant_onboarding "
+                    "WHERE tenant_id = ANY(:ids)"
+                ),
+                {"ids": created},
+            )
             await session.execute(
                 text(f"DELETE FROM {schema}.tenants WHERE id = ANY(:ids)"),
                 {"ids": created},
@@ -133,6 +142,19 @@ def _base_create_kwargs(name: str, actor_id: UUID) -> dict[str, Any]:
     }
 
 
+async def _to_trial(repo, session, tenant_id, actor_id) -> None:
+    """Drive a freshly-created ONBOARDING tenant to TRIAL.
+
+    Slice 1: ``repo.create`` now lands the tenant in ONBOARDING, so
+    transition tests that start from TRIAL / ACTIVE first complete
+    onboarding. Asserts the transition succeeded.
+    """
+    _row, result = await repo.complete_onboarding(
+        session, tenant_id, actor_user_id=actor_id
+    )
+    assert result is TransitionResult.OK
+
+
 # ============================================================================
 # R-C: create
 # ============================================================================
@@ -141,8 +163,9 @@ def _base_create_kwargs(name: str, actor_id: UUID) -> dict[str, Any]:
 async def test_rc1_create_happy_path(
     repo, make_platform_user, cleanup_tenants, platform_session
 ) -> None:
-    """Tenant inserted with status=TRIAL; modules row created;
-    audit columns populated from actor_user_id."""
+    """Tenant inserted with status=ONBOARDING (Slice 1: the DDL default,
+    no longer TRIAL); modules row created; audit columns populated from
+    actor_user_id."""
     actor = await make_platform_user(status="ACTIVE")
     row = await repo.create(
         platform_session,
@@ -151,7 +174,7 @@ async def test_rc1_create_happy_path(
     cleanup_tenants.append(row.tenant.id)
 
     assert row.tenant.name == "RC1-Acme"
-    assert row.tenant.status.value == "TRIAL"
+    assert row.tenant.status.value == "ONBOARDING"
     assert row.tenant.created_by_user_id == actor.id
     assert row.tenant.updated_by_user_id == actor.id
     assert row.tenant.suspended_at is None
@@ -320,7 +343,8 @@ async def test_rt1_trial_to_suspended_populates_suspended_columns(
         platform_session, **_base_create_kwargs("RT1-Trial", actor.id)
     )
     cleanup_tenants.append(created.tenant.id)
-    assert created.tenant.status.value == "TRIAL"
+    assert created.tenant.status.value == "ONBOARDING"
+    await _to_trial(repo, platform_session, created.tenant.id, actor.id)
 
     row, result = await repo.transition(
         platform_session,
@@ -345,6 +369,7 @@ async def test_rt2_active_to_suspended(
         platform_session, **_base_create_kwargs("RT2-Active", actor.id)
     )
     cleanup_tenants.append(created.tenant.id)
+    await _to_trial(repo, platform_session, created.tenant.id, actor.id)
     # Lift to ACTIVE first.
     _row, result_act = await repo.transition(
         platform_session,
@@ -374,6 +399,7 @@ async def test_rt3_suspended_to_suspended_invalid(
         platform_session, **_base_create_kwargs("RT3-Susp", actor.id)
     )
     cleanup_tenants.append(created.tenant.id)
+    await _to_trial(repo, platform_session, created.tenant.id, actor.id)
     # Transition into SUSPENDED.
     _row, result_susp = await repo.transition(
         platform_session,
@@ -402,6 +428,7 @@ async def test_rt4_trial_to_active(
         platform_session, **_base_create_kwargs("RT4-Trial", actor.id)
     )
     cleanup_tenants.append(created.tenant.id)
+    await _to_trial(repo, platform_session, created.tenant.id, actor.id)
 
     row, result = await repo.transition(
         platform_session,
@@ -424,6 +451,7 @@ async def test_rt5_suspended_to_active_clears_suspended_columns(
         platform_session, **_base_create_kwargs("RT5-SuspAct", actor.id)
     )
     cleanup_tenants.append(created.tenant.id)
+    await _to_trial(repo, platform_session, created.tenant.id, actor.id)
     # Suspend first.
     _r, _x = await repo.transition(
         platform_session,
@@ -454,6 +482,7 @@ async def test_rt6_active_to_active_invalid(
         platform_session, **_base_create_kwargs("RT6-Act", actor.id)
     )
     cleanup_tenants.append(created.tenant.id)
+    await _to_trial(repo, platform_session, created.tenant.id, actor.id)
     _row, _r = await repo.transition(
         platform_session,
         created.tenant.id,
@@ -500,6 +529,7 @@ async def test_rt8_trial_to_active_then_active_to_suspended_to_active(
         **_base_create_kwargs("RT8-Cycle", actor.id),
     )
     cleanup_tenants.append(created.tenant.id)
+    await _to_trial(repo, platform_session, created.tenant.id, actor.id)
 
     _r1, ok1 = await repo.transition(
         platform_session, created.tenant.id,
@@ -690,3 +720,99 @@ async def test_create_empty_slug_rejects_no_tenant_inserted(
         )
     ).scalar_one()
     assert count == 0
+
+
+# ============================================================================
+# R-CO: complete_onboarding (Slice 1)
+# ============================================================================
+
+
+async def test_rco1_create_provisions_tenant_onboarding_row(
+    repo, make_platform_user, cleanup_tenants, platform_session
+) -> None:
+    """create() provisions the 1:1 tenant_onboarding row (flag 5b):
+    present, section_status '{}', completed_* NULL."""
+    actor = await make_platform_user(status="ACTIVE")
+    row = await repo.create(
+        platform_session, **_base_create_kwargs("RCO1-Prov", actor.id)
+    )
+    cleanup_tenants.append(row.tenant.id)
+
+    schema = get_settings().db_schema
+    ob = (
+        await platform_session.execute(
+            text(
+                f"SELECT section_status, completed_at, completed_by_user_id "
+                f"FROM {schema}.tenant_onboarding WHERE tenant_id = :tid"
+            ),
+            {"tid": row.tenant.id},
+        )
+    ).one()
+    assert ob.section_status == {}
+    assert ob.completed_at is None
+    assert ob.completed_by_user_id is None
+
+
+async def test_rco2_complete_onboarding_flips_status_and_stamps(
+    repo, make_platform_user, cleanup_tenants, platform_session
+) -> None:
+    """ONBOARDING -> TRIAL; tenant_onboarding.completed_* stamped."""
+    actor = await make_platform_user(status="ACTIVE")
+    completing_actor = await make_platform_user(status="ACTIVE")
+    created = await repo.create(
+        platform_session, **_base_create_kwargs("RCO2-Complete", actor.id)
+    )
+    cleanup_tenants.append(created.tenant.id)
+
+    row, result = await repo.complete_onboarding(
+        platform_session,
+        created.tenant.id,
+        actor_user_id=completing_actor.id,
+    )
+    assert result is TransitionResult.OK
+    assert row is not None
+    assert row.tenant.status.value == "TRIAL"
+    assert row.tenant.updated_by_user_id == completing_actor.id
+
+    schema = get_settings().db_schema
+    ob = (
+        await platform_session.execute(
+            text(
+                f"SELECT completed_at, completed_by_user_id "
+                f"FROM {schema}.tenant_onboarding WHERE tenant_id = :tid"
+            ),
+            {"tid": created.tenant.id},
+        )
+    ).one()
+    assert ob.completed_at is not None
+    assert ob.completed_by_user_id == completing_actor.id
+
+
+async def test_rco3_complete_onboarding_on_non_onboarding_invalid(
+    repo, make_platform_user, cleanup_tenants, platform_session
+) -> None:
+    """Second complete_onboarding (already TRIAL) -> INVALID_STATE."""
+    actor = await make_platform_user(status="ACTIVE")
+    created = await repo.create(
+        platform_session, **_base_create_kwargs("RCO3-Twice", actor.id)
+    )
+    cleanup_tenants.append(created.tenant.id)
+    await _to_trial(repo, platform_session, created.tenant.id, actor.id)
+
+    row, result = await repo.complete_onboarding(
+        platform_session, created.tenant.id, actor_user_id=actor.id
+    )
+    assert result is TransitionResult.INVALID_STATE
+    assert row is None
+
+
+async def test_rco4_complete_onboarding_missing_id_not_found(
+    repo, make_platform_user, platform_session
+) -> None:
+    """Missing / RLS-filtered tenant -> NOT_FOUND."""
+    actor = await make_platform_user(status="ACTIVE")
+    row, result = await repo.complete_onboarding(
+        platform_session, uuid.uuid4(), actor_user_id=actor.id
+    )
+    assert result is TransitionResult.NOT_FOUND
+    assert row is None

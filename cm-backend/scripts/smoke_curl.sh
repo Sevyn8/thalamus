@@ -44,7 +44,7 @@
 #   PJWT_FILE=path/to/platform.jwt TJWT_FILE=path/to/tenant.jwt \
 #     ./scripts/smoke_curl.sh <url>
 #
-# WHAT'S CHECKED (69 endpoints, in order):
+# WHAT'S CHECKED (70 endpoints, in order):
 #   1.  GET /api/v1/health (no auth)                            → 200
 #   2.  GET /api/v1/ready (no auth)                             → 200
 #   3.  GET /api/v1/tenants (no auth)                           → 401
@@ -81,6 +81,7 @@
 #        GET 404'd because no tenant-root org_node existed for the
 #        new tenant. Captures the bug that motivated this step.
 #   23. PATCH /api/v1/tenants/{captured_id} (PLATFORM)          → 200  (Step 6.11.2)
+#   23b. POST /api/v1/tenants/{captured_id}/complete-onboarding (PLATFORM) → 200  (Slice 1: ONBOARDING→TRIAL)
 #   24. POST /api/v1/tenants/{captured_id}/suspend (PLATFORM)   → 200  (Step 6.11.2)
 #   25. POST /api/v1/tenants/{captured_id}/activate (PLATFORM)  → 200  (Step 6.11.2)
 #   26. POST /api/v1/tenants (TENANT)                           → 403  PLATFORM_AUDIENCE_REQUIRED
@@ -553,6 +554,10 @@ if [[ -n "$SMOKE_TENANT_ID" && "$SMOKE_TENANT_ID" != "null" ]]; then
         FAILURES+=("write_flow__patch (got $PATCH_STATUS, expected 200)")
     fi
 
+    # Slice 1: tenants land ONBOARDING at create; complete onboarding
+    # (ONBOARDING -> TRIAL) before suspend/activate, which require a
+    # TRIAL/ACTIVE source.
+    req "write_flow__complete_onboarding" 200 "$PJWT" POST "/tenants/${SMOKE_TENANT_ID}/complete-onboarding"
     req "write_flow__suspend"  200 "$PJWT" POST "/tenants/${SMOKE_TENANT_ID}/suspend"
     req "write_flow__activate" 200 "$PJWT" POST "/tenants/${SMOKE_TENANT_ID}/activate"
 fi

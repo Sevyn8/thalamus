@@ -20,11 +20,17 @@ from admin_backend.models.role import Role, RoleAudience, RoleStatus
 from admin_backend.models.role_permission import RolePermission
 from admin_backend.models.store import Store, StoreStatus, TaxTreatment
 from admin_backend.models.tenant import Tenant
+from admin_backend.models.tenant_billing_profile import TenantBillingProfile
+from admin_backend.models.tenant_contact import TenantContact
+from admin_backend.models.tenant_document import TenantDocument
+from admin_backend.models.tenant_legal_profile import TenantLegalProfile
 from admin_backend.models.tenant_module_access import (
     ModuleAccessStatus,
     ModuleCode,
     TenantModuleAccess,
 )
+from admin_backend.models.tenant_onboarding import TenantOnboarding
+from admin_backend.models.tenant_tax_registration import TenantTaxRegistration
 from admin_backend.models.tenant_user import (
     ActorUserType,
     TenantUser,
@@ -60,7 +66,13 @@ __all__ = [
     "TaxTreatment",
     "Tenant",
     "TenantActivityAuditLog",
+    "TenantBillingProfile",
+    "TenantContact",
+    "TenantDocument",
+    "TenantLegalProfile",
     "TenantModuleAccess",
+    "TenantOnboarding",
+    "TenantTaxRegistration",
     "TenantUser",
     "TenantUserRoleAssignment",
     "TenantUserStatus",

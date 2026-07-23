@@ -270,6 +270,18 @@ class TransitionResult(StrEnum):
     INVALID_STATE = "INVALID_STATE"
 
 
+# Allowed source states per target status - the tenant lifecycle matrix.
+# ``transition`` handles SUSPENDED/ACTIVE; ``complete_onboarding`` handles
+# the Slice 1 ONBOARDING -> TRIAL transition. Both read this single map so
+# the lifecycle has one source of truth (the "extend the allowed_sources
+# map" step of Slice 1).
+_TRANSITION_ALLOWED_SOURCES: dict[str, frozenset[str]] = {
+    "SUSPENDED": frozenset({"TRIAL", "ACTIVE"}),
+    "ACTIVE": frozenset({"TRIAL", "SUSPENDED"}),
+    "TRIAL": frozenset({"ONBOARDING"}),
+}
+
+
 class TenantsRepo:
     """Read-only repository for ``tenants``. RLS-bound via session GUCs."""
 
@@ -576,7 +588,12 @@ class TenantsRepo:
     ) -> TenantDetailRow:
         """Insert one ``tenants`` row + N ``tenant_module_access`` rows.
 
-        Server-forces ``status='TRIAL'`` per locked decision 3.
+        The tenant lands in ``status='ONBOARDING'`` (the DDL default):
+        the Slice 1 change removed the prior ``CAST('TRIAL' ...)`` literal
+        so new tenants enter the onboarding lifecycle;
+        ``POST /tenants/{id}/complete-onboarding`` moves ONBOARDING ->
+        TRIAL. The initial 1:1 ``tenant_onboarding`` row is provisioned
+        here in the same transaction (flag 5b).
         ``actor_user_id`` is the JWT user_id; it must be a valid
         ``platform_users.id`` (Pattern (a) FK per D-13). The PATCH /
         POST surface is platform-only at Step 6.11 so this is satisfied
@@ -620,7 +637,6 @@ class TenantsRepo:
                     number_of_stores, number_of_stores_as_of_date,
                     display_code,
                     monthly_revenue_usd, monthly_revenue_as_of_date,
-                    status,
                     created_by_user_id, updated_by_user_id
                 ) VALUES (
                     :name,
@@ -632,7 +648,6 @@ class TenantsRepo:
                     :number_of_stores, :number_of_stores_as_of_date,
                     :display_code,
                     :monthly_revenue_usd, :monthly_revenue_as_of_date,
-                    CAST('TRIAL' AS {schema}.tenant_status_enum),
                     :actor, :actor
                 )
                 RETURNING id
@@ -719,6 +734,22 @@ class TenantsRepo:
                 },
             )
 
+        # Slice 1 (flag 5b): provision the 1:1 tenant_onboarding row so
+        # wizard state exists from creation and complete-onboarding always
+        # has a row to stamp. current_step / completed_* start NULL;
+        # section_status defaults to '{}' via the DDL. Same transaction as
+        # the writes above; rollback on failure leaves no partial state.
+        await session.execute(
+            text(
+                f"""
+                INSERT INTO {schema}.tenant_onboarding (
+                    tenant_id, created_by_user_id, updated_by_user_id
+                ) VALUES (:tenant_id, :actor, :actor)
+                """
+            ),
+            {"tenant_id": new_tenant_id, "actor": actor_user_id},
+        )
+
         # Flush so the aggregate-shaped read sees the writes (the
         # session has not committed yet, the request-scope session
         # commits on clean handler return).
@@ -749,7 +780,11 @@ class TenantsRepo:
                 "tier": tier,
                 "industry": industry,
                 "country": country,
-                "status": "TRIAL",
+                # Sourced from the DB row (Correction 2) so the audit
+                # snapshot always reflects the actual persisted status
+                # (now ONBOARDING via the DDL default) and cannot drift
+                # from a literal.
+                "status": result_row.tenant.status.value,
                 "modules_enabled": [m.value for m in modules_enabled],
             }
             await emit_audit_event(
@@ -962,11 +997,7 @@ class TenantsRepo:
         if current is None:
             return None, TransitionResult.NOT_FOUND
 
-        allowed_sources: dict[str, frozenset[str]] = {
-            "SUSPENDED": frozenset({"TRIAL", "ACTIVE"}),
-            "ACTIVE": frozenset({"TRIAL", "SUSPENDED"}),
-        }
-        if current.status not in allowed_sources[target_status]:
+        if current.status not in _TRANSITION_ALLOWED_SOURCES[target_status]:
             return None, TransitionResult.INVALID_STATE
 
         if target_status == "SUSPENDED":
@@ -1036,4 +1067,77 @@ class TenantsRepo:
                     "auth and request_id must be provided together"
                 )
 
+        return result_row, TransitionResult.OK
+
+    async def complete_onboarding(
+        self,
+        session: AsyncSession,
+        tenant_id: UUID,
+        *,
+        actor_user_id: UUID,
+    ) -> tuple[TenantDetailRow | None, TransitionResult]:
+        """Complete onboarding: ONBOARDING -> TRIAL, atomically stamping
+        ``tenant_onboarding.completed_*``.
+
+        Returns the same ``(row | None, result)`` shape as ``transition``:
+          - ``(None, NOT_FOUND)`` when the tenant is missing / RLS-filtered.
+          - ``(None, INVALID_STATE)`` when the current status is not
+            ONBOARDING (the sole allowed source per
+            ``_TRANSITION_ALLOWED_SOURCES['TRIAL']``).
+          - ``(row, OK)`` after the status flip + completion stamp.
+
+        The tenants status flip and the ``tenant_onboarding`` stamp run in
+        the request transaction, so a failure of either leaves no partial
+        state. The 1:1 ``tenant_onboarding`` row was provisioned at tenant
+        creation, so the UPDATE always targets an existing row.
+        SELECT FOR UPDATE locks the tenants row against a concurrent
+        transition.
+
+        No audit-log emission in this slice (schema + status change +
+        endpoint only); wiring complete-onboarding into the audit
+        subsystem is a follow-up.
+        """
+        schema = get_settings().db_schema
+
+        row = await session.execute(
+            text(
+                f"SELECT status FROM {schema}.tenants "
+                "WHERE id = :tenant_id FOR UPDATE"
+            ),
+            {"tenant_id": tenant_id},
+        )
+        current = row.first()
+        if current is None:
+            return None, TransitionResult.NOT_FOUND
+        if current.status not in _TRANSITION_ALLOWED_SOURCES["TRIAL"]:
+            return None, TransitionResult.INVALID_STATE
+
+        await session.execute(
+            text(
+                f"""
+                UPDATE {schema}.tenants
+                   SET status = CAST('TRIAL' AS {schema}.tenant_status_enum),
+                       updated_by_user_id = :actor
+                 WHERE id = :tenant_id
+                """
+            ),
+            {"actor": actor_user_id, "tenant_id": tenant_id},
+        )
+        await session.execute(
+            text(
+                f"""
+                UPDATE {schema}.tenant_onboarding
+                   SET completed_at = now(),
+                       completed_by_user_id = :actor,
+                       updated_by_user_id = :actor
+                 WHERE tenant_id = :tenant_id
+                """
+            ),
+            {"actor": actor_user_id, "tenant_id": tenant_id},
+        )
+
+        # Raw UPDATE bypasses the ORM identity map; expire so the
+        # aggregate-shaped read returns the fresh status.
+        session.expire_all()
+        result_row = await self.get_by_id_with_aggregates(session, tenant_id)
         return result_row, TransitionResult.OK

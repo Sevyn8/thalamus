@@ -115,6 +115,7 @@ async def cleanup_tenants_for_audit(
                 "platform_activity_audit_logs",
                 "tenant_module_access",
                 "org_nodes",
+                "tenant_onboarding",
             ):
                 await session.execute(
                     text(
@@ -519,6 +520,14 @@ async def test_af6_suspend_on_suspended_emits_conflict(
     tenant_id = UUID(create_resp.json()["id"])
     cleanup_tenants_for_audit.append(tenant_id)
 
+    # Slice 1: reach TRIAL (via complete-onboarding) before the first
+    # suspend so the TRIAL -> SUSPENDED premise holds.
+    complete = app_client.post(
+        f"/api/v1/tenants/{tenant_id}/complete-onboarding",
+        headers=_auth(super_admin_jwt),
+    )
+    assert complete.status_code == 200, complete.text
+
     first_susp = app_client.post(
         f"/api/v1/tenants/{tenant_id}/suspend",
         headers=_auth(super_admin_jwt),
@@ -563,6 +572,14 @@ async def test_af7_activate_on_active_emits_conflict(
     )
     tenant_id = UUID(create_resp.json()["id"])
     cleanup_tenants_for_audit.append(tenant_id)
+
+    # Slice 1: reach TRIAL (via complete-onboarding) before the first
+    # activate so the TRIAL -> ACTIVE premise holds.
+    complete = app_client.post(
+        f"/api/v1/tenants/{tenant_id}/complete-onboarding",
+        headers=_auth(super_admin_jwt),
+    )
+    assert complete.status_code == 200, complete.text
 
     first_act = app_client.post(
         f"/api/v1/tenants/{tenant_id}/activate",
@@ -798,6 +815,14 @@ async def test_af_n1_conflict_failure_carries_composed_result_label_and_enrichme
     )
     tenant_id = UUID(create_resp.json()["id"])
     cleanup_tenants_for_audit.append(tenant_id)
+
+    # Slice 1: reach TRIAL (via complete-onboarding) before the first
+    # suspend so the double-suspend CONFLICT path is exercised.
+    complete = app_client.post(
+        f"/api/v1/tenants/{tenant_id}/complete-onboarding",
+        headers=_auth(super_admin_jwt),
+    )
+    assert complete.status_code == 200, complete.text
 
     first_susp = app_client.post(
         f"/api/v1/tenants/{tenant_id}/suspend",

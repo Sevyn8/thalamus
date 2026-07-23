@@ -106,6 +106,7 @@ async def cleanup_tenants_for_audit(
                 "platform_activity_audit_logs",
                 "tenant_module_access",
                 "org_nodes",
+                "tenant_onboarding",
             ):
                 await session.execute(
                     text(
@@ -344,6 +345,15 @@ async def test_as5_suspend_success_emits_suspend_action_with_status_diff(
     tenant_id = UUID(create_resp.json()["id"])
     cleanup_tenants_for_audit.append(tenant_id)
 
+    # Slice 1: tenants land ONBOARDING at create; reach TRIAL before
+    # suspend. complete-onboarding emits no audit row (out of scope), so
+    # the suspend-row assertions below are unaffected.
+    complete = app_client.post(
+        f"/api/v1/tenants/{tenant_id}/complete-onboarding",
+        headers=_auth(super_admin_jwt),
+    )
+    assert complete.status_code == 200, complete.text
+
     susp_resp = app_client.post(
         f"/api/v1/tenants/{tenant_id}/suspend",
         headers=_auth(super_admin_jwt),
@@ -384,6 +394,13 @@ async def test_as6_activate_success_emits_activate_action_with_status_diff(
     )
     tenant_id = UUID(create_resp.json()["id"])
     cleanup_tenants_for_audit.append(tenant_id)
+
+    # Slice 1: reach TRIAL (via complete-onboarding) before suspend.
+    complete = app_client.post(
+        f"/api/v1/tenants/{tenant_id}/complete-onboarding",
+        headers=_auth(super_admin_jwt),
+    )
+    assert complete.status_code == 200, complete.text
 
     app_client.post(
         f"/api/v1/tenants/{tenant_id}/suspend",

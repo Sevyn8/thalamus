@@ -68,7 +68,8 @@ def test_create_modules_enabled_dedupes_preserving_order() -> None:
 
 
 def test_create_rejects_status_field() -> None:
-    """``status`` is server-forced to TRIAL; extra=forbid rejects."""
+    """``status`` is not accepted in the body (the tenant lands
+    ONBOARDING via the DDL default in Slice 1); extra=forbid rejects."""
     with pytest.raises(ValidationError) as exc_info:
         TenantCreateRequest(**_MIN_VALID_CREATE, status="ACTIVE")
     # Pydantic v2's extra='forbid' surfaces as type "extra_forbidden".

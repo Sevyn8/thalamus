@@ -55,6 +55,17 @@ SEED_TABLES = [
     "roles",
     "stores",
     "org_nodes",
+    # Slice 1 onboarding tables: all FK to tenants(id), so they must be
+    # co-listed with tenants for the TRUNCATE-without-CASCADE resolution.
+    # The seed loader does not populate them; they ship empty and the
+    # TRUNCATE is a no-op, but co-listing is required so TRUNCATE tenants
+    # does not raise "cannot truncate a table referenced in a foreign key".
+    "tenant_legal_profile",
+    "tenant_tax_registrations",
+    "tenant_billing_profile",
+    "tenant_contacts",
+    "tenant_documents",
+    "tenant_onboarding",
     "tenant_users",
     "tenants",
     "platform_users",

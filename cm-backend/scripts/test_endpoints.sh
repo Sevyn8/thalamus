@@ -693,6 +693,10 @@ if [[ -n "$WRITE_TENANT_ID" ]]; then
     write_req "write_flow__patch"    200 "$P1_JWT_VALUE" PATCH \
         "${API}/tenants/${WRITE_TENANT_ID}" \
         '{"primary_contact_name":"TE patched"}'
+    # Slice 1: tenants land ONBOARDING at create; complete onboarding
+    # (ONBOARDING -> TRIAL) before suspend/activate.
+    write_req "write_flow__complete_onboarding" 200 "$P1_JWT_VALUE" POST \
+        "${API}/tenants/${WRITE_TENANT_ID}/complete-onboarding" ""
     write_req "write_flow__suspend"  200 "$P1_JWT_VALUE" POST \
         "${API}/tenants/${WRITE_TENANT_ID}/suspend" ""
     write_req "write_flow__activate" 200 "$P1_JWT_VALUE" POST \

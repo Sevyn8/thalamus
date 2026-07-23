@@ -99,6 +99,7 @@ class TenantRegion(str, Enum):
 
     US = "US"
     EU = "EU"
+    INDIA = "INDIA"
 
 
 class Tenant(Base):

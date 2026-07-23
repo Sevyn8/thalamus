@@ -129,6 +129,15 @@ async def cleanup_tenants_router(
                 ),
                 {"ids": created},
             )
+            # Slice 1: POST /tenants now provisions a 1:1 tenant_onboarding
+            # row (flag 5b); its FK back to tenants is ON DELETE RESTRICT.
+            await session.execute(
+                text(
+                    f"DELETE FROM {schema}.tenant_onboarding "
+                    "WHERE tenant_id = ANY(:ids)"
+                ),
+                {"ids": created},
+            )
             await session.execute(
                 text(f"DELETE FROM {schema}.tenants WHERE id = ANY(:ids)"),
                 {"ids": created},
@@ -186,6 +195,21 @@ def _valid_create_body(name: str) -> dict[str, Any]:
         "number_of_stores": 5,
         "number_of_stores_as_of_date": "2026-01-01",
     }
+
+
+def _complete_onboarding(app_client: Any, jwt: str, tenant_id: UUID) -> None:
+    """Move a freshly-created ONBOARDING tenant to TRIAL.
+
+    Slice 1: tenants now land in ONBOARDING at create (the DDL default),
+    so transition tests that need a TRIAL / ACTIVE source first drive the
+    tenant through complete-onboarding. Asserts the transition succeeds.
+    """
+    resp = app_client.post(
+        f"/api/v1/tenants/{tenant_id}/complete-onboarding",
+        headers=_auth(jwt),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "TRIAL"
 
 
 async def _grant_platform_admin(
@@ -268,10 +292,11 @@ async def cleanup_assignments(
 # ============================================================================
 
 
-async def test_c1_super_admin_create_returns_201_with_trial_and_admin_module(
+async def test_c1_super_admin_create_returns_201_with_onboarding_and_admin_module(
     app_client, super_admin_jwt, cleanup_tenants_router,
 ) -> None:
-    """SUPER_ADMIN happy path: 201, status TRIAL, modules include ADMIN."""
+    """SUPER_ADMIN happy path: 201, status ONBOARDING (Slice 1: tenants
+    land ONBOARDING at create, not TRIAL), modules include ADMIN."""
     body = _valid_create_body("C1-Acme")
     resp = app_client.post(
         "/api/v1/tenants",
@@ -282,7 +307,7 @@ async def test_c1_super_admin_create_returns_201_with_trial_and_admin_module(
     j = resp.json()
     cleanup_tenants_router.append(UUID(j["id"]))
     assert j["name"] == "C1-Acme"
-    assert j["status"] == "TRIAL"
+    assert j["status"] == "ONBOARDING"
     assert any(m["code"] == "ADMIN" for m in j["modules"])
 
 
@@ -525,6 +550,7 @@ async def test_p4_allowed_on_suspended_tenant(
     )
     tenant_id = UUID(create.json()["id"])
     cleanup_tenants_router.append(tenant_id)
+    _complete_onboarding(app_client, super_admin_jwt, tenant_id)
 
     suspend = app_client.post(
         f"/api/v1/tenants/{tenant_id}/suspend",
@@ -716,7 +742,8 @@ async def test_s1_trial_to_suspended(
     )
     tenant_id = UUID(create.json()["id"])
     cleanup_tenants_router.append(tenant_id)
-    assert create.json()["status"] == "TRIAL"
+    assert create.json()["status"] == "ONBOARDING"
+    _complete_onboarding(app_client, super_admin_jwt, tenant_id)
 
     resp = app_client.post(
         f"/api/v1/tenants/{tenant_id}/suspend",
@@ -738,6 +765,7 @@ async def test_s2_active_to_suspended(
     )
     tenant_id = UUID(create.json()["id"])
     cleanup_tenants_router.append(tenant_id)
+    _complete_onboarding(app_client, super_admin_jwt, tenant_id)
 
     activate = app_client.post(
         f"/api/v1/tenants/{tenant_id}/activate",
@@ -763,6 +791,7 @@ async def test_s3_suspended_to_suspended_returns_409(
     )
     tenant_id = UUID(create.json()["id"])
     cleanup_tenants_router.append(tenant_id)
+    _complete_onboarding(app_client, super_admin_jwt, tenant_id)
     app_client.post(
         f"/api/v1/tenants/{tenant_id}/suspend",
         headers=_auth(super_admin_jwt),
@@ -853,6 +882,7 @@ async def test_a1_trial_to_active(
     )
     tenant_id = UUID(create.json()["id"])
     cleanup_tenants_router.append(tenant_id)
+    _complete_onboarding(app_client, super_admin_jwt, tenant_id)
 
     resp = app_client.post(
         f"/api/v1/tenants/{tenant_id}/activate",
@@ -872,6 +902,7 @@ async def test_a2_suspended_to_active_clears_suspended_columns(
     )
     tenant_id = UUID(create.json()["id"])
     cleanup_tenants_router.append(tenant_id)
+    _complete_onboarding(app_client, super_admin_jwt, tenant_id)
 
     app_client.post(
         f"/api/v1/tenants/{tenant_id}/suspend",
@@ -897,6 +928,7 @@ async def test_a3_active_to_active_returns_409(
     )
     tenant_id = UUID(create.json()["id"])
     cleanup_tenants_router.append(tenant_id)
+    _complete_onboarding(app_client, super_admin_jwt, tenant_id)
     app_client.post(
         f"/api/v1/tenants/{tenant_id}/activate",
         headers=_auth(super_admin_jwt),
@@ -1018,3 +1050,114 @@ async def test_post_then_get_roundtrip(
     assert get_resp.status_code == 200, get_resp.text
     assert get_resp.json()["id"] == str(new_id)
     assert get_resp.json()["name"] == "RT-Roundtrip"
+
+
+# ============================================================================
+# POST /tenants/{id}/complete-onboarding (CO1-CO5) -- Slice 1
+# ============================================================================
+
+
+async def test_co1_complete_onboarding_moves_onboarding_to_trial(
+    app_client, super_admin_jwt, cleanup_tenants_router,
+) -> None:
+    """ONBOARDING -> TRIAL via complete-onboarding; 200 + status TRIAL."""
+    create = app_client.post(
+        "/api/v1/tenants",
+        json=_valid_create_body("CO1-Onboard"),
+        headers=_auth(super_admin_jwt),
+    )
+    tenant_id = UUID(create.json()["id"])
+    cleanup_tenants_router.append(tenant_id)
+    assert create.json()["status"] == "ONBOARDING"
+
+    resp = app_client.post(
+        f"/api/v1/tenants/{tenant_id}/complete-onboarding",
+        headers=_auth(super_admin_jwt),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "TRIAL"
+
+
+async def test_co2_complete_onboarding_on_non_onboarding_returns_409(
+    app_client, super_admin_jwt, cleanup_tenants_router,
+) -> None:
+    """Second complete-onboarding (tenant already TRIAL) -> 409."""
+    create = app_client.post(
+        "/api/v1/tenants",
+        json=_valid_create_body("CO2-Twice"),
+        headers=_auth(super_admin_jwt),
+    )
+    tenant_id = UUID(create.json()["id"])
+    cleanup_tenants_router.append(tenant_id)
+    _complete_onboarding(app_client, super_admin_jwt, tenant_id)
+
+    resp = app_client.post(
+        f"/api/v1/tenants/{tenant_id}/complete-onboarding",
+        headers=_auth(super_admin_jwt),
+    )
+    assert resp.status_code == 409
+    assert resp.json()["code"] == "INVALID_STATE_TRANSITION"
+
+
+async def test_co3_complete_onboarding_missing_id_returns_404(
+    app_client, super_admin_jwt,
+) -> None:
+    """Complete-onboarding on a non-existent tenant -> 404."""
+    resp = app_client.post(
+        f"/api/v1/tenants/{uuid.uuid4()}/complete-onboarding",
+        headers=_auth(super_admin_jwt),
+    )
+    assert resp.status_code == 404
+
+
+async def test_co4_tenant_jwt_returns_403_platform_audience_required(
+    app_client, settings,
+) -> None:
+    """TENANT JWT -> 403 PLATFORM_AUDIENCE_REQUIRED (audience gate)."""
+    jwt = _tenant_jwt(settings, uuid.uuid4())
+    resp = app_client.post(
+        f"/api/v1/tenants/{uuid.uuid4()}/complete-onboarding",
+        headers=_auth(jwt),
+    )
+    assert resp.status_code == 403
+    assert resp.json()["code"] == "PLATFORM_AUDIENCE_REQUIRED"
+
+
+async def test_co5_platform_admin_can_complete_onboarding(
+    app_client,
+    settings,
+    make_platform_user,
+    cleanup_assignments,
+    cleanup_tenants_router,
+    super_admin_jwt,
+    session_factory,
+    platform_auth,
+) -> None:
+    """LOAD-BEARING -- PLATFORM_ADMIN completes onboarding -> 200.
+
+    Proves the gate is ``ADMIN.TENANTS.CONFIGURE.GLOBAL`` (held by
+    PLATFORM_ADMIN), NOT the OVERRIDE.GLOBAL gate used by suspend /
+    activate (flag 1). The mirror of S6: there PLATFORM_ADMIN is denied
+    on /suspend (OVERRIDE); here PLATFORM_ADMIN is allowed on
+    complete-onboarding (CONFIGURE). A future flip of this endpoint to
+    OVERRIDE would surface here as a 403.
+    """
+    create = app_client.post(
+        "/api/v1/tenants",
+        json=_valid_create_body("CO5-PAcomplete"),
+        headers=_auth(super_admin_jwt),
+    )
+    tenant_id = UUID(create.json()["id"])
+    cleanup_tenants_router.append(tenant_id)
+
+    pa = await make_platform_user(status="ACTIVE")
+    await _grant_platform_admin(session_factory, platform_auth, pa.id)
+    cleanup_assignments.append(pa.id)
+    pa_jwt = _platform_jwt_for_user(settings, pa.id)
+
+    resp = app_client.post(
+        f"/api/v1/tenants/{tenant_id}/complete-onboarding",
+        headers=_auth(pa_jwt),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "TRIAL"
