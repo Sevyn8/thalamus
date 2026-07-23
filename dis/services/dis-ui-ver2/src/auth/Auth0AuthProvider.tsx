@@ -1,6 +1,6 @@
 import { useAuth0 } from '@auth0/auth0-react'
 import { decodeJwt } from 'jose'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import type { AuthSnapshot, UserType } from './AuthSnapshot'
@@ -42,12 +42,28 @@ function snapshotFromToken(token: string): AuthSnapshot {
 }
 
 export function Auth0AuthProvider({ children }: { children: ReactNode }) {
-  const { isLoading, isAuthenticated, getAccessTokenSilently, logout } = useAuth0()
+  const { isLoading, isAuthenticated, getAccessTokenSilently, loginWithRedirect, logout, error } =
+    useAuth0()
   const [snapshot, setSnapshot] = useState<AuthSnapshot | null>(null)
   // The access token is fetched asynchronously after Auth0 reports authenticated;
   // until it is written to storage, client.ts would have no bearer, so we hold the
   // status at 'loading' (tokenReady=false) rather than prematurely 'authenticated'.
   const [tokenReady, setTokenReady] = useState(false)
+
+  // Loop guard for the silent-authorize attempt below. Computed once per page load:
+  // true when the URL carries an Auth0 redirect result (?code/?state on success,
+  // ?error on prompt=none failure). When returning from a callback we must NOT fire
+  // another authorize, or /callback would bounce back to /authorize forever.
+  const returningFromCallback = useMemo(() => {
+    if (typeof window === 'undefined') return false
+    const params = new URLSearchParams(window.location.search)
+    return params.has('code') || params.has('state') || params.has('error')
+  }, [])
+  // Fire the silent authorize at most once per load (a ref, so re-renders don't retry).
+  const silentAuthAttempted = useRef(false)
+  // Set only if loginWithRedirect fails to navigate; lets status settle to
+  // 'unauthenticated' (-> /dev/login -> CM) instead of hanging on 'loading'.
+  const [authorizeFailed, setAuthorizeFailed] = useState(false)
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -83,12 +99,40 @@ export function Auth0AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [isAuthenticated, getAccessTokenSilently])
 
+  // Single-login-entry: when the SDK has DEFINITIVELY resolved to no session, attempt
+  // a silent (prompt=none) Auth0 authorize FIRST. If the CM-established SSO session
+  // exists, Auth0 returns immediately with a code (no login UI), DIS lands on
+  // /callback, gets its token, and renders — no CM bounce. If there is no session,
+  // Auth0 returns ?error=login_required and Callback.tsx does the CM fallback.
+  // Guards: skip while loading, already authenticated, an error is present, or we are
+  // returning from a callback; and fire at most once per load (the ref).
+  useEffect(() => {
+    if (isLoading || isAuthenticated || error || returningFromCallback) return
+    if (silentAuthAttempted.current) return
+    silentAuthAttempted.current = true
+    void loginWithRedirect({
+      appState: { returnTo: window.location.pathname },
+      authorizationParams: { prompt: 'none' },
+    }).catch(() => {
+      // Failed to even start the redirect: fall back to the normal unauthenticated
+      // path (-> /dev/login -> CM) rather than hang on the loading placeholder.
+      setAuthorizeFailed(true)
+    })
+  }, [isLoading, isAuthenticated, error, returningFromCallback, loginWithRedirect])
+
+  // While the silent authorize is pending (unauthenticated, no error, not returning
+  // from a callback, not failed), report 'loading' — NOT 'unauthenticated' — so
+  // AuthBoundary shows its placeholder and never navigates to /dev/login before the
+  // prompt=none redirect fires. Only a callback error / authorize failure surfaces
+  // 'unauthenticated' (Callback handles login_required; the boundary handles the rest).
   const status: AuthStatus =
     isLoading || (isAuthenticated && !tokenReady)
       ? 'loading'
       : isAuthenticated
         ? 'authenticated'
-        : 'unauthenticated'
+        : error || returningFromCallback || authorizeFailed
+          ? 'unauthenticated'
+          : 'loading'
 
   const value = useMemo<AuthContextValue>(
     () => ({
