@@ -25,8 +25,11 @@ function Auth0ProviderWithNavigate({ children }: { children: ReactNode }) {
     <Auth0Provider
       domain={import.meta.env.VITE_AUTH0_DOMAIN}
       clientId={import.meta.env.VITE_AUTH0_CLIENT_ID}
+      useRefreshTokens={true}
+      cacheLocation="localstorage"
       authorizationParams={{
         audience: import.meta.env.VITE_AUTH0_AUDIENCE,
+        scope: 'openid profile email offline_access',
         redirect_uri: `${window.location.origin}/callback`,
       }}
       onRedirectCallback={(appState?: AppState) => {
