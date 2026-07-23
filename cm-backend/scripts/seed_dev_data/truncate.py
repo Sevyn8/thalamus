@@ -77,7 +77,7 @@ async def truncate_seed_tables(session: AsyncSession) -> None:
     )
     await session.execute(
         text(
-            "DELETE FROM lookups "
+            "DELETE FROM core.lookups "
             "WHERE list_name = 'module_code' AND code = 'ROOS'"
         )
     )
