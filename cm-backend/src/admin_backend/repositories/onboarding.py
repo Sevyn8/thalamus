@@ -520,7 +520,10 @@ class OnboardingRepo:
                              WHERE tenant_id = :tid) AS contacts,
                       EXISTS(SELECT 1 FROM {schema}.tenant_users
                              WHERE tenant_id = :tid
-                               AND invited_at IS NOT NULL) AS admin_invited
+                               AND invited_at IS NOT NULL) AS admin_invited,
+                      EXISTS(SELECT 1 FROM {schema}.tenants
+                             WHERE id = :tid
+                               AND auth0_org_id IS NOT NULL) AS auth0_org
                     """
                 ),
                 {"tid": tenant_id},
@@ -580,9 +583,14 @@ class OnboardingRepo:
                 "documents": documents_block,
             },
             "provisioning": {
-                # Not derivable from the current schema (no per-tenant
-                # Auth0 org id column exists anywhere; verified in code).
-                "auth0_organization": "UNKNOWN",
+                # Slice 5 (option a): derived from tenants.auth0_org_id,
+                # stamped by POST /tenants/{id}/provision-auth0. TRUE once
+                # the Auth0 Organization has been provisioned (and its id
+                # persisted), FALSE otherwise. No longer UNKNOWN: the fact
+                # is a durable DB column, so the review gate reads it without
+                # touching Auth0. Pre-existing Auth0 orgs read FALSE until
+                # the idempotent provision endpoint is re-run.
+                "auth0_organization": "TRUE" if presence.auth0_org else "FALSE",
                 "admin_invited": "TRUE" if presence.admin_invited else "FALSE",
             },
         }

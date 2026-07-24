@@ -556,9 +556,17 @@ async def provision_tenant_auth0(
             "Auth0 management client is not configured; cannot provision",
             tenant_id=str(tenant_id),
         )
-    return await provision_tenant_organization(
+    result = await provision_tenant_organization(
         mgmt,
         tenant_id=tenant.id,
         tenant_name=tenant.name,
         display_code=tenant.display_code,
     )
+    # Slice 5 (option a): persist the Auth0 org id so onboarding-state can
+    # report a durable auth0_organization fact (TRUE/FALSE) for the review
+    # gate. Written after the Auth0 get-or-create succeeded; the request
+    # session commits at dependency teardown. Idempotent: a re-provision
+    # stamps the same deterministic org id (this also back-stamps tenants
+    # whose Auth0 org predates this column).
+    await _repo.set_auth0_org_id(session, tenant.id, result.org_id)
+    return result

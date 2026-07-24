@@ -454,11 +454,12 @@ async def test_ct2_exact_duplicate_contact_returns_422(
 # ===========================================================================
 
 
-async def test_ob1_get_shape_and_auth0_unknown(
+async def test_ob1_get_shape_and_auth0_false_until_provisioned(
     app_client, super_admin_jwt, make_tenant
 ) -> None:
-    """LOAD-BEARING: onboarding-state shape; auth0_organization is UNKNOWN
-    (not derivable from the schema)."""
+    """LOAD-BEARING: onboarding-state shape; auth0_organization is FALSE for
+    a fresh tenant (Slice 5 option a: derived from tenants.auth0_org_id,
+    which is NULL until provision-auth0 stamps it)."""
     tenant = await make_tenant(name="OB1")
     resp = app_client.get(
         f"/api/v1/tenants/{tenant.id}/onboarding",
@@ -470,7 +471,7 @@ async def test_ob1_get_shape_and_auth0_unknown(
         "current_step", "section_status", "completed_at",
         "completed_by_user_id", "sections_present", "provisioning",
     }
-    assert body["provisioning"]["auth0_organization"] == "UNKNOWN"
+    assert body["provisioning"]["auth0_organization"] == "FALSE"
     assert body["provisioning"]["admin_invited"] == "FALSE"
     assert body["sections_present"] == {
         "legal": False, "tax": False, "billing": False,
@@ -483,6 +484,29 @@ async def test_ob1_get_shape_and_auth0_unknown(
     }
     assert body["current_step"] is None
     assert body["completed_at"] is None
+
+
+async def test_ob1b_auth0_organization_true_when_org_id_stamped(
+    app_client, super_admin_jwt, make_tenant,
+    session_factory, platform_auth,
+) -> None:
+    """LOAD-BEARING (Slice 5 option a): auth0_organization derives TRUE once
+    tenants.auth0_org_id is set (what provision-auth0 stamps)."""
+    tenant = await make_tenant(name="OB1B")
+    schema = get_settings().db_schema
+    async for session in get_tenant_session(platform_auth, session_factory):
+        await session.execute(
+            text(
+                f"UPDATE {schema}.tenants SET auth0_org_id = :org "
+                "WHERE id = :id"
+            ),
+            {"org": "org_abc123", "id": tenant.id},
+        )
+    body = app_client.get(
+        f"/api/v1/tenants/{tenant.id}/onboarding",
+        headers=_auth(super_admin_jwt),
+    ).json()
+    assert body["provisioning"]["auth0_organization"] == "TRUE"
 
 
 async def test_ob2_presence_flags_reflect_saved_sections(

@@ -172,9 +172,11 @@ class ContactsReplaceRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-# Derived provisioning-check status. UNKNOWN when the fact is not
-# derivable from cm-backend's own schema (auth0_organization: there is
-# no per-tenant Auth0 org id column anywhere; verified against code).
+# Derived provisioning-check status. TRUE/FALSE are the live derivations
+# (auth0_organization from tenants.auth0_org_id since Slice 5 option a;
+# admin_invited from tenant_users.invited_at). UNKNOWN is retained in the
+# vocabulary for facts that may not be derivable from cm-backend's own
+# schema in the future; no field currently emits it.
 ProvisioningStatus = Literal["TRUE", "FALSE", "UNKNOWN"]
 
 
@@ -209,7 +211,8 @@ class OnboardingSectionsPresent(BaseModel):
 class OnboardingProvisioning(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    # Not derivable from the current schema -> always UNKNOWN in Slice 2.
+    # Derived from tenants.auth0_org_id (Slice 5 option a): TRUE once the
+    # Auth0 Organization is provisioned and its id persisted, else FALSE.
     auth0_organization: ProvisioningStatus
     # Derived live from tenant_users.invited_at IS NOT NULL.
     admin_invited: ProvisioningStatus

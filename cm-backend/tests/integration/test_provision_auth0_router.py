@@ -191,6 +191,15 @@ async def test_tenant_provision_creates_org(
     assert body["created"] is True
     assert fake_mgmt.org_create_count == 1
 
+    # Slice 5 (option a): the org id is persisted, so onboarding-state now
+    # reports a durable TRUE (was UNKNOWN before this slice).
+    state = provision_client.get(
+        f"/api/v1/tenants/{tenant.id}/onboarding",
+        headers=_auth(super_admin_jwt),
+    )
+    assert state.status_code == 200, state.text
+    assert state.json()["provisioning"]["auth0_organization"] == "TRUE"
+
 
 async def test_tenant_provision_is_idempotent(
     provision_client: TestClient, super_admin_jwt: str, fake_mgmt: _FakeMgmt, make_tenant: Any

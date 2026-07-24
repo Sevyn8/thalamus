@@ -296,6 +296,30 @@ class TenantsRepo:
         result = await session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def set_auth0_org_id(
+        self,
+        session: AsyncSession,
+        tenant_id: UUID,
+        org_id: str,
+    ) -> None:
+        """Stamp the tenant's Auth0 Organization id (Slice 5, option a).
+
+        Called by ``provision-auth0`` after the Auth0 get-or-create, so
+        ``onboarding-state`` can report a durable ``auth0_organization``
+        fact. Idempotent: a re-provision writes the same deterministic
+        org id. Raw ``text()`` schema-qualified per CSD-03 (accessed
+        only via raw SQL, like the onboarding tables; not mapped on the
+        Tenant ORM model).
+        """
+        schema = get_settings().db_schema
+        await session.execute(
+            text(
+                f"UPDATE {schema}.tenants SET auth0_org_id = :org_id "
+                "WHERE id = :tid"
+            ),
+            {"org_id": org_id, "tid": tenant_id},
+        )
+
     async def list_all(
         self,
         session: AsyncSession,
