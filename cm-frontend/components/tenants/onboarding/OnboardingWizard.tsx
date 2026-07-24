@@ -163,6 +163,15 @@ export function OnboardingWizard({ tenantId }: { tenantId: string | null }) {
   })();
 
   function renderStep() {
+    // react-hooks/refs is scoped-off for this block: the callbacks below
+    // (onStepSaved / onBack / setDirty) read or write dirtyRef ONLY inside
+    // event handlers (step save, rail/back navigation, exit, discard
+    // confirm), never during render. dirtyRef is a ref (not state) on
+    // purpose: the child steps report dirty from a form-state effect, and a
+    // ref avoids the set-state-in-effect churn the codebase deliberately
+    // avoids (PATTERNS.md). The lint rule is conservative about passing any
+    // ref-touching callback to a child component.
+    /* eslint-disable react-hooks/refs */
     if (activeKey === "company") {
       return (
         <CompanyProfileStep
@@ -188,6 +197,7 @@ export function OnboardingWizard({ tenantId }: { tenantId: string | null }) {
       default:
         return null;
     }
+    /* eslint-enable react-hooks/refs */
   }
 
   const loading = !isNew && stateQuery.isLoading;

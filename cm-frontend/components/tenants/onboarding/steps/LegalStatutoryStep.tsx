@@ -12,7 +12,6 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/shared/Skeleton";
 import { ErrorInline } from "@/components/shared/ErrorInline";
 import { ApiError } from "@/lib/api/client";
-import { onboardingApi } from "@/lib/api/onboarding";
 import { useOnboardingLookups } from "@/lib/hooks/use-onboarding-lookups";
 import {
   useLegalProfile,

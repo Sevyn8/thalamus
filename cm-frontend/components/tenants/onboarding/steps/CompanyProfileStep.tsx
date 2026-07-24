@@ -329,7 +329,7 @@ function CompanyEdit({
     handleSubmit,
     reset,
     setError,
-    formState: { errors, isDirty, isSubmitting, dirtyFields },
+    formState: { isDirty, isSubmitting, dirtyFields },
   } = form;
 
   useEffect(() => {
