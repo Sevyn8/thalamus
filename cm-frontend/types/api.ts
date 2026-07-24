@@ -273,6 +273,42 @@ export type RecentActivityRow = {
   result: AuditResult;
 };
 
+// Client onboarding wizard (Slice 4, wired against backend Slices 1-3:
+// section endpoints, onboarding-state, documents with signed URLs).
+// All re-exported from generated; regenerate with `pnpm gen:types` after
+// any backend contract change.
+export type TenantCreateRequest = Schemas["TenantCreateRequest"];
+export type TenantPatchRequest = Schemas["TenantPatchRequest"];
+
+export type LegalProfileRead = Schemas["LegalProfileRead"];
+export type LegalProfileUpsertRequest = Schemas["LegalProfileUpsertRequest"];
+export type TaxRegistrationItem = Schemas["TaxRegistrationItem"];
+export type TaxRegistrationInput = Schemas["TaxRegistrationInput"];
+export type TaxRegistrationsRead = Schemas["TaxRegistrationsRead"];
+export type TaxRegistrationsReplaceRequest =
+  Schemas["TaxRegistrationsReplaceRequest"];
+export type BillingProfileRead = Schemas["BillingProfileRead"];
+export type BillingProfileUpsertRequest =
+  Schemas["BillingProfileUpsertRequest"];
+export type ContactItem = Schemas["ContactItem"];
+export type ContactInput = Schemas["ContactInput"];
+export type ContactsRead = Schemas["ContactsRead"];
+export type ContactsReplaceRequest = Schemas["ContactsReplaceRequest"];
+
+export type OnboardingStateResponse = Schemas["OnboardingStateResponse"];
+export type OnboardingSectionsPresent = Schemas["OnboardingSectionsPresent"];
+export type OnboardingDocumentsBlock = Schemas["OnboardingDocumentsBlock"];
+export type OnboardingProvisioning = Schemas["OnboardingProvisioning"];
+export type OnboardingPatchRequest = Schemas["OnboardingPatchRequest"];
+
+export type DocumentRead = Schemas["DocumentRead"];
+export type DocumentUploadUrlRequest = Schemas["DocumentUploadUrlRequest"];
+export type DocumentUploadUrlResponse = Schemas["DocumentUploadUrlResponse"];
+export type DocumentsListResponse = Schemas["DocumentsListResponse"];
+export type DocumentDownloadUrlResponse =
+  Schemas["DocumentDownloadUrlResponse"];
+export type DocumentRejectRequest = Schemas["DocumentRejectRequest"];
+
 // Notifications (no backend equivalent in v0)
 export type Notification = {
   id: string;

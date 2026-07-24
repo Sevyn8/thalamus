@@ -237,6 +237,260 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tenants/{tenant_id}/complete-onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete Tenant Onboarding
+         * @description Complete a tenant's onboarding. Platform-only.
+         *
+         *     Same gate as POST / PATCH /tenants (``ADMIN.TENANTS.CONFIGURE.GLOBAL``,
+         *     PLATFORM audience; held by SUPER_ADMIN + PLATFORM_ADMIN). Completing
+         *     onboarding is a provisioning action, not an emergency OVERRIDE like
+         *     suspend / activate (flag 1).
+         *
+         *     Moves the tenant ONBOARDING -> TRIAL and stamps
+         *     ``tenant_onboarding.completed_by_user_id`` / ``completed_at``
+         *     atomically. Allowed source: ONBOARDING only. Any other current status
+         *     returns 409 ``INVALID_STATE_TRANSITION``; a missing / RLS-filtered
+         *     tenant returns 404 ``TENANT_NOT_FOUND`` (RLS-as-404 per D-17).
+         *
+         *     Slice 2 item 6: requires the legal profile, billing profile, and at
+         *     least one contact to exist; otherwise 409 ``ONBOARDING_INCOMPLETE``
+         *     (raised from the repo). Document completeness is not gated here.
+         *     Emits one COMPLETE_ONBOARDING audit event on success (item 5).
+         */
+        post: operations["complete_tenant_onboarding_api_v1_tenants__tenant_id__complete_onboarding_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenant_id}/provision-auth0": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Provision Tenant Auth0
+         * @description Get-or-create the Auth0 Organization for this tenant (Slice 2c, D-39).
+         *
+         *     Auth0-side only: reads the committed tenant row under the PLATFORM session
+         *     and calls Auth0; writes NOTHING to the CM DB. Idempotent via the
+         *     deterministic Organization name derived from ``tenant_id``. Returns 404 if
+         *     the tenant is not visible, 503 ``PROVISIONING_UNAVAILABLE`` if the Auth0
+         *     management client is not configured (STUB mode / no M2M creds).
+         */
+        post: operations["provision_tenant_auth0_api_v1_tenants__tenant_id__provision_auth0_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenant_id}/legal-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Legal Profile */
+        get: operations["get_legal_profile_api_v1_tenants__tenant_id__legal_profile_get"];
+        /** Put Legal Profile */
+        put: operations["put_legal_profile_api_v1_tenants__tenant_id__legal_profile_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenant_id}/tax-registrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Tax Registrations */
+        get: operations["get_tax_registrations_api_v1_tenants__tenant_id__tax_registrations_get"];
+        /** Put Tax Registrations */
+        put: operations["put_tax_registrations_api_v1_tenants__tenant_id__tax_registrations_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenant_id}/billing-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Billing Profile */
+        get: operations["get_billing_profile_api_v1_tenants__tenant_id__billing_profile_get"];
+        /** Put Billing Profile */
+        put: operations["put_billing_profile_api_v1_tenants__tenant_id__billing_profile_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenant_id}/contacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Contacts */
+        get: operations["get_contacts_api_v1_tenants__tenant_id__contacts_get"];
+        /** Put Contacts */
+        put: operations["put_contacts_api_v1_tenants__tenant_id__contacts_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenant_id}/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Onboarding */
+        get: operations["get_onboarding_api_v1_tenants__tenant_id__onboarding_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Onboarding */
+        patch: operations["patch_onboarding_api_v1_tenants__tenant_id__onboarding_patch"];
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenant_id}/documents/upload-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Document Upload Url */
+        post: operations["create_document_upload_url_api_v1_tenants__tenant_id__documents_upload_url_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenant_id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Documents */
+        get: operations["list_documents_api_v1_tenants__tenant_id__documents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenant_id}/documents/{document_id}/download-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Document Download Url */
+        get: operations["get_document_download_url_api_v1_tenants__tenant_id__documents__document_id__download_url_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenant_id}/documents/{document_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Document */
+        post: operations["verify_document_api_v1_tenants__tenant_id__documents__document_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenant_id}/documents/{document_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Document */
+        post: operations["reject_document_api_v1_tenants__tenant_id__documents__document_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenant_id}/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Document */
+        delete: operations["delete_document_api_v1_tenants__tenant_id__documents__document_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/lookups": {
         parameters: {
             query?: never;
@@ -450,6 +704,102 @@ export interface paths {
          *     fires uniformly across the 3 path-bound endpoints).
          */
         post: operations["activate_tenant_user_api_v1_tenant_users__user_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant-users/{user_id}/provision-auth0": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Provision Tenant User Auth0
+         * @description Provision the Auth0 identity for this tenant_users row (Slice 2c, D-39).
+         *
+         *     Defensively get-or-create the tenant Organization, get-or-create the Auth0
+         *     user by email, add Org membership, and stamp app_metadata
+         *     (tenant_id / user_type / cm_user_id). Auth0-side only: reads the committed
+         *     tenant_user + tenant rows under the PLATFORM session and calls Auth0; writes
+         *     NOTHING to the CM DB (the row stays INVITED with auth0_sub NULL; invite-send
+         *     and accept are Slice 2d). Idempotent via natural-key lookup-before-create.
+         *
+         *     Returns 404 if the user is not visible; 503 ``PROVISIONING_UNAVAILABLE`` if
+         *     the management client or the Auth0 database-connection name is unconfigured.
+         */
+        post: operations["provision_tenant_user_auth0_api_v1_tenant_users__user_id__provision_auth0_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant-users/me/accept-invitation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Invitation
+         * @description Self-service invite-accept (INVITED -> ACTIVE) per D-40.
+         *
+         *     A TENANT self-service action: the accepting user is identified by the
+         *     VERIFIED TOKEN, never a path/body id. The row id is ``auth.user_id`` and
+         *     the ``auth0_sub`` is ``auth.sub`` (the raw verified token sub). No PLATFORM
+         *     ``require()`` gate: an INVITED user holds no role assignments, so any
+         *     permission gate would deny them. The route is authenticated by
+         *     ``AuthMiddleware`` (a valid token is required) and is listed in
+         *     ``GATE_EXEMPT_PATHS`` (the /me/ self-service pattern) so the mandatory-gate
+         *     -discipline test passes.
+         *
+         *     404 if the row is not visible; 409 if it is not in INVITED state (re-accept
+         *     is rejected, not a silent no-op). Writes are atomic: status=ACTIVE +
+         *     auth0_sub + invitation_accepted_at + a TENANT updated_by actor pair.
+         */
+        post: operations["accept_invitation_api_v1_tenant_users_me_accept_invitation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant-users/{user_id}/send-invitation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Invitation
+         * @description Send the invitation email for a provisioned INVITED tenant-user
+         *     (Slice 2d-send, D-41). PLATFORM staff action.
+         *
+         *     Generates an Auth0 password-change ticket for the 2c-provisioned Auth0 user
+         *     (re-looked-up by email, since ``auth0_sub`` is deliberately NULL until
+         *     accept), emails the ticket URL via SendGrid, then sets ``invited_at`` on the
+         *     committed row. Order is deliberate (DB-first, D-39): the ticket + email
+         *     happen BEFORE the ``invited_at`` write, so a send failure leaves
+         *     ``invited_at`` NULL and the action is retriable.
+         *
+         *     Errors: 404 if the row is not visible; 503 ``PROVISIONING_UNAVAILABLE`` if
+         *     email / ticket / result_url is not configured; 409 ``USER_NOT_PROVISIONED``
+         *     if the user has no Auth0 identity yet (run provision-auth0 first); 500 if
+         *     ticket generation or email send fails upstream (``invited_at`` stays NULL).
+         */
+        post: operations["send_invitation_api_v1_tenant_users__user_id__send_invitation_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1273,6 +1623,64 @@ export interface components {
          * @enum {string}
          */
         AuditResultType: "SUCCESS" | "PERMISSION_DENIED" | "VALIDATION_FAILED" | "CONFLICT" | "INTEGRITY_VIOLATION" | "INTERNAL_ERROR";
+        /** BillingProfileRead */
+        BillingProfileRead: {
+            /** Payment Terms */
+            payment_terms: string | null;
+            /** Currency */
+            currency: string | null;
+            /** Billing Email */
+            billing_email: string | null;
+            /** Billing Contact Name */
+            billing_contact_name: string | null;
+            /** Billing Address */
+            billing_address: string | null;
+        };
+        /** BillingProfileUpsertRequest */
+        BillingProfileUpsertRequest: {
+            /** Payment Terms */
+            payment_terms?: string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Billing Email */
+            billing_email?: string | null;
+            /** Billing Contact Name */
+            billing_contact_name?: string | null;
+            /** Billing Address */
+            billing_address?: string | null;
+        };
+        /** ContactInput */
+        ContactInput: {
+            /** Contact Type */
+            contact_type: string;
+            /** Name */
+            name: string;
+            /** Email */
+            email?: string | null;
+            /** Phone */
+            phone?: string | null;
+        };
+        /** ContactItem */
+        ContactItem: {
+            /** Contact Type */
+            contact_type: string;
+            /** Name */
+            name: string;
+            /** Email */
+            email: string | null;
+            /** Phone */
+            phone: string | null;
+        };
+        /** ContactsRead */
+        ContactsRead: {
+            /** Items */
+            items: components["schemas"]["ContactItem"][];
+        };
+        /** ContactsReplaceRequest */
+        ContactsReplaceRequest: {
+            /** Items */
+            items: components["schemas"]["ContactInput"][];
+        };
         /**
          * CursorPagination
          * @description Cursor pagination metadata block.
@@ -1374,6 +1782,65 @@ export interface components {
              */
             available: boolean;
         };
+        /** DocumentDownloadUrlResponse */
+        DocumentDownloadUrlResponse: {
+            /** Download Url */
+            download_url: string;
+        };
+        /** DocumentRead */
+        DocumentRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Document Type */
+            document_type: string;
+            /** File Name */
+            file_name: string | null;
+            /** Content Type */
+            content_type: string | null;
+            /** File Size Bytes */
+            file_size_bytes: number | null;
+            /** Verification Status */
+            verification_status: string;
+            /** Verified At */
+            verified_at: string | null;
+            /** Rejection Reason */
+            rejection_reason: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** DocumentRejectRequest */
+        DocumentRejectRequest: {
+            /** Rejection Reason */
+            rejection_reason: string;
+        };
+        /** DocumentUploadUrlRequest */
+        DocumentUploadUrlRequest: {
+            /** Document Type */
+            document_type: string;
+            /** File Name */
+            file_name: string;
+            /** Content Type */
+            content_type: string;
+            /** File Size Bytes */
+            file_size_bytes: number;
+        };
+        /** DocumentUploadUrlResponse */
+        DocumentUploadUrlResponse: {
+            document: components["schemas"]["DocumentRead"];
+            /** Upload Url */
+            upload_url: string;
+        };
+        /** DocumentsListResponse */
+        DocumentsListResponse: {
+            /** Items */
+            items: components["schemas"]["DocumentRead"][];
+        };
         /**
          * FleetStatsResponse
          * @description E1 response: 4 cards, no envelope wrapper (D-30 exception).
@@ -1438,6 +1905,32 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** LegalProfileRead */
+        LegalProfileRead: {
+            /** Legal Entity Name */
+            legal_entity_name: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Registration Number */
+            registration_number: string | null;
+            /** Incorporation Date */
+            incorporation_date: string | null;
+            /** Registered Address */
+            registered_address: string | null;
+        };
+        /** LegalProfileUpsertRequest */
+        LegalProfileUpsertRequest: {
+            /** Legal Entity Name */
+            legal_entity_name: string;
+            /** Entity Type */
+            entity_type: string;
+            /** Registration Number */
+            registration_number?: string | null;
+            /** Incorporation Date */
+            incorporation_date?: string | null;
+            /** Registered Address */
+            registered_address?: string | null;
         };
         /**
          * LookupItem
@@ -1770,6 +2263,75 @@ export interface components {
              * @description Always true on this card.
              */
             available: boolean;
+        };
+        /**
+         * OnboardingDocumentsBlock
+         * @description Slice 3: the documents entry in ``sections_present`` is a block of
+         *     verification-status counts (not a bare bool). ``all_verified`` is the
+         *     review-gate signal the wizard consumes in Slice 6: true only when at
+         *     least one document exists AND none are PENDING_REVIEW or REJECTED
+         *     (i.e. every document is VERIFIED).
+         */
+        OnboardingDocumentsBlock: {
+            /** Total */
+            total: number;
+            /** Pending Review */
+            pending_review: number;
+            /** Verified */
+            verified: number;
+            /** Rejected */
+            rejected: number;
+            /** All Verified */
+            all_verified: boolean;
+        };
+        /** OnboardingPatchRequest */
+        OnboardingPatchRequest: {
+            /** Current Step */
+            current_step?: string | null;
+            /** Section Status */
+            section_status?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** OnboardingProvisioning */
+        OnboardingProvisioning: {
+            /**
+             * Auth0 Organization
+             * @enum {string}
+             */
+            auth0_organization: "TRUE" | "FALSE" | "UNKNOWN";
+            /**
+             * Admin Invited
+             * @enum {string}
+             */
+            admin_invited: "TRUE" | "FALSE" | "UNKNOWN";
+        };
+        /** OnboardingSectionsPresent */
+        OnboardingSectionsPresent: {
+            /** Legal */
+            legal: boolean;
+            /** Tax */
+            tax: boolean;
+            /** Billing */
+            billing: boolean;
+            /** Contacts */
+            contacts: boolean;
+            documents: components["schemas"]["OnboardingDocumentsBlock"];
+        };
+        /** OnboardingStateResponse */
+        OnboardingStateResponse: {
+            /** Current Step */
+            current_step: string | null;
+            /** Section Status */
+            section_status: {
+                [key: string]: unknown;
+            };
+            /** Completed At */
+            completed_at: string | null;
+            /** Completed By User Id */
+            completed_by_user_id: string | null;
+            sections_present: components["schemas"]["OnboardingSectionsPresent"];
+            provisioning: components["schemas"]["OnboardingProvisioning"];
         };
         /**
          * OrgNodeChildrenResponse
@@ -2879,6 +3441,34 @@ export interface components {
              */
             available: boolean;
         };
+        /** TaxRegistrationInput */
+        TaxRegistrationInput: {
+            /** Registration Type */
+            registration_type: string;
+            /** Registration Number */
+            registration_number: string;
+            /** Jurisdiction */
+            jurisdiction?: string | null;
+        };
+        /** TaxRegistrationItem */
+        TaxRegistrationItem: {
+            /** Registration Type */
+            registration_type: string;
+            /** Registration Number */
+            registration_number: string;
+            /** Jurisdiction */
+            jurisdiction: string | null;
+        };
+        /** TaxRegistrationsRead */
+        TaxRegistrationsRead: {
+            /** Items */
+            items: components["schemas"]["TaxRegistrationItem"][];
+        };
+        /** TaxRegistrationsReplaceRequest */
+        TaxRegistrationsReplaceRequest: {
+            /** Items */
+            items: components["schemas"]["TaxRegistrationInput"][];
+        };
         /**
          * TaxTreatment
          * @description Pricing-display tax convention. Mirrors ``tax_treatment_enum``.
@@ -3029,6 +3619,23 @@ export interface components {
          */
         TenantIndustry: "CONVENIENCE_FUEL" | "CONVENIENCE" | "GROCERY" | "HYPERMART" | "SPECIALITY_GROCERY" | "ORGANIC_GROCERY";
         /**
+         * TenantOrgProvisionResult
+         * @description Result of POST /tenants/{tenant_id}/provision-auth0.
+         */
+        TenantOrgProvisionResult: {
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /** Org Id */
+            org_id: string;
+            /** Org Name */
+            org_name: string;
+            /** Created */
+            created: boolean;
+        };
+        /**
          * TenantPatchRequest
          * @description Request shape for ``PATCH /api/v1/tenants/{tenant_id}``.
          *
@@ -3068,7 +3675,7 @@ export interface components {
          * @description Deployment region pinned at tenant creation. Mirrors ``tenant_region_enum``.
          * @enum {string}
          */
-        TenantRegion: "US" | "EU";
+        TenantRegion: "US" | "EU" | "INDIA";
         /**
          * TenantStatus
          * @description Lifecycle states for a tenant. Mirrors ``tenant_status_enum``.
@@ -3160,6 +3767,28 @@ export interface components {
             email?: string | null;
             /** Roles */
             roles?: components["schemas"]["RoleAssignmentItem"][] | null;
+        };
+        /**
+         * TenantUserProvisionResult
+         * @description Result of POST /tenant-users/{user_id}/provision-auth0.
+         */
+        TenantUserProvisionResult: {
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /** Org Id */
+            org_id: string;
+            /** Auth0 User Id */
+            auth0_user_id: string;
+            /** User Created */
+            user_created: boolean;
         };
         /**
          * TenantUserRead
@@ -3689,6 +4318,594 @@ export interface operations {
             };
         };
     };
+    complete_tenant_onboarding_api_v1_tenants__tenant_id__complete_onboarding_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provision_tenant_auth0_api_v1_tenants__tenant_id__provision_auth0_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantOrgProvisionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_legal_profile_api_v1_tenants__tenant_id__legal_profile_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegalProfileRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_legal_profile_api_v1_tenants__tenant_id__legal_profile_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LegalProfileUpsertRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegalProfileRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_tax_registrations_api_v1_tenants__tenant_id__tax_registrations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxRegistrationsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_tax_registrations_api_v1_tenants__tenant_id__tax_registrations_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaxRegistrationsReplaceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxRegistrationsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_billing_profile_api_v1_tenants__tenant_id__billing_profile_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingProfileRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_billing_profile_api_v1_tenants__tenant_id__billing_profile_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingProfileUpsertRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingProfileRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_contacts_api_v1_tenants__tenant_id__contacts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_contacts_api_v1_tenants__tenant_id__contacts_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactsReplaceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContactsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_onboarding_api_v1_tenants__tenant_id__onboarding_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingStateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_onboarding_api_v1_tenants__tenant_id__onboarding_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingStateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_document_upload_url_api_v1_tenants__tenant_id__documents_upload_url_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentUploadUrlRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentUploadUrlResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_documents_api_v1_tenants__tenant_id__documents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentsListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_download_url_api_v1_tenants__tenant_id__documents__document_id__download_url_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDownloadUrlResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_document_api_v1_tenants__tenant_id__documents__document_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_document_api_v1_tenants__tenant_id__documents__document_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentRejectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_document_api_v1_tenants__tenant_id__documents__document_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_lookups_batch_api_v1_lookups_get: {
         parameters: {
             query: {
@@ -3965,6 +5182,88 @@ export interface operations {
         };
     };
     activate_tenant_user_api_v1_tenant_users__user_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantUserRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    provision_tenant_user_auth0_api_v1_tenant_users__user_id__provision_auth0_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantUserProvisionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_invitation_api_v1_tenant_users_me_accept_invitation_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantUserRead"];
+                };
+            };
+        };
+    };
+    send_invitation_api_v1_tenant_users__user_id__send_invitation_post: {
         parameters: {
             query?: never;
             header?: never;

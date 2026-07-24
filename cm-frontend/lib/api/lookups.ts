@@ -56,6 +56,16 @@ function adaptLookups(response: LookupsBatchResponse): Lookups {
   return result;
 }
 
+// Generic, additive lookups fetch (Slice 4). Returns the RAW backend map
+// keyed by the singular list_name, sorted by display_order. Unlike `all()`
+// (which is locked to the 4 tenant-facing lists and a fixed discrete-keyed
+// `Lookups` shape), this takes the list names the caller needs and returns
+// exactly those, so the onboarding wizard's coded selects (entity_type,
+// tax_registration_type, payment_terms, currency, contact_type,
+// document_type) are populated from the endpoint, never hardcoded. The
+// existing `all()` path is untouched.
+export type LookupMap = Record<string, LookupItem[]>;
+
 // Phase 5n.1: routes through lib/api/client.ts, whose base URL is
 // resolved at runtime via runtime-config (/api/config).
 export const lookupsApi = {
@@ -64,5 +74,20 @@ export const lookupsApi = {
       `/api/v1/lookups?lists=${REQUESTED_LISTS.join(",")}`,
     );
     return adaptLookups(response);
+  },
+
+  lists: async (names: readonly string[]): Promise<LookupMap> => {
+    const response = await apiFetch<LookupsBatchResponse>(
+      `/api/v1/lookups?lists=${names.join(",")}`,
+    );
+    const incoming = response.lookups ?? {};
+    const result: LookupMap = {};
+    for (const name of names) {
+      const items = incoming[name] ?? [];
+      result[name] = [...items].sort(
+        (a, b) => a.display_order - b.display_order,
+      );
+    }
+    return result;
   },
 };

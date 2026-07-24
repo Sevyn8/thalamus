@@ -112,6 +112,20 @@ export const tenantsApi = {
       },
     }),
 
+  // Slice 4: onboarding wizard POST. Takes a raw TenantCreateRequest
+  // (region includes INDIA), distinct from provision()'s
+  // ProvisionTenantInput->payload adapter (region locked to US|EU).
+  // The wizard builds the body from its own schema; this keeps
+  // provision() and ProvisionTenantModal untouched.
+  create: (body: components["schemas"]["TenantCreateRequest"]) =>
+    apiFetch<TenantDetail>(`/api/v1/tenants`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: {
+        "Idempotency-Key": crypto.randomUUID(),
+      },
+    }),
+
   patch: (id: string, input: TenantPatchPayload) =>
     apiFetch<TenantDetail>(`/api/v1/tenants/${id}`, {
       method: "PATCH",
