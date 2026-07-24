@@ -43,6 +43,7 @@ from admin_backend.errors import (
     InvalidTenantNameForSlugError,
 )
 from admin_backend.models.tenant_module_access import ModuleCode
+from admin_backend.repositories.onboarding import OnboardingRepo
 from admin_backend.repositories.tenants import (
     TenantsRepo,
     TransitionResult,
@@ -104,13 +105,22 @@ async def cleanup_tenants(
             )
             # Slice 1: ``repo.create`` now provisions a 1:1
             # tenant_onboarding row (flag 5b); FK ON DELETE RESTRICT.
-            await session.execute(
-                text(
-                    f"DELETE FROM {schema}.tenant_onboarding "
-                    "WHERE tenant_id = ANY(:ids)"
-                ),
-                {"ids": created},
-            )
+            # Slice 2: transition tests seed legal / billing / contact
+            # section rows (via ``_to_trial``) to pass the complete-
+            # onboarding section gate; all FK ON DELETE RESTRICT.
+            for _t in (
+                "tenant_legal_profile",
+                "tenant_billing_profile",
+                "tenant_contacts",
+                "tenant_onboarding",
+            ):
+                await session.execute(
+                    text(
+                        f"DELETE FROM {schema}.{_t} "
+                        "WHERE tenant_id = ANY(:ids)"
+                    ),
+                    {"ids": created},
+                )
             await session.execute(
                 text(f"DELETE FROM {schema}.tenants WHERE id = ANY(:ids)"),
                 {"ids": created},
@@ -142,13 +152,54 @@ def _base_create_kwargs(name: str, actor_id: UUID) -> dict[str, Any]:
     }
 
 
+async def _seed_required_sections(session, tenant_id, actor_id) -> None:
+    """Seed legal profile + billing profile + one contact so
+    complete-onboarding passes the Slice 2 section gate.
+
+    Slice 2 gates ONBOARDING -> TRIAL on a legal profile, a billing
+    profile, and at least one contact being present. Repo-level
+    transition tests seed the three via ``OnboardingRepo`` (no audit
+    emission: ``auth`` / ``request_id`` omitted).
+    """
+    ob = OnboardingRepo()
+    await ob.upsert_legal_profile(
+        session,
+        tenant_id,
+        legal_entity_name="Acme Retail Private Limited",
+        entity_type="PRIVATE_LIMITED",
+        registration_number=None,
+        incorporation_date=None,
+        registered_address=None,
+        actor_user_id=actor_id,
+    )
+    await ob.upsert_billing_profile(
+        session,
+        tenant_id,
+        payment_terms="NET_30",
+        currency="INR",
+        billing_email=None,
+        billing_contact_name=None,
+        billing_address=None,
+        actor_user_id=actor_id,
+    )
+    await ob.replace_contacts(
+        session,
+        tenant_id,
+        items=[{"contact_type": "PRIMARY", "name": "Dana Ops"}],
+        actor_user_id=actor_id,
+    )
+
+
 async def _to_trial(repo, session, tenant_id, actor_id) -> None:
     """Drive a freshly-created ONBOARDING tenant to TRIAL.
 
     Slice 1: ``repo.create`` now lands the tenant in ONBOARDING, so
     transition tests that start from TRIAL / ACTIVE first complete
-    onboarding. Asserts the transition succeeded.
+    onboarding. Slice 2: complete-onboarding now requires legal +
+    billing + >=1 contact, so seed those first. Asserts the transition
+    succeeded.
     """
+    await _seed_required_sections(session, tenant_id, actor_id)
     _row, result = await repo.complete_onboarding(
         session, tenant_id, actor_user_id=actor_id
     )
@@ -763,6 +814,10 @@ async def test_rco2_complete_onboarding_flips_status_and_stamps(
         platform_session, **_base_create_kwargs("RCO2-Complete", actor.id)
     )
     cleanup_tenants.append(created.tenant.id)
+    # Slice 2: complete-onboarding requires legal + billing + >=1 contact.
+    await _seed_required_sections(
+        platform_session, created.tenant.id, actor.id
+    )
 
     row, result = await repo.complete_onboarding(
         platform_session,

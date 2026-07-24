@@ -54,6 +54,15 @@ _PLATFORM_ONLY_WRITE_ROUTES: frozenset[tuple[str, str]] = frozenset({
     # audience="PLATFORM". PLATFORM-only by gate-tuple construction
     # (LD17 audience-scope coherence: no TENANT role holds .GLOBAL).
     ("PATCH", "/api/v1/roles/{role_id}"),
+    # Slice 2: client-onboarding section writes + wizard-state PATCH +
+    # complete-onboarding. All ADMIN.TENANTS.CONFIGURE.GLOBAL,
+    # audience="PLATFORM" (staff onboarding, D-12).
+    ("POST", "/api/v1/tenants/{tenant_id}/complete-onboarding"),
+    ("PUT", "/api/v1/tenants/{tenant_id}/legal-profile"),
+    ("PUT", "/api/v1/tenants/{tenant_id}/tax-registrations"),
+    ("PUT", "/api/v1/tenants/{tenant_id}/billing-profile"),
+    ("PUT", "/api/v1/tenants/{tenant_id}/contacts"),
+    ("PATCH", "/api/v1/tenants/{tenant_id}/onboarding"),
 })
 
 

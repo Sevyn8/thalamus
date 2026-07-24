@@ -271,6 +271,146 @@ class InvalidStateTransitionError(ClientError):
     code = "INVALID_STATE_TRANSITION"
 
 
+class InvalidLookupCodeError(ClientError):
+    """Raised by the onboarding section writes (Slice 2) when a
+    lookups-coded field (entity_type, registration_type, payment_terms,
+    currency, contact_type) carries a value not present as an ACTIVE row
+    in the corresponding ``core.lookups`` list.
+
+    The offending field name is in ``public_message`` (the caller sent
+    it, so naming it is not disclosure per the ClientError contract);
+    ``field``, ``value``, and ``list_name`` are placed in ``exc.context``
+    for log paths per the Q7 envelope convention.
+    """
+
+    http_status = 422
+    code = "INVALID_LOOKUP_CODE"
+
+    def __init__(
+        self,
+        *,
+        field: str,
+        value: str,
+        list_name: str,
+    ) -> None:
+        super().__init__(
+            f"Invalid value for {field}: not an active {list_name} code.",
+            field=field,
+            value=value,
+            list_name=list_name,
+        )
+        self.public_message = (
+            f"Invalid value for '{field}': not an active {list_name} code."
+        )
+
+
+class InvalidSectionKeyError(ClientError):
+    """Raised by ``PATCH /tenants/{id}/onboarding`` (Slice 2) when
+    ``current_step`` or a ``section_status`` key is not in the fixed
+    wizard-section set (company, legal, billing, contacts, documents,
+    access, review).
+
+    Names the offending field ('current_step' or 'section_status') and
+    the invalid key(s) in ``public_message``; details go to
+    ``exc.context`` per the Q7 envelope convention.
+    """
+
+    http_status = 422
+    code = "INVALID_SECTION_KEY"
+
+    def __init__(self, *, field: str, invalid: list[str]) -> None:
+        joined = ", ".join(invalid)
+        super().__init__(
+            f"Invalid section key(s) in {field}: {joined}",
+            field=field,
+            invalid=invalid,
+        )
+        self.public_message = (
+            f"Invalid section key(s) in '{field}': {joined}."
+        )
+
+
+class OnboardingIncompleteError(ClientError):
+    """Raised by ``POST /tenants/{id}/complete-onboarding`` (Slice 2)
+    when the required sections are not all present: legal profile,
+    billing profile, and at least one contact. Document completeness is
+    deliberately NOT gated in Slice 2 (documents are Slice 3).
+
+    409, consistent with the existing invalid-state error shape. The
+    missing section names are in ``public_message``; ``missing`` goes to
+    ``exc.context``.
+    """
+
+    http_status = 409
+    code = "ONBOARDING_INCOMPLETE"
+
+    def __init__(self, *, missing: list[str]) -> None:
+        joined = ", ".join(missing)
+        super().__init__(
+            f"Onboarding cannot be completed; missing sections: {joined}",
+            missing=missing,
+        )
+        self.public_message = (
+            f"Onboarding cannot be completed; missing required sections: "
+            f"{joined}."
+        )
+
+
+class OnboardingAlreadyCompletedError(ClientError):
+    """Raised by ``PATCH /tenants/{id}/onboarding`` (Slice 2) once
+    ``tenant_onboarding.completed_at`` is set: the wizard resume-state is
+    frozen after completion.
+
+    409, the same envelope shape as the other invalid-state errors.
+    Section PUTs remain allowed after completion (the ongoing edit
+    surface); only the wizard resume-state PATCH is locked.
+    """
+
+    public_message = "Onboarding is already complete; resume state is frozen."
+    http_status = 409
+    code = "ONBOARDING_ALREADY_COMPLETED"
+
+
+class OnboardingSectionNotFoundError(ClientError):
+    """Raised by the 1:1 section GETs (legal-profile, billing-profile,
+    Slice 2) when the tenant is visible but the section row has not been
+    saved yet. Distinct from ``TENANT_NOT_FOUND`` (tenant missing /
+    RLS-filtered) so the wizard can tell "no such tenant" from "section
+    not filled in yet". The section name is in ``exc.context``.
+    """
+
+    http_status = 404
+    code = "SECTION_NOT_FOUND"
+
+    def __init__(self, *, section: str) -> None:
+        super().__init__(
+            f"{section} has not been set for this tenant.",
+            section=section,
+        )
+        self.public_message = f"{section} has not been set for this tenant."
+
+
+class DuplicateSectionRowError(ClientError):
+    """Raised by the 1:N section full-replace writes (Slice 2 refinement
+    3) when the request payload contains duplicate rows before any DB
+    write: duplicate (registration_type, registration_number) tuples for
+    tax registrations, or exact-duplicate contact rows. Names the
+    duplicate in ``public_message``; ``field`` + ``value`` in
+    ``exc.context``.
+    """
+
+    http_status = 422
+    code = "DUPLICATE_SECTION_ROW"
+
+    def __init__(self, *, field: str, value: str) -> None:
+        super().__init__(
+            f"Duplicate row in {field}: {value}",
+            field=field,
+            value=value,
+        )
+        self.public_message = f"Duplicate row in '{field}': {value}."
+
+
 class EmptyPatchError(ClientError):
     """Raised by ``PATCH /tenants/{id}`` when the request body has no
     fields set.

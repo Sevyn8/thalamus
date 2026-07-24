@@ -61,6 +61,7 @@ from admin_backend.config import get_settings
 from admin_backend.errors import (
     DuplicateTenantNameError,
     InvalidTenantNameForSlugError,
+    OnboardingIncompleteError,
 )
 from admin_backend.models.audit_log import AuditResultType
 from admin_backend.models.lookup import Lookup
@@ -1075,6 +1076,8 @@ class TenantsRepo:
         tenant_id: UUID,
         *,
         actor_user_id: UUID,
+        auth: AuthContext | None = None,
+        request_id: UUID | None = None,
     ) -> tuple[TenantDetailRow | None, TransitionResult]:
         """Complete onboarding: ONBOARDING -> TRIAL, atomically stamping
         ``tenant_onboarding.completed_*``.
@@ -1086,16 +1089,19 @@ class TenantsRepo:
             ``_TRANSITION_ALLOWED_SOURCES['TRIAL']``).
           - ``(row, OK)`` after the status flip + completion stamp.
 
+        Section gating (Slice 2 item 6): raises ``OnboardingIncompleteError``
+        (409) if the legal profile, billing profile, or at least one
+        contact is missing. Document completeness is deliberately NOT
+        gated here (documents are Slice 3). The ONBOARDING-source rule is
+        checked first, so a non-ONBOARDING tenant still gets INVALID_STATE.
+
         The tenants status flip and the ``tenant_onboarding`` stamp run in
         the request transaction, so a failure of either leaves no partial
         state. The 1:1 ``tenant_onboarding`` row was provisioned at tenant
         creation, so the UPDATE always targets an existing row.
         SELECT FOR UPDATE locks the tenants row against a concurrent
-        transition.
-
-        No audit-log emission in this slice (schema + status change +
-        endpoint only); wiring complete-onboarding into the audit
-        subsystem is a follow-up.
+        transition. Emits one COMPLETE_ONBOARDING audit event on success
+        (Slice 2 item 5); ``auth`` + ``request_id`` are both-or-neither.
         """
         schema = get_settings().db_schema
 
@@ -1111,6 +1117,33 @@ class TenantsRepo:
             return None, TransitionResult.NOT_FOUND
         if current.status not in _TRANSITION_ALLOWED_SOURCES["TRIAL"]:
             return None, TransitionResult.INVALID_STATE
+
+        # Section gating: legal profile + billing profile + >=1 contact.
+        presence = (
+            await session.execute(
+                text(
+                    f"""
+                    SELECT
+                      EXISTS(SELECT 1 FROM {schema}.tenant_legal_profile
+                             WHERE tenant_id = :tenant_id) AS legal,
+                      EXISTS(SELECT 1 FROM {schema}.tenant_billing_profile
+                             WHERE tenant_id = :tenant_id) AS billing,
+                      EXISTS(SELECT 1 FROM {schema}.tenant_contacts
+                             WHERE tenant_id = :tenant_id) AS contacts
+                    """
+                ),
+                {"tenant_id": tenant_id},
+            )
+        ).one()
+        missing: list[str] = []
+        if not presence.legal:
+            missing.append("legal_profile")
+        if not presence.billing:
+            missing.append("billing_profile")
+        if not presence.contacts:
+            missing.append("contacts")
+        if missing:
+            raise OnboardingIncompleteError(missing=missing)
 
         await session.execute(
             text(
@@ -1140,4 +1173,34 @@ class TenantsRepo:
         # aggregate-shaped read returns the fresh status.
         session.expire_all()
         result_row = await self.get_by_id_with_aggregates(session, tenant_id)
+
+        # Slice 2 item 5: one COMPLETE_ONBOARDING success audit event.
+        if (
+            auth is not None
+            and request_id is not None
+            and result_row is not None
+        ):
+            tenant_name_now = result_row.tenant.name
+            await emit_audit_event(
+                session,
+                auth=auth,
+                action="COMPLETE_ONBOARDING",
+                resource_type="TENANT",
+                resource_id=tenant_id,
+                resource_label=tenant_name_now,
+                result_type=AuditResultType.SUCCESS,
+                details=build_success_details_for_transition(
+                    before_status="ONBOARDING",
+                    after_status="TRIAL",
+                ),
+                tenant_id=tenant_id,
+                tenant_name=tenant_name_now,
+                request_id=request_id,
+                route_to_platform=False,
+            )
+        elif (auth is None) != (request_id is None):
+            raise ValueError(
+                "auth and request_id must be provided together"
+            )
+
         return result_row, TransitionResult.OK

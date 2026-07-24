@@ -131,13 +131,21 @@ async def cleanup_tenants_router(
             )
             # Slice 1: POST /tenants now provisions a 1:1 tenant_onboarding
             # row (flag 5b); its FK back to tenants is ON DELETE RESTRICT.
-            await session.execute(
-                text(
-                    f"DELETE FROM {schema}.tenant_onboarding "
-                    "WHERE tenant_id = ANY(:ids)"
-                ),
-                {"ids": created},
-            )
+            # Slice 2: complete-onboarding setup seeds legal / billing /
+            # contact section rows; all FK ON DELETE RESTRICT.
+            for _t in (
+                "tenant_legal_profile",
+                "tenant_billing_profile",
+                "tenant_contacts",
+                "tenant_onboarding",
+            ):
+                await session.execute(
+                    text(
+                        f"DELETE FROM {schema}.{_t} "
+                        "WHERE tenant_id = ANY(:ids)"
+                    ),
+                    {"ids": created},
+                )
             await session.execute(
                 text(f"DELETE FROM {schema}.tenants WHERE id = ANY(:ids)"),
                 {"ids": created},
@@ -197,13 +205,44 @@ def _valid_create_body(name: str) -> dict[str, Any]:
     }
 
 
+_LEGAL_BODY = {
+    "legal_entity_name": "Acme Retail Private Limited",
+    "entity_type": "PRIVATE_LIMITED",
+}
+_BILLING_BODY = {"payment_terms": "NET_30", "currency": "INR"}
+_CONTACT_BODY = {"items": [{"contact_type": "PRIMARY", "name": "Dana Ops"}]}
+
+
+def _seed_required_sections(app_client: Any, jwt: str, tenant_id: UUID) -> None:
+    """PUT legal profile + billing profile + one contact so
+    complete-onboarding passes the Slice 2 section gate.
+
+    Slice 2 gates ONBOARDING -> TRIAL on a legal profile, a billing
+    profile, and at least one contact being present.
+    """
+    for path, body in (
+        ("legal-profile", _LEGAL_BODY),
+        ("billing-profile", _BILLING_BODY),
+        ("contacts", _CONTACT_BODY),
+    ):
+        resp = app_client.put(
+            f"/api/v1/tenants/{tenant_id}/{path}",
+            json=body,
+            headers=_auth(jwt),
+        )
+        assert resp.status_code == 200, resp.text
+
+
 def _complete_onboarding(app_client: Any, jwt: str, tenant_id: UUID) -> None:
     """Move a freshly-created ONBOARDING tenant to TRIAL.
 
     Slice 1: tenants now land in ONBOARDING at create (the DDL default),
     so transition tests that need a TRIAL / ACTIVE source first drive the
-    tenant through complete-onboarding. Asserts the transition succeeds.
+    tenant through complete-onboarding. Slice 2: complete-onboarding now
+    requires legal + billing + >=1 contact, so seed those first. Asserts
+    the transition succeeds.
     """
+    _seed_required_sections(app_client, jwt, tenant_id)
     resp = app_client.post(
         f"/api/v1/tenants/{tenant_id}/complete-onboarding",
         headers=_auth(jwt),
@@ -1070,6 +1109,8 @@ async def test_co1_complete_onboarding_moves_onboarding_to_trial(
     cleanup_tenants_router.append(tenant_id)
     assert create.json()["status"] == "ONBOARDING"
 
+    # Slice 2: complete-onboarding requires legal + billing + >=1 contact.
+    _seed_required_sections(app_client, super_admin_jwt, tenant_id)
     resp = app_client.post(
         f"/api/v1/tenants/{tenant_id}/complete-onboarding",
         headers=_auth(super_admin_jwt),
@@ -1155,6 +1196,8 @@ async def test_co5_platform_admin_can_complete_onboarding(
     cleanup_assignments.append(pa.id)
     pa_jwt = _platform_jwt_for_user(settings, pa.id)
 
+    # Slice 2: complete-onboarding requires legal + billing + >=1 contact.
+    _seed_required_sections(app_client, super_admin_jwt, tenant_id)
     resp = app_client.post(
         f"/api/v1/tenants/{tenant_id}/complete-onboarding",
         headers=_auth(pa_jwt),

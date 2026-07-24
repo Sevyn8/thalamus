@@ -83,6 +83,25 @@ def _valid_create_body(name: str) -> dict[str, Any]:
     }
 
 
+def _seed_required_sections(app_client: Any, jwt: str, tenant_id: UUID) -> None:
+    """PUT legal profile + billing profile + one contact so
+    complete-onboarding passes the Slice 2 section gate."""
+    for path, body in (
+        ("legal-profile",
+         {"legal_entity_name": "Acme Retail Private Limited",
+          "entity_type": "PRIVATE_LIMITED"}),
+        ("billing-profile", {"payment_terms": "NET_30", "currency": "INR"}),
+        ("contacts",
+         {"items": [{"contact_type": "PRIMARY", "name": "Dana Ops"}]}),
+    ):
+        resp = app_client.put(
+            f"/api/v1/tenants/{tenant_id}/{path}",
+            json=body,
+            headers=_auth(jwt),
+        )
+        assert resp.status_code == 200, resp.text
+
+
 @pytest_asyncio.fixture
 async def cleanup_tenants_for_audit(
     session_factory: async_sessionmaker[AsyncSession],
@@ -106,6 +125,9 @@ async def cleanup_tenants_for_audit(
                 "platform_activity_audit_logs",
                 "tenant_module_access",
                 "org_nodes",
+                "tenant_legal_profile",
+                "tenant_billing_profile",
+                "tenant_contacts",
                 "tenant_onboarding",
             ):
                 await session.execute(
@@ -348,6 +370,8 @@ async def test_as5_suspend_success_emits_suspend_action_with_status_diff(
     # Slice 1: tenants land ONBOARDING at create; reach TRIAL before
     # suspend. complete-onboarding emits no audit row (out of scope), so
     # the suspend-row assertions below are unaffected.
+    # Slice 2: complete-onboarding requires legal + billing + >=1 contact.
+    _seed_required_sections(app_client, super_admin_jwt, tenant_id)
     complete = app_client.post(
         f"/api/v1/tenants/{tenant_id}/complete-onboarding",
         headers=_auth(super_admin_jwt),
@@ -396,6 +420,8 @@ async def test_as6_activate_success_emits_activate_action_with_status_diff(
     cleanup_tenants_for_audit.append(tenant_id)
 
     # Slice 1: reach TRIAL (via complete-onboarding) before suspend.
+    # Slice 2: complete-onboarding requires legal + billing + >=1 contact.
+    _seed_required_sections(app_client, super_admin_jwt, tenant_id)
     complete = app_client.post(
         f"/api/v1/tenants/{tenant_id}/complete-onboarding",
         headers=_auth(super_admin_jwt),

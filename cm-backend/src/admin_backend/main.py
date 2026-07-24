@@ -56,6 +56,7 @@ from admin_backend.routers.v1 import dashboard as dashboard_router
 from admin_backend.routers.v1 import lookups as lookups_router
 from admin_backend.routers.v1 import me as me_router
 from admin_backend.routers.v1 import modules_access as modules_access_router
+from admin_backend.routers.v1 import onboarding as onboarding_router
 from admin_backend.routers.v1 import org_tree as org_tree_router
 from admin_backend.routers.v1 import platform_users as platform_users_router
 from admin_backend.routers.v1 import rbac as rbac_router
@@ -242,6 +243,9 @@ def create_app() -> FastAPI:
 
     app.include_router(
         tenants_router.router, prefix=settings.api_prefix
+    )
+    app.include_router(
+        onboarding_router.router, prefix=settings.api_prefix
     )
     app.include_router(
         lookups_router.router, prefix=settings.api_prefix

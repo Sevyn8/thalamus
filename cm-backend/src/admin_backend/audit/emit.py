@@ -138,6 +138,40 @@ AUDITED_ROUTES: dict[tuple[str, str], tuple[str, str, bool]] = {
         "STORE",
         False,
     ),
+    # Slice 2 : client-onboarding section writes + wizard state +
+    # complete-onboarding. All tenant-scoped under /tenants/{tenant_id};
+    # resource_type TENANT (the tenant is the addressable resource; the
+    # 1:1 / 1:N sections have no path id), route_to_platform=False.
+    ("POST", "/api/v1/tenants/{tenant_id}/complete-onboarding"): (
+        "COMPLETE_ONBOARDING",
+        "TENANT",
+        False,
+    ),
+    ("PUT", "/api/v1/tenants/{tenant_id}/legal-profile"): (
+        "UPSERT_LEGAL_PROFILE",
+        "TENANT",
+        False,
+    ),
+    ("PUT", "/api/v1/tenants/{tenant_id}/tax-registrations"): (
+        "REPLACE_TAX_REGISTRATIONS",
+        "TENANT",
+        False,
+    ),
+    ("PUT", "/api/v1/tenants/{tenant_id}/billing-profile"): (
+        "UPSERT_BILLING_PROFILE",
+        "TENANT",
+        False,
+    ),
+    ("PUT", "/api/v1/tenants/{tenant_id}/contacts"): (
+        "REPLACE_CONTACTS",
+        "TENANT",
+        False,
+    ),
+    ("PATCH", "/api/v1/tenants/{tenant_id}/onboarding"): (
+        "UPDATE_ONBOARDING",
+        "TENANT",
+        False,
+    ),
 }
 
 
@@ -175,6 +209,14 @@ _ACTION_LABELS: dict[str, str] = {
     "ACCEPT_INVITATION": "Accepted invitation",
     # Slice 2d-send (D-41): staff sends the invitation (sets invited_at).
     "SEND_INVITATION": "Sent invitation",
+    # Slice 2 : client-onboarding section writes + wizard state +
+    # complete-onboarding.
+    "COMPLETE_ONBOARDING": "Completed onboarding",
+    "UPSERT_LEGAL_PROFILE": "Saved legal profile",
+    "REPLACE_TAX_REGISTRATIONS": "Saved tax registrations",
+    "UPSERT_BILLING_PROFILE": "Saved billing profile",
+    "REPLACE_CONTACTS": "Saved contacts",
+    "UPDATE_ONBOARDING": "Updated onboarding state",
 }
 
 
