@@ -174,3 +174,15 @@ variable "secret_sendgrid_api_key" {
   description = "Secret Manager secret name holding the SendGrid API key."
   default     = "cm-sendgrid-api-key"
 }
+
+variable "gcs_documents_bucket" {
+  type        = string
+  description = "GCS_DOCUMENTS_BUCKET. Tenant onboarding documents bucket. Lazy; empty omits the env var."
+  default     = ""
+}
+
+variable "gcs_signer_service_account_email" {
+  type        = string
+  description = "GCS_SIGNER_SERVICE_ACCOUNT_EMAIL. SA used for keyless V4 signing. Lazy; empty omits the env var."
+  default     = ""
+}

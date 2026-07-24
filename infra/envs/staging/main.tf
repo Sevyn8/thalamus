@@ -57,7 +57,9 @@ module "artifact_registry" {
 # cm-auth0-mgmt-client-secret, cm-sendgrid-api-key), referenced by name.
 
 module "cm_service" {
-  source = "../../modules/cloud-run-service-cm"
+  gcs_documents_bucket             = module.cm_documents_bucket.bucket_name
+  gcs_signer_service_account_email = "cm-backend-sa@sevyn8-thalamus-staging.iam.gserviceaccount.com"
+  source                           = "../../modules/cloud-run-service-cm"
 
   project_id       = var.project_id
   region           = var.region

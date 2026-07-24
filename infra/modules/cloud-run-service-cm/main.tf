@@ -75,14 +75,14 @@ locals {
   # Plain env, always set. Names are CM's EXACT config.py field names (upper-cased;
   # pydantic-settings is case_sensitive=False). See config.py:75-154.
   base_env = {
-    DB_SCHEMA           = var.db_schema           # config.py:87  db_schema
-    AUTH_CLIENT_MODE    = "AUTH0"                  # config.py:90  auth_client_mode
-    JWT_ISSUER          = var.jwt_issuer           # config.py:92  jwt_issuer
-    JWT_AUDIENCE        = var.jwt_audience         # config.py:92  jwt_audience
-    AUTH0_JWKS_URL      = var.auth0_jwks_url       # config.py:102 auth0_jwks_url
-    APP_REGION          = var.app_region           # config.py:135 app_region (EU|US|LOCAL)
-    ENVIRONMENT         = var.environment          # config.py:136 environment
-    LOG_LEVEL           = var.log_level            # config.py:137 log_level
+    DB_SCHEMA            = var.db_schema            # config.py:87  db_schema
+    AUTH_CLIENT_MODE     = "AUTH0"                  # config.py:90  auth_client_mode
+    JWT_ISSUER           = var.jwt_issuer           # config.py:92  jwt_issuer
+    JWT_AUDIENCE         = var.jwt_audience         # config.py:92  jwt_audience
+    AUTH0_JWKS_URL       = var.auth0_jwks_url       # config.py:102 auth0_jwks_url
+    APP_REGION           = var.app_region           # config.py:135 app_region (EU|US|LOCAL)
+    ENVIRONMENT          = var.environment          # config.py:136 environment
+    LOG_LEVEL            = var.log_level            # config.py:137 log_level
     SENDGRID_FROM_EMAIL  = var.sendgrid_from_email  # config.py:125 sendgrid_from_email
     CORS_ALLOWED_ORIGINS = var.cors_allowed_origins # config.py:141 cors_allowed_origins
   }
@@ -91,9 +91,11 @@ locals {
   # `str | None` fields resolve to None (not ""), matching the lazy-optional
   # posture the Auth0 Management / SendGrid clients expect.
   optional_env = {
-    AUTH0_MGMT_CLIENT_ID     = var.auth0_mgmt_client_id     # config.py:115 auth0_mgmt_client_id
-    AUTH0_MGMT_DB_CONNECTION = var.auth0_mgmt_db_connection # config.py:132 auth0_mgmt_db_connection
-    AUTH0_TICKET_RESULT_URL  = var.auth0_ticket_result_url  # config.py:126 auth0_ticket_result_url
+    AUTH0_MGMT_CLIENT_ID             = var.auth0_mgmt_client_id             # config.py:115 auth0_mgmt_client_id
+    AUTH0_MGMT_DB_CONNECTION         = var.auth0_mgmt_db_connection         # config.py:132 auth0_mgmt_db_connection
+    AUTH0_TICKET_RESULT_URL          = var.auth0_ticket_result_url          # config.py:126 auth0_ticket_result_url
+    GCS_DOCUMENTS_BUCKET             = var.gcs_documents_bucket             # config.py gcs_documents_bucket
+    GCS_SIGNER_SERVICE_ACCOUNT_EMAIL = var.gcs_signer_service_account_email # config.py gcs_signer_service_account_email
   }
 
   plain_env = merge(
