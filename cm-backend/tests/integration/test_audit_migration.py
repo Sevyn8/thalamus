@@ -59,10 +59,10 @@ async def test_at_n1_new_revision_is_at_alembic_head(
     """LOAD-BEARING: the migration chain is applied to the current head.
 
     The head advances whenever a new migration lands on top; this
-    constant is bumped in lockstep. Slice 1 (client onboarding) added
-    two migrations, so the head is now ``e5a2c8b13d40`` (the onboarding
-    tables + lookups migration), which is a linear descendant of the
-    audit-enrichment ``7a3c8e9d2f5b`` revision.
+    constant is bumped in lockstep. Slice 3 (client-onboarding documents)
+    added ``b755e9d4081c`` (the tenant_documents verification-state
+    migration) on top of Slice 1's ``e5a2c8b13d40``, so the head is now
+    ``b755e9d4081c``.
     """
     schema = get_settings().db_schema
     async for session in get_tenant_session(platform_auth, session_factory):
@@ -70,7 +70,7 @@ async def test_at_n1_new_revision_is_at_alembic_head(
             text(f"SELECT version_num FROM {schema}.alembic_version")
         )
         head = result.scalar_one()
-    assert head == "e5a2c8b13d40"
+    assert head == "b755e9d4081c"
 
 
 # ---------------------------------------------------------------------------

@@ -35,6 +35,7 @@ from admin_backend.auth.auth0_management import Auth0ManagementClient
 from admin_backend.auth.protocol import AuthClient
 from admin_backend.auth.stub import StubAuthClient
 from admin_backend.email_sender import SendGridEmailSender
+from admin_backend.gcs import GcsSignedUrlGenerator, build_gcs_signer
 from admin_backend.config import get_settings
 from admin_backend.db.engine import (
     assert_app_role_no_bypassrls,
@@ -53,6 +54,7 @@ from admin_backend.middleware.audit_context import AuditContextMiddleware
 from admin_backend.middleware.auth import AuthMiddleware
 from admin_backend.routers.v1 import audit as audit_router
 from admin_backend.routers.v1 import dashboard as dashboard_router
+from admin_backend.routers.v1 import documents as documents_router
 from admin_backend.routers.v1 import lookups as lookups_router
 from admin_backend.routers.v1 import me as me_router
 from admin_backend.routers.v1 import modules_access as modules_access_router
@@ -133,6 +135,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if settings.sendgrid_api_key:
         email_sender = SendGridEmailSender(settings)
     app.state.email_sender = email_sender
+
+    # GCS signed-URL generator (Slice 3 documents). Constructed ONCE here,
+    # only when storage is FULLY configured (both gcs_documents_bucket AND
+    # gcs_signer_service_account_email; see build_gcs_signer). Unset leaves
+    # it None, so the document endpoints return 503
+    # DOCUMENT_STORAGE_UNAVAILABLE, never a raw GCS/signing exception. On
+    # Cloud Run signing is keyless IAM signBlob (runtime SA +
+    # serviceAccountTokenCreator on itself).
+    gcs_signer: GcsSignedUrlGenerator | None = build_gcs_signer(settings)
+    app.state.gcs_signer = gcs_signer
 
     yield
 
@@ -246,6 +258,9 @@ def create_app() -> FastAPI:
     )
     app.include_router(
         onboarding_router.router, prefix=settings.api_prefix
+    )
+    app.include_router(
+        documents_router.router, prefix=settings.api_prefix
     )
     app.include_router(
         lookups_router.router, prefix=settings.api_prefix

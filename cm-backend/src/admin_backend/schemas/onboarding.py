@@ -178,6 +178,22 @@ class ContactsReplaceRequest(BaseModel):
 ProvisioningStatus = Literal["TRUE", "FALSE", "UNKNOWN"]
 
 
+class OnboardingDocumentsBlock(BaseModel):
+    """Slice 3: the documents entry in ``sections_present`` is a block of
+    verification-status counts (not a bare bool). ``all_verified`` is the
+    review-gate signal the wizard consumes in Slice 6: true only when at
+    least one document exists AND none are PENDING_REVIEW or REJECTED
+    (i.e. every document is VERIFIED)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    total: int
+    pending_review: int
+    verified: int
+    rejected: int
+    all_verified: bool
+
+
 class OnboardingSectionsPresent(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -185,7 +201,9 @@ class OnboardingSectionsPresent(BaseModel):
     tax: bool
     billing: bool
     contacts: bool
-    documents: bool
+    # Slice 3: documents becomes a counts block (wire-contract change from
+    # the Slice-2 bool). complete-onboarding gating is unchanged.
+    documents: OnboardingDocumentsBlock
 
 
 class OnboardingProvisioning(BaseModel):

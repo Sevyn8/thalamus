@@ -454,6 +454,31 @@ async def make_tenant(
 
 
 @pytest_asyncio.fixture
+async def cleanup_documents(
+    session_factory: async_sessionmaker[AsyncSession],
+    platform_auth: AuthContext,
+) -> AsyncIterator[list[UUID]]:
+    """Slice 3: delete tenant_documents rows for tracked tenants at
+    teardown so the ``make_tenant`` teardown's tenant DELETE (FK
+    ON DELETE RESTRICT) succeeds. List ``make_tenant`` BEFORE this
+    fixture in test signatures so this tears down first."""
+    schema = get_settings().db_schema
+    tracked: list[UUID] = []
+    yield tracked
+    if tracked:
+        async for session in get_tenant_session(
+            platform_auth, session_factory
+        ):
+            await session.execute(
+                text(
+                    f"DELETE FROM {schema}.tenant_documents "
+                    "WHERE tenant_id = ANY(:ids)"
+                ),
+                {"ids": tracked},
+            )
+
+
+@pytest_asyncio.fixture
 async def platform_session(
     session_factory: async_sessionmaker[AsyncSession],
     platform_auth: AuthContext,

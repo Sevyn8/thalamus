@@ -73,6 +73,47 @@ module "cm_service" {
   auth0_ticket_result_url  = var.cm_auth0_ticket_result_url
 }
 
+# --- Wave 2: CM tenant-documents bucket (Slice 3) ---
+#
+# Bucket for CM tenant onboarding documents; uploads/downloads go direct to
+# GCS via V4 signed URLs minted by CM. IAM is granted below to the cm runtime
+# SA (module.cm_service.service_account_email): objectAdmin on the bucket, and
+# serviceAccountTokenCreator on itself so keyless V4 signing (IAM signBlob)
+# works from Cloud Run (no SA key file).
+module "cm_documents_bucket" {
+  source = "../../modules/gcs-tenant-documents"
+
+  project_id      = var.project_id
+  region          = var.region
+  bucket_name     = var.cm_documents_bucket_name
+  frontend_origin = var.cm_documents_frontend_origin
+}
+
+# CM runtime SA can read/write objects in the documents bucket.
+resource "google_storage_bucket_iam_member" "cm_documents_object_admin" {
+  bucket = module.cm_documents_bucket.bucket_name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${module.cm_service.service_account_email}"
+}
+
+# CM runtime SA can sign blobs AS ITSELF (V4 signed URLs via IAM signBlob).
+# Constructed from the SA email (exported by the cm module) so this needs no
+# edit to cloud-run-service-cm.
+resource "google_service_account_iam_member" "cm_documents_token_creator" {
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${module.cm_service.service_account_email}"
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:${module.cm_service.service_account_email}"
+}
+
+# TODO(operator, Slice 3): wire the bucket name into the CM container env as
+# GCS_DOCUMENTS_BUCKET (and optionally GCS_SIGNER_SERVICE_ACCOUNT_EMAIL =
+# module.cm_service.service_account_email). The cloud-run-service-cm module
+# builds its env from a FIXED set of typed variables (no generic env map), so
+# this requires a two-line change to that module (a new gcs_documents_bucket
+# variable + an optional_env entry). That module is intentionally NOT edited in
+# this slice; the exact diff is in the Slice-3 report. Until applied, CM boots
+# fine but the document endpoints return 503 DOCUMENT_STORAGE_UNAVAILABLE.
+
 # --- Wave 3: DIS (dis-ui-server) durable infra + Cloud Run service ---
 #
 # dis-ui-server needs a bronze bucket (GCS_BUCKET_BRONZE) and the csv.received

@@ -131,6 +131,29 @@ class Settings(BaseSettings):
     # consistent with the auth0_mgmt_* creds posture. Unused in STUB mode.
     auth0_mgmt_db_connection: str | None = None
 
+    # GCS tenant-documents storage (Slice 3). The bucket that holds
+    # tenant onboarding documents; signed PUT/GET URLs are minted against
+    # it. Left permissive here (None) on purpose, matching the
+    # sendgrid_api_key / auth0_mgmt_* posture: it is NOT required merely
+    # because AUTH_CLIENT_MODE=AUTH0, and CM boots without it. The
+    # document endpoints that mint signed URLs require it at request time,
+    # raising DocumentStorageUnavailableError (503) if unset. Unused in
+    # STUB mode unless document endpoints are exercised.
+    gcs_documents_bucket: str | None = None
+    # Runtime service-account email used for keyless V4 signing on Cloud
+    # Run (IAM signBlob). REQUIRED alongside gcs_documents_bucket for the
+    # production signer to be constructed (build_gcs_signer): the Cloud Run
+    # metadata credential cannot self-sign a V4 URL, so the signer SA email
+    # must be passed to generate_signed_url. When either setting is unset
+    # the signer is None and the document endpoints return 503
+    # DOCUMENT_STORAGE_UNAVAILABLE. (The offline unit-test path injects a
+    # private-key credential and does not need this.)
+    gcs_signer_service_account_email: str | None = None
+    # Signed-URL lifetimes. Upload URLs are longer (the operator selects a
+    # file, then the browser PUTs); download URLs are short (view/redirect).
+    gcs_upload_url_expiry_seconds: int = 900
+    gcs_download_url_expiry_seconds: int = 300
+
     # Application
     app_region: Literal["EU", "US", "LOCAL"] = "LOCAL"
     environment: Literal["local", "development", "staging", "production"] = "local"

@@ -474,7 +474,12 @@ async def test_ob1_get_shape_and_auth0_unknown(
     assert body["provisioning"]["admin_invited"] == "FALSE"
     assert body["sections_present"] == {
         "legal": False, "tax": False, "billing": False,
-        "contacts": False, "documents": False,
+        "contacts": False,
+        # Slice 3: documents is a verification-status counts block.
+        "documents": {
+            "total": 0, "pending_review": 0, "verified": 0,
+            "rejected": 0, "all_verified": False,
+        },
     }
     assert body["current_step"] is None
     assert body["completed_at"] is None

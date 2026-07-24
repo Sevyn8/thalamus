@@ -151,6 +151,18 @@ variable "cm_auth0_ticket_result_url" {
   default     = ""
 }
 
+variable "cm_documents_bucket_name" {
+  type        = string
+  description = "Globally-unique GCS bucket name for CM tenant onboarding documents (Slice 3). Feeds CM's GCS_DOCUMENTS_BUCKET once the cm module gains that env var (see the TODO in main.tf)."
+  default     = "sevyn8-thalamus-cm-documents-staging"
+}
+
+variable "cm_documents_frontend_origin" {
+  type        = string
+  description = "Exact origin allowed to PUT documents via signed URL from the browser (CM frontend origin; scheme+host, no trailing slash)."
+  default     = "https://cm-frontend-697546531605.asia-south1.run.app"
+}
+
 ###############################################################################
 # Wave 3: DIS (dis-ui-server) Cloud Run service
 ###############################################################################

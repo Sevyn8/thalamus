@@ -172,6 +172,33 @@ AUDITED_ROUTES: dict[tuple[str, str], tuple[str, str, bool]] = {
         "TENANT",
         False,
     ),
+    # Slice 3 : client-onboarding document writes. Tenant-scoped under
+    # /tenants/{tenant_id}/documents; resource_type TENANT (the tenant is
+    # the addressable resource, mirroring the Slice-2 sections),
+    # route_to_platform=False. The GET reads (list, download-url) are not
+    # audited. upload-url has no path document_id; verify/reject/delete
+    # carry {document_id} but still record resource_type=TENANT so the
+    # existing _extract_tenant failure-path extractor applies unchanged.
+    ("POST", "/api/v1/tenants/{tenant_id}/documents/upload-url"): (
+        "CREATE_DOCUMENT",
+        "TENANT",
+        False,
+    ),
+    ("POST", "/api/v1/tenants/{tenant_id}/documents/{document_id}/verify"): (
+        "VERIFY_DOCUMENT",
+        "TENANT",
+        False,
+    ),
+    ("POST", "/api/v1/tenants/{tenant_id}/documents/{document_id}/reject"): (
+        "REJECT_DOCUMENT",
+        "TENANT",
+        False,
+    ),
+    ("DELETE", "/api/v1/tenants/{tenant_id}/documents/{document_id}"): (
+        "DELETE_DOCUMENT",
+        "TENANT",
+        False,
+    ),
 }
 
 
@@ -217,6 +244,11 @@ _ACTION_LABELS: dict[str, str] = {
     "UPSERT_BILLING_PROFILE": "Saved billing profile",
     "REPLACE_CONTACTS": "Saved contacts",
     "UPDATE_ONBOARDING": "Updated onboarding state",
+    # Slice 3 : client-onboarding document writes.
+    "CREATE_DOCUMENT": "Uploaded document",
+    "VERIFY_DOCUMENT": "Verified document",
+    "REJECT_DOCUMENT": "Rejected document",
+    "DELETE_DOCUMENT": "Deleted document",
 }
 
 

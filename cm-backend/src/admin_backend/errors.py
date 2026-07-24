@@ -411,6 +411,92 @@ class DuplicateSectionRowError(ClientError):
         self.public_message = f"Duplicate row in '{field}': {value}."
 
 
+class InvalidContentTypeError(ClientError):
+    """Raised by ``POST /documents/upload-url`` (Slice 3) when the
+    requested ``content_type`` is not in the upload allowlist
+    (application/pdf, image/png, image/jpeg). The caller sent it, so the
+    value + allowed set are named; also placed in ``exc.context``.
+    """
+
+    http_status = 422
+    code = "INVALID_CONTENT_TYPE"
+
+    def __init__(self, *, value: str, allowed: list[str]) -> None:
+        super().__init__(
+            f"content_type {value!r} is not allowed",
+            field="content_type",
+            value=value,
+            allowed=allowed,
+        )
+        self.public_message = (
+            f"content_type '{value}' is not allowed. "
+            f"Allowed: {', '.join(allowed)}."
+        )
+
+
+class FileTooLargeError(ClientError):
+    """Raised by ``POST /documents/upload-url`` (Slice 3) when the
+    requested ``file_size_bytes`` exceeds the maximum. The size + limit
+    are named (the caller sent them); also in ``exc.context``.
+    """
+
+    http_status = 422
+    code = "FILE_TOO_LARGE"
+
+    def __init__(self, *, size: int, max_size: int) -> None:
+        super().__init__(
+            f"file_size_bytes {size} exceeds maximum {max_size}",
+            field="file_size_bytes",
+            value=size,
+            max_size=max_size,
+        )
+        self.public_message = (
+            f"file_size_bytes {size} exceeds the maximum of {max_size} bytes."
+        )
+
+
+class DocumentNotFoundError(ClientError):
+    """Raised by the per-document endpoints (Slice 3) when the document
+    id is not visible for this tenant (missing or RLS-filtered, or the
+    id belongs to another tenant). 404 per D-17 (RLS-as-404): does not
+    disclose existence across the tenant boundary. ``document_id`` +
+    ``tenant_id`` in ``exc.context``.
+    """
+
+    http_status = 404
+    code = "DOCUMENT_NOT_FOUND"
+
+    def __init__(self, *, document_id: str, tenant_id: str) -> None:
+        super().__init__(
+            f"Document {document_id} not visible for tenant {tenant_id}",
+            document_id=document_id,
+            tenant_id=tenant_id,
+        )
+        self.public_message = "Document not found."
+
+
+class InvalidDocumentStateError(ClientError):
+    """Raised by verify / reject / delete (Slice 3) when the document's
+    current ``verification_status`` does not permit the requested action
+    (e.g. verify on an already-VERIFIED row, delete on a non-PENDING_REVIEW
+    row). 409, mirroring ``InvalidStateTransitionError``. Current status +
+    action are named; also in ``exc.context``.
+    """
+
+    http_status = 409
+    code = "INVALID_DOCUMENT_STATE"
+
+    def __init__(self, *, current_status: str, action: str) -> None:
+        super().__init__(
+            f"cannot {action} a document in status {current_status}",
+            current_status=current_status,
+            action=action,
+        )
+        self.public_message = (
+            f"Cannot {action} a document while it is {current_status}."
+        )
+
+
 class EmptyPatchError(ClientError):
     """Raised by ``PATCH /tenants/{id}`` when the request body has no
     fields set.
@@ -960,6 +1046,25 @@ class ProvisioningUnavailableError(AdminBackendError):
     public_message = "Auth0 provisioning is not available in this environment"
     http_status = 503
     code = "PROVISIONING_UNAVAILABLE"
+
+
+class DocumentStorageUnavailableError(AdminBackendError):
+    """A document endpoint that mints a signed GCS URL was invoked but
+    document storage is not configured in this process (Slice 3).
+
+    Raised when the GCS signer was not constructed (``gcs_documents_bucket``
+    unset), so upload-url / download-url cannot mint a signed URL. Mirrors
+    ``ProvisioningUnavailableError`` exactly: it is neither the caller's
+    fault (not a ClientError) nor an unexpected server fault (not the
+    generic INTERNAL_ERROR of ServerError), but an operational-capability
+    signal, so it carries its own 503 status and a specific code rather
+    than a generic 500 or a raw GCS exception. Subclassed directly off
+    AdminBackendError for that reason.
+    """
+
+    public_message = "Document storage is not available in this environment"
+    http_status = 503
+    code = "DOCUMENT_STORAGE_UNAVAILABLE"
 
 
 class UserNotProvisionedError(AdminBackendError):

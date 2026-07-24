@@ -63,6 +63,14 @@ _PLATFORM_ONLY_WRITE_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("PUT", "/api/v1/tenants/{tenant_id}/billing-profile"),
     ("PUT", "/api/v1/tenants/{tenant_id}/contacts"),
     ("PATCH", "/api/v1/tenants/{tenant_id}/onboarding"),
+    # Slice 3: client-onboarding document writes. All
+    # ADMIN.TENANTS.CONFIGURE.GLOBAL, audience="PLATFORM". The GET reads
+    # (list, download-url) are gated but not writes; they are covered by
+    # the broader gate-discipline test, not this platform-only-writes set.
+    ("POST", "/api/v1/tenants/{tenant_id}/documents/upload-url"),
+    ("POST", "/api/v1/tenants/{tenant_id}/documents/{document_id}/verify"),
+    ("POST", "/api/v1/tenants/{tenant_id}/documents/{document_id}/reject"),
+    ("DELETE", "/api/v1/tenants/{tenant_id}/documents/{document_id}"),
 })
 
 

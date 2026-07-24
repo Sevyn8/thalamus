@@ -518,8 +518,6 @@ class OnboardingRepo:
                              WHERE tenant_id = :tid) AS billing,
                       EXISTS(SELECT 1 FROM {schema}.tenant_contacts
                              WHERE tenant_id = :tid) AS contacts,
-                      EXISTS(SELECT 1 FROM {schema}.tenant_documents
-                             WHERE tenant_id = :tid) AS documents,
                       EXISTS(SELECT 1 FROM {schema}.tenant_users
                              WHERE tenant_id = :tid
                                AND invited_at IS NOT NULL) AS admin_invited
@@ -528,6 +526,42 @@ class OnboardingRepo:
                 {"tid": tenant_id},
             )
         ).one()
+
+        # Slice 3: documents section is a verification-status counts block.
+        doc_counts = (
+            await session.execute(
+                text(
+                    f"""
+                    SELECT
+                      COUNT(*) AS total,
+                      COUNT(*) FILTER (
+                        WHERE verification_status = 'PENDING_REVIEW'
+                      ) AS pending_review,
+                      COUNT(*) FILTER (
+                        WHERE verification_status = 'VERIFIED'
+                      ) AS verified,
+                      COUNT(*) FILTER (
+                        WHERE verification_status = 'REJECTED'
+                      ) AS rejected
+                    FROM {schema}.tenant_documents
+                    WHERE tenant_id = :tid
+                    """
+                ),
+                {"tid": tenant_id},
+            )
+        ).one()
+        documents_block = {
+            "total": int(doc_counts.total),
+            "pending_review": int(doc_counts.pending_review),
+            "verified": int(doc_counts.verified),
+            "rejected": int(doc_counts.rejected),
+            # all_verified: >=1 document AND none pending or rejected.
+            "all_verified": (
+                int(doc_counts.total) >= 1
+                and int(doc_counts.pending_review) == 0
+                and int(doc_counts.rejected) == 0
+            ),
+        }
 
         return {
             "current_step": ob.current_step if ob is not None else None,
@@ -543,7 +577,7 @@ class OnboardingRepo:
                 "tax": bool(presence.tax),
                 "billing": bool(presence.billing),
                 "contacts": bool(presence.contacts),
-                "documents": bool(presence.documents),
+                "documents": documents_block,
             },
             "provisioning": {
                 # Not derivable from the current schema (no per-tenant
