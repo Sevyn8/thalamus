@@ -125,6 +125,12 @@ variable "sendgrid_from_email" {
   default     = "noreply@sevyn8.com"
 }
 
+variable "cors_allowed_origins" {
+  type        = string
+  description = "CORS_ALLOWED_ORIGINS. Comma-separated exact origins (scheme+host, no trailing slash) for the FastAPI CORSMiddleware."
+  default     = "https://cm-frontend-697546531605.asia-south1.run.app,https://cm-frontend-mjiqp4br4a-el.a.run.app,http://localhost:3000"
+}
+
 # --- Lazy Auth0 values: NOT recorded in the repo; operator must supply. ---
 # Empty => omitted from container env => CM reads None. CM boots fine without
 # them in AUTH0 mode; provisioning / invite-send / email-sync fail at RUN time

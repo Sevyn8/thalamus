@@ -83,7 +83,8 @@ locals {
     APP_REGION          = var.app_region           # config.py:135 app_region (EU|US|LOCAL)
     ENVIRONMENT         = var.environment          # config.py:136 environment
     LOG_LEVEL           = var.log_level            # config.py:137 log_level
-    SENDGRID_FROM_EMAIL = var.sendgrid_from_email  # config.py:125 sendgrid_from_email
+    SENDGRID_FROM_EMAIL  = var.sendgrid_from_email  # config.py:125 sendgrid_from_email
+    CORS_ALLOWED_ORIGINS = var.cors_allowed_origins # config.py:141 cors_allowed_origins
   }
 
   # Lazy Auth0 values. Empty string => omit the env var entirely so CM's
