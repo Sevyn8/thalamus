@@ -309,6 +309,13 @@ export type DocumentDownloadUrlResponse =
   Schemas["DocumentDownloadUrlResponse"];
 export type DocumentRejectRequest = Schemas["DocumentRejectRequest"];
 
+// Auth0 provisioning results (Slice 5, Access & users). First frontend
+// wiring of the provision-auth0 endpoints. Both are Auth0-side reports;
+// the tenant org id is now also persisted server-side (option a) so
+// onboarding-state.auth0_organization is a durable TRUE/FALSE.
+export type TenantOrgProvisionResult = Schemas["TenantOrgProvisionResult"];
+export type TenantUserProvisionResult = Schemas["TenantUserProvisionResult"];
+
 // Notifications (no backend equivalent in v0)
 export type Notification = {
   id: string;

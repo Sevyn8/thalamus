@@ -72,4 +72,22 @@ export const tenantUsersApi = {
         "Idempotency-Key": crypto.randomUUID(),
       },
     }),
+
+  // Slice 5: provision the user's Auth0 identity (idempotent, Auth0-side;
+  // writes nothing to CM). 503 when mgmt client / db-connection unset.
+  provisionAuth0: (id: string) =>
+    apiFetch<components["schemas"]["TenantUserProvisionResult"]>(
+      `/api/v1/tenant-users/${id}/provision-auth0`,
+      { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() } },
+    ),
+
+  // Slice 5: send the invitation email (sets invited_at). 409
+  // USER_NOT_PROVISIONED if no Auth0 identity yet; 503 if email/ticket
+  // unconfigured. The wizard sequence always provisions first, so 409
+  // should be unreachable through the UI.
+  sendInvitation: (id: string) =>
+    apiFetch<TenantUser>(`/api/v1/tenant-users/${id}/send-invitation`, {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+    }),
 };

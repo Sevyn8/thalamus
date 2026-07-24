@@ -150,4 +150,14 @@ export const tenantsApi = {
         "Idempotency-Key": crypto.randomUUID(),
       },
     }),
+
+  // Slice 5: get-or-create the tenant's Auth0 Organization (idempotent).
+  // Auth0-side + (option a) persists tenants.auth0_org_id. 503
+  // PROVISIONING_UNAVAILABLE when the Auth0 mgmt client is unconfigured
+  // (local dev). First frontend wiring of this endpoint.
+  provisionAuth0: (id: string) =>
+    apiFetch<components["schemas"]["TenantOrgProvisionResult"]>(
+      `/api/v1/tenants/${id}/provision-auth0`,
+      { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() } },
+    ),
 };

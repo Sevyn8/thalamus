@@ -29,6 +29,7 @@ import { LegalStatutoryStep } from "./steps/LegalStatutoryStep";
 import { BillingFinanceStep } from "./steps/BillingFinanceStep";
 import { ContactsStep } from "./steps/ContactsStep";
 import { DocumentsStep } from "./steps/DocumentsStep";
+import { AccessUsersStep } from "./steps/AccessUsersStep";
 
 const TENANTS_URL = "/superadmin/tenants";
 
@@ -194,6 +195,8 @@ export function OnboardingWizard({ tenantId }: { tenantId: string | null }) {
         return <ContactsStep {...common} />;
       case "documents":
         return <DocumentsStep {...common} />;
+      case "access":
+        return <AccessUsersStep {...common} />;
       default:
         return null;
     }

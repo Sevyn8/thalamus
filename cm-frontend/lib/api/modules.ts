@@ -1,5 +1,5 @@
 import { apiFetch, qs } from "./client";
-import type { ModulesResponse, MatrixResponse } from "@/types/api";
+import type { ModulesResponse, MatrixResponse, MatrixRow } from "@/types/api";
 import type { components } from "@/types/openapi-generated";
 
 // Phase 5n.1: routes through lib/api/client.ts, whose base URL is
@@ -59,3 +59,42 @@ export const modulesApi = {
       },
     ),
 };
+
+// Sentinel thrown when the tenant's module row cannot be resolved from the
+// fleet matrix (never falls back to an empty section; the caller renders an
+// explicit error + retry, per Slice 5 refinement 2).
+export class TenantModuleRowNotFoundError extends Error {
+  constructor(tenantId: string) {
+    super(`Module row not found for tenant ${tenantId}`);
+    this.name = "TenantModuleRowNotFoundError";
+  }
+}
+
+// Deterministic per-tenant module-row lookup. The matrix endpoint is
+// fleet-wide with no tenant_id filter (verified in backend code: `q` is a
+// case-insensitive ILIKE substring on tenants.name only), so a name-based
+// fetch can miss on rename or pagination. Fast path: q by name, match
+// STRICTLY on tenant_id. Fallback: page the unfiltered matrix, still
+// matching on tenant_id, bounded. If unresolved, throw (no empty section).
+const _MATRIX_PAGE = 200;
+const _MAX_PAGES = 50; // 10k tenants ceiling; far above any real fleet
+
+export async function resolveTenantModuleRow(
+  tenantId: string,
+  tenantName?: string,
+): Promise<MatrixRow> {
+  if (tenantName) {
+    const byName = await modulesApi.matrix({ q: tenantName, limit: _MATRIX_PAGE });
+    const hit = byName.items.find((r) => r.tenant_id === tenantId);
+    if (hit) return hit;
+  }
+  let offset = 0;
+  for (let page = 0; page < _MAX_PAGES; page += 1) {
+    const res = await modulesApi.matrix({ limit: _MATRIX_PAGE, offset });
+    const hit = res.items.find((r) => r.tenant_id === tenantId);
+    if (hit) return hit;
+    offset += _MATRIX_PAGE;
+    if (offset >= res.pagination.total) break;
+  }
+  throw new TenantModuleRowNotFoundError(tenantId);
+}
