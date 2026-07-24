@@ -31,6 +31,11 @@ from admin_backend.auth.stub import (
 )
 from admin_backend.config import Settings
 
+# Clock-skew buffer subtracted from iat at mint time so a backwards clock
+# jump between minting and verification (leeway=0 verifier) never leaves
+# iat in the future (PyJWT ImmatureSignatureError).
+_IAT_CLOCK_SKEW_BACKDATE_SECONDS = 10
+
 
 def make_test_jwt(
     settings: Settings,
@@ -81,11 +86,21 @@ def make_test_jwt(
     private_key = settings.jwt_private_key_path.read_text()
     now = datetime.now(timezone.utc)
 
+    # Backdate iat by a small clock-skew buffer. The verifier
+    # (StubAuthClient / Auth0Client) calls jwt.decode with leeway=0, so a
+    # sub-second backwards clock jump between mint and verify (observed on
+    # WSL2) can leave iat momentarily in the future and raise PyJWT's
+    # ImmatureSignatureError. Backdating iat absorbs that skew; exp is
+    # still measured from now, so token lifetime and expiry tests are
+    # unaffected (a negative exp_offset_seconds still yields an expired
+    # token).
+    iat = now - timedelta(seconds=_IAT_CLOCK_SKEW_BACKDATE_SECONDS)
+
     payload: dict[str, Any] = {
         "sub": sub,
         "iss": iss if iss is not None else settings.jwt_issuer,
         "aud": aud if aud is not None else settings.jwt_audience,
-        "iat": int(now.timestamp()),
+        "iat": int(iat.timestamp()),
         "exp": int((now + timedelta(seconds=exp_offset_seconds)).timestamp()),
         CLAIM_USER_ID: str(user_id),
         CLAIM_USER_TYPE: user_type,
