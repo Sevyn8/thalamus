@@ -54,6 +54,7 @@ from admin_backend.repositories.modules_access import (
     MatrixTenantRow,
     ModuleCardRow,
     ModulesAccessRepo,
+    MyModuleRow,
     TransitionResult,
 )
 from admin_backend.schemas.modules_access import (
@@ -63,6 +64,8 @@ from admin_backend.schemas.modules_access import (
     ModuleAccessRead,
     ModuleCard,
     ModulesResponse,
+    MyModuleItem,
+    MyModulesResponse,
 )
 from admin_backend.schemas.tenant import Pagination
 
@@ -249,6 +252,51 @@ async def list_matrix(
     return MatrixResponse(
         items=items,
         pagination=Pagination(total=total, offset=offset, limit=limit),
+    )
+
+
+# =============================================================================
+# E4 (Slice 8): GET /module-access/me — caller-state tenant module read
+# =============================================================================
+
+
+@router.get(
+    "/me",
+    response_model=MyModulesResponse,
+    summary="The caller's own tenant's enabled modules",
+    description=(
+        "Caller-state read: returns the module rows for the caller's OWN "
+        "tenant so a tenant user can power the launcher without an admin "
+        "governance grant. GATE_EXEMPT (authenticated, no permission "
+        "gate); RLS scopes the rows to the JWT's tenant for TENANT "
+        "callers. PLATFORM callers have no single tenant: ``tenant_id`` "
+        "is null and ``modules`` is empty (PLATFORM uses the matrix "
+        "path). Each item mirrors the matrix cell shape (``module_code`` "
+        "+ ``status``) plus a resolved ``module_label``."
+    ),
+)
+async def my_modules(
+    auth: AuthContext = Depends(get_auth_context),
+    session: AsyncSession = Depends(get_tenant_session_dep),
+) -> Any:
+    # PLATFORM has no single tenant; short-circuit BEFORE the repo query
+    # so the D-29 PLATFORM OR-branch never returns every tenant's rows
+    # through this caller-scoped endpoint.
+    if auth.user_type == "PLATFORM":
+        return MyModulesResponse(tenant_id=None, modules=[])
+    rows: list[MyModuleRow] = await _repo.list_my_tenant_modules(session)
+    return MyModulesResponse(
+        tenant_id=auth.tenant_id,
+        modules=[
+            MyModuleItem.model_validate(
+                {
+                    "module_code": r.module_code,
+                    "module_label": r.module_label,
+                    "status": r.status,
+                }
+            )
+            for r in rows
+        ],
     )
 
 

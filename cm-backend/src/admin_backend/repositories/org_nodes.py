@@ -347,7 +347,7 @@ class OrgNodesRepo:
         session: AsyncSession,
         *,
         tenant_id: UUID,
-        parent_id: UUID,
+        parent_id: UUID | None,
         node_type: OrgNodeType,
         code: str,
         name: str,
@@ -356,8 +356,20 @@ class OrgNodesRepo:
     ) -> OrgNode:
         """Insert a new org_node under ``parent_id``.
 
+        ``parent_id=None`` (Slice 8) resolves the parent to the tenant's
+        TENANT root, so the first node of a root-only tenant can be added
+        without the caller knowing the root id. HQ-under-TENANT is legal
+        by the cascade order (TENANT ordinal 0 < HQ ordinal 2).
+
         Order of operations:
-          1. SELECT FOR UPDATE on the parent row (within RLS).
+          0. If parent_id is None, resolve + lock the tenant root.
+             - Missing -> ParentNodeNotFoundError (404). NOTE: the API
+               path never reaches this with a missing root: the router's
+               gate uses anchor_dep=get_tenant_anchor, which 404s a
+               root-less or RLS-invisible tenant before this handler
+               runs. This branch is repo-level-only coverage (direct
+               callers and tests).
+          1. Else SELECT FOR UPDATE on the given parent row (within RLS).
              - Missing -> ParentNodeNotFoundError (404).
           2. Cascade-order check: parent.node_type < child.node_type
              - Violation -> InvalidParentNodeTypeError (422).
@@ -380,16 +392,35 @@ class OrgNodesRepo:
         """
         schema = get_settings().db_schema
 
-        # 1. Lock the parent.
-        parent = await self._select_for_update_node(
-            session, tenant_id=tenant_id, node_id=parent_id
-        )
-        if parent is None:
-            raise ParentNodeNotFoundError(
-                f"parent_id={parent_id} not visible in tenant_id={tenant_id}",
-                parent_id=str(parent_id),
-                tenant_id=str(tenant_id),
+        # 0/1. Resolve + lock the parent.
+        if parent_id is None:
+            # Slice 8: omitted parent resolves to the tenant root. See the
+            # docstring for why the missing-root branch is repo-only.
+            parent = await self._select_tenant_root_for_update(
+                session, tenant_id=tenant_id
             )
+            if parent is None:
+                raise ParentNodeNotFoundError(
+                    f"tenant_id={tenant_id} has no visible tenant-root "
+                    "org_node to anchor a parentless node under",
+                    parent_id="(tenant-root)",
+                    tenant_id=str(tenant_id),
+                )
+        else:
+            parent = await self._select_for_update_node(
+                session, tenant_id=tenant_id, node_id=parent_id
+            )
+            if parent is None:
+                raise ParentNodeNotFoundError(
+                    f"parent_id={parent_id} not visible in "
+                    f"tenant_id={tenant_id}",
+                    parent_id=str(parent_id),
+                    tenant_id=str(tenant_id),
+                )
+
+        # The resolved parent's id (equals parent_id when explicit; the
+        # tenant-root id when the caller omitted parent_id).
+        resolved_parent_id = parent.id
 
         # 2. Cascade-order check.
         _check_cascade_order(parent.node_type, node_type)
@@ -422,7 +453,7 @@ class OrgNodesRepo:
                 insert_sql,
                 {
                     "tenant_id": tenant_id,
-                    "parent_id": parent_id,
+                    "parent_id": resolved_parent_id,
                     "path": new_path,
                     "node_type": node_type.value,
                     "name": name,
@@ -894,6 +925,46 @@ class OrgNodesRepo:
         result = await session.execute(
             sql, {"node_id": node_id, "tenant_id": tenant_id}
         )
+        row = result.first()
+        if row is None:
+            return None
+        return _NodeRow(
+            id=row.id,
+            tenant_id=row.tenant_id,
+            parent_id=row.parent_id,
+            path=str(row.path),
+            node_type=OrgNodeType(row.node_type),
+            name=str(row.name),
+            code=str(row.code),
+        )
+
+    async def _select_tenant_root_for_update(
+        self,
+        session: AsyncSession,
+        *,
+        tenant_id: UUID,
+    ) -> _NodeRow | None:
+        """SELECT FOR UPDATE the tenant-root org_node within RLS.
+
+        The tenant root is ``node_type='TENANT' AND parent_id IS NULL``
+        (the same row ``get_tenant_anchor`` keys on). Used by ``add_node``
+        to resolve an omitted ``parent_id``. Returns ``None`` when the
+        root is RLS-invisible or absent (D-17 collapse).
+        """
+        schema = get_settings().db_schema
+        sql = text(
+            f"""
+            SELECT id, tenant_id, parent_id, path::text AS path,
+                   node_type, name, code
+              FROM {schema}.org_nodes
+             WHERE tenant_id = :tenant_id
+               AND node_type = CAST('TENANT' AS {schema}.org_node_type_enum)
+               AND parent_id IS NULL
+             LIMIT 1
+             FOR UPDATE
+            """
+        )
+        result = await session.execute(sql, {"tenant_id": tenant_id})
         row = result.first()
         if row is None:
             return None

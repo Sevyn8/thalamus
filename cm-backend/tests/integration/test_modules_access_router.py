@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterator
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -44,7 +45,10 @@ from admin_backend.auth.testing import make_test_jwt
 from admin_backend.config import Settings
 from admin_backend.main import create_app
 from admin_backend.models.tenant import TenantStatus, TenantTier
-from admin_backend.models.tenant_module_access import ModuleCode
+from admin_backend.models.tenant_module_access import (
+    ModuleAccessStatus,
+    ModuleCode,
+)
 
 
 # Locked module ordering post-Step-6.7 (seed migration ``2fdc4bc9f4cb``),
@@ -634,3 +638,138 @@ def test_a1_no_jwt_returns_401(app_client):
         resp = app_client.get(path)
         assert resp.status_code == 401, f"path={path} expected 401"
         assert resp.json()["code"] == "AUTH_MISSING"
+
+
+# =============================================================================
+# E4 (Slice 8): GET /module-access/me — caller-state tenant module read
+# =============================================================================
+
+
+async def test_me1_tenant_gets_exactly_own_enabled_set(
+    app_client,
+    settings,
+    make_tenant,
+    make_platform_user,
+    make_tenant_module_access,
+):
+    """LOAD-BEARING (Slice 8) — a plain TENANT JWT (no admin grant) gets
+    exactly its own tenant's module rows, and no other tenant's rows.
+
+    Proves the launcher can be powered without ADMIN.TENANTS.VIEW.TENANT
+    (GATE_EXEMPT), that the status field is surfaced (frontend filters on
+    ENABLED), and that RLS scopes the read to the caller's tenant.
+    """
+    actor = await make_platform_user(
+        email=f"me1-actor-{uuid.uuid4()}@ithina.test"
+    )
+    tenant_a = await make_tenant(name="ME1-A", status=TenantStatus.ACTIVE)
+    tenant_b = await make_tenant(name="ME1-B", status=TenantStatus.ACTIVE)
+
+    await make_tenant_module_access(
+        tenant_id=tenant_a.id,
+        module=ModuleCode.PRICING_OS,
+        enabled_by_user_id=actor.id,
+        created_by_user_id=actor.id,
+        updated_by_user_id=actor.id,
+    )
+    await make_tenant_module_access(
+        tenant_id=tenant_a.id,
+        module=ModuleCode.PROMOTIONS_ASSISTANT,
+        status=ModuleAccessStatus.DISABLED,
+        enabled_by_user_id=actor.id,
+        disabled_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        disabled_by_user_id=actor.id,
+        created_by_user_id=actor.id,
+        updated_by_user_id=actor.id,
+    )
+    # tenant_b's row must NOT leak into tenant_a's /me response.
+    await make_tenant_module_access(
+        tenant_id=tenant_b.id,
+        module=ModuleCode.GOAL_CONSOLE,
+        enabled_by_user_id=actor.id,
+        created_by_user_id=actor.id,
+        updated_by_user_id=actor.id,
+    )
+
+    resp = app_client.get(
+        "/api/v1/module-access/me",
+        headers=_auth(_tenant_jwt(settings, tenant_a.id)),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["tenant_id"] == str(tenant_a.id)
+
+    by_code = {m["module_code"]: m["status"] for m in body["modules"]}
+    assert by_code == {
+        "PRICING_OS": "ENABLED",
+        "PROMOTIONS_ASSISTANT": "DISABLED",
+    }
+    # module_label resolved server-side (non-empty).
+    assert all(m["module_label"] for m in body["modules"])
+    enabled = {m["module_code"] for m in body["modules"] if m["status"] == "ENABLED"}
+    assert enabled == {"PRICING_OS"}
+
+
+def test_me2_platform_caller_gets_empty_shape(
+    app_client, settings, super_admin_jwt
+):
+    """PLATFORM callers have no single tenant: tenant_id null, modules []
+    (they use the matrix path). The endpoint must not leak every tenant's
+    rows through the D-29 PLATFORM OR-branch."""
+    resp = app_client.get(
+        "/api/v1/module-access/me",
+        headers=_auth(super_admin_jwt),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["tenant_id"] is None
+    assert body["modules"] == []
+
+
+async def test_me3_suspended_tenant_user_still_sees_modules(
+    app_client,
+    settings,
+    # make_platform_user BEFORE make_tenant so the tenant (which
+    # references the actor via suspended_by_user_id, FK ON DELETE
+    # RESTRICT) tears down before the platform user.
+    make_platform_user,
+    make_tenant,
+    make_tenant_module_access,
+):
+    """Pin existing RLS/session behavior: a tenant user of a SUSPENDED
+    tenant still reads their tenant's module rows via /me. RLS is
+    tenant_id-based, not status-based, so tenant status does not hide the
+    rows. No new policy invented here."""
+    actor = await make_platform_user(
+        email=f"me3-actor-{uuid.uuid4()}@ithina.test"
+    )
+    tenant = await make_tenant(
+        name="ME3-Suspended",
+        status=TenantStatus.SUSPENDED,
+        suspended_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        suspended_by_user_id=actor.id,
+    )
+    await make_tenant_module_access(
+        tenant_id=tenant.id,
+        module=ModuleCode.PRICING_OS,
+        enabled_by_user_id=actor.id,
+        created_by_user_id=actor.id,
+        updated_by_user_id=actor.id,
+    )
+
+    resp = app_client.get(
+        "/api/v1/module-access/me",
+        headers=_auth(_tenant_jwt(settings, tenant.id)),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["tenant_id"] == str(tenant.id)
+    by_code = {m["module_code"]: m["status"] for m in body["modules"]}
+    assert by_code == {"PRICING_OS": "ENABLED"}
+
+
+def test_me4_no_jwt_returns_401(app_client):
+    """/me requires authentication (GATE_EXEMPT is not PUBLIC)."""
+    resp = app_client.get("/api/v1/module-access/me")
+    assert resp.status_code == 401
+    assert resp.json()["code"] == "AUTH_MISSING"

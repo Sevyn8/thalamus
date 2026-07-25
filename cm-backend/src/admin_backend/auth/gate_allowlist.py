@@ -16,10 +16,14 @@ Adding an endpoint without either a gate or an allowlist entry is a
 deploy-time error by design — the discipline test fails the build. See
 "Note on gate allowlist coupling" in CLAUDE.md.
 
-v0 exempt set (9 paths):
+v0 exempt set (10 paths):
   - ``/api/v1/me/permissions`` — caller-state; gating against the
     caller's own permission set is circular.
   - ``/api/v1/me/can-do`` — caller-state, same.
+  - ``/api/v1/module-access/me`` — caller-state (Slice 8): the caller's
+    OWN tenant's enabled modules, RLS-scoped to the JWT tenant. Powers
+    the tenant-persona launcher without an admin governance grant; the
+    admin matrix/modules endpoints stay gated on ADMIN.TENANTS.VIEW.TENANT.
   - ``/api/v1/tenant-users/me/accept-invitation`` — self-service
     invite-accept (Slice 2d-accept, D-40). Authenticated by the token
     (AuthMiddleware) but NOT permission-gated: an INVITED user holds no
@@ -47,6 +51,7 @@ from __future__ import annotations
 GATE_EXEMPT_PATHS: frozenset[str] = frozenset({
     "/api/v1/me/permissions",
     "/api/v1/me/can-do",
+    "/api/v1/module-access/me",
     "/api/v1/tenant-users/me/accept-invitation",
     "/api/v1/lookups",
     "/api/v1/permissions",

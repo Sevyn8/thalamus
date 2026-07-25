@@ -260,12 +260,15 @@ OrgNodeTreeItem.model_rebuild()
 class OrgNodeCreateRequest(BaseModel):
     """Request body for POST /api/v1/tenants/{tenant_id}/org-tree.
 
-    Add a new org_node under an existing parent. ``node_type`` is
-    required and must NOT be TENANT (tenant roots are created at tenant
-    provisioning; this surface cannot make one). ``parent_id`` is
-    required; the parent must exist in the same tenant and its
+    Add a new org_node under a parent. ``node_type`` is required and
+    must NOT be TENANT (tenant roots are created at tenant provisioning;
+    this surface cannot make one). ``parent_id`` is optional: when
+    supplied the parent must exist in the same tenant and its
     ``node_type`` must sit strictly above this child's in the canonical
-    cascade order.
+    cascade order; when omitted (or null) the server resolves the parent
+    to the tenant's TENANT root, so the first node of a root-only tenant
+    (typically an HQ) can be added without the caller knowing the root
+    id.
 
     ``extra="forbid"`` rejects unknown fields at Pydantic time (422
     before the handler runs). Code format is enforced server-side via
@@ -276,11 +279,13 @@ class OrgNodeCreateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    parent_id: UUID = Field(
+    parent_id: UUID | None = Field(
+        default=None,
         description=(
             "UUID of the parent org_node. Must exist in the same tenant. "
-            "Use the tenant-root's id when adding a top-level node "
-            "(typical for first BUSINESS_UNIT or HQ)."
+            "Omit (or send null) to add a top-level node under the tenant "
+            "root, which the server resolves (typical for the first HQ or "
+            "BUSINESS_UNIT on a root-only tenant)."
         ),
     )
     node_type: OrgNodeType = Field(

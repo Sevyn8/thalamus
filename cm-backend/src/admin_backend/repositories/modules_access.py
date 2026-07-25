@@ -70,6 +70,16 @@ class ModuleCardRow:
 
 
 @dataclass(frozen=True)
+class MyModuleRow:
+    """One ``tenant_module_access`` row for the caller's own tenant
+    (``/module-access/me``), with a resolved label."""
+
+    module_code: str
+    module_label: str
+    status: str
+
+
+@dataclass(frozen=True)
 class MatrixTenantRow:
     """One ``/matrix`` tenant row, sans cells."""
 
@@ -177,6 +187,43 @@ class ModulesAccessRepo:
                 total_active_trial_tenants=int(
                     row.total_active_trial_tenants
                 ),
+            )
+            for row in result.all()
+        ]
+
+    async def list_my_tenant_modules(
+        self, session: AsyncSession
+    ) -> list[MyModuleRow]:
+        """Return the caller-tenant's ``tenant_module_access`` rows.
+
+        Slice 8 (E4). No ``tenant_id`` argument: RLS scopes the rows to
+        the caller's tenant via the session GUCs (D-24). The caller MUST
+        be a TENANT session; a PLATFORM session would see every tenant's
+        rows via the D-29 OR-branch, so the router short-circuits PLATFORM
+        callers before calling this. Ordered by ``lookups.display_order``
+        (decoupled from enum ordinal per Step 6.6). Schema-qualified per
+        the raw-SQL convention.
+        """
+        schema = get_settings().db_schema
+        sql = text(
+            f"""
+            SELECT
+                tma.module::text                    AS module_code,
+                COALESCE(lk.display_name, tma.module::text) AS module_label,
+                tma.status::text                    AS status
+            FROM {schema}.tenant_module_access tma
+            LEFT JOIN {schema}.lookups lk
+                ON lk.list_name = 'module_code'
+               AND lk.code = tma.module::text
+            ORDER BY COALESCE(lk.display_order, 999) ASC, tma.module::text ASC
+            """
+        )
+        result = await session.execute(sql)
+        return [
+            MyModuleRow(
+                module_code=row.module_code,
+                module_label=row.module_label,
+                status=row.status,
             )
             for row in result.all()
         ]

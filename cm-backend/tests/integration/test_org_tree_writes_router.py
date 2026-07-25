@@ -288,6 +288,75 @@ async def test_c3_super_admin_skips_levels_region_under_tenant_root(
     cleanup_org_nodes_router.append(UUID(resp.json()["id"]))
 
 
+async def test_c10_parentless_first_node_resolves_under_tenant_root(
+    app_client: TestClient,
+    super_admin_jwt: str,
+    make_tenant: Any,
+    cleanup_org_nodes_router: list[UUID],
+    session_factory: Any,
+    platform_auth: AuthContext,
+) -> None:
+    """LOAD-BEARING (Slice 8) — first node on a root-only tenant with the
+    parent omitted resolves server-side to the TENANT root.
+
+    This is the org page's empty-state CTA path: a wizard-created tenant
+    has only its TENANT root, and the create modal posts an HQ with no
+    parent_id. The server must anchor it under the root (HQ under TENANT
+    is legal) rather than 422 on a missing parent.
+    """
+    tenant = await make_tenant(name="C10 Tenant", with_root=True)
+    troot_id, troot_path = await _fetch_tenant_root(
+        session_factory, platform_auth, tenant.id
+    )
+
+    hq_code = f"c10-hq-{uuid.uuid4().hex[:6]}"
+    resp = app_client.post(
+        f"/api/v1/tenants/{tenant.id}/org-tree",
+        headers=_auth(super_admin_jwt),
+        json={
+            # parent_id intentionally omitted (parentless first node).
+            "node_type": "HQ",
+            "code": hq_code,
+            "name": "C10 HQ",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    j = resp.json()
+    cleanup_org_nodes_router.append(UUID(j["id"]))
+    assert j["node_type"] == "HQ"
+    assert j["parent_id"] == str(troot_id)
+    assert j["path"] == f"{troot_path}.{hq_code.lower().replace('-', '_')}"
+
+
+async def test_c11_parentless_null_parent_id_resolves_under_tenant_root(
+    app_client: TestClient,
+    super_admin_jwt: str,
+    make_tenant: Any,
+    cleanup_org_nodes_router: list[UUID],
+    session_factory: Any,
+    platform_auth: AuthContext,
+) -> None:
+    """Slice 8 — explicit ``parent_id: null`` behaves like omission."""
+    tenant = await make_tenant(name="C11 Tenant", with_root=True)
+    troot_id, _ = await _fetch_tenant_root(
+        session_factory, platform_auth, tenant.id
+    )
+    resp = app_client.post(
+        f"/api/v1/tenants/{tenant.id}/org-tree",
+        headers=_auth(super_admin_jwt),
+        json={
+            "parent_id": None,
+            "node_type": "HQ",
+            "code": f"c11-hq-{uuid.uuid4().hex[:6]}",
+            "name": "C11 HQ",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    j = resp.json()
+    cleanup_org_nodes_router.append(UUID(j["id"]))
+    assert j["parent_id"] == str(troot_id)
+
+
 # ============================================================================
 # Add Node — validation failures
 # ============================================================================

@@ -199,6 +199,55 @@ class MatrixResponse(BaseModel):
 
 
 # =============================================================================
+# E4 (Slice 8): GET /module-access/me — caller-state tenant module read
+# =============================================================================
+
+
+class MyModuleItem(BaseModel):
+    """One tenant_module_access row for the caller's own tenant. Mirrors
+    the matrix cell shape (``module_code`` + ``status``) plus a
+    server-resolved ``module_label`` per the label convention."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    module_code: ModuleCodeLiteral
+    module_label: str = Field(
+        description=(
+            "Display label resolved server-side via "
+            "``lookups.list_name='module_code'`` with COALESCE fallback "
+            "to the raw enum code."
+        ),
+    )
+    status: Literal["ENABLED", "DISABLED"]
+
+
+class MyModulesResponse(BaseModel):
+    """GET /module-access/me — the caller's OWN tenant's module rows.
+
+    Caller-state read (GATE_EXEMPT; authenticated but no permission
+    gate), so a tenant user can power their launcher without an admin
+    governance grant. RLS scopes the rows to the JWT's tenant for TENANT
+    callers. PLATFORM callers have no single tenant: ``tenant_id`` is
+    null and ``modules`` is empty (they use the matrix path instead).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: UUID | None = Field(
+        description=(
+            "The caller's tenant id (from the JWT) for TENANT callers; "
+            "null for PLATFORM callers."
+        ),
+    )
+    modules: list[MyModuleItem] = Field(
+        description=(
+            "The caller-tenant's tenant_module_access rows, ordered by "
+            "``lookups.display_order``. Empty for PLATFORM callers."
+        ),
+    )
+
+
+# =============================================================================
 # Step 6.15 write surface: ModuleAccessRead
 # =============================================================================
 #

@@ -176,6 +176,81 @@ async def test_rt1_add_node_locks_parent_before_insert(
             )
 
 
+# ---- RT7: add_node parentless resolves to tenant root (Slice 8) -----------
+
+
+async def test_rt7_add_node_parentless_resolves_to_tenant_root(
+    repo: OrgNodesRepo,
+    make_tenant: Callable[..., Awaitable[Any]],
+    make_platform_user: Callable[..., Awaitable[Any]],
+    cleanup_org_nodes: list[UUID],
+    session_factory: async_sessionmaker[AsyncSession],
+    platform_auth: AuthContext,
+) -> None:
+    """Slice 8: ``add_node(parent_id=None)`` on a root-only tenant
+    resolves the parent to the TENANT root and inserts under it. HQ under
+    TENANT is legal (cascade ordinals 0 < 2). This is the first-node case
+    the org page's empty-state CTA drives.
+    """
+    tenant = await make_tenant(name="RT7 Tenant", with_root=True)
+    troot_id, troot_path = await _fetch_tenant_root(
+        session_factory, platform_auth, tenant.id
+    )
+    pu = await make_platform_user(status="INVITED")
+    auth = _platform_auth_for_user(pu.id)
+
+    hq_code = f"rt7-hq-{uuid.uuid4().hex[:6]}"
+    async for session in get_tenant_session(platform_auth, session_factory):
+        node = await repo.add_node(
+            session,
+            tenant_id=tenant.id,
+            parent_id=None,
+            node_type=OrgNodeType.HQ,
+            code=hq_code,
+            name="RT7 HQ",
+            auth=auth,
+        )
+        cleanup_org_nodes.append(node.id)
+
+    assert node.parent_id == troot_id
+    assert node.node_type == OrgNodeType.HQ
+    assert node.path == f"{troot_path}.{hq_code.lower().replace('-', '_')}"
+
+
+# ---- RT8: add_node parentless on a rootless tenant -> clean 4xx -----------
+
+
+async def test_rt8_add_node_parentless_rootless_tenant_raises_404(
+    repo: OrgNodesRepo,
+    make_tenant: Callable[..., Awaitable[Any]],
+    make_platform_user: Callable[..., Awaitable[Any]],
+    session_factory: async_sessionmaker[AsyncSession],
+    platform_auth: AuthContext,
+) -> None:
+    """Slice 8 (repo-only coverage): ``add_node(parent_id=None)`` on a
+    tenant with no TENANT root raises ParentNodeNotFoundError (404), not a
+    raw 500. The API path never reaches this branch with a missing root:
+    the router's gate uses ``anchor_dep=get_tenant_anchor``, which 404s a
+    root-less tenant before the handler runs. This test exercises the
+    defensive repo branch directly.
+    """
+    tenant = await make_tenant(name="RT8 Tenant", with_root=False)
+    pu = await make_platform_user(status="INVITED")
+    auth = _platform_auth_for_user(pu.id)
+
+    async for session in get_tenant_session(platform_auth, session_factory):
+        with pytest.raises(ParentNodeNotFoundError):
+            await repo.add_node(
+                session,
+                tenant_id=tenant.id,
+                parent_id=None,
+                node_type=OrgNodeType.HQ,
+                code=f"rt8-hq-{uuid.uuid4().hex[:6]}",
+                name="RT8 HQ",
+                auth=auth,
+            )
+
+
 # ---- RT2: edit_node reparent locks target AND new_parent ------------------
 
 
