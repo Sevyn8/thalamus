@@ -5,11 +5,20 @@ import { Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { WIZARD_STEPS, type WizardStepKey } from "./wizard-steps";
 
-export type RailState = "complete" | "current" | "pending" | "disabled";
+export type RailState =
+  | "complete"
+  | "current"
+  | "pending"
+  | "warning"
+  | "disabled";
 
 export type StepRailProps = {
   activeKey: WizardStepKey;
   stateFor: (key: WizardStepKey) => RailState;
+  // Optional short reason rendered as an amber sublabel under a step's
+  // label (used for the "warning" state, e.g. documents visited but not
+  // all-verified). Returns null when there is nothing to say.
+  reasonFor?: (key: WizardStepKey) => string | null;
   onSelect: (key: WizardStepKey) => void;
   // Draft-saved indicator.
   saving: boolean;
@@ -19,6 +28,7 @@ export type StepRailProps = {
 export function StepRail({
   activeKey,
   stateFor,
+  reasonFor,
   onSelect,
   saving,
   savedLabel,
@@ -32,6 +42,7 @@ export function StepRail({
         {WIZARD_STEPS.map((step, index) => {
           const state = stateFor(step.key);
           const clickable = state !== "disabled" && step.key !== activeKey;
+          const reason = reasonFor ? reasonFor(step.key) : null;
           return (
             <li key={step.key}>
               <button
@@ -44,6 +55,7 @@ export function StepRail({
                   "focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
                   state === "current" && "bg-muted font-medium text-foreground",
                   state === "complete" && "text-foreground hover:bg-muted",
+                  state === "warning" && "text-foreground hover:bg-muted",
                   state === "pending" && "text-muted-foreground hover:bg-muted",
                   state === "disabled" &&
                     "cursor-not-allowed text-muted-foreground/50",
@@ -56,6 +68,8 @@ export function StepRail({
                     state === "complete" &&
                       "border-emerald-500 bg-emerald-500 text-white dark:border-emerald-400 dark:bg-emerald-400 dark:text-emerald-950",
                     state === "current" && "border-primary text-primary",
+                    state === "warning" &&
+                      "border-amber-500 text-amber-600 dark:border-amber-400 dark:text-amber-400",
                     state === "pending" && "border-border text-muted-foreground",
                     state === "disabled" &&
                       "border-border/50 text-muted-foreground/50",
@@ -67,7 +81,14 @@ export function StepRail({
                     index + 1
                   )}
                 </span>
-                <span className="min-w-0 flex-1 truncate">{step.label}</span>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate">{step.label}</span>
+                  {reason ? (
+                    <span className="truncate text-[11px] text-amber-600 dark:text-amber-400">
+                      {reason}
+                    </span>
+                  ) : null}
+                </span>
                 {state === "disabled" ? (
                   <span className="text-[10px] uppercase tracking-wide text-muted-foreground/60">
                     Soon

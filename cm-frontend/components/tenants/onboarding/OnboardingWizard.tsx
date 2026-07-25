@@ -49,11 +49,34 @@ function sectionComplete(
       return p.billing;
     case "contacts":
       return p.contacts;
-    case "documents":
-      return p.documents.total > 0;
+    // documents is NOT handled here: its rail state is derived by
+    // documentsRail (complete only when total >= 1 AND all_verified;
+    // warning when visited-but-not-satisfied). stateFor special-cases it.
     default:
       return false;
   }
+}
+
+// Documents rail derivation (separate from sectionComplete): the step is
+// complete only when at least one document exists and all are verified;
+// once the step has been visited (saved through, so section_status.documents
+// is marked) but that is not yet true, it shows a warning with a short
+// reason; otherwise pending. Fixes the bug where saving the step with zero
+// documents marked the rail green.
+function documentsRail(
+  state: OnboardingStateResponse | undefined,
+): { state: RailState; reason: string | null } {
+  if (!state) return { state: "pending", reason: null };
+  const d = state.sections_present.documents;
+  if (d.total >= 1 && d.all_verified) return { state: "complete", reason: null };
+  const status = (state.section_status ?? {}) as Record<string, unknown>;
+  const visited = status["documents"] === "complete";
+  if (!visited) return { state: "pending", reason: null };
+  let reason: string;
+  if (d.total === 0) reason = "No documents uploaded";
+  else if (d.rejected > 0) reason = `${d.rejected} rejected`;
+  else reason = `${d.pending_review} pending review`;
+  return { state: "warning", reason };
 }
 
 export function OnboardingWizard({ tenantId }: { tenantId: string | null }) {
@@ -162,15 +185,26 @@ export function OnboardingWizard({ tenantId }: { tenantId: string | null }) {
   }
 
   function stateFor(key: WizardStepKey): RailState {
-    // access / review: disabled placeholders this slice.
+    // Any step not in the enabled set renders disabled (none in v-final,
+    // but the guard stays for forward-compat).
     if (!ENABLED_STEP_KEYS.includes(key)) return "disabled";
     if (isNew) {
       // No tenant yet: only company is reachable.
       return key === "company" ? "current" : "disabled";
     }
     if (key === activeKey) return "current";
+    // Documents derives from the onboarding-state documents block, not from
+    // section_status alone (a saved-but-empty step must not read complete).
+    if (key === "documents") return documentsRail(stateQuery.data).state;
     if (sectionComplete(stateQuery.data, key)) return "complete";
     return "pending";
+  }
+
+  function reasonFor(key: WizardStepKey): string | null {
+    // Only the documents step carries a rail reason, and only when it is
+    // the non-active warning state (documentsRail returns a reason there).
+    if (isNew || key !== "documents" || key === activeKey) return null;
+    return documentsRail(stateQuery.data).reason;
   }
 
   const onBack = (() => {
@@ -250,6 +284,7 @@ export function OnboardingWizard({ tenantId }: { tenantId: string | null }) {
         <StepRail
           activeKey={activeKey}
           stateFor={stateFor}
+          reasonFor={reasonFor}
           onSelect={(key) => navigate(() => goTo(key))}
           saving={patchState.isPending}
           savedLabel={savedLabel}
