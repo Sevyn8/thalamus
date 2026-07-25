@@ -35,7 +35,7 @@ const EMPTY: BillingProfileInput = {
   billing_address: "",
 };
 
-export function BillingFinanceStep({ tenantId, onSaved, onBack, setDirty }: StepProps) {
+export function BillingFinanceStep({ tenantId, onSaved, onBack, setDirty, mode }: StepProps) {
   const lookups = useOnboardingLookups();
   const paymentTerms = lookups.data?.payment_terms ?? [];
   const currencies = lookups.data?.currency ?? [];
@@ -117,7 +117,7 @@ export function BillingFinanceStep({ tenantId, onSaved, onBack, setDirty }: Step
     <StepShell
       title="Billing & finance"
       description="How this client is billed."
-      footer={<WizardFooter formId={FORM_ID} saving={isSubmitting} onBack={onBack} />}
+      footer={<WizardFooter formId={FORM_ID} saving={isSubmitting} onBack={onBack} continueLabel={mode === "edit" ? "Save changes" : undefined} />}
     >
       <form id={FORM_ID} onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4" noValidate>
         {errors.root ? <FormErrorAlert title="Could not save billing details." message={errors.root.message ?? ""} /> : null}

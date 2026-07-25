@@ -3,8 +3,9 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 // Shared field primitives for the onboarding wizard steps, matching the
-// token classes used by EditTenantModal (and the retired ProvisionTenantModal) so the
-// wizard forms are visually identical to the rest of the admin surface.
+// token classes used across the admin surface (originally mirrored from the
+// retired EditTenantModal / ProvisionTenantModal) so the wizard forms are
+// visually identical to the rest of the admin surface.
 
 export const FIELD_INPUT_CLASS = cn(
   "h-9 w-full rounded-md border border-input bg-background px-2.5 py-1 text-sm",

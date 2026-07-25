@@ -53,7 +53,7 @@ export default async function ProfilePage() {
             <span className="mt-1 text-xs text-muted-foreground">
               {userTypeLabel(user.userType)} ·{" "}
               {user.userType === "PLATFORM"
-                ? "Platform (Cortex)"
+                ? "Platform (Sevyn8)"
                 : user.tenantName ?? "—"}
             </span>
           </div>

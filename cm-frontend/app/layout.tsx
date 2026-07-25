@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Cortex Superadmin Console",
-  description: "Operator surface for the Cortex retail intelligence platform.",
+  title: "Sevyn8 Superadmin Console",
+  description: "Operator surface for the Sevyn8 retail intelligence platform.",
 };
 
 export default function RootLayout({

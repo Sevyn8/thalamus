@@ -14,14 +14,17 @@ import {
   useOnboardingState,
   usePatchOnboardingState,
 } from "@/lib/hooks/use-onboarding";
+import { useTenant } from "@/lib/hooks/use-tenants";
 import type { OnboardingStateResponse } from "@/types/api";
 
 import { StepRail, type RailState } from "./StepRail";
+import type { WizardMode } from "./step-props";
 import {
   ENABLED_STEP_KEYS,
   isWizardStepKey,
   nextEnabledStep,
   prevEnabledStep,
+  WIZARD_STEPS,
   type WizardStepKey,
 } from "./wizard-steps";
 import { CompanyProfileStep } from "./steps/CompanyProfileStep";
@@ -79,6 +82,12 @@ function documentsRail(
   return { state: "warning", reason };
 }
 
+// Edit mode drops the Review & confirm step: there is no onboarding to
+// complete for a tenant that is already past ONBOARDING. The remaining six
+// sections are the standalone edit surfaces.
+const EDIT_STEPS = WIZARD_STEPS.filter((s) => s.key !== "review");
+const EDIT_STEP_KEYS: readonly WizardStepKey[] = EDIT_STEPS.map((s) => s.key);
+
 export function OnboardingWizard({ tenantId }: { tenantId: string | null }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -86,6 +95,20 @@ export function OnboardingWizard({ tenantId }: { tenantId: string | null }) {
 
   const stateQuery = useOnboardingState(tenantId);
   const patchState = usePatchOnboardingState(tenantId ?? "");
+  const tenantQuery = useTenant(tenantId ?? "");
+
+  // Mode is decided by tenant status on load: ONBOARDING (or a brand-new,
+  // not-yet-created tenant) uses the linear onboarding wizard; any other
+  // status turns the same shell into the edit surface (the retired
+  // EditTenantModal's replacement). While the tenant is still loading we
+  // hold on "onboarding" but gate the body behind `loading` below so the
+  // onboarding chrome never flashes before the mode is known.
+  const tenantStatus = tenantQuery.data?.status ?? null;
+  const mode: WizardMode =
+    isNew || tenantStatus === null || tenantStatus === "ONBOARDING"
+      ? "onboarding"
+      : "edit";
+  const railSteps = mode === "edit" ? EDIT_STEPS : WIZARD_STEPS;
 
   const [savedLabel, setSavedLabel] = useState<string | null>(null);
   const dirtyRef = useRef(false);
@@ -96,11 +119,20 @@ export function OnboardingWizard({ tenantId }: { tenantId: string | null }) {
     dirtyRef.current = d;
   }, []);
 
-  // Active step: ?step (if valid + enabled) -> server current_step -> company.
+  // Active step. Onboarding: ?step (if valid + enabled) -> server
+  // current_step -> company. Edit: ?step (if a valid non-review section) ->
+  // company; the server current_step is an onboarding-progress concept and
+  // is ignored, and review is not a section here.
   const urlStep = searchParams.get("step");
   const serverStep = stateQuery.data?.current_step ?? null;
   const activeKey: WizardStepKey = useMemo(() => {
     if (isNew) return "company";
+    if (mode === "edit") {
+      if (isWizardStepKey(urlStep) && EDIT_STEP_KEYS.includes(urlStep)) {
+        return urlStep;
+      }
+      return "company";
+    }
     if (isWizardStepKey(urlStep) && ENABLED_STEP_KEYS.includes(urlStep)) {
       return urlStep;
     }
@@ -108,7 +140,7 @@ export function OnboardingWizard({ tenantId }: { tenantId: string | null }) {
       return serverStep;
     }
     return "company";
-  }, [isNew, urlStep, serverStep]);
+  }, [isNew, mode, urlStep, serverStep]);
 
   function navigate(fn: () => void) {
     if (dirtyRef.current) {
@@ -146,9 +178,17 @@ export function OnboardingWizard({ tenantId }: { tenantId: string | null }) {
     router.replace(`${TENANTS_URL}/onboard/${newId}?step=legal`);
   }
 
-  // Content-step save: persist current_step + section_status, then advance.
+  // Content-step save. Edit mode: the step already ran its own PUT/PATCH;
+  // there is no onboarding progress to stamp and nowhere to advance, so we
+  // just confirm and stay put. Onboarding mode: persist current_step +
+  // section_status, then advance.
   async function onStepSaved() {
     if (!tenantId) return;
+    if (mode === "edit") {
+      dirtyRef.current = false;
+      toast.success("Changes saved");
+      return;
+    }
     const next = nextEnabledStep(activeKey);
     const prevStatus = (stateQuery.data?.section_status ?? {}) as Record<string, unknown>;
     try {
@@ -208,7 +248,9 @@ export function OnboardingWizard({ tenantId }: { tenantId: string | null }) {
   }
 
   const onBack = (() => {
-    if (isNew) return null;
+    // Edit mode has no linear Back: navigation is purely section-to-section
+    // via the rail.
+    if (isNew || mode === "edit") return null;
     const prev = prevEnabledStep(activeKey);
     return prev ? () => navigate(() => goTo(prev)) : null;
   })();
@@ -231,11 +273,12 @@ export function OnboardingWizard({ tenantId }: { tenantId: string | null }) {
           onSaved={onStepSaved}
           onBack={onBack}
           setDirty={setDirty}
+          mode={mode}
         />
       );
     }
     if (!tenantId) return null;
-    const common = { tenantId, onSaved: onStepSaved, onBack, setDirty };
+    const common = { tenantId, onSaved: onStepSaved, onBack, setDirty, mode };
     switch (activeKey) {
       case "legal":
         return <LegalStatutoryStep {...common} />;
@@ -263,16 +306,32 @@ export function OnboardingWizard({ tenantId }: { tenantId: string | null }) {
     /* eslint-enable react-hooks/refs */
   }
 
-  const loading = !isNew && stateQuery.isLoading;
-  const errored = !isNew && !!stateQuery.error;
+  // Gate on the tenant load too: the mode (and therefore all rail/step
+  // chrome) depends on tenant status, so the body must wait for it to avoid
+  // flashing onboarding chrome for an edit-mode tenant. Onboarding-state is
+  // only needed by onboarding mode's rail derivation.
+  const loading =
+    !isNew &&
+    (tenantQuery.isLoading || (mode === "onboarding" && stateQuery.isLoading));
+  const errored =
+    !isNew &&
+    (!!tenantQuery.error || (mode === "onboarding" && !!stateQuery.error));
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col">
       <header className="flex items-center justify-between border-b border-border px-6 py-4">
         <div>
-          <h1 className="text-lg font-semibold">Client onboarding</h1>
+          <h1 className="text-lg font-semibold">
+            {mode === "edit" ? "Edit client" : "Client onboarding"}
+          </h1>
           <p className="text-sm text-muted-foreground">
-            {isNew ? "Create a new client organization" : "Complete the onboarding wizard"}
+            {mode === "edit"
+              ? tenantQuery.data?.name
+                ? `Update ${tenantQuery.data.name}'s details`
+                : "Update this client's details"
+              : isNew
+                ? "Create a new client organization"
+                : "Complete the onboarding wizard"}
           </p>
         </div>
         <Button type="button" variant="ghost" size="sm" onClick={() => navigate(exit)}>
@@ -288,6 +347,8 @@ export function OnboardingWizard({ tenantId }: { tenantId: string | null }) {
           onSelect={(key) => navigate(() => goTo(key))}
           saving={patchState.isPending}
           savedLabel={savedLabel}
+          steps={railSteps}
+          showProgress={mode === "onboarding"}
         />
         <div className="flex min-h-0 flex-1 flex-col">
           {loading ? (

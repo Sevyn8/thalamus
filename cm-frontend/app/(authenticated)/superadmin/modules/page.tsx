@@ -100,7 +100,7 @@ function ModulesPageInner() {
     <div className="flex flex-col">
       <PageHeader
         title="Module Access"
-        subtitle="Enable or disable Cortex modules per tenant. Disabling instantly revokes role permissions."
+        subtitle="Enable or disable Sevyn8 modules per tenant. Disabling instantly revokes role permissions."
       />
 
       <section className="px-6 py-6">

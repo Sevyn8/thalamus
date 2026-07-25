@@ -13,24 +13,30 @@ import type { StepProps } from "@/components/tenants/onboarding/step-props";
 // Step 6: Access & users. Three sub-sections, each committing its actions
 // immediately (module toggles, provision, create/provision/invite), so
 // there is no unsaved wizard-form state — navigation away is always safe.
-export function AccessUsersStep({ tenantId, onSaved, onBack, setDirty }: StepProps) {
+export function AccessUsersStep({ tenantId, onSaved, onBack, setDirty, mode }: StepProps) {
   const tenant = useTenant(tenantId);
 
   useEffect(() => setDirty(false), [setDirty]);
 
+  // Every action in this step (module toggles, Auth0 org provisioning,
+  // user invites) persists immediately, so edit mode has nothing to "save
+  // and continue" to: drop the footer bar entirely. Onboarding mode keeps
+  // the Save & continue advance.
   return (
     <StepShell
       title="Access & users"
       description="Grant modules, provision the tenant's Auth0 organization, and invite its admin users."
       footer={
-        <div className="flex items-center justify-between border-t border-border px-6 py-4">
-          <div>
-            {onBack ? (
-              <Button type="button" variant="outline" onClick={onBack}>Back</Button>
-            ) : null}
+        mode === "edit" ? undefined : (
+          <div className="flex items-center justify-between border-t border-border px-6 py-4">
+            <div>
+              {onBack ? (
+                <Button type="button" variant="outline" onClick={onBack}>Back</Button>
+              ) : null}
+            </div>
+            <Button type="button" onClick={onSaved}>Save & continue</Button>
           </div>
-          <Button type="button" onClick={onSaved}>Save & continue</Button>
-        </div>
+        )
       }
     >
       <div className="flex flex-col gap-8">

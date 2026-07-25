@@ -32,11 +32,28 @@ import {
 } from "@/components/tenants/onboarding/fields";
 import { WizardFooter } from "@/components/tenants/onboarding/WizardFooter";
 import { StepShell } from "@/components/tenants/onboarding/StepShell";
+import type { WizardMode } from "@/components/tenants/onboarding/step-props";
 
 const FORM_ID = "onboarding-company-form";
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+// The backend's INVALID_TENANT_FIELD message embeds the offending column in
+// single quotes ("Invalid value for 'monthly_revenue_as_of_date': ..."; the
+// field is not in the envelope's details per the Q7 convention). Map it back
+// to the matching form field so the error anchors to the right input -- and
+// since revenue and its as-of date sit in the same row, a consistency error
+// naming the date renders right next to the revenue it belongs to.
+function fieldForInvalidTenantField(
+  message: string,
+): keyof OnboardingCompanyInput {
+  const named = /'([^']+)'/.exec(message)?.[1];
+  if (named === "monthly_revenue_as_of_date") return "monthly_revenue_as_of_date";
+  if (named === "number_of_stores_as_of_date") return "number_of_stores_as_of_date";
+  if (named === "number_of_stores") return "number_of_stores";
+  return "monthly_revenue_usd";
 }
 
 const EMPTY: OnboardingCompanyInput = {
@@ -49,7 +66,9 @@ const EMPTY: OnboardingCompanyInput = {
   primary_contact_name: "",
   contact_email: "",
   number_of_stores: 1,
+  number_of_stores_as_of_date: "",
   monthly_revenue_usd: "",
+  monthly_revenue_as_of_date: "",
 };
 
 function fromTenant(t: TenantDetail): OnboardingCompanyInput {
@@ -63,7 +82,9 @@ function fromTenant(t: TenantDetail): OnboardingCompanyInput {
     primary_contact_name: t.primary_contact_name ?? "",
     contact_email: t.contact_email ?? "",
     number_of_stores: t.number_of_stores ?? 1,
+    number_of_stores_as_of_date: t.number_of_stores_as_of_date ?? "",
     monthly_revenue_usd: t.monthly_revenue_usd ?? "",
+    monthly_revenue_as_of_date: t.monthly_revenue_as_of_date ?? "",
   };
 }
 
@@ -73,6 +94,10 @@ export type CompanyProfileStepProps = {
   onSaved: () => void;
   onBack: (() => void) | null;
   setDirty: (dirty: boolean) => void;
+  // Slice 7 item 2: "edit" when this step is the standalone edit surface
+  // (non-ONBOARDING tenant); "onboarding" for create/resume. Create is
+  // always onboarding regardless.
+  mode: WizardMode;
 };
 
 export function CompanyProfileStep(props: CompanyProfileStepProps) {
@@ -212,6 +237,18 @@ function CompanyFields({
           <FieldError message={errors.number_of_stores?.message} />
         </div>
         <div className="flex flex-col gap-1">
+          <FieldLabel htmlFor="number_of_stores_as_of_date" required>Stores as-of date</FieldLabel>
+          <Input
+            id="number_of_stores_as_of_date"
+            type="date"
+            {...register("number_of_stores_as_of_date")}
+          />
+          <FieldError message={errors.number_of_stores_as_of_date?.message} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-1">
           <FieldLabel htmlFor="monthly_revenue_usd">Monthly revenue (USD)</FieldLabel>
           <Input
             id="monthly_revenue_usd"
@@ -220,6 +257,18 @@ function CompanyFields({
             {...register("monthly_revenue_usd")}
           />
           <FieldError message={errors.monthly_revenue_usd?.message} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <FieldLabel htmlFor="monthly_revenue_as_of_date">Revenue as-of date</FieldLabel>
+          <Input
+            id="monthly_revenue_as_of_date"
+            type="date"
+            {...register("monthly_revenue_as_of_date")}
+          />
+          <p className="text-xs text-muted-foreground">
+            Required when a monthly revenue figure is set.
+          </p>
+          <FieldError message={errors.monthly_revenue_as_of_date?.message} />
         </div>
       </div>
     </div>
@@ -245,6 +294,18 @@ function CompanyCreate({ onCreated, setDirty }: CompanyProfileStepProps) {
     setDirty(isDirty);
   }, [isDirty, setDirty]);
 
+  useEffect(() => {
+    // Default the stores as-of date to today for a new tenant. Done here
+    // (client-only, shouldDirty:false) rather than in defaultValues so the
+    // static-prerendered create route does not bake the build date in, and
+    // so an untouched form stays pristine for the discard guard.
+    if (!form.getValues("number_of_stores_as_of_date")) {
+      form.setValue("number_of_stores_as_of_date", todayIso(), {
+        shouldDirty: false,
+      });
+    }
+  }, [form]);
+
   const mutation = useMutation({
     mutationFn: (body: TenantCreateRequest) => tenantsApi.create(body),
     onSuccess: () => {
@@ -255,6 +316,7 @@ function CompanyCreate({ onCreated, setDirty }: CompanyProfileStepProps) {
 
   async function onSubmit(input: OnboardingCompanyInput) {
     const revenue = input.monthly_revenue_usd?.trim();
+    const revenueDate = input.monthly_revenue_as_of_date?.trim();
     const display = input.display_code?.trim();
     const body: TenantCreateRequest = {
       name: input.name.trim(),
@@ -265,10 +327,12 @@ function CompanyCreate({ onCreated, setDirty }: CompanyProfileStepProps) {
       primary_contact_name: input.primary_contact_name.trim(),
       contact_email: input.contact_email.trim().toLowerCase(),
       number_of_stores: input.number_of_stores,
-      number_of_stores_as_of_date: todayIso(),
+      number_of_stores_as_of_date: input.number_of_stores_as_of_date.trim() || todayIso(),
       display_code: display ? display.toLowerCase() : null,
+      // Revenue and its as-of date go together or not at all (the schema's
+      // cross-field rule guarantees this before we get here).
       monthly_revenue_usd: revenue ? revenue : null,
-      monthly_revenue_as_of_date: revenue ? todayIso() : null,
+      monthly_revenue_as_of_date: revenue ? revenueDate || null : null,
     };
     try {
       const created = await mutation.mutateAsync(body);
@@ -283,6 +347,13 @@ function CompanyCreate({ onCreated, setDirty }: CompanyProfileStepProps) {
         }
         if (err.code === "DISPLAY_CODE_TAKEN") {
           setError("display_code", { type: "server", message: "Display code is already in use" });
+          return;
+        }
+        if (err.code === "INVALID_TENANT_FIELD") {
+          setError(fieldForInvalidTenantField(err.message), {
+            type: "server",
+            message: err.message,
+          });
           return;
         }
         if (err.status >= 500) {
@@ -317,6 +388,7 @@ function CompanyEdit({
   onSaved,
   onBack,
   setDirty,
+  mode,
 }: CompanyProfileStepProps & { tenantId: string }) {
   const qc = useQueryClient();
   const tenantQuery = useTenant(tenantId);
@@ -344,7 +416,10 @@ function CompanyEdit({
     mutationFn: (patch: TenantPatchPayload) => tenantsApi.patch(tenantId, patch),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["tenants"] });
-      void qc.invalidateQueries({ queryKey: ["tenant", tenantId] });
+      // Slice 7 item 5: ["tenant"] prefix, not ["tenant", tenantId] (which
+      // does not prefix-match the per-user detail key ["tenant", userId,
+      // id]), so the drawer reflects the edit on return.
+      void qc.invalidateQueries({ queryKey: ["tenant"] });
     },
   });
 
@@ -360,14 +435,21 @@ function CompanyEdit({
     if (df.industry) patch.industry = (input.industry || null) as TenantIndustry | null;
     if (df.primary_contact_name) patch.primary_contact_name = input.primary_contact_name.trim() || null;
     if (df.contact_email) patch.contact_email = input.contact_email.trim().toLowerCase() || null;
-    if (df.number_of_stores) {
-      patch.number_of_stores = input.number_of_stores;
-      patch.number_of_stores_as_of_date = todayIso();
+    // Each value and its as-of date diff independently now that the dates
+    // are real fields: a user can fix a dateless tenant by supplying just
+    // the missing date. The schema's cross-field rule keeps the revenue
+    // pair consistent before submit.
+    if (df.number_of_stores) patch.number_of_stores = input.number_of_stores;
+    if (df.number_of_stores_as_of_date) {
+      patch.number_of_stores_as_of_date =
+        input.number_of_stores_as_of_date.trim() || null;
     }
     if (df.monthly_revenue_usd) {
-      const revenue = input.monthly_revenue_usd?.trim();
-      patch.monthly_revenue_usd = revenue || null;
-      patch.monthly_revenue_as_of_date = revenue ? todayIso() : null;
+      patch.monthly_revenue_usd = input.monthly_revenue_usd?.trim() || null;
+    }
+    if (df.monthly_revenue_as_of_date) {
+      patch.monthly_revenue_as_of_date =
+        input.monthly_revenue_as_of_date?.trim() || null;
     }
 
     try {
@@ -380,6 +462,18 @@ function CompanyEdit({
       if (err instanceof ApiError) {
         if (err.code === "DUPLICATE_TENANT_NAME") {
           setError("name", { type: "server", message: "A tenant with this name already exists" });
+          return;
+        }
+        // Slice 7 item 1/2: the backend maps NUMERIC(15,2) overflow and the
+        // revenue/stores CHECK constraints to 422 INVALID_TENANT_FIELD. The
+        // as-of date fields are now real inputs, so the error anchors to the
+        // exact field the backend named (which, for the revenue consistency
+        // constraint, is the as-of date sitting right beside the revenue).
+        if (err.code === "INVALID_TENANT_FIELD") {
+          setError(fieldForInvalidTenantField(err.message), {
+            type: "server",
+            message: err.message,
+          });
           return;
         }
         if (err.status >= 500) {
@@ -408,7 +502,7 @@ function CompanyEdit({
     <StepShell
       title="Company profile"
       description="Edit the client organization's core details."
-      footer={<WizardFooter formId={FORM_ID} saving={isSubmitting} onBack={onBack} />}
+      footer={<WizardFooter formId={FORM_ID} saving={isSubmitting} onBack={onBack} continueLabel={mode === "edit" ? "Save changes" : undefined} />}
     >
       <form id={FORM_ID} onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4" noValidate>
         <CompanyFields form={form} regionDisabled />

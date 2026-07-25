@@ -3,7 +3,11 @@
 import { Check, Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { WIZARD_STEPS, type WizardStepKey } from "./wizard-steps";
+import {
+  WIZARD_STEPS,
+  type WizardStep,
+  type WizardStepKey,
+} from "./wizard-steps";
 
 export type RailState =
   | "complete"
@@ -23,6 +27,14 @@ export type StepRailProps = {
   // Draft-saved indicator.
   saving: boolean;
   savedLabel: string | null;
+  // Slice 7 item 2: the set of steps to render. Onboarding passes all
+  // seven (the default); edit mode passes the six non-review sections.
+  steps?: readonly WizardStep[];
+  // Onboarding shows progress affordances (completion ticks, warning
+  // sublabels, the draft-saved footer). Edit mode reuses the rail chrome
+  // purely as section navigation, so it suppresses all of that: the rail
+  // is just a highlighted current section plus plain, clickable siblings.
+  showProgress?: boolean;
 };
 
 export function StepRail({
@@ -32,17 +44,26 @@ export function StepRail({
   onSelect,
   saving,
   savedLabel,
+  steps = WIZARD_STEPS,
+  showProgress = true,
 }: StepRailProps) {
   return (
     <nav
-      aria-label="Onboarding steps"
+      aria-label={showProgress ? "Onboarding steps" : "Sections"}
       className="flex w-64 shrink-0 flex-col gap-1 border-r border-border p-4"
     >
       <ol className="flex flex-col gap-1">
-        {WIZARD_STEPS.map((step, index) => {
-          const state = stateFor(step.key);
+        {steps.map((step, index) => {
+          // In edit mode we ignore onboarding progress state entirely: the
+          // active section reads "current", every other section is a plain
+          // "pending" nav item (no ticks, no warnings, all reachable).
+          const state = showProgress
+            ? stateFor(step.key)
+            : step.key === activeKey
+              ? "current"
+              : "pending";
           const clickable = state !== "disabled" && step.key !== activeKey;
-          const reason = reasonFor ? reasonFor(step.key) : null;
+          const reason = showProgress && reasonFor ? reasonFor(step.key) : null;
           return (
             <li key={step.key}>
               <button
@@ -100,6 +121,7 @@ export function StepRail({
         })}
       </ol>
 
+      {showProgress ? (
       <div className="mt-2 border-t border-border px-3 pt-3 text-xs text-muted-foreground">
         {saving ? (
           <span className="inline-flex items-center gap-1.5">
@@ -115,6 +137,7 @@ export function StepRail({
           <span>Draft not yet saved</span>
         )}
       </div>
+      ) : null}
     </nav>
   );
 }

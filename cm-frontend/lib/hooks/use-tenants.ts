@@ -2,11 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import {
-  tenantsApi,
-  type TenantListParams,
-  type TenantPatchPayload,
-} from "@/lib/api/tenants";
+import { tenantsApi, type TenantListParams } from "@/lib/api/tenants";
 import { useAuthSnapshot } from "@/lib/auth/auth-cache";
 
 // Phase 5g.1: `enabled` defaults to true; consumers without
@@ -64,19 +60,19 @@ function invalidateTenant(
 ): void {
   void queryClient.invalidateQueries({ queryKey: ["tenants"] });
   void queryClient.invalidateQueries({ queryKey: ["tenant-stats"] });
-  if (id) {
-    void queryClient.invalidateQueries({ queryKey: ["tenant", id] });
-  }
+  // Slice 7 item 5: the detail query key is ["tenant", userId, id]; a
+  // ["tenant", id] key does NOT prefix-match it (id sits in the userId
+  // slot), so the drawer showed stale status after lifecycle actions.
+  // Invalidate the ["tenant"] prefix, which matches every per-user detail
+  // query. `id` is unused now but kept in the signature for call clarity.
+  void id;
+  void queryClient.invalidateQueries({ queryKey: ["tenant"] });
 }
 
-export function useEditTenant() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: TenantPatchPayload }) =>
-      tenantsApi.patch(id, patch),
-    onSuccess: (_data, { id }) => invalidateTenant(queryClient, id),
-  });
-}
+// Slice 7 item 2: useEditTenant + EditTenantModal were retired. Tenant
+// edits now flow through the wizard's edit mode (CompanyProfileStep's
+// CompanyEdit calls tenantsApi.patch directly). Lifecycle mutations below
+// stay on the drawer.
 
 export function useActivateTenant() {
   const queryClient = useQueryClient();

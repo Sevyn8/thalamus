@@ -64,7 +64,7 @@ const EMPTY: StepForm = {
   items: [],
 };
 
-export function LegalStatutoryStep({ tenantId, onSaved, onBack, setDirty }: StepProps) {
+export function LegalStatutoryStep({ tenantId, onSaved, onBack, setDirty, mode }: StepProps) {
   const lookups = useOnboardingLookups();
   const entityTypes = lookups.data?.entity_type ?? [];
   const regTypes = lookups.data?.tax_registration_type ?? [];
@@ -174,7 +174,7 @@ export function LegalStatutoryStep({ tenantId, onSaved, onBack, setDirty }: Step
     <StepShell
       title="Legal & statutory"
       description="The legal entity and its tax registrations."
-      footer={<WizardFooter formId={FORM_ID} saving={isSubmitting} onBack={onBack} />}
+      footer={<WizardFooter formId={FORM_ID} saving={isSubmitting} onBack={onBack} continueLabel={mode === "edit" ? "Save changes" : undefined} />}
     >
       <form id={FORM_ID} onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6" noValidate>
         {errors.root ? <FormErrorAlert title="Could not save legal details." message={errors.root.message ?? ""} /> : null}

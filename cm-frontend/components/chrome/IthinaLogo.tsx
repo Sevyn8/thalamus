@@ -5,11 +5,11 @@ import { cn } from "@/lib/utils";
 // (64px). Constrained literal-union size prop resists
 // over-generalization; if a 4th size lands, widen here.
 //
-// SVG asset at /public/logo.svg carries a hardcoded brand-blue
-// fill (#2C4CFD). Visible on both light + dark backgrounds; no
-// currentColor plumbing. If brand later wants a theme-aware
-// variant, add /public/logo-dark.svg + theme-conditional src
-// here.
+// Slice 7 (item 8): renders the animated Sevyn8 mark
+// (/public/sevyn8-mark-animated.svg, the convergence-loop brand
+// asset) at all sizes, replacing the prior Cortex /logo.svg. The
+// component keeps its internal name (IthinaLogo) — internal
+// identifiers are not renamed. Visible on light + dark backgrounds.
 
 export type IthinaLogoSize = 32 | 48 | 64;
 
@@ -27,8 +27,8 @@ export function IthinaLogo({
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src="/logo.svg"
-      alt="Cortex"
+      src="/sevyn8-mark-animated.svg"
+      alt="Sevyn8"
       width={size}
       height={size}
       className={cn("block shrink-0", className)}

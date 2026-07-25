@@ -50,7 +50,7 @@ function formatBytes(n: number | null): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function DocumentsStep({ tenantId, onSaved, onBack, setDirty }: StepProps) {
+export function DocumentsStep({ tenantId, onSaved, onBack, setDirty, mode }: StepProps) {
   const lookups = useOnboardingLookups();
   const docTypes = lookups.data?.document_type ?? [];
   const typeLabel = (code: string) =>
@@ -256,14 +256,19 @@ export function DocumentsStep({ tenantId, onSaved, onBack, setDirty }: StepProps
       title="Documents"
       description="Upload the client's onboarding documents. Verification is handled by staff outside this wizard."
       footer={
-        <div className="flex items-center justify-between border-t border-border px-6 py-4">
-          <div>
-            {onBack ? (
-              <Button type="button" variant="outline" onClick={onBack}>Back</Button>
-            ) : null}
+        // Upload / verify / reject / delete all persist immediately, so
+        // edit mode has nothing to advance to: drop the footer. Onboarding
+        // keeps Save & continue.
+        mode === "edit" ? undefined : (
+          <div className="flex items-center justify-between border-t border-border px-6 py-4">
+            <div>
+              {onBack ? (
+                <Button type="button" variant="outline" onClick={onBack}>Back</Button>
+              ) : null}
+            </div>
+            <Button type="button" onClick={onSaved}>Save & continue</Button>
           </div>
-          <Button type="button" onClick={onSaved}>Save & continue</Button>
-        </div>
+        )
       }
     >
       <div className="flex flex-col gap-6">

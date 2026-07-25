@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -19,7 +18,6 @@ import {
 } from "@/lib/hooks/use-tenants";
 import { useCanDo } from "@/lib/auth/use-me-can-do";
 import { cn } from "@/lib/utils";
-import { EditTenantModal } from "./EditTenantModal";
 import type { TenantDetail } from "@/types/api";
 
 function formatDate(iso: string | null): string {
@@ -130,7 +128,6 @@ export function TenantDetailDrawer({ tenantId, open, onOpenChange }: TenantDetai
   const q = useTenant(tenantId ?? "");
   const suspendMutation = useSuspendTenant();
   const activateMutation = useActivateTenant();
-  const [editOpen, setEditOpen] = useState(false);
 
   // Phase 5n.5 tuple split: lifecycle (suspend/activate) is gated by
   // backend on ADMIN.TENANTS.OVERRIDE.GLOBAL per
@@ -148,9 +145,10 @@ export function TenantDetailDrawer({ tenantId, open, onOpenChange }: TenantDetai
 
   // Edit gate (PATCH /tenants/{id}); tuple matches POST per
   // src/admin_backend/routers/v1/tenants.py:137-140 (POST) and
-  // 310-313 (PATCH). EditTenantModal deferred to Phase 5n.5a; the
-  // pre-flight gate is in place so the denial path is honest when
-  // the modal lands.
+  // 310-313 (PATCH). Slice 7 item 2: Edit tenant routes to the wizard
+  // edit surface (the retired EditTenantModal's replacement); the wizard
+  // route enforces the same CONFIGURE gate, and this pre-flight keeps the
+  // denial path honest before navigating.
   const canEditTenant = useCanDo(
     "ADMIN",
     "TENANTS",
@@ -198,15 +196,17 @@ export function TenantDetailDrawer({ tenantId, open, onOpenChange }: TenantDetai
   }
 
   function onEditClick() {
+    if (!tenantId) return;
     if (canEditTenant.data?.allowed === false) {
       toast.error("You don't have permission to edit tenants.");
       return;
     }
-    setEditOpen(true);
+    // Route to the wizard, which opens in edit mode for a non-ONBOARDING
+    // tenant (and in resume-onboarding mode for an ONBOARDING one).
+    router.push(`/superadmin/tenants/onboard/${tenantId}`);
   }
 
   return (
-    <>
     <Drawer
       open={open}
       onOpenChange={onOpenChange}
@@ -310,13 +310,5 @@ export function TenantDetailDrawer({ tenantId, open, onOpenChange }: TenantDetai
         <Body tenant={q.data} />
       ) : null}
     </Drawer>
-    {q.data ? (
-      <EditTenantModal
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        tenant={q.data}
-      />
-    ) : null}
-    </>
   );
 }

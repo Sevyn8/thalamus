@@ -27,7 +27,7 @@ import type { StepProps } from "@/components/tenants/onboarding/step-props";
 
 const FORM_ID = "onboarding-contacts-form";
 
-export function ContactsStep({ tenantId, onSaved, onBack, setDirty }: StepProps) {
+export function ContactsStep({ tenantId, onSaved, onBack, setDirty, mode }: StepProps) {
   const lookups = useOnboardingLookups();
   const contactTypes = lookups.data?.contact_type ?? [];
 
@@ -108,7 +108,7 @@ export function ContactsStep({ tenantId, onSaved, onBack, setDirty }: StepProps)
     <StepShell
       title="Contacts"
       description="Key people for this client. Add primary, billing, technical, or legal contacts."
-      footer={<WizardFooter formId={FORM_ID} saving={isSubmitting} onBack={onBack} />}
+      footer={<WizardFooter formId={FORM_ID} saving={isSubmitting} onBack={onBack} continueLabel={mode === "edit" ? "Save changes" : undefined} />}
     >
       <form id={FORM_ID} onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4" noValidate>
         {errors.root ? <FormErrorAlert title="Could not save contacts." message={errors.root.message ?? ""} /> : null}

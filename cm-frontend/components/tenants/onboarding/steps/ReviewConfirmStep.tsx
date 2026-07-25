@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AlertTriangle, CheckCircle2, Loader2, Pencil } from "lucide-react";
 
@@ -55,6 +55,13 @@ export function ReviewConfirmStep({
   const documents = useDocuments(tenantId);
   const users = useTenantUsers({ tenant_id: tenantId });
   const complete = useCompleteOnboarding(tenantId);
+  // Item 4: once Confirm is clicked we stay disabled through navigation.
+  // complete.isPending flips back to false when the mutation resolves,
+  // BEFORE the async router.push completes, which briefly re-enabled the
+  // button and allowed a second click (-> a spurious 409). `completing`
+  // is set on click and only cleared on error, so a successful confirm
+  // keeps the button disabled until the component unmounts on navigation.
+  const [completing, setCompleting] = useState(false);
 
   // Review commits nothing until Confirm; navigation away is always safe.
   useEffect(() => setDirty(false), [setDirty]);
@@ -162,12 +169,26 @@ export function ReviewConfirmStep({
   const canConfirm = blockers.length === 0;
 
   async function onConfirm() {
+    if (completing) return; // idempotent against double-click
+    setCompleting(true);
     try {
       const result = await complete.mutateAsync();
+      // Leave `completing` true: onComplete navigates away, and keeping the
+      // button disabled until unmount prevents a second submit.
       onComplete(result.status);
     } catch (err) {
+      setCompleting(false); // allow retry
       if (err instanceof ApiError) {
-        // Backend gate is the authority; surface its named 409 message.
+        // Item 3: a status change between load and click -> the backend
+        // 409 INVALID_STATE_TRANSITION surfaces as a clear message, not a
+        // generic toast.
+        if (err.code === "INVALID_STATE_TRANSITION") {
+          toast.error(
+            "Onboarding has already been completed for this tenant.",
+          );
+          return;
+        }
+        // Other gate 409s (ONBOARDING_INCOMPLETE) keep their named message.
         toast.error(err.message);
         return;
       }
@@ -186,8 +207,8 @@ export function ReviewConfirmStep({
               <Button type="button" variant="outline" onClick={onBack}>Back</Button>
             ) : null}
           </div>
-          <Button type="button" onClick={onConfirm} disabled={!canConfirm || complete.isPending}>
-            {complete.isPending ? (
+          <Button type="button" onClick={onConfirm} disabled={!canConfirm || completing}>
+            {completing ? (
               <>
                 <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                 Completing...

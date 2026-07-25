@@ -7783,7 +7783,9 @@
           "monthly_revenue_usd": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "maximum": 9999999999999.99,
+                "minimum": 0
               },
               {
                 "type": "string",
@@ -8167,7 +8169,9 @@
           "monthly_revenue_usd": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "number",
+                "maximum": 9999999999999.99,
+                "minimum": 0
               },
               {
                 "type": "string",

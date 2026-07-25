@@ -142,7 +142,10 @@ export function useCompleteOnboarding(tenantId: string) {
     mutationFn: () => tenantsApi.completeOnboarding(tenantId),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["tenants"] });
-      void qc.invalidateQueries({ queryKey: ["tenant", tenantId] });
+      // Slice 7 item 5: ["tenant"] prefix (not ["tenant", tenantId]) so the
+      // per-user detail key ["tenant", userId, id] is matched -> drawer
+      // shows TRIAL immediately after complete-onboarding.
+      void qc.invalidateQueries({ queryKey: ["tenant"] });
       invalidateState(qc);
     },
   });
