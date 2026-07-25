@@ -31,3 +31,4 @@ target/
 # transient terraform import staging scaffolding (not source)
 infra/_import/
 *.tfplan
+tfplan
