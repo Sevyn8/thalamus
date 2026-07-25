@@ -53,6 +53,12 @@ export function Shell() {
   const { snapshot, logout } = useAuth()
   const { pathname } = useLocation()
   const isPlatform = snapshot?.tenantId === null
+  // Cross-app link back to the Customer Master launcher ("My Sevyn8"). Baked at
+  // build time (dis-ui-ver2.Dockerfile ARG/ENV); a full-page nav to the CM
+  // origin, so it is a plain <a>, not a react-router link. Rendered only when the
+  // build arg is set, so dev builds without it show no dead affordance. Read at
+  // render (not module scope) so it is stubbable in tests.
+  const cmLauncherUrl = import.meta.env.VITE_CM_LAUNCHER_URL as string | undefined
 
   return (
     <div className="app">
@@ -60,7 +66,7 @@ export function Shell() {
         <div className="brand">
           <img
             className="mark"
-            src="/sevyn8-mark-animated.svg"
+            src="/sevyn8-mark-motion.svg"
             alt="Sevyn8"
             width={26}
             height={26}
@@ -104,6 +110,11 @@ export function Shell() {
               <b>{crumbFor(pathname)}</b>
             </div>
             <div className="scope">
+              {cmLauncherUrl ? (
+                <a className="btn sm ghost" href={cmLauncherUrl}>
+                  &larr; My Sevyn8
+                </a>
+              ) : null}
               <div className="scopepill">
                 <span className="dot" />
                 {isPlatform ? (

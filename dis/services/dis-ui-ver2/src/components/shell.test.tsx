@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { AuthSnapshot } from '../auth/AuthSnapshot'
 import { AuthContext } from '../auth/context'
@@ -36,6 +36,10 @@ function renderShell() {
 }
 
 describe('Shell — brand, footer, nav', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
   it('brand reads "Sevyn8" + DIS chip (not Ithina)', () => {
     renderShell()
     expect(screen.getByText('Sevyn8')).toBeInTheDocument()
@@ -97,6 +101,19 @@ describe('Shell — brand, footer, nav', () => {
     expect(byText('Credentials & Secrets').getAttribute('href')).toBe('/credentials')
     expect(byText('Configured Data Sources').getAttribute('href')).toBe('/pipelines')
     expect(byText('Data Ingestion Templates').getAttribute('href')).toBe('/templates')
+  })
+
+  it('shows the "My Sevyn8" launcher link when VITE_CM_LAUNCHER_URL is set', () => {
+    vi.stubEnv('VITE_CM_LAUNCHER_URL', 'https://cm.example.test/my-ithina')
+    renderShell()
+    const link = screen.getByRole('link', { name: /My Sevyn8/ })
+    expect(link).toHaveAttribute('href', 'https://cm.example.test/my-ithina')
+  })
+
+  it('hides the launcher link when VITE_CM_LAUNCHER_URL is unset', () => {
+    vi.stubEnv('VITE_CM_LAUNCHER_URL', '')
+    renderShell()
+    expect(screen.queryByRole('link', { name: /My Sevyn8/ })).not.toBeInTheDocument()
   })
 
   it('Sources & Data group lists Data Ingestion Templates directly below Connect a Data Source', () => {

@@ -60,10 +60,17 @@ ENV VITE_AUTH0_DOMAIN=${VITE_AUTH0_DOMAIN}
 ENV VITE_AUTH0_CLIENT_ID=${VITE_AUTH0_CLIENT_ID}
 ENV VITE_AUTH0_AUDIENCE=${VITE_AUTH0_AUDIENCE}
 # Single login entry point: DIS with no session redirects here (Customer Master's
-# login, which lands on My Cortex) instead of running its own interactive login.
-# Empty default keeps a plain build working; staging passes the real CM URL.
+# login, which lands on the My Sevyn8 launcher) instead of running its own
+# interactive login. Empty default keeps a plain build working; staging passes
+# the real CM URL.
 ARG VITE_CM_LOGIN_URL=""
 ENV VITE_CM_LOGIN_URL=${VITE_CM_LOGIN_URL}
+# Cross-app "back to My Sevyn8" launcher link in the Shell header. Distinct from
+# VITE_CM_LOGIN_URL: this points at the authenticated launcher (/my-ithina), not
+# the login page. Empty default hides the link so a plain build shows no dead
+# affordance; staging passes the real launcher URL.
+ARG VITE_CM_LAUNCHER_URL=""
+ENV VITE_CM_LAUNCHER_URL=${VITE_CM_LAUNCHER_URL}
 RUN pnpm build
 
 # --- serve ---
