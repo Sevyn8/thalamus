@@ -69,10 +69,10 @@ locals {
     DIS_EXPECTED_DATABASE = var.dis_expected_database # parameterized dis-rls guard
     GCS_BUCKET_BRONZE     = var.bronze_bucket_name    # config.py:63 required at boot
     PUBSUB_PROJECT_ID     = var.project_id            # config.py:64 required at boot
-    CSV_RECEIVED_TOPIC    = var.csv_received_topic     # config.py:83 (defaults csv.received; set to provisioned name)
-    DIS_AUTH_MODE         = var.dis_auth_mode          # AUTH0 -> RS256/JWKS verifier (real Auth0 tokens)
-    JWT_ISSUER            = var.jwt_issuer             # Auth0 issuer; backend derives AUTH0_JWKS_URL from it
-    JWT_AUDIENCE          = var.jwt_audience           # DIS API audience
+    CSV_RECEIVED_TOPIC    = var.csv_received_topic    # config.py:83 (defaults csv.received; set to provisioned name)
+    DIS_AUTH_MODE         = var.dis_auth_mode         # AUTH0 -> RS256/JWKS verifier (real Auth0 tokens)
+    JWT_ISSUER            = var.jwt_issuer            # Auth0 issuer; backend derives AUTH0_JWKS_URL from it
+    JWT_AUDIENCE          = var.jwt_audience          # DIS API audience
   }
 }
 
