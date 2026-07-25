@@ -59,6 +59,17 @@ class SendGridEmailSender:
             "from": {"email": self._from_email},
             "subject": subject,
             "content": [{"type": "text/plain", "value": body}],
+            # Per-message tracking is disabled on every transactional send.
+            # The invitation body carries a one-time Auth0 password-change
+            # ticket URL; SendGrid click tracking rewrites links through
+            # url####.sevyn8.com, which serves an invalid certificate
+            # (ERR_CERT_COMMON_NAME_INVALID) and must never sit between the
+            # user and a single-use credential URL. Set in code, not by a
+            # dashboard toggle, so the guarantee travels with the send path.
+            "tracking_settings": {
+                "click_tracking": {"enable": False, "enable_text": False},
+                "open_tracking": {"enable": False},
+            },
         }
         headers = {
             "Authorization": f"Bearer {self._api_key}",

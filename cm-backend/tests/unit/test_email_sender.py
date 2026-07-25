@@ -51,6 +51,10 @@ async def test_send_email_request_shape(settings: Settings) -> None:
             "from": {"email": "noreply@sevyn8.com"},
             "subject": "Your Sevyn8 invitation",
             "content": [{"type": "text/plain", "value": "set your password: https://x/t"}],
+            "tracking_settings": {
+                "click_tracking": {"enable": False, "enable_text": False},
+                "open_tracking": {"enable": False},
+            },
         }
         return httpx.Response(202)
 
@@ -59,6 +63,27 @@ async def test_send_email_request_shape(settings: Settings) -> None:
         subject="Your Sevyn8 invitation",
         body="set your password: https://x/t",
     )
+
+
+async def test_send_email_disables_click_and_open_tracking(settings: Settings) -> None:
+    """The outgoing payload must disable SendGrid click AND open tracking so a
+    one-time Auth0 ticket URL is never rewritten through url####.sevyn8.com."""
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(202)
+
+    await _sender(settings, handler).send_email(
+        to="invitee@tenant.test",
+        subject="Your Sevyn8 invitation",
+        body="set your password: https://x/t",
+    )
+
+    tracking = captured["tracking_settings"]
+    assert tracking["click_tracking"]["enable"] is False
+    assert tracking["click_tracking"]["enable_text"] is False
+    assert tracking["open_tracking"]["enable"] is False
 
 
 async def test_send_email_non_202_maps_to_typed_error(settings: Settings) -> None:
