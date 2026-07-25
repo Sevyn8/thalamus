@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -125,6 +126,7 @@ export type TenantDetailDrawerProps = {
 };
 
 export function TenantDetailDrawer({ tenantId, open, onOpenChange }: TenantDetailDrawerProps) {
+  const router = useRouter();
   const q = useTenant(tenantId ?? "");
   const suspendMutation = useSuspendTenant();
   const activateMutation = useActivateTenant();
@@ -212,13 +214,23 @@ export function TenantDetailDrawer({ tenantId, open, onOpenChange }: TenantDetai
       title={q.data?.name ?? "Tenant"}
       subtitle={q.data?.display_code ?? undefined}
       footer={
-        // Lifecycle button matrix mirrors the backend's allowed_sources
-        // (repositories/tenants.py:865-868):
-        //   TRIAL     → Activate (positive) + Suspend (destructive)
-        //   ACTIVE    → Suspend
-        //   SUSPENDED → Resume
-        //   ONBOARDING / TERMINATED → no action (off-graph backend-side)
+        // Lifecycle button matrix mirrors the backend's allowed_sources:
+        //   ONBOARDING → Resume onboarding (Slice 6; suspend/activate would
+        //                409, so they are correctly absent)
+        //   TRIAL      → Activate (positive) + Suspend (destructive)
+        //   ACTIVE     → Suspend
+        //   SUSPENDED  → Resume
+        //   TERMINATED → no action (off-graph backend-side)
         <div className="flex items-center justify-end gap-2">
+          {q.data?.status === "ONBOARDING" ? (
+            <Button
+              onClick={() =>
+                router.push(`/superadmin/tenants/onboard/${tenantId}`)
+              }
+            >
+              Resume onboarding
+            </Button>
+          ) : null}
           {q.data?.status === "TRIAL" ? (
             <>
               <Button

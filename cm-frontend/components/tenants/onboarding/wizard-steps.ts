@@ -1,9 +1,8 @@
 // The onboarding wizard's 7 steps. Keys match the backend's fixed
 // WIZARD_SECTION_KEYS set (validated by PATCH /tenants/{id}/onboarding for
-// current_step and every section_status key). Step 6 (access) is
-// implemented in Slice 5; step 7 (review) renders as a disabled placeholder
-// until a later slice. The order here is the rail order and the
-// Save-&-continue advance order.
+// current_step and every section_status key). All seven steps are
+// implemented (step 6 access in Slice 5, step 7 review in Slice 6). The
+// order here is the rail order and the Save-&-continue advance order.
 
 export type WizardStepKey =
   | "company"
@@ -28,7 +27,7 @@ export const WIZARD_STEPS: readonly WizardStep[] = [
   { key: "contacts", label: "Contacts", enabled: true },
   { key: "documents", label: "Documents", enabled: true },
   { key: "access", label: "Access & users", enabled: true },
-  { key: "review", label: "Review & confirm", enabled: false },
+  { key: "review", label: "Review & confirm", enabled: true },
 ];
 
 export const ENABLED_STEP_KEYS: readonly WizardStepKey[] = WIZARD_STEPS.filter(

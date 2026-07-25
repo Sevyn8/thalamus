@@ -1,18 +1,20 @@
 import { z } from "zod";
 
-import { DISPLAY_CODE_REGEX } from "@/lib/schemas/provision-tenant";
+// Moved here in Slice 6 from the retired lib/schemas/provision-tenant.ts
+// (the onboarding wizard is the only remaining consumer): a display code is
+// lowercase alphanumerics + hyphens, 3-64 chars, no leading/trailing hyphen.
+export const DISPLAY_CODE_REGEX = /^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/;
 
 const MONEY_REGEX = /^\d+(\.\d{1,2})?$/;
 
-// Wizard Step 1 (Company profile). Distinct from provisionTenantSchema:
-// region / tier / industry are validated as non-empty strings (the selects
-// are lookups-driven, and the backend enum is the real gate) rather than a
-// hardcoded z.enum. That deliberately avoids the drift that left
-// provisionTenantSchema.region at ["US","EU"] without INDIA; the wizard's
-// region select shows every tenant_region lookup (INDIA included), and the
-// value is cast to the generated TenantRegion union when the payload is
-// built. ProvisionTenantModal and its schema are untouched (Slice 4 is
-// additive).
+// Wizard Step 1 (Company profile). region / tier / industry are validated
+// as non-empty strings (the selects are lookups-driven, and the backend
+// enum is the real gate) rather than a hardcoded z.enum: the region select
+// shows every tenant_region lookup (INDIA included), and the value is cast
+// to the generated TenantRegion union when the payload is built. This was
+// deliberately independent of the retired provision-tenant schema, whose
+// region enum omitted INDIA (Slice 6 removed it along with
+// ProvisionTenantModal).
 export const onboardingCompanySchema = z.object({
   name: z
     .string()

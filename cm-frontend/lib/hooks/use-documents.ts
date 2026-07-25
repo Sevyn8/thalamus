@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { documentsApi } from "@/lib/api/documents";
 import { useAuthSnapshot } from "@/lib/auth/auth-cache";
 import type { DocumentUploadUrlRequest } from "@/types/api";
+import type { DocumentRejectRequest } from "@/types/api";
 
 // Documents step hooks. The list is a pure DB read (works without GCS).
 // Upload is a two-phase flow orchestrated in the component (create-url ->
@@ -44,6 +45,29 @@ export function useDeleteDocument(tenantId: string) {
   return useMutation({
     mutationFn: (documentId: string) =>
       documentsApi.remove(tenantId, documentId),
+    onSuccess: () => invalidateDocuments(qc),
+  });
+}
+
+export function useVerifyDocument(tenantId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (documentId: string) =>
+      documentsApi.verify(tenantId, documentId),
+    onSuccess: () => invalidateDocuments(qc),
+  });
+}
+
+export function useRejectDocument(tenantId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      documentId,
+      body,
+    }: {
+      documentId: string;
+      body: DocumentRejectRequest;
+    }) => documentsApi.reject(tenantId, documentId, body),
     onSuccess: () => invalidateDocuments(qc),
   });
 }

@@ -1,7 +1,6 @@
 import { apiFetch, qs } from "./client";
 import type { ListResponse } from "./types";
 import type { Tenant, TenantDetail, TenantStats, TenantTier } from "@/types/api";
-import type { ProvisionTenantInput } from "@/lib/schemas/provision-tenant";
 import type { components } from "@/types/openapi-generated";
 
 // Backend-truth: PATCH /tenants/{id} body. All fields optional;
@@ -41,60 +40,13 @@ export type TenantListParams = {
   limit?: number;
 };
 
-// Server-side payload sent on POST. Mirrors the DDL-paired as_of_date pattern;
-// the form maintains user-facing fields, this function shapes them for the API.
-export type ProvisionTenantPayload = {
-  name: string;
-  display_code?: string | null;
-  region: "US" | "EU";
-  tier: "ENTERPRISE" | "MID_MARKET" | "SMB" | "SINGLE_STORE";
-  industry:
-    | "CONVENIENCE_FUEL"
-    | "CONVENIENCE"
-    | "GROCERY"
-    | "HYPERMART"
-    | "SPECIALITY_GROCERY"
-    | "ORGANIC_GROCERY";
-  country: string;
-  primary_contact_name: string;
-  contact_email: string;
-  number_of_stores: number;
-  number_of_stores_as_of_date: string;
-  monthly_revenue_usd?: string | null;
-  monthly_revenue_as_of_date?: string | null;
-};
-
-function inputToPayload(input: ProvisionTenantInput): ProvisionTenantPayload {
-  const today = new Date().toISOString().slice(0, 10);
-  const display = input.display_code?.trim();
-  const revenue = input.monthly_revenue_usd?.trim();
-  return {
-    name: input.name.trim(),
-    display_code: display ? display.toLowerCase() : null,
-    region: input.region,
-    tier: input.tier,
-    industry: input.industry,
-    country: input.country.trim(),
-    primary_contact_name: input.primary_contact_name.trim(),
-    contact_email: input.contact_email.trim().toLowerCase(),
-    number_of_stores: input.number_of_stores,
-    number_of_stores_as_of_date: today,
-    monthly_revenue_usd: revenue ? revenue : null,
-    monthly_revenue_as_of_date: revenue ? today : null,
-  };
-}
-
-export type ProvisionTenantErrorBody = {
-  code: string;
-  message: string;
-  details?: { field_errors?: Record<string, string[]>; field?: string };
-  request_id: string;
-};
-
 // Phase 5n.5 (2026-05-18): tenant writes wired against the real
-// backend (Step 6.11.2 endpoints). All 4 write surfaces (POST + PATCH
-// + activate + suspend) use per-call Idempotency-Key per the
-// 500-retry-with-two-intents pattern.
+// backend (Step 6.11.2 endpoints). All write surfaces use per-call
+// Idempotency-Key per the 500-retry-with-two-intents pattern.
+//
+// Slice 6: the modal-era provision()/inputToPayload()/ProvisionTenantPayload
+// were retired with ProvisionTenantModal; the onboarding wizard creates
+// tenants via create() (a raw TenantCreateRequest, region incl. INDIA).
 export const tenantsApi = {
   list: (params?: TenantListParams) =>
     apiFetch<ListResponse<Tenant>>(
@@ -103,20 +55,20 @@ export const tenantsApi = {
   get: (id: string) => apiFetch<TenantDetail>(`/api/v1/tenants/${id}`),
   stats: () => apiFetch<TenantStats>(`/api/v1/tenants/stats`),
 
-  provision: (input: ProvisionTenantInput) =>
-    apiFetch<Tenant>(`/api/v1/tenants`, {
+  // Slice 6: complete onboarding (ONBOARDING -> TRIAL). 409
+  // ONBOARDING_INCOMPLETE names the missing gate facts; 409
+  // INVALID_STATE_TRANSITION if not ONBOARDING. Returns the TenantDetail
+  // (status TRIAL) on success.
+  completeOnboarding: (id: string) =>
+    apiFetch<TenantDetail>(`/api/v1/tenants/${id}/complete-onboarding`, {
       method: "POST",
-      body: JSON.stringify(inputToPayload(input)),
-      headers: {
-        "Idempotency-Key": crypto.randomUUID(),
-      },
+      headers: { "Idempotency-Key": crypto.randomUUID() },
     }),
 
   // Slice 4: onboarding wizard POST. Takes a raw TenantCreateRequest
-  // (region includes INDIA), distinct from provision()'s
-  // ProvisionTenantInput->payload adapter (region locked to US|EU).
-  // The wizard builds the body from its own schema; this keeps
-  // provision() and ProvisionTenantModal untouched.
+  // (region includes INDIA). The wizard builds the body from its own
+  // schema. This is now the only tenant-create path (the modal-era
+  // provision() adapter was retired in Slice 6).
   create: (body: components["schemas"]["TenantCreateRequest"]) =>
     apiFetch<TenantDetail>(`/api/v1/tenants`, {
       method: "POST",

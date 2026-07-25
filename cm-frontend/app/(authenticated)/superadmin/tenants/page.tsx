@@ -16,7 +16,6 @@ import { ErrorInline } from "@/components/shared/ErrorInline";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { TenantCard } from "@/components/tenants/TenantCard";
 import { TenantDetailDrawer } from "@/components/tenants/TenantDetailDrawer";
-import { ProvisionTenantModal } from "@/components/tenants/ProvisionTenantModal";
 import { useTenants, useTenantStats } from "@/lib/hooks/use-tenants";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useAuthSnapshot } from "@/lib/auth/auth-cache";
@@ -76,7 +75,6 @@ function TenantsPageInner() {
 
   const [search, setSearch] = useState(urlSearch);
   const debouncedSearch = useDebouncedValue(search, 300);
-  const [provisionOpen, setProvisionOpen] = useState(false);
 
   // Phase 5f.W.2: eager /me/can-do pre-flight on the provision-tenant
   // tuple. Cache populates on mount; the click handler reads from
@@ -91,12 +89,15 @@ function TenantsPageInner() {
     "GLOBAL",
   );
 
-  function onProvisionClick() {
+  // Slice 6: the "+ Provision tenant" modal is retired in favour of the
+  // onboarding wizard. Same CONFIGURE.GLOBAL pre-check; on allow, route to
+  // the new-tenant wizard entry rather than opening the modal.
+  function onOnboardClick() {
     if (canProvisionTenant.data?.allowed === false) {
-      toast.error("You don't have permission to provision tenants.");
+      toast.error("You don't have permission to onboard clients.");
       return;
     }
-    setProvisionOpen(true);
+    router.push("/superadmin/tenants/onboard");
   }
 
   useEffect(() => {
@@ -152,8 +153,8 @@ function TenantsPageInner() {
         title="Tenants"
         subtitle={subtitle}
         primaryAction={{
-          label: "+ Provision tenant",
-          onClick: onProvisionClick,
+          label: "+ Onboard client",
+          onClick: onOnboardClick,
         }}
       />
 
@@ -221,10 +222,6 @@ function TenantsPageInner() {
         }}
       />
 
-      <ProvisionTenantModal
-        open={provisionOpen}
-        onOpenChange={setProvisionOpen}
-      />
     </div>
   );
 }

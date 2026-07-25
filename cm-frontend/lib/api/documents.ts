@@ -1,6 +1,8 @@
 import { apiFetch } from "./client";
 import type {
   DocumentDownloadUrlResponse,
+  DocumentRead,
+  DocumentRejectRequest,
   DocumentUploadUrlRequest,
   DocumentUploadUrlResponse,
   DocumentsListResponse,
@@ -13,8 +15,9 @@ import type {
 // endpoints (upload-url, download-url) return 503 DOCUMENT_STORAGE_UNAVAILABLE
 // when storage is not configured (local dev has no GCS); the caller renders
 // a "document storage not configured" state rather than crashing. GET list
-// is a pure DB read and works without GCS. Verify / reject are NOT wired in
-// the wizard this slice.
+// is a pure DB read and works without GCS. Verify / reject (Slice 6) are
+// pure DB writes (CONFIGURE gate, same as the other document routes) and
+// drive the documents all-verified fact the review gate requires.
 
 function writeHeaders(): Record<string, string> {
   return { "Idempotency-Key": crypto.randomUUID() };
@@ -41,5 +44,17 @@ export const documentsApi = {
     apiFetch<void>(
       `/api/v1/tenants/${tenantId}/documents/${documentId}`,
       { method: "DELETE", headers: writeHeaders() },
+    ),
+
+  verify: (tenantId: string, documentId: string) =>
+    apiFetch<DocumentRead>(
+      `/api/v1/tenants/${tenantId}/documents/${documentId}/verify`,
+      { method: "POST", headers: writeHeaders() },
+    ),
+
+  reject: (tenantId: string, documentId: string, body: DocumentRejectRequest) =>
+    apiFetch<DocumentRead>(
+      `/api/v1/tenants/${tenantId}/documents/${documentId}/reject`,
+      { method: "POST", body: JSON.stringify(body), headers: writeHeaders() },
     ),
 };

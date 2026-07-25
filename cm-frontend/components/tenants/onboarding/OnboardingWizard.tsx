@@ -30,6 +30,7 @@ import { BillingFinanceStep } from "./steps/BillingFinanceStep";
 import { ContactsStep } from "./steps/ContactsStep";
 import { DocumentsStep } from "./steps/DocumentsStep";
 import { AccessUsersStep } from "./steps/AccessUsersStep";
+import { ReviewConfirmStep } from "./steps/ReviewConfirmStep";
 
 const TENANTS_URL = "/superadmin/tenants";
 
@@ -140,8 +141,23 @@ export function OnboardingWizard({ tenantId }: { tenantId: string | null }) {
     dirtyRef.current = false;
     if (next) {
       goTo(next);
+    }
+    // No else: review is the last enabled step and completes via its own
+    // Confirm action (onComplete), not the generic step-save advance.
+  }
+
+  // Review step confirm success: route to the tenant detail + success toast.
+  function onOnboardingComplete(statusLabel: string) {
+    dirtyRef.current = false;
+    toast.success(
+      statusLabel === "TRIAL"
+        ? "Onboarding complete. Tenant is now on Trial."
+        : `Onboarding complete. Tenant status: ${statusLabel}.`,
+    );
+    if (tenantId) {
+      router.push(`${TENANTS_URL}?tenant=${tenantId}`);
     } else {
-      toast.message("Access & users and Review & confirm are coming soon.");
+      router.push(TENANTS_URL);
     }
   }
 
@@ -197,6 +213,16 @@ export function OnboardingWizard({ tenantId }: { tenantId: string | null }) {
         return <DocumentsStep {...common} />;
       case "access":
         return <AccessUsersStep {...common} />;
+      case "review":
+        return (
+          <ReviewConfirmStep
+            tenantId={tenantId}
+            onEditStep={(key) => navigate(() => goTo(key))}
+            onBack={onBack}
+            onComplete={onOnboardingComplete}
+            setDirty={setDirty}
+          />
+        );
       default:
         return null;
     }

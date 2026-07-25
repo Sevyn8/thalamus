@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { onboardingApi } from "@/lib/api/onboarding";
+import { tenantsApi } from "@/lib/api/tenants";
 import { useAuthSnapshot } from "@/lib/auth/auth-cache";
 import type {
   BillingProfileUpsertRequest,
@@ -130,5 +131,19 @@ export function usePatchOnboardingState(tenantId: string) {
     mutationFn: (body: OnboardingPatchRequest) =>
       onboardingApi.patchState(tenantId, body),
     onSuccess: () => invalidateState(qc),
+  });
+}
+
+// Slice 6: complete onboarding (ONBOARDING -> TRIAL). Invalidates the
+// tenant list + detail + onboarding-state so the drawer/list reflect TRIAL.
+export function useCompleteOnboarding(tenantId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => tenantsApi.completeOnboarding(tenantId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["tenants"] });
+      void qc.invalidateQueries({ queryKey: ["tenant", tenantId] });
+      invalidateState(qc);
+    },
   });
 }

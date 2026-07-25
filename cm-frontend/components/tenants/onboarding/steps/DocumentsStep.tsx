@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AlertCircle, Download, Loader2, Trash2, UploadCloud, X } from "lucide-react";
+import { AlertCircle, Check, Download, Loader2, Trash2, UploadCloud, X, XCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Chip, type Tone } from "@/components/shared/Chips";
@@ -17,8 +17,11 @@ import {
   useDeleteDocument,
   useDocuments,
   useDocumentsInvalidate,
+  useRejectDocument,
+  useVerifyDocument,
 } from "@/lib/hooks/use-documents";
 import type { DocumentRead } from "@/types/api";
+import { Input } from "@/components/ui/input";
 import {
   FieldLabel,
   SELECT_CLASS,
@@ -55,6 +58,10 @@ export function DocumentsStep({ tenantId, onSaved, onBack, setDirty }: StepProps
 
   const query = useDocuments(tenantId);
   const del = useDeleteDocument(tenantId);
+  const verify = useVerifyDocument(tenantId);
+  const reject = useRejectDocument(tenantId);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
   const invalidate = useDocumentsInvalidate();
 
   const [storageUnavailable, setStorageUnavailable] = useState(false);
@@ -201,6 +208,47 @@ export function DocumentsStep({ tenantId, onSaved, onBack, setDirty }: StepProps
     }
   }
 
+  async function onVerify(doc: DocumentRead) {
+    try {
+      await verify.mutateAsync(doc.id);
+      toast.success("Document verified");
+    } catch (err) {
+      if (err instanceof ApiError) {
+        toast.error(err.message);
+        return;
+      }
+      toast.error("Could not verify the document. Please try again.");
+    }
+  }
+
+  function startReject(doc: DocumentRead) {
+    setRejectingId(doc.id);
+    setRejectReason("");
+  }
+
+  function cancelReject() {
+    setRejectingId(null);
+    setRejectReason("");
+  }
+
+  async function onReject(doc: DocumentRead) {
+    if (!rejectReason.trim()) return;
+    try {
+      await reject.mutateAsync({
+        documentId: doc.id,
+        body: { rejection_reason: rejectReason.trim() },
+      });
+      toast.success("Document rejected");
+      cancelReject();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        toast.error(err.message);
+        return;
+      }
+      toast.error("Could not reject the document. Please try again.");
+    }
+  }
+
   const items = query.data?.items ?? [];
 
   return (
@@ -305,7 +353,8 @@ export function DocumentsStep({ tenantId, onSaved, onBack, setDirty }: StepProps
         ) : (
           <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
             {items.map((doc) => (
-              <li key={doc.id} className="flex items-center gap-3 px-4 py-3">
+              <li key={doc.id} className="flex flex-col gap-2 px-4 py-3">
+              <div className="flex items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="truncate text-sm font-medium">
@@ -330,18 +379,70 @@ export function DocumentsStep({ tenantId, onSaved, onBack, setDirty }: StepProps
                     <Download className="h-4 w-4" />
                   </Button>
                   {doc.verification_status === "PENDING_REVIEW" ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Delete ${doc.file_name ?? "document"}`}
-                      disabled={del.isPending}
-                      onClick={() => onDelete(doc)}
-                    >
-                      {del.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                    </Button>
+                    <>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Verify ${doc.file_name ?? "document"}`}
+                        disabled={verify.isPending}
+                        onClick={() => onVerify(doc)}
+                      >
+                        {verify.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Reject ${doc.file_name ?? "document"}`}
+                        onClick={() => startReject(doc)}
+                      >
+                        <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Delete ${doc.file_name ?? "document"}`}
+                        disabled={del.isPending}
+                        onClick={() => onDelete(doc)}
+                      >
+                        {del.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      </Button>
+                    </>
                   ) : null}
                 </div>
+              </div>
+              {rejectingId === doc.id ? (
+                <div className="flex items-end gap-2 rounded-md bg-muted/30 p-2">
+                  <div className="flex flex-1 flex-col gap-1">
+                    <FieldLabel htmlFor={`reject-${doc.id}`}>
+                      Rejection reason
+                    </FieldLabel>
+                    <Input
+                      id={`reject-${doc.id}`}
+                      value={rejectReason}
+                      onChange={(e) => setRejectReason(e.target.value)}
+                      placeholder="Why is this document rejected?"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    disabled={reject.isPending || !rejectReason.trim()}
+                    onClick={() => onReject(doc)}
+                  >
+                    {reject.isPending ? (
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    ) : null}
+                    Reject
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={cancelReject}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : null}
               </li>
             ))}
           </ul>
