@@ -56,9 +56,11 @@ export function OrgTreePane({
   //      was the wrong UUID for "Add child node" POSTs against
   //      /tenants/{id}/org-tree, which expects a parent_id from
   //      org_nodes. Resolves the Finding #46 follow-up.
-  //  (b) the row renders even when the tree is empty, so empty
-  //      tenants are no longer a dead end — the user sees the
-  //      tenant row and can add the first org node from there.
+  //
+  // Slice 8: this helper feeds the POPULATED-tree render only. The
+  // empty (root-only) tenant case is handled by its own branch below
+  // (header + "Add the first node" CTA), not by rendering the synthetic
+  // row, so an empty tenant is no longer a dead end.
   const tenantRoot = useMemo(
     () => synthesizeTenantRoot(tree.data),
     [tree.data],
@@ -187,14 +189,62 @@ export function OrgTreePane({
   }
 
   const data = tree.data;
-  if (!data || data.tree.length === 0) {
+  if (!data) {
     return (
-      <>
+      <EmptyState
+        title="No organization data"
+        body="Could not load this tenant's organisation."
+      />
+    );
+  }
+
+  // Slice 8: root-only tenants (wizard-created tenants have just their
+  // TENANT root, which the tree endpoint filters out, so tree is empty)
+  // are no longer a dead end. Render the tenant header with "+ Add node"
+  // plus a first-node CTA that opens the create modal in parentless mode
+  // (HQ preselected, parent omitted; the backend resolves it to the
+  // tenant root). Populated trees fall through to the normal render.
+  if (data.tree.length === 0) {
+    return (
+      <div className="flex flex-col gap-4">
+        <header className="flex items-center justify-between gap-3 border-b border-border pb-4">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-heading">{data.tenant_name}</h2>
+            <p className="text-caption text-foreground-muted">
+              No org structure yet
+            </p>
+          </div>
+          {canWrite ? (
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              + Add node
+            </button>
+          ) : null}
+        </header>
+
         <EmptyState
-          title="No org structure provisioned"
-          body="This tenant has no organisation hierarchy seeded yet. Adding the first node requires the tenant-root id; backend support pending."
+          title="No org structure yet"
+          body="Add the first node to start building this tenant's organisation."
+          action={
+            canWrite
+              ? { label: "Add the first node", onClick: () => setCreateOpen(true) }
+              : undefined
+          }
         />
-      </>
+
+        {canWrite ? (
+          <CreateOrgNodeModal
+            open={createOpen}
+            onOpenChange={setCreateOpen}
+            tenantId={tenantId}
+            defaultParent={null}
+            parentless
+          />
+        ) : null}
+      </div>
     );
   }
 

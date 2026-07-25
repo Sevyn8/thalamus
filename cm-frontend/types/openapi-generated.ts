@@ -1227,6 +1227,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/module-access/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's own tenant's enabled modules
+         * @description Caller-state read: returns the module rows for the caller's OWN tenant so a tenant user can power the launcher without an admin governance grant. GATE_EXEMPT (authenticated, no permission gate); RLS scopes the rows to the JWT's tenant for TENANT callers. PLATFORM callers have no single tenant: ``tenant_id`` is null and ``modules`` is empty (PLATFORM uses the matrix path). Each item mirrors the matrix cell shape (``module_code`` + ``status``) plus a resolved ``module_label``.
+         */
+        get: operations["my_modules_api_v1_module_access_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/module-access/{tenant_id}/{module_code}/enable": {
         parameters: {
             query?: never;
@@ -2268,6 +2288,51 @@ export interface components {
             available: boolean;
         };
         /**
+         * MyModuleItem
+         * @description One tenant_module_access row for the caller's own tenant. Mirrors
+         *     the matrix cell shape (``module_code`` + ``status``) plus a
+         *     server-resolved ``module_label`` per the label convention.
+         */
+        MyModuleItem: {
+            /**
+             * Module Code
+             * @enum {string}
+             */
+            module_code: "GOAL_CONSOLE" | "PRICING_OS" | "PERISHABLES_ASSISTANT" | "PROMOTIONS_ASSISTANT" | "ADMIN";
+            /**
+             * Module Label
+             * @description Display label resolved server-side via ``lookups.list_name='module_code'`` with COALESCE fallback to the raw enum code.
+             */
+            module_label: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ENABLED" | "DISABLED";
+        };
+        /**
+         * MyModulesResponse
+         * @description GET /module-access/me — the caller's OWN tenant's module rows.
+         *
+         *     Caller-state read (GATE_EXEMPT; authenticated but no permission
+         *     gate), so a tenant user can power their launcher without an admin
+         *     governance grant. RLS scopes the rows to the JWT's tenant for TENANT
+         *     callers. PLATFORM callers have no single tenant: ``tenant_id`` is
+         *     null and ``modules`` is empty (they use the matrix path instead).
+         */
+        MyModulesResponse: {
+            /**
+             * Tenant Id
+             * @description The caller's tenant id (from the JWT) for TENANT callers; null for PLATFORM callers.
+             */
+            tenant_id: string | null;
+            /**
+             * Modules
+             * @description The caller-tenant's tenant_module_access rows, ordered by ``lookups.display_order``. Empty for PLATFORM callers.
+             */
+            modules: components["schemas"]["MyModuleItem"][];
+        };
+        /**
          * OnboardingDocumentsBlock
          * @description Slice 3: the documents entry in ``sections_present`` is a block of
          *     verification-status counts (not a bare bool). ``all_verified`` is the
@@ -2361,12 +2426,15 @@ export interface components {
          * OrgNodeCreateRequest
          * @description Request body for POST /api/v1/tenants/{tenant_id}/org-tree.
          *
-         *     Add a new org_node under an existing parent. ``node_type`` is
-         *     required and must NOT be TENANT (tenant roots are created at tenant
-         *     provisioning; this surface cannot make one). ``parent_id`` is
-         *     required; the parent must exist in the same tenant and its
+         *     Add a new org_node under a parent. ``node_type`` is required and
+         *     must NOT be TENANT (tenant roots are created at tenant provisioning;
+         *     this surface cannot make one). ``parent_id`` is optional: when
+         *     supplied the parent must exist in the same tenant and its
          *     ``node_type`` must sit strictly above this child's in the canonical
-         *     cascade order.
+         *     cascade order; when omitted (or null) the server resolves the parent
+         *     to the tenant's TENANT root, so the first node of a root-only tenant
+         *     (typically an HQ) can be added without the caller knowing the root
+         *     id.
          *
          *     ``extra="forbid"`` rejects unknown fields at Pydantic time (422
          *     before the handler runs). Code format is enforced server-side via
@@ -2377,10 +2445,9 @@ export interface components {
         OrgNodeCreateRequest: {
             /**
              * Parent Id
-             * Format: uuid
-             * @description UUID of the parent org_node. Must exist in the same tenant. Use the tenant-root's id when adding a top-level node (typical for first BUSINESS_UNIT or HQ).
+             * @description UUID of the parent org_node. Must exist in the same tenant. Omit (or send null) to add a top-level node under the tenant root, which the server resolves (typical for the first HQ or BUSINESS_UNIT on a root-only tenant).
              */
-            parent_id: string;
+            parent_id?: string | null;
             /** @description Type of node to create. TENANT is rejected here (tenant roots are provisioned with the tenant). STORE is rejected here too (Step 6.21.2 — stores must be created via POST /api/v1/stores, which creates the paired STORE-type org_node atomically). */
             node_type: components["schemas"]["OrgNodeType"];
             /**
@@ -5914,6 +5981,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_modules_api_v1_module_access_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyModulesResponse"];
                 };
             };
         };

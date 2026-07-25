@@ -198,7 +198,7 @@
           "tenants"
         ],
         "summary": "Tenants Stats",
-        "description": "Header summary scalars: total_tenants and total_stores.\n\nBoth RLS-filtered. For PLATFORM callers (the realistic consumer)\nthese reflect platform totals. ``Cache-Control: private,\nmax-age=60`` is set per the contract — the only endpoint setting\na cache header in v0.\n\nNote on the Response injection: setting headers on the injected\nResponse object lets us keep ``response_model=TenantsStatsResponse``\nauto-validation. Constructing a JSONResponse manually here would\nbypass that validation.",
+        "description": "Header summary scalars: total_tenants and total_stores.\n\nBoth RLS-filtered. For PLATFORM callers (the realistic consumer)\nthese reflect platform totals. ``Cache-Control: private,\nmax-age=60`` is set per the contract \u2014 the only endpoint setting\na cache header in v0.\n\nNote on the Response injection: setting headers on the injected\nResponse object lets us keep ``response_model=TenantsStatsResponse``\nauto-validation. Constructing a JSONResponse manually here would\nbypass that validation.",
         "operationId": "tenants_stats_api_v1_tenants_stats_get",
         "responses": {
           "200": {
@@ -220,7 +220,7 @@
           "tenants"
         ],
         "summary": "Get Tenant",
-        "description": "Return the full detail shape for a single tenant.\n\n404 if the row doesn't exist OR is RLS-filtered. Per D-17 the\nhandler can't and shouldn't distinguish — both produce the same\nbody shape (``code: TENANT_NOT_FOUND``). Malformed UUID in the\npath is rejected by FastAPI's path-param validation as 422\nbefore this handler runs.",
+        "description": "Return the full detail shape for a single tenant.\n\n404 if the row doesn't exist OR is RLS-filtered. Per D-17 the\nhandler can't and shouldn't distinguish \u2014 both produce the same\nbody shape (``code: TENANT_NOT_FOUND``). Malformed UUID in the\npath is rejected by FastAPI's path-param validation as 422\nbefore this handler runs.",
         "operationId": "get_tenant_api_v1_tenants__tenant_id__get",
         "parameters": [
           {
@@ -262,7 +262,7 @@
           "tenants"
         ],
         "summary": "Patch Tenant",
-        "description": "Partial update of a tenant. Platform-only.\n\nSame gate as POST /tenants. ``status``, ``region``, and audit-column\nfields are rejected at the schema layer via ``extra=\"forbid\"``.\nStatus transitions go through ``/suspend`` and ``/activate``.\n\nBehaviour:\n  - 422 ``EMPTY_PATCH`` when the body has no fields set.\n  - 409 ``DUPLICATE_TENANT_NAME`` when renaming to a name another\n    tenant already holds (rename-to-self is a 200 no-op).\n  - 404 ``TENANT_NOT_FOUND`` when the row is missing or RLS-filtered\n    (RLS-as-404 per D-17).\n  - Allowed on rows in any non-TERMINATED state including SUSPENDED.\n\nMulti-audience PATCH (TENANT OWNER editing own tenant's\noperational fields) is deferred post-6.16 — the tenants table uses\nPattern (a) typed FKs to ``platform_users`` for audit columns per\nD-13, which would reject a TENANT-side UPDATE at the FK layer.",
+        "description": "Partial update of a tenant. Platform-only.\n\nSame gate as POST /tenants. ``status``, ``region``, and audit-column\nfields are rejected at the schema layer via ``extra=\"forbid\"``.\nStatus transitions go through ``/suspend`` and ``/activate``.\n\nBehaviour:\n  - 422 ``EMPTY_PATCH`` when the body has no fields set.\n  - 409 ``DUPLICATE_TENANT_NAME`` when renaming to a name another\n    tenant already holds (rename-to-self is a 200 no-op).\n  - 404 ``TENANT_NOT_FOUND`` when the row is missing or RLS-filtered\n    (RLS-as-404 per D-17).\n  - Allowed on rows in any non-TERMINATED state including SUSPENDED.\n\nMulti-audience PATCH (TENANT OWNER editing own tenant's\noperational fields) is deferred post-6.16 \u2014 the tenants table uses\nPattern (a) typed FKs to ``platform_users`` for audit columns per\nD-13, which would reject a TENANT-side UPDATE at the FK layer.",
         "operationId": "patch_tenant_api_v1_tenants__tenant_id__patch",
         "parameters": [
           {
@@ -1273,7 +1273,7 @@
           "lookups"
         ],
         "summary": "Batch lookup values for dropdowns",
-        "description": "Return ``{lookups: {list_name: [items], ...}}`` for the requested lists.\n\nItems per list are sorted by ``display_order`` ascending. Each\nrequested ``list_name`` appears as a key in the response, even\nif the DB has no rows for it (empty-array shape — the frontend\ncan iterate without null checks).",
+        "description": "Return ``{lookups: {list_name: [items], ...}}`` for the requested lists.\n\nItems per list are sorted by ``display_order`` ascending. Each\nrequested ``list_name`` appears as a key in the response, even\nif the DB has no rows for it (empty-array shape \u2014 the frontend\ncan iterate without null checks).",
         "operationId": "get_lookups_batch_api_v1_lookups_get",
         "parameters": [
           {
@@ -1321,7 +1321,7 @@
           "platform-users"
         ],
         "summary": "List platform users",
-        "description": "List Ithina staff users. Gated on ADMIN.USERS.VIEW.GLOBAL — TENANT JWTs and PLATFORM users lacking the grant receive 403 PERMISSION_DENIED. Supports filter by status, case-insensitive search across email/full_name, sort, and offset/limit pagination. Each item carries an inline `roles[]` array (Step 6.8.3 augmentation); platform users' assignments have no org-node anchor so `org_node_id` / `org_node_name` are always null.",
+        "description": "List Ithina staff users. Gated on ADMIN.USERS.VIEW.GLOBAL \u2014 TENANT JWTs and PLATFORM users lacking the grant receive 403 PERMISSION_DENIED. Supports filter by status, case-insensitive search across email/full_name, sort, and offset/limit pagination. Each item carries an inline `roles[]` array (Step 6.8.3 augmentation); platform users' assignments have no org-node anchor so `org_node_id` / `org_node_name` are always null.",
         "operationId": "list_platform_users_api_v1_platform_users_get",
         "parameters": [
           {
@@ -1430,7 +1430,7 @@
           "platform-users"
         ],
         "summary": "Get platform user by ID",
-        "description": "Get a single platform user by UUID. Gated on ADMIN.USERS.VIEW.GLOBAL — TENANT JWTs and PLATFORM users lacking the grant receive 403 PERMISSION_DENIED. Unknown user_id returns 404 PLATFORM_USER_NOT_FOUND. Includes inline `roles[]` array (Step 6.8.3 augmentation).",
+        "description": "Get a single platform user by UUID. Gated on ADMIN.USERS.VIEW.GLOBAL \u2014 TENANT JWTs and PLATFORM users lacking the grant receive 403 PERMISSION_DENIED. Unknown user_id returns 404 PLATFORM_USER_NOT_FOUND. Includes inline `roles[]` array (Step 6.8.3 augmentation).",
         "operationId": "get_platform_user_api_v1_platform_users__user_id__get",
         "parameters": [
           {
@@ -1600,7 +1600,7 @@
           "tenant-users"
         ],
         "summary": "Create Tenant User",
-        "description": "Create a tenant user in INVITED state with bundled role\nassignments. Multi-audience.\n\nServer-forces ``status=INVITED``; ``auth0_sub`` and\n``invitation_accepted_at`` stay NULL until the Stage 3 Auth0\ninvite-accept callback. Bundled TENANT-audience role assignments\nanchor at the tenant root org_node (locked decision 4); the\nhandler-side validator pre-checks audience + existence for a clean\n422 ahead of the DB trigger reject.\n\nGate: ``ADMIN.USERS.CONFIGURE.TENANT`` (SUPER_ADMIN +\nPLATFORM_ADMIN + OWNER per the seed). Multi-audience: PLATFORM\ncallers pass via GLOBAL->TENANT cascade; TENANT OWNER passes\ndirectly. TENANT-side tenant-isolation enforced by RLS — a TENANT\nJWT with a body referencing another tenant_id finds the tenant\nroot invisible and surfaces as 404 ``TENANT_NOT_FOUND``.\n\nErrors:\n  - 422 ``INVALID_ROLE`` when a role_id is missing from the\n    catalogue.\n  - 422 ``INVALID_ROLE_AUDIENCE`` when a role exists but is not\n    TENANT audience.\n  - 409 ``DUPLICATE_TENANT_USER_EMAIL`` when the email already\n    exists within ``tenant_id``.\n  - 404 ``TENANT_NOT_FOUND`` when the target tenant is missing or\n    RLS-filtered.",
+        "description": "Create a tenant user in INVITED state with bundled role\nassignments. Multi-audience.\n\nServer-forces ``status=INVITED``; ``auth0_sub`` and\n``invitation_accepted_at`` stay NULL until the Stage 3 Auth0\ninvite-accept callback. Bundled TENANT-audience role assignments\nanchor at the tenant root org_node (locked decision 4); the\nhandler-side validator pre-checks audience + existence for a clean\n422 ahead of the DB trigger reject.\n\nGate: ``ADMIN.USERS.CONFIGURE.TENANT`` (SUPER_ADMIN +\nPLATFORM_ADMIN + OWNER per the seed). Multi-audience: PLATFORM\ncallers pass via GLOBAL->TENANT cascade; TENANT OWNER passes\ndirectly. TENANT-side tenant-isolation enforced by RLS \u2014 a TENANT\nJWT with a body referencing another tenant_id finds the tenant\nroot invisible and surfaces as 404 ``TENANT_NOT_FOUND``.\n\nErrors:\n  - 422 ``INVALID_ROLE`` when a role_id is missing from the\n    catalogue.\n  - 422 ``INVALID_ROLE_AUDIENCE`` when a role exists but is not\n    TENANT audience.\n  - 409 ``DUPLICATE_TENANT_USER_EMAIL`` when the email already\n    exists within ``tenant_id``.\n  - 404 ``TENANT_NOT_FOUND`` when the target tenant is missing or\n    RLS-filtered.",
         "operationId": "create_tenant_user_api_v1_tenant_users_post",
         "requestBody": {
           "required": true,
@@ -1642,7 +1642,7 @@
           "tenant-users"
         ],
         "summary": "Get tenant user by ID",
-        "description": "Get a single tenant user by UUID. PLATFORM JWTs can read any tenant_user. TENANT JWTs can only read their own tenant's users — requesting another tenant's user_id returns 404 (RLS-as-404 per D-17, not 403, to avoid disclosing that the user_id exists in another tenant). Includes inline `roles[]` array (Step 6.8.3 augmentation).",
+        "description": "Get a single tenant user by UUID. PLATFORM JWTs can read any tenant_user. TENANT JWTs can only read their own tenant's users \u2014 requesting another tenant's user_id returns 404 (RLS-as-404 per D-17, not 403, to avoid disclosing that the user_id exists in another tenant). Includes inline `roles[]` array (Step 6.8.3 augmentation).",
         "operationId": "get_tenant_user_api_v1_tenant_users__user_id__get",
         "parameters": [
           {
@@ -1782,7 +1782,7 @@
           "tenant-users"
         ],
         "summary": "Activate Tenant User",
-        "description": "Activate a tenant user. Multi-audience.\n\nAllowed source: SUSPENDED only.\n  - INVITED -> ACTIVE is the Auth0 invite-accept callback flow\n    (out of scope for v0; Stage 3). Surfaces here as 409\n    ``INVALID_STATE_TRANSITION``.\n  - ACTIVE -> ACTIVE returns 409 ``INVALID_STATE_TRANSITION``.\n\nSUSPENDED -> ACTIVE clears ``suspended_at``,\n``suspended_by_user_id``, and ``suspended_by_user_type`` atomically\nwith the ``status`` flip (required by\n``ck_tenant_users_suspended_consistency``).\n\nSelf-activate forbidden for TENANT callers (functional\nimpossibility — a suspended user has no session — but the guard\nfires uniformly across the 3 path-bound endpoints).",
+        "description": "Activate a tenant user. Multi-audience.\n\nAllowed source: SUSPENDED only.\n  - INVITED -> ACTIVE is the Auth0 invite-accept callback flow\n    (out of scope for v0; Stage 3). Surfaces here as 409\n    ``INVALID_STATE_TRANSITION``.\n  - ACTIVE -> ACTIVE returns 409 ``INVALID_STATE_TRANSITION``.\n\nSUSPENDED -> ACTIVE clears ``suspended_at``,\n``suspended_by_user_id``, and ``suspended_by_user_type`` atomically\nwith the ``status`` flip (required by\n``ck_tenant_users_suspended_consistency``).\n\nSelf-activate forbidden for TENANT callers (functional\nimpossibility \u2014 a suspended user has no session \u2014 but the guard\nfires uniformly across the 3 path-bound endpoints).",
         "operationId": "activate_tenant_user_api_v1_tenant_users__user_id__activate_post",
         "parameters": [
           {
@@ -2052,7 +2052,7 @@
           "org-tree"
         ],
         "summary": "Get immediate children of an org-node (lazy-load)",
-        "description": "Returns the immediate ACTIVE children of `node_id` within `tenant_id`. Used by the frontend to lazy-load subtrees that were not included in the initial /org-tree response (nodes with `has_children=true` and `loaded_children='none'`). Paginated by offset/limit. Each child carries its own `has_children` and `child_count` for further lazy expansion. Each child's `loaded_children` is 'none' (lazy by default — caller invokes this endpoint again for grandchildren if needed).",
+        "description": "Returns the immediate ACTIVE children of `node_id` within `tenant_id`. Used by the frontend to lazy-load subtrees that were not included in the initial /org-tree response (nodes with `has_children=true` and `loaded_children='none'`). Paginated by offset/limit. Each child carries its own `has_children` and `child_count` for further lazy expansion. Each child's `loaded_children` is 'none' (lazy by default \u2014 caller invokes this endpoint again for grandchildren if needed).",
         "operationId": "get_node_children_api_v1_tenants__tenant_id__org_nodes__node_id__children_get",
         "parameters": [
           {
@@ -2341,7 +2341,7 @@
           "stores"
         ],
         "summary": "Create Store",
-        "description": "Create a new store. Multi-audience.\n\nPLATFORM tier (Super Admin, Platform Admin) creates for any tenant\nvia the GLOBAL->TENANT cascade. TENANT tier (Owner) creates for own\ntenant via direct ``.TENANT`` grant; ``tenant_id`` in body verified\nagainst the caller's RLS-bound session — a cross-tenant id is\ninvisible to TENANT callers and surfaces as 404\n``ORG_NODE_NOT_FOR_STORE`` (when ``org_node_id`` provided) or as a\nDB FK violation otherwise.\n\nServer omits ``status`` so the DDL default fires (LD8). The DDL\ndefault in v0 is ``ACTIVE`` (see ``stores_v5.sql``); the prompt's\nintent (\"via DDL default\") is honoured by omitting the column\nfrom the INSERT — if a future migration changes the default to\n``OPENING`` (the product-intended initial state implied by the\nlifecycle enum ordering), no app code change is required.\nAudit-actor pairs populate from ``auth.user_id`` and the\naudience-bridged ``ActorUserType``.\n\n``store_code`` uniqueness checked per-tenant (case-insensitive,\naligns with DDL partial unique index) before INSERT — pre-check\nsurfaces as 409 ``DUPLICATE_STORE_CODE``. Future NOT NULL migration\non ``store_code`` / ``tax_treatment`` will tighten DDL alongside\nthese app-layer schema constraints.\n\n``parent_org_node_id`` is REQUIRED (Step 6.21.2). It must reference\na non-STORE org_node in the same tenant. The server creates the\npaired STORE-type org_node under it inside the same transaction as\nthe ``stores`` row. 404 ``PARENT_NODE_NOT_FOUND`` for missing or\nRLS-filtered parents; 422 ``INVALID_PARENT_NODE_TYPE`` for\nSTORE-type parents; 409 ``DUPLICATE_ORG_NODE_CODE`` when the\nstore_code collides with any other org_node code in the tenant.",
+        "description": "Create a new store. Multi-audience.\n\nPLATFORM tier (Super Admin, Platform Admin) creates for any tenant\nvia the GLOBAL->TENANT cascade. TENANT tier (Owner) creates for own\ntenant via direct ``.TENANT`` grant; ``tenant_id`` in body verified\nagainst the caller's RLS-bound session \u2014 a cross-tenant id is\ninvisible to TENANT callers and surfaces as 404\n``ORG_NODE_NOT_FOR_STORE`` (when ``org_node_id`` provided) or as a\nDB FK violation otherwise.\n\nServer omits ``status`` so the DDL default fires (LD8). The DDL\ndefault in v0 is ``ACTIVE`` (see ``stores_v5.sql``); the prompt's\nintent (\"via DDL default\") is honoured by omitting the column\nfrom the INSERT \u2014 if a future migration changes the default to\n``OPENING`` (the product-intended initial state implied by the\nlifecycle enum ordering), no app code change is required.\nAudit-actor pairs populate from ``auth.user_id`` and the\naudience-bridged ``ActorUserType``.\n\n``store_code`` uniqueness checked per-tenant (case-insensitive,\naligns with DDL partial unique index) before INSERT \u2014 pre-check\nsurfaces as 409 ``DUPLICATE_STORE_CODE``. Future NOT NULL migration\non ``store_code`` / ``tax_treatment`` will tighten DDL alongside\nthese app-layer schema constraints.\n\n``parent_org_node_id`` is REQUIRED (Step 6.21.2). It must reference\na non-STORE org_node in the same tenant. The server creates the\npaired STORE-type org_node under it inside the same transaction as\nthe ``stores`` row. 404 ``PARENT_NODE_NOT_FOUND`` for missing or\nRLS-filtered parents; 422 ``INVALID_PARENT_NODE_TYPE`` for\nSTORE-type parents; 409 ``DUPLICATE_ORG_NODE_CODE`` when the\nstore_code collides with any other org_node code in the tenant.",
         "operationId": "create_store_api_v1_stores_post",
         "requestBody": {
           "required": true,
@@ -2383,7 +2383,7 @@
           "stores"
         ],
         "summary": "Get Store",
-        "description": "Return the full detail shape for a single store.\n\n404 if the row doesn't exist OR is RLS-filtered. Per D-17 the\nhandler can't and shouldn't distinguish — both produce the same\nbody shape (``code: STORE_NOT_FOUND``). The anchor dep\n``get_store_anchor`` also raises ``StoreNotFoundError`` on the\nsame conditions, so cross-tenant probes hit 404 ahead of the gate\nbody fire path.",
+        "description": "Return the full detail shape for a single store.\n\n404 if the row doesn't exist OR is RLS-filtered. Per D-17 the\nhandler can't and shouldn't distinguish \u2014 both produce the same\nbody shape (``code: STORE_NOT_FOUND``). The anchor dep\n``get_store_anchor`` also raises ``StoreNotFoundError`` on the\nsame conditions, so cross-tenant probes hit 404 ahead of the gate\nbody fire path.",
         "operationId": "get_store_api_v1_stores__store_id__get",
         "parameters": [
           {
@@ -2425,7 +2425,7 @@
           "stores"
         ],
         "summary": "Patch Store",
-        "description": "Partial update of a store. Multi-audience.\n\nMutable fields: ``name``, ``store_code``, ``country``, ``timezone``,\n``currency``, ``tax_treatment``, ``address``, ``latitude``,\n``longitude``, and ``parent_org_node_id`` (Step 6.21.2). Other\nfields rejected at the schema layer via ``extra=\"forbid\"`` —\nincluding ``status`` (lifecycle is in Step 6.17.4's\n``/change_status``), ``tenant_id``, and ``org_node_id`` (the\nstore's slot id is immutable; reparent uses\n``parent_org_node_id``).\n\nStep 6.21.2 cascade: ``name``, ``store_code``, and\n``parent_org_node_id`` changes propagate to the paired STORE-type\norg_node atomically inside one transaction. Org_node-side\nUNIQUE collisions on ``store_code`` change surface as 409\n``DUPLICATE_ORG_NODE_CODE`` (broader scope than the\nstores-only ``DUPLICATE_STORE_CODE`` pre-check). Parent\nvalidation produces 404 ``PARENT_NODE_NOT_FOUND`` or 422\n``INVALID_PARENT_NODE_TYPE`` for invalid\n``parent_org_node_id`` values.\n\nBehaviour:\n  - 422 ``EMPTY_PATCH`` when no fields are set.\n  - 409 ``DUPLICATE_STORE_CODE`` on rename to a value held by\n    another store in the same tenant (case-insensitive). Rename to\n    the same value (after case-fold) is a 200 no-op.\n  - 404 ``STORE_NOT_FOUND`` when the row is missing or RLS-filtered\n    (RLS-as-404 per D-17). Anchor dep ``get_store_anchor`` fires\n    the same code via the gate path for cross-tenant probes.\n  - ``updated_at`` bumps on every non-empty PATCH (LD4); a\n    non-empty same-as-current PATCH still bumps.",
+        "description": "Partial update of a store. Multi-audience.\n\nMutable fields: ``name``, ``store_code``, ``country``, ``timezone``,\n``currency``, ``tax_treatment``, ``address``, ``latitude``,\n``longitude``, and ``parent_org_node_id`` (Step 6.21.2). Other\nfields rejected at the schema layer via ``extra=\"forbid\"`` \u2014\nincluding ``status`` (lifecycle is in Step 6.17.4's\n``/change_status``), ``tenant_id``, and ``org_node_id`` (the\nstore's slot id is immutable; reparent uses\n``parent_org_node_id``).\n\nStep 6.21.2 cascade: ``name``, ``store_code``, and\n``parent_org_node_id`` changes propagate to the paired STORE-type\norg_node atomically inside one transaction. Org_node-side\nUNIQUE collisions on ``store_code`` change surface as 409\n``DUPLICATE_ORG_NODE_CODE`` (broader scope than the\nstores-only ``DUPLICATE_STORE_CODE`` pre-check). Parent\nvalidation produces 404 ``PARENT_NODE_NOT_FOUND`` or 422\n``INVALID_PARENT_NODE_TYPE`` for invalid\n``parent_org_node_id`` values.\n\nBehaviour:\n  - 422 ``EMPTY_PATCH`` when no fields are set.\n  - 409 ``DUPLICATE_STORE_CODE`` on rename to a value held by\n    another store in the same tenant (case-insensitive). Rename to\n    the same value (after case-fold) is a 200 no-op.\n  - 404 ``STORE_NOT_FOUND`` when the row is missing or RLS-filtered\n    (RLS-as-404 per D-17). Anchor dep ``get_store_anchor`` fires\n    the same code via the gate path for cross-tenant probes.\n  - ``updated_at`` bumps on every non-empty PATCH (LD4); a\n    non-empty same-as-current PATCH still bumps.",
         "operationId": "patch_store_api_v1_stores__store_id__patch",
         "parameters": [
           {
@@ -2479,7 +2479,7 @@
           "stores"
         ],
         "summary": "Set Store Status",
-        "description": "State-transition endpoint for a store. Multi-audience.\n\nGate: same as PATCH ``/stores/{store_id}`` —\n``ADMIN.STORES.CONFIGURE.TENANT`` with ``anchor_dep=get_store_anchor``.\nSUPER_ADMIN + PLATFORM_ADMIN pass via the GLOBAL->TENANT cascade;\nTENANT OWNER passes via the direct ``.TENANT`` grant.\n\n9-cell liberal transition matrix per LD1: all transitions allowed\nEXCEPT ``*->OPENING``. CLOSED is reversible. Same-state returns\n409 ``INVALID_STATE_TRANSITION`` (LD5; mirrors tenants\n``allowed_sources`` convention).\n\nBehaviour:\n  - 200 + full ``StoreDetail`` on successful transition. Class 1\n    (into-CLOSED) populates ``closed_*``; Class 2 (out-of-CLOSED)\n    nulls it; Class 3 (between non-CLOSED) leaves it untouched.\n  - 404 ``STORE_NOT_FOUND`` when the store id is missing or\n    RLS-filtered. Anchor dep ``get_store_anchor`` fires first on\n    cross-tenant probes by TENANT callers.\n  - 409 ``INVALID_STATE_TRANSITION`` on rejected transitions\n    (including same-state). Context kwargs ``store_id`` +\n    ``target_status`` reach ``exc.context`` for logs; response\n    envelope ``details`` stays ``null`` per the Q7 lock.\n\n``reason`` is forward-compatible (LD3). It is consumed by Pydantic\nvalidation but NOT passed to the repo in this step. When Step 6.2\naudit_log ships, the handler gains an\n``audit_log_repo.write(...reason=body.reason)`` call after the\nrepo call succeeds; no API change required.",
+        "description": "State-transition endpoint for a store. Multi-audience.\n\nGate: same as PATCH ``/stores/{store_id}`` \u2014\n``ADMIN.STORES.CONFIGURE.TENANT`` with ``anchor_dep=get_store_anchor``.\nSUPER_ADMIN + PLATFORM_ADMIN pass via the GLOBAL->TENANT cascade;\nTENANT OWNER passes via the direct ``.TENANT`` grant.\n\n9-cell liberal transition matrix per LD1: all transitions allowed\nEXCEPT ``*->OPENING``. CLOSED is reversible. Same-state returns\n409 ``INVALID_STATE_TRANSITION`` (LD5; mirrors tenants\n``allowed_sources`` convention).\n\nBehaviour:\n  - 200 + full ``StoreDetail`` on successful transition. Class 1\n    (into-CLOSED) populates ``closed_*``; Class 2 (out-of-CLOSED)\n    nulls it; Class 3 (between non-CLOSED) leaves it untouched.\n  - 404 ``STORE_NOT_FOUND`` when the store id is missing or\n    RLS-filtered. Anchor dep ``get_store_anchor`` fires first on\n    cross-tenant probes by TENANT callers.\n  - 409 ``INVALID_STATE_TRANSITION`` on rejected transitions\n    (including same-state). Context kwargs ``store_id`` +\n    ``target_status`` reach ``exc.context`` for logs; response\n    envelope ``details`` stays ``null`` per the Q7 lock.\n\n``reason`` is forward-compatible (LD3). It is consumed by Pydantic\nvalidation but NOT passed to the repo in this step. When Step 6.2\naudit_log ships, the handler gains an\n``audit_log_repo.write(...reason=body.reason)`` call after the\nrepo call succeeds; no API change required.",
         "operationId": "set_store_status_api_v1_stores__store_id__set_status_post",
         "parameters": [
           {
@@ -2533,7 +2533,7 @@
           "rbac"
         ],
         "summary": "List roles, pre-grouped by audience",
-        "description": "Returns the role catalogue pre-grouped into platform_roles and tenant_roles blocks (deliberate D-30 exception). PLATFORM JWTs see both blocks populated; TENANT JWTs see platform_roles always {items: [], total: 0} (audience filter applied at the app layer — these tables have no RLS). Each item carries a user_count field counting active assignments referencing the role (RLS-scoped for TENANT JWTs to the calling tenant).",
+        "description": "Returns the role catalogue pre-grouped into platform_roles and tenant_roles blocks (deliberate D-30 exception). PLATFORM JWTs see both blocks populated; TENANT JWTs see platform_roles always {items: [], total: 0} (audience filter applied at the app layer \u2014 these tables have no RLS). Each item carries a user_count field counting active assignments referencing the role (RLS-scoped for TENANT JWTs to the calling tenant).",
         "operationId": "list_roles_api_v1_roles_get",
         "parameters": [
           {
@@ -2660,7 +2660,7 @@
           "rbac"
         ],
         "summary": "List permissions granted by a role",
-        "description": "Returns the role's granted permissions plus a parent-echo envelope (role_id + role_name at top level, items array below). No pagination — a role has bounded permissions (typically 5-30). TENANT JWTs requesting a PLATFORM-audience role's id receive 404 ROLE_NOT_FOUND (audience filter applied at the app layer; same anti-information-disclosure intent as RLS-as-404 per D-17).",
+        "description": "Returns the role's granted permissions plus a parent-echo envelope (role_id + role_name at top level, items array below). No pagination \u2014 a role has bounded permissions (typically 5-30). TENANT JWTs requesting a PLATFORM-audience role's id receive 404 ROLE_NOT_FOUND (audience filter applied at the app layer; same anti-information-disclosure intent as RLS-as-404 per D-17).",
         "operationId": "list_role_permissions_api_v1_roles__role_id__permissions_get",
         "parameters": [
           {
@@ -2704,7 +2704,7 @@
           "rbac"
         ],
         "summary": "Get role detail with held + available permissions",
-        "description": "Returns role metadata plus held permissions and grantable permissions (catalogue minus held) for the role-edit screen. Both permission lists carry display labels resolved server-side via JOIN against the lookups table. TENANT-audience roles see ``available_permissions`` with ``scope='GLOBAL'`` rows excluded (audience-scope coherence per LD2). TENANT JWTs requesting a PLATFORM-audience role's id receive 404 ROLE_NOT_FOUND (audience filter applied at the app layer; same anti-information-disclosure intent as RLS-as-404 per D-17). No pagination — the v0 catalogue (~36 permissions) fits in one response.",
+        "description": "Returns role metadata plus held permissions and grantable permissions (catalogue minus held) for the role-edit screen. Both permission lists carry display labels resolved server-side via JOIN against the lookups table. TENANT-audience roles see ``available_permissions`` with ``scope='GLOBAL'`` rows excluded (audience-scope coherence per LD2). TENANT JWTs requesting a PLATFORM-audience role's id receive 404 ROLE_NOT_FOUND (audience filter applied at the app layer; same anti-information-disclosure intent as RLS-as-404 per D-17). No pagination \u2014 the v0 catalogue (~36 permissions) fits in one response.",
         "operationId": "get_role_api_v1_roles__role_id__get",
         "parameters": [
           {
@@ -2800,7 +2800,7 @@
           "rbac"
         ],
         "summary": "List permission catalogue",
-        "description": "Returns the canonical permission catalogue ((module, resource, action, scope) tuples). Reference data — both user types see all rows; no audience filter. Default sort clusters related permissions together (module_asc compound: module/resource/action/scope ASC), matching matrix render order.",
+        "description": "Returns the canonical permission catalogue ((module, resource, action, scope) tuples). Reference data \u2014 both user types see all rows; no audience filter. Default sort clusters related permissions together (module_asc compound: module/resource/action/scope ASC), matching matrix render order.",
         "operationId": "list_permissions_api_v1_permissions_get",
         "parameters": [
           {
@@ -2908,8 +2908,8 @@
         "tags": [
           "rbac"
         ],
-        "summary": "Render-ready permission × role matrix",
-        "description": "Returns the full role × permission grid for the Roles & Permissions matrix tab (Frontend spec 7.5.4). Cells are boolean grant flags, position-aligned with the roles[] column array (cells[i] is the grant state for roles[i]; len(cells) == len(roles) for every row). TENANT JWT response filters roles to audience='TENANT' only; cells[] arrays are correspondingly 12 elements wide instead of 15. Each row carries 4 enum codes plus 4 display labels resolved from the lookups table (module, resource, permission_action, permission_scope list_names).",
+        "summary": "Render-ready permission \u00d7 role matrix",
+        "description": "Returns the full role \u00d7 permission grid for the Roles & Permissions matrix tab (Frontend spec 7.5.4). Cells are boolean grant flags, position-aligned with the roles[] column array (cells[i] is the grant state for roles[i]; len(cells) == len(roles) for every row). TENANT JWT response filters roles to audience='TENANT' only; cells[] arrays are correspondingly 12 elements wide instead of 15. Each row carries 4 enum codes plus 4 display labels resolved from the lookups table (module, resource, permission_action, permission_scope list_names).",
         "operationId": "get_permission_matrix_api_v1_permission_matrix_get",
         "responses": {
           "200": {
@@ -2931,7 +2931,7 @@
           "dashboard"
         ],
         "summary": "Dashboard fleet-scale KPIs (cards 1-4)",
-        "description": "Returns the four fleet-scale KPI cards for the Platform Dashboard (Frontend spec 7.1): active tenants, platform users, stores under management, aggregated tenant MRR. **Card-shaped response (deliberate D-30 exception)** — not the standard `{items, pagination}` envelope; the dashboard is a UI-shaped query bundle, not a paginatable collection. Multi-user-type: PLATFORM JWTs see fleet-wide aggregates; TENANT JWTs see own-tenant aggregates (RLS handles persona projection). All four cards have `available: true` in v0; the only stub field is `mrr_aggregated.delta` (no MRR snapshot table — tracked as MRR-DELTA-REAL forward note).",
+        "description": "Returns the four fleet-scale KPI cards for the Platform Dashboard (Frontend spec 7.1): active tenants, platform users, stores under management, aggregated tenant MRR. **Card-shaped response (deliberate D-30 exception)** \u2014 not the standard `{items, pagination}` envelope; the dashboard is a UI-shaped query bundle, not a paginatable collection. Multi-user-type: PLATFORM JWTs see fleet-wide aggregates; TENANT JWTs see own-tenant aggregates (RLS handles persona projection). All four cards have `available: true` in v0; the only stub field is `mrr_aggregated.delta` (no MRR snapshot table \u2014 tracked as MRR-DELTA-REAL forward note).",
         "operationId": "get_fleet_stats_api_v1_dashboard_fleet_stats_get",
         "responses": {
           "200": {
@@ -2953,7 +2953,7 @@
           "dashboard"
         ],
         "summary": "Dashboard governance KPIs (cards 5-8)",
-        "description": "Returns the four governance-posture KPI cards for the Platform Dashboard: pending approvals, guardrails fired in 24h, custom roles, modules deployed. **Card-shaped response (deliberate D-30 exception).** Multi-user-type with RLS-driven persona projection. **Three of four cards are stubbed in v0** (`available: false` with a fixed-vocabulary `unavailable_reason` — `approvals_table_not_built`, `audit_logs_or_guardrails_not_wired`, `custom_role_creation_not_shipped`). `modules_deployed` is real and RLS-scoped. Append-only contract per D-31: when a stub flips to real, only `available`, `value`, and `unavailable_reason` change; field set and types stay the same.",
+        "description": "Returns the four governance-posture KPI cards for the Platform Dashboard: pending approvals, guardrails fired in 24h, custom roles, modules deployed. **Card-shaped response (deliberate D-30 exception).** Multi-user-type with RLS-driven persona projection. **Three of four cards are stubbed in v0** (`available: false` with a fixed-vocabulary `unavailable_reason` \u2014 `approvals_table_not_built`, `audit_logs_or_guardrails_not_wired`, `custom_role_creation_not_shipped`). `modules_deployed` is real and RLS-scoped. Append-only contract per D-31: when a stub flips to real, only `available`, `value`, and `unavailable_reason` change; field set and types stay the same.",
         "operationId": "get_governance_stats_api_v1_dashboard_governance_stats_get",
         "responses": {
           "200": {
@@ -2975,7 +2975,7 @@
           "module-access"
         ],
         "summary": "Module catalogue with per-module aggregates",
-        "description": "Returns all 6 modules with per-module aggregate counts: ``enabled_count`` (visible tenants with this module ENABLED) over ``total_active_trial_tenants`` (visible tenants with status IN ACTIVE / TRIAL). Both fields RLS-scoped — under TENANT JWT, ``enabled_count`` collapses to 0 or 1 and ``total_active_trial_tenants`` collapses to 0 or 1 (own tenant only). Items ordered by ``lookups.display_order`` (decoupled from enum ordinal per Step 6.6's sort-stability decision). Server-side label resolution: each item carries ``module_label`` resolved via JOIN against ``lookups.list_name='module_code'`` with COALESCE fallback to the raw enum code.",
+        "description": "Returns all 6 modules with per-module aggregate counts: ``enabled_count`` (visible tenants with this module ENABLED) over ``total_active_trial_tenants`` (visible tenants with status IN ACTIVE / TRIAL). Both fields RLS-scoped \u2014 under TENANT JWT, ``enabled_count`` collapses to 0 or 1 and ``total_active_trial_tenants`` collapses to 0 or 1 (own tenant only). Items ordered by ``lookups.display_order`` (decoupled from enum ordinal per Step 6.6's sort-stability decision). Server-side label resolution: each item carries ``module_label`` resolved via JOIN against ``lookups.list_name='module_code'`` with COALESCE fallback to the raw enum code.",
         "operationId": "list_modules_api_v1_module_access_modules_get",
         "responses": {
           "200": {
@@ -2996,8 +2996,8 @@
         "tags": [
           "module-access"
         ],
-        "summary": "Tenant × module enablement grid",
-        "description": "Returns the tenant × module grid for the Module Access governance console. Row set: all visible non-TERMINATED tenants (ACTIVE + TRIAL + SUSPENDED + ONBOARDING). Each row carries 6 ``cells`` — one per module — position-aligned across rows AND with ``/modules.items[]``: ``cells[i].module_code`` is the same for every row in this response. Cells render as ``ENABLED`` only when an ENABLED ``tenant_module_access`` row exists; absent rows AND rows with ``status='DISABLED'`` both render as ``DISABLED`` (the frontend doesn't distinguish). Multi-user-type: PLATFORM sees fleet rows; TENANT sees exactly own-tenant. Sibling ``tier_label`` and ``status_label`` resolved server-side via ``lookups``.",
+        "summary": "Tenant \u00d7 module enablement grid",
+        "description": "Returns the tenant \u00d7 module grid for the Module Access governance console. Row set: all visible non-TERMINATED tenants (ACTIVE + TRIAL + SUSPENDED + ONBOARDING). Each row carries 6 ``cells`` \u2014 one per module \u2014 position-aligned across rows AND with ``/modules.items[]``: ``cells[i].module_code`` is the same for every row in this response. Cells render as ``ENABLED`` only when an ENABLED ``tenant_module_access`` row exists; absent rows AND rows with ``status='DISABLED'`` both render as ``DISABLED`` (the frontend doesn't distinguish). Multi-user-type: PLATFORM sees fleet rows; TENANT sees exactly own-tenant. Sibling ``tier_label`` and ``status_label`` resolved server-side via ``lookups``.",
         "operationId": "list_matrix_api_v1_module_access_matrix_get",
         "parameters": [
           {
@@ -3130,13 +3130,35 @@
         }
       }
     },
+    "/api/v1/module-access/me": {
+      "get": {
+        "tags": [
+          "module-access"
+        ],
+        "summary": "The caller's own tenant's enabled modules",
+        "description": "Caller-state read: returns the module rows for the caller's OWN tenant so a tenant user can power the launcher without an admin governance grant. GATE_EXEMPT (authenticated, no permission gate); RLS scopes the rows to the JWT's tenant for TENANT callers. PLATFORM callers have no single tenant: ``tenant_id`` is null and ``modules`` is empty (PLATFORM uses the matrix path). Each item mirrors the matrix cell shape (``module_code`` + ``status``) plus a resolved ``module_label``.",
+        "operationId": "my_modules_api_v1_module_access_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyModulesResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/module-access/{tenant_id}/{module_code}/enable": {
       "post": {
         "tags": [
           "module-access"
         ],
         "summary": "Enable a module for a tenant (upserts if no row exists)",
-        "description": "Enables ``module_code`` for ``tenant_id``. Upserts: creates a row when none exists; flips ``DISABLED`` to ``ENABLED`` otherwise. Idempotent: enable on already-``ENABLED`` returns 200 with no row mutation. Per LD5, ``enabled_at`` and ``enabled_by_user_id`` mark the start of the current ENABLED stint and are overwritten on every ``DISABLED -> ENABLED`` flip; the ``disabled_*`` pair clears atomically. Gated on ``ADMIN.TENANTS.OVERRIDE.GLOBAL`` (SUPER_ADMIN-only) with ``audience='PLATFORM'`` — TENANT JWTs are refused at Layer 1 with 403 ``PLATFORM_AUDIENCE_REQUIRED``.",
+        "description": "Enables ``module_code`` for ``tenant_id``. Upserts: creates a row when none exists; flips ``DISABLED`` to ``ENABLED`` otherwise. Idempotent: enable on already-``ENABLED`` returns 200 with no row mutation. Per LD5, ``enabled_at`` and ``enabled_by_user_id`` mark the start of the current ENABLED stint and are overwritten on every ``DISABLED -> ENABLED`` flip; the ``disabled_*`` pair clears atomically. Gated on ``ADMIN.TENANTS.OVERRIDE.GLOBAL`` (SUPER_ADMIN-only) with ``audience='PLATFORM'`` \u2014 TENANT JWTs are refused at Layer 1 with 403 ``PLATFORM_AUDIENCE_REQUIRED``.",
         "operationId": "enable_module_for_tenant_api_v1_module_access__tenant_id___module_code__enable_post",
         "parameters": [
           {
@@ -3188,7 +3210,7 @@
           "module-access"
         ],
         "summary": "Disable a module for a tenant",
-        "description": "Disables ``module_code`` for ``tenant_id``. 404 ``MODULE_ACCESS_NOT_FOUND`` when no row exists for the supplied pair (only the disable path produces this code; enable upserts). Idempotent: disable on already-``DISABLED`` returns 200 with no row mutation. Per LD5, ``enabled_at`` is preserved through the disable flip (carries forward as the historical record of when the just-ended ENABLED stint began); only ``disabled_at`` and ``disabled_by_user_id`` are written. Access cascade is structural via the ``has_permission`` JOIN on ``tma.status='ENABLED'`` — disabling blocks every TENANT-side permission check against the module on the next request without touching the role-assignment table. Gated on ``ADMIN.TENANTS.OVERRIDE.GLOBAL`` (SUPER_ADMIN-only) with ``audience='PLATFORM'``.",
+        "description": "Disables ``module_code`` for ``tenant_id``. 404 ``MODULE_ACCESS_NOT_FOUND`` when no row exists for the supplied pair (only the disable path produces this code; enable upserts). Idempotent: disable on already-``DISABLED`` returns 200 with no row mutation. Per LD5, ``enabled_at`` is preserved through the disable flip (carries forward as the historical record of when the just-ended ENABLED stint began); only ``disabled_at`` and ``disabled_by_user_id`` are written. Access cascade is structural via the ``has_permission`` JOIN on ``tma.status='ENABLED'`` \u2014 disabling blocks every TENANT-side permission check against the module on the next request without touching the role-assignment table. Gated on ``ADMIN.TENANTS.OVERRIDE.GLOBAL`` (SUPER_ADMIN-only) with ``audience='PLATFORM'``.",
         "operationId": "disable_module_for_tenant_api_v1_module_access__tenant_id___module_code__disable_post",
         "parameters": [
           {
@@ -3240,7 +3262,7 @@
           "role-assignments"
         ],
         "summary": "List role assignments (grouped by audience)",
-        "description": "Grouped envelope: `{platform_assignments: {items, pagination}, tenant_assignments: {items, pagination}}`. PLATFORM JWTs see both blocks; TENANT JWTs see only their own tenant's tenant_assignments — the platform-side query is short-circuited at the router (security-load-bearing: platform_user_role_assignments has no RLS). Filters apply to whichever block(s) the filter targets; pagination is per-block.",
+        "description": "Grouped envelope: `{platform_assignments: {items, pagination}, tenant_assignments: {items, pagination}}`. PLATFORM JWTs see both blocks; TENANT JWTs see only their own tenant's tenant_assignments \u2014 the platform-side query is short-circuited at the router (security-load-bearing: platform_user_role_assignments has no RLS). Filters apply to whichever block(s) the filter targets; pagination is per-block.",
         "operationId": "list_role_assignments_api_v1_role_assignments_get",
         "parameters": [
           {
@@ -3815,12 +3837,12 @@
           "total": {
             "type": "integer",
             "title": "Total",
-            "description": "Count of tenants with status != 'TERMINATED' — covers the four non-terminated states (ONBOARDING, TRIAL, ACTIVE, SUSPENDED). Treat as 'visible total' under the caller's RLS scope."
+            "description": "Count of tenants with status != 'TERMINATED' \u2014 covers the four non-terminated states (ONBOARDING, TRIAL, ACTIVE, SUSPENDED). Treat as 'visible total' under the caller's RLS scope."
           },
           "sub_text": {
             "type": "string",
             "title": "Sub Text",
-            "description": "Backend-formatted breakdown. Format: \"<n> onboarding · <m> trial · <k> suspended\" with each segment present only when its count > 0. Empty string when all three are zero. Lifecycle ordering: onboarding → trial → suspended."
+            "description": "Backend-formatted breakdown. Format: \"<n> onboarding \u00b7 <m> trial \u00b7 <k> suspended\" with each segment present only when its count > 0. Empty string when all three are zero. Lifecycle ordering: onboarding \u2192 trial \u2192 suspended."
           },
           "delta": {
             "$ref": "#/components/schemas/DeltaBlock",
@@ -3842,7 +3864,7 @@
           "available"
         ],
         "title": "ActiveTenantsCard",
-        "description": "KPI card 1: Active tenants — value/total + status breakdown sub_text.\n\n``value`` counts ``status = 'ACTIVE'``. ``total`` counts ``status\n!= 'TERMINATED'`` — i.e., all four non-terminated states (ONBOARDING,\nTRIAL, ACTIVE, SUSPENDED). The ``sub_text`` breaks out non-zero\nonboarding / trial / suspended segments in lifecycle order. Empty\nstring when all three breakout segments are zero.\n\nStep 6.5 design-review amendment (2026-05-06): the sub_text\nvocabulary covers all five tenant_status values. The original\nprompt's locked rules covered only TRIAL and SUSPENDED; ONBOARDING\nwas added at design-review time because it's a real product state\n(the lifecycle's first state) and silent rollup under-served the\nSuper Admin reader."
+        "description": "KPI card 1: Active tenants \u2014 value/total + status breakdown sub_text.\n\n``value`` counts ``status = 'ACTIVE'``. ``total`` counts ``status\n!= 'TERMINATED'`` \u2014 i.e., all four non-terminated states (ONBOARDING,\nTRIAL, ACTIVE, SUSPENDED). The ``sub_text`` breaks out non-zero\nonboarding / trial / suspended segments in lifecycle order. Empty\nstring when all three breakout segments are zero.\n\nStep 6.5 design-review amendment (2026-05-06): the sub_text\nvocabulary covers all five tenant_status values. The original\nprompt's locked rules covered only TRIAL and SUSPENDED; ONBOARDING\nwas added at design-review time because it's a real product state\n(the lifecycle's first state) and silent rollup under-served the\nSuper Admin reader."
       },
       "ActorUserType": {
         "type": "string",
@@ -4510,7 +4532,7 @@
           "available"
         ],
         "title": "CustomRolesCard",
-        "description": "KPI card 7: Custom roles (non-system) over total roles.\n\nStubbed in v0: Step 6.1 shipped RBAC *read* endpoints (the\n``roles`` table is reachable, queryable, RLS-correct), but the\n*write* surface to create custom roles is not on the v0 plan.\nWith no path to create them, ``COUNT(*) FILTER (WHERE is_system =\nfalse)`` is structurally zero — flipping ``available: true`` while\nthe count cannot meaningfully change misrepresents platform state.\nStays stubbed until the create-custom-role write surface ships.\n``unavailable_reason: 'custom_role_creation_not_shipped'``."
+        "description": "KPI card 7: Custom roles (non-system) over total roles.\n\nStubbed in v0: Step 6.1 shipped RBAC *read* endpoints (the\n``roles`` table is reachable, queryable, RLS-correct), but the\n*write* surface to create custom roles is not on the v0 plan.\nWith no path to create them, ``COUNT(*) FILTER (WHERE is_system =\nfalse)`` is structurally zero \u2014 flipping ``available: true`` while\nthe count cannot meaningfully change misrepresents platform state.\nStays stubbed until the create-custom-role write surface ships.\n``unavailable_reason: 'custom_role_creation_not_shipped'``."
       },
       "DeltaBlock": {
         "properties": {
@@ -4720,7 +4742,7 @@
           },
           "file_size_bytes": {
             "type": "integer",
-            "exclusiveMinimum": 0,
+            "exclusiveMinimum": 0.0,
             "title": "File Size Bytes"
           }
         },
@@ -5076,7 +5098,7 @@
           "status"
         ],
         "title": "MatrixCell",
-        "description": "Per-tenant per-module enablement state.\n\n``status='ENABLED'`` reflects an ENABLED ``tenant_module_access``\nrow; ``'DISABLED'`` reflects either an absent row OR a row with\n``status='DISABLED'``. Frontend doesn't need to distinguish the\ntwo — the rendered behaviour is identical."
+        "description": "Per-tenant per-module enablement state.\n\n``status='ENABLED'`` reflects an ENABLED ``tenant_module_access``\nrow; ``'DISABLED'`` reflects either an absent row OR a row with\n``status='DISABLED'``. Frontend doesn't need to distinguish the\ntwo \u2014 the rendered behaviour is identical."
       },
       "MatrixResponse": {
         "properties": {
@@ -5178,7 +5200,7 @@
           "cells"
         ],
         "title": "MatrixRow",
-        "description": "One tenant row in the matrix. ``cells[]`` is position-aligned\nwith E1's ``items[]`` ordering: ``cells[i].module_code`` is the\nsame for every row in the response.\n\n``status`` excludes ``TERMINATED`` because the matrix row set\nfilters those out at the row-set level — they never appear here."
+        "description": "One tenant row in the matrix. ``cells[]`` is position-aligned\nwith E1's ``items[]`` ordering: ``cells[i].module_code`` is the\nsame for every row in the response.\n\n``status`` excludes ``TERMINATED`` because the matrix row set\nfilters those out at the row-set level \u2014 they never appear here."
       },
       "MeCanDoResponse": {
         "properties": {
@@ -5327,7 +5349,7 @@
               "ADMIN"
             ],
             "title": "Module Code",
-            "description": "Stable wire code matching ``module_code_enum``. Use this for any frontend dispatch logic — labels can change, codes are append-only."
+            "description": "Stable wire code matching ``module_code_enum``. Use this for any frontend dispatch logic \u2014 labels can change, codes are append-only."
           },
           "module_label": {
             "type": "string",
@@ -5418,7 +5440,7 @@
           "items"
         ],
         "title": "ModulesResponse",
-        "description": "E1 response envelope.\n\nNo pagination — fixed cardinality of 6 (one card per module in\n``module_code_enum``). The wrapping envelope reserves room for\nfuture cross-cutting metadata (e.g., ``cached_at``) without\nbreaking the contract."
+        "description": "E1 response envelope.\n\nNo pagination \u2014 fixed cardinality of 6 (one card per module in\n``module_code_enum``). The wrapping envelope reserves room for\nfuture cross-cutting metadata (e.g., ``cached_at``) without\nbreaking the contract."
       },
       "MrrAggregatedCard": {
         "properties": {
@@ -5457,7 +5479,77 @@
           "available"
         ],
         "title": "MrrAggregatedCard",
-        "description": "KPI card 4: Aggregated tenant MRR.\n\n``value`` is a 2-decimal-place string (e.g., ``\"308100.00\"``)\nformatted by the router via ``f\"{x:.2f}\"``. This differs from\n``schemas/tenant.py``'s ``field_serializer`` returning ``str(v)``\non per-row monthly_revenue_usd — see module docstring for the\nrationale.\n\nThe delta is permanently stubbed in v0 (no per-period MRR\nsnapshot table exists). Tracked as MRR-DELTA-REAL forward note."
+        "description": "KPI card 4: Aggregated tenant MRR.\n\n``value`` is a 2-decimal-place string (e.g., ``\"308100.00\"``)\nformatted by the router via ``f\"{x:.2f}\"``. This differs from\n``schemas/tenant.py``'s ``field_serializer`` returning ``str(v)``\non per-row monthly_revenue_usd \u2014 see module docstring for the\nrationale.\n\nThe delta is permanently stubbed in v0 (no per-period MRR\nsnapshot table exists). Tracked as MRR-DELTA-REAL forward note."
+      },
+      "MyModuleItem": {
+        "properties": {
+          "module_code": {
+            "type": "string",
+            "enum": [
+              "GOAL_CONSOLE",
+              "PRICING_OS",
+              "PERISHABLES_ASSISTANT",
+              "PROMOTIONS_ASSISTANT",
+              "ADMIN"
+            ],
+            "title": "Module Code"
+          },
+          "module_label": {
+            "type": "string",
+            "title": "Module Label",
+            "description": "Display label resolved server-side via ``lookups.list_name='module_code'`` with COALESCE fallback to the raw enum code."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ENABLED",
+              "DISABLED"
+            ],
+            "title": "Status"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "module_code",
+          "module_label",
+          "status"
+        ],
+        "title": "MyModuleItem",
+        "description": "One tenant_module_access row for the caller's own tenant. Mirrors\nthe matrix cell shape (``module_code`` + ``status``) plus a\nserver-resolved ``module_label`` per the label convention."
+      },
+      "MyModulesResponse": {
+        "properties": {
+          "tenant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id",
+            "description": "The caller's tenant id (from the JWT) for TENANT callers; null for PLATFORM callers."
+          },
+          "modules": {
+            "items": {
+              "$ref": "#/components/schemas/MyModuleItem"
+            },
+            "type": "array",
+            "title": "Modules",
+            "description": "The caller-tenant's tenant_module_access rows, ordered by ``lookups.display_order``. Empty for PLATFORM callers."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "modules"
+        ],
+        "title": "MyModulesResponse",
+        "description": "GET /module-access/me \u2014 the caller's OWN tenant's module rows.\n\nCaller-state read (GATE_EXEMPT; authenticated but no permission\ngate), so a tenant user can power their launcher without an admin\ngovernance grant. RLS scopes the rows to the JWT's tenant for TENANT\ncallers. PLATFORM callers have no single tenant: ``tenant_id`` is\nnull and ``modules`` is empty (they use the matrix path instead)."
       },
       "OnboardingDocumentsBlock": {
         "properties": {
@@ -5661,7 +5753,7 @@
             },
             "type": "array",
             "title": "Items",
-            "description": "Immediate ACTIVE children of the parent node, sorted alphabetical by lowercased code. Each child's `loaded_children` is 'none' (lazy by default — caller invokes E3 again for grandchildren if needed)."
+            "description": "Immediate ACTIVE children of the parent node, sorted alphabetical by lowercased code. Each child's `loaded_children` is 'none' (lazy by default \u2014 caller invokes E3 again for grandchildren if needed)."
           },
           "pagination": {
             "$ref": "#/components/schemas/Pagination",
@@ -5680,14 +5772,21 @@
       "OrgNodeCreateRequest": {
         "properties": {
           "parent_id": {
-            "type": "string",
-            "format": "uuid",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Parent Id",
-            "description": "UUID of the parent org_node. Must exist in the same tenant. Use the tenant-root's id when adding a top-level node (typical for first BUSINESS_UNIT or HQ)."
+            "description": "UUID of the parent org_node. Must exist in the same tenant. Omit (or send null) to add a top-level node under the tenant root, which the server resolves (typical for the first HQ or BUSINESS_UNIT on a root-only tenant)."
           },
           "node_type": {
             "$ref": "#/components/schemas/OrgNodeType",
-            "description": "Type of node to create. TENANT is rejected here (tenant roots are provisioned with the tenant). STORE is rejected here too (Step 6.21.2 — stores must be created via POST /api/v1/stores, which creates the paired STORE-type org_node atomically)."
+            "description": "Type of node to create. TENANT is rejected here (tenant roots are provisioned with the tenant). STORE is rejected here too (Step 6.21.2 \u2014 stores must be created via POST /api/v1/stores, which creates the paired STORE-type org_node atomically)."
           },
           "code": {
             "type": "string",
@@ -5708,13 +5807,12 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "parent_id",
           "node_type",
           "code",
           "name"
         ],
         "title": "OrgNodeCreateRequest",
-        "description": "Request body for POST /api/v1/tenants/{tenant_id}/org-tree.\n\nAdd a new org_node under an existing parent. ``node_type`` is\nrequired and must NOT be TENANT (tenant roots are created at tenant\nprovisioning; this surface cannot make one). ``parent_id`` is\nrequired; the parent must exist in the same tenant and its\n``node_type`` must sit strictly above this child's in the canonical\ncascade order.\n\n``extra=\"forbid\"`` rejects unknown fields at Pydantic time (422\nbefore the handler runs). Code format is enforced server-side via\nthe DDL CHECK ``ck_org_nodes_code_format`` plus a Pydantic regex\n(1-64 chars, alphanumerics with hyphens, no underscores, must\nstart/end alphanumeric)."
+        "description": "Request body for POST /api/v1/tenants/{tenant_id}/org-tree.\n\nAdd a new org_node under a parent. ``node_type`` is required and\nmust NOT be TENANT (tenant roots are created at tenant provisioning;\nthis surface cannot make one). ``parent_id`` is optional: when\nsupplied the parent must exist in the same tenant and its\n``node_type`` must sit strictly above this child's in the canonical\ncascade order; when omitted (or null) the server resolves the parent\nto the tenant's TENANT root, so the first node of a root-only tenant\n(typically an HQ) can be added without the caller knowing the root\nid.\n\n``extra=\"forbid\"`` rejects unknown fields at Pydantic time (422\nbefore the handler runs). Code format is enforced server-side via\nthe DDL CHECK ``ck_org_nodes_code_format`` plus a Pydantic regex\n(1-64 chars, alphanumerics with hyphens, no underscores, must\nstart/end alphanumeric)."
       },
       "OrgNodePatchRequest": {
         "properties": {
@@ -5869,7 +5967,7 @@
           },
           "status": {
             "$ref": "#/components/schemas/OrgNodeStatus",
-            "description": "Lifecycle status. Always 'ACTIVE' in v0 — INACTIVE / ARCHIVED are filtered out at the Repo layer. The field is exposed so frontend code is forward-compatible with future status filters."
+            "description": "Lifecycle status. Always 'ACTIVE' in v0 \u2014 INACTIVE / ARCHIVED are filtered out at the Repo layer. The field is exposed so frontend code is forward-compatible with future status filters."
           },
           "created_at": {
             "type": "string",
@@ -6068,7 +6166,7 @@
           "value": {
             "type": "integer",
             "title": "Value",
-            "description": "Count of pending approvals. Type-stable sentinel ``0`` while ``available: false`` — consumers MUST NOT read this as meaningful in v0."
+            "description": "Count of pending approvals. Type-stable sentinel ``0`` while ``available: false`` \u2014 consumers MUST NOT read this as meaningful in v0."
           },
           "sub_text": {
             "type": "string",
@@ -6273,7 +6371,7 @@
             },
             "type": "array",
             "title": "Rows",
-            "description": "Permission rows, ordered module/resource/action/scope ascending. Same dataset for both user types — the catalogue is reference data."
+            "description": "Permission rows, ordered module/resource/action/scope ascending. Same dataset for both user types \u2014 the catalogue is reference data."
           }
         },
         "type": "object",
@@ -6282,7 +6380,7 @@
           "rows"
         ],
         "title": "PermissionMatrixResponse",
-        "description": "E6 response: render-ready grid (deliberate D-30 exception).\n\nNo ``items`` wrapper, no pagination. PLATFORM JWTs see the full\ngrid (15 columns × N rows); TENANT JWTs see TENANT-audience role\ncolumns only (12 columns × N rows; ``cells[]`` arrays shrink\ncorrespondingly)."
+        "description": "E6 response: render-ready grid (deliberate D-30 exception).\n\nNo ``items`` wrapper, no pagination. PLATFORM JWTs see the full\ngrid (15 columns \u00d7 N rows); TENANT JWTs see TENANT-audience role\ncolumns only (12 columns \u00d7 N rows; ``cells[]`` arrays shrink\ncorrespondingly)."
       },
       "PermissionMatrixRoleColumn": {
         "properties": {
@@ -6349,7 +6447,7 @@
             },
             "type": "array",
             "title": "Cells",
-            "description": "Position-based grant array. ``cells[i]`` is the grant state of this permission for ``roles[i]`` (where ``roles`` is the top-level column array of the same response). ``len(cells) == len(roles)`` is a hard invariant — the backend computes the alignment."
+            "description": "Position-based grant array. ``cells[i]`` is the grant state of this permission for ``roles[i]`` (where ``roles`` is the top-level column array of the same response). ``len(cells) == len(roles)`` is a hard invariant \u2014 the backend computes the alignment."
           }
         },
         "type": "object",
@@ -6725,7 +6823,7 @@
           "tenant_assignments"
         ],
         "title": "RoleAssignmentsResponse",
-        "description": "Response shape for ``/role-assignments``.\n\nFor PLATFORM JWTs: both blocks may be populated.\n\nFor TENANT JWTs: ``platform_assignments`` block has\n``items=[]`` and ``pagination.total=0`` because the platform-side\nquery is short-circuited at the router (locked decision 12 of\nStep 6.8.3, security-load-bearing —\n``platform_user_role_assignments`` has no RLS, so the app-layer\nrouting is the only barrier). ``tenant_assignments`` is RLS-scoped\nto the calling tenant via the D-29 OR-branch on\n``tenant_user_role_assignments_tenant_isolation``."
+        "description": "Response shape for ``/role-assignments``.\n\nFor PLATFORM JWTs: both blocks may be populated.\n\nFor TENANT JWTs: ``platform_assignments`` block has\n``items=[]`` and ``pagination.total=0`` because the platform-side\nquery is short-circuited at the router (locked decision 12 of\nStep 6.8.3, security-load-bearing \u2014\n``platform_user_role_assignments`` has no RLS, so the app-layer\nrouting is the only barrier). ``tenant_assignments`` is RLS-scoped\nto the calling tenant via the D-29 OR-branch on\n``tenant_user_role_assignments_tenant_isolation``."
       },
       "RoleAudience": {
         "type": "string",
@@ -6821,7 +6919,7 @@
           "available_permissions"
         ],
         "title": "RoleDetail",
-        "description": "Self-contained role detail for the edit screen (E7).\n\nReturned by ``GET /api/v1/roles/{role_id}``. Frontend renders the\nedit form from this response alone — held permissions and\ngrantable permissions are both embedded with display labels.\n\nAudience-scope coherence (LD2): when ``audience='TENANT'``,\n``available_permissions`` excludes ``scope='GLOBAL'`` rows\n(GLOBAL scope is structurally invalid for TENANT-audience roles).\nPLATFORM-audience roles see the full catalogue minus held.\n\nAudit-actor columns hidden (Pattern (b) per D-13, mirrors E1's\n``RoleListItem`` policy)."
+        "description": "Self-contained role detail for the edit screen (E7).\n\nReturned by ``GET /api/v1/roles/{role_id}``. Frontend renders the\nedit form from this response alone \u2014 held permissions and\ngrantable permissions are both embedded with display labels.\n\nAudience-scope coherence (LD2): when ``audience='TENANT'``,\n``available_permissions`` excludes ``scope='GLOBAL'`` rows\n(GLOBAL scope is structurally invalid for TENANT-audience roles).\nPLATFORM-audience roles see the full catalogue minus held.\n\nAudit-actor columns hidden (Pattern (b) per D-13, mirrors E1's\n``RoleListItem`` policy)."
       },
       "RoleListItem": {
         "properties": {
@@ -6885,7 +6983,7 @@
           "updated_at"
         ],
         "title": "RoleListItem",
-        "description": "Item shape for E1's pre-grouped response.\n\nThe ``audience`` enum is NOT included — it's implied by the\ncontainer key (``platform_roles`` vs ``tenant_roles``)."
+        "description": "Item shape for E1's pre-grouped response.\n\nThe ``audience`` enum is NOT included \u2014 it's implied by the\ncontainer key (``platform_roles`` vs ``tenant_roles``)."
       },
       "RoleListResponse": {
         "properties": {
@@ -6934,7 +7032,7 @@
           "items"
         ],
         "title": "RolePermissionsResponse",
-        "description": "E3 response: parent role identity echoed + permissions list.\n\nNo pagination — a role has bounded permissions (typically 5-30);\nthe parent echo (``role_id`` + ``role_name``) lets the frontend\navoid an additional E1 lookup when rendering the right-pane header."
+        "description": "E3 response: parent role identity echoed + permissions list.\n\nNo pagination \u2014 a role has bounded permissions (typically 5-30);\nthe parent echo (``role_id`` + ``role_name``) lets the frontend\navoid an additional E1 lookup when rendering the right-pane header."
       },
       "RoleStatus": {
         "type": "string",
@@ -7053,8 +7151,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 90,
-                "minimum": -90
+                "maximum": 90.0,
+                "minimum": -90.0
               },
               {
                 "type": "string",
@@ -7070,8 +7168,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 180,
-                "minimum": -180
+                "maximum": 180.0,
+                "minimum": -180.0
               },
               {
                 "type": "string",
@@ -7097,7 +7195,7 @@
           "parent_org_node_id"
         ],
         "title": "StoreCreateRequest",
-        "description": "Request shape for ``POST /api/v1/stores``.\n\nMulti-audience (PLATFORM and TENANT OWNER per locked decision 1).\n``tenant_id`` in body is verified against the caller's RLS-bound\nsession: a TENANT JWT supplying another tenant's id finds the\ncross-tenant target invisible and surfaces as 404\n``TENANT_NOT_FOUND`` from the create path's preconditions.\n\n``status`` is not accepted on the wire; the DDL default (currently\n``ACTIVE``; product intent is ``OPENING``, deferred to a future\nmigration) fires server-side (locked decision 8 — \"via DDL default\").\n\nStep 6.21.2: ``parent_org_node_id`` (REQUIRED) names the parent\nunder which the server creates the paired STORE-type org_node. The\nserver provisions the org_node + the store row atomically (one\ntransaction). The pre-6.21.2 ``org_node_id`` field is gone; sending\nit produces 422 ``extra_forbidden`` via ``extra=\"forbid\"``."
+        "description": "Request shape for ``POST /api/v1/stores``.\n\nMulti-audience (PLATFORM and TENANT OWNER per locked decision 1).\n``tenant_id`` in body is verified against the caller's RLS-bound\nsession: a TENANT JWT supplying another tenant's id finds the\ncross-tenant target invisible and surfaces as 404\n``TENANT_NOT_FOUND`` from the create path's preconditions.\n\n``status`` is not accepted on the wire; the DDL default (currently\n``ACTIVE``; product intent is ``OPENING``, deferred to a future\nmigration) fires server-side (locked decision 8 \u2014 \"via DDL default\").\n\nStep 6.21.2: ``parent_org_node_id`` (REQUIRED) names the parent\nunder which the server creates the paired STORE-type org_node. The\nserver provisions the org_node + the store row atomically (one\ntransaction). The pre-6.21.2 ``org_node_id`` field is gone; sending\nit produces 422 ``extra_forbidden`` via ``extra=\"forbid\"``."
       },
       "StoreDetail": {
         "properties": {
@@ -7237,7 +7335,7 @@
           "closed_at"
         ],
         "title": "StoreDetail",
-        "description": "Detail response shape for ``GET /api/v1/stores/{store_id}``.\n\n17 fields. Audit-actor IDs (Pattern (b) per D-13) deliberately\nhidden; ``org_node_id`` exposed as a bare UUID column (locked\ndecision 8) — frontend resolves the name via ``/org-tree`` if\nneeded."
+        "description": "Detail response shape for ``GET /api/v1/stores/{store_id}``.\n\n17 fields. Audit-actor IDs (Pattern (b) per D-13) deliberately\nhidden; ``org_node_id`` exposed as a bare UUID column (locked\ndecision 8) \u2014 frontend resolves the name via ``/org-tree`` if\nneeded."
       },
       "StoreListItem": {
         "properties": {
@@ -7410,8 +7508,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 90,
-                "minimum": -90
+                "maximum": 90.0,
+                "minimum": -90.0
               },
               {
                 "type": "string",
@@ -7427,8 +7525,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 180,
-                "minimum": -180
+                "maximum": 180.0,
+                "minimum": -180.0
               },
               {
                 "type": "string",
@@ -7482,7 +7580,7 @@
           "target_status"
         ],
         "title": "StoreSetStatusRequest",
-        "description": "Request shape for ``POST /api/v1/stores/{store_id}/set-status``.\n\nMulti-audience (LD9 — same gate as ``StorePatchRequest``):\nPLATFORM via the GLOBAL->TENANT cascade; TENANT OWNER via the\ndirect ``.TENANT`` grant.\n\n``reason`` is forward-compatible: accepted on the wire now,\nconsumed by Pydantic validation, then silently dropped at the\nrepo layer until Step 6.2's ``audit_log`` integration lands.\nThe API contract does not change when audit_log ships."
+        "description": "Request shape for ``POST /api/v1/stores/{store_id}/set-status``.\n\nMulti-audience (LD9 \u2014 same gate as ``StorePatchRequest``):\nPLATFORM via the GLOBAL->TENANT cascade; TENANT OWNER via the\ndirect ``.TENANT`` grant.\n\n``reason`` is forward-compatible: accepted on the wire now,\nconsumed by Pydantic validation, then silently dropped at the\nrepo layer until Step 6.2's ``audit_log`` integration lands.\nThe API contract does not change when audit_log ships."
       },
       "StoreStatus": {
         "type": "string",
@@ -7760,7 +7858,7 @@
           },
           "number_of_stores": {
             "type": "integer",
-            "minimum": 1,
+            "minimum": 1.0,
             "title": "Number Of Stores"
           },
           "number_of_stores_as_of_date": {
@@ -7785,7 +7883,7 @@
               {
                 "type": "number",
                 "maximum": 9999999999999.99,
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "string",
@@ -8035,7 +8133,7 @@
           "modules"
         ],
         "title": "TenantDetail",
-        "description": "Detail response shape: TenantRead's projection plus three live\naggregates and the modules list. 21 fields, fully flat.\n\nNo inheritance from ``TenantRead`` — duplicating the field set keeps\nthe two response shapes structurally independent so a future change\nto one doesn't surprise the other (e.g., adding a TenantRead-only\nfield shouldn't auto-leak into the detail response)."
+        "description": "Detail response shape: TenantRead's projection plus three live\naggregates and the modules list. 21 fields, fully flat.\n\nNo inheritance from ``TenantRead`` \u2014 duplicating the field set keeps\nthe two response shapes structurally independent so a future change\nto one doesn't surprise the other (e.g., adding a TenantRead-only\nfield shouldn't auto-leak into the detail response)."
       },
       "TenantIndustry": {
         "type": "string",
@@ -8171,7 +8269,7 @@
               {
                 "type": "number",
                 "maximum": 9999999999999.99,
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "string",
@@ -8199,7 +8297,7 @@
             "anyOf": [
               {
                 "type": "integer",
-                "minimum": 1
+                "minimum": 1.0
               },
               {
                 "type": "null"
@@ -8362,7 +8460,7 @@
         "additionalProperties": false,
         "type": "object",
         "title": "TenantUserPatchRequest",
-        "description": "Request shape for ``PATCH /api/v1/tenant-users/{user_id}``.\n\nAll fields optional; the handler raises ``EmptyPatchError`` (422)\nif ``model_dump(exclude_unset=True)`` produces an empty dict.\n\nEditable fields (locked decision 2): ``full_name``, ``email``,\n``roles`` (Step 6.14 diff-replace semantics — see below).\n\n``roles=None`` (field omitted): no change to assignments.\n``roles=[]`` (empty list): revoke ALL current ACTIVE assignments.\n``roles=[...]``: diff-replace against the current ACTIVE set;\nunchanged (role_id, org_node_id) tuples retain their original\n``granted_at`` and ``granted_by_*``.\n\nExcluded fields (rejected at schema layer via ``extra=\"forbid\"``):\n  - ``tenant_id``: per-row immutable (tenant migration is out of\n    scope for v0; would need composite-FK + RLS migration).\n  - ``status``: transitions go through ``/suspend`` and\n    ``/activate``.\n  - ``auth0_sub``, ``invited_at``, ``invitation_accepted_at``,\n    ``suspended_*``: server-managed lifecycle.\n  - ``id``, ``created_at``, ``updated_at``, ``*_by_user_id``,\n    ``*_by_user_type``: server-managed."
+        "description": "Request shape for ``PATCH /api/v1/tenant-users/{user_id}``.\n\nAll fields optional; the handler raises ``EmptyPatchError`` (422)\nif ``model_dump(exclude_unset=True)`` produces an empty dict.\n\nEditable fields (locked decision 2): ``full_name``, ``email``,\n``roles`` (Step 6.14 diff-replace semantics \u2014 see below).\n\n``roles=None`` (field omitted): no change to assignments.\n``roles=[]`` (empty list): revoke ALL current ACTIVE assignments.\n``roles=[...]``: diff-replace against the current ACTIVE set;\nunchanged (role_id, org_node_id) tuples retain their original\n``granted_at`` and ``granted_by_*``.\n\nExcluded fields (rejected at schema layer via ``extra=\"forbid\"``):\n  - ``tenant_id``: per-row immutable (tenant migration is out of\n    scope for v0; would need composite-FK + RLS migration).\n  - ``status``: transitions go through ``/suspend`` and\n    ``/activate``.\n  - ``auth0_sub``, ``invited_at``, ``invitation_accepted_at``,\n    ``suspended_*``: server-managed lifecycle.\n  - ``id``, ``created_at``, ``updated_at``, ``*_by_user_id``,\n    ``*_by_user_type``: server-managed."
       },
       "TenantUserProvisionResult": {
         "properties": {
@@ -8619,7 +8717,7 @@
           "updated_at"
         ],
         "title": "TenantsListItem",
-        "description": "Per-card response shape for the tenants list endpoint.\n\n13 fields, fully flat. Deliberately omits monthly_revenue_as_of_date,\nnumber_of_stores (the self-reported snapshot), number_of_stores_as_of_date,\nprimary_contact_name, contact_email, suspended_at, terminated_at — all\navailable on the detail endpoint."
+        "description": "Per-card response shape for the tenants list endpoint.\n\n13 fields, fully flat. Deliberately omits monthly_revenue_as_of_date,\nnumber_of_stores (the self-reported snapshot), number_of_stores_as_of_date,\nprimary_contact_name, contact_email, suspended_at, terminated_at \u2014 all\navailable on the detail endpoint."
       },
       "TenantsListResponse": {
         "properties": {

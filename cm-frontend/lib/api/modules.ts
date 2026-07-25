@@ -1,5 +1,10 @@
 import { apiFetch, qs } from "./client";
-import type { ModulesResponse, MatrixResponse, MatrixRow } from "@/types/api";
+import type {
+  ModulesResponse,
+  MatrixResponse,
+  MatrixRow,
+  MyModulesResponse,
+} from "@/types/api";
 import type { components } from "@/types/openapi-generated";
 
 // Phase 5n.1: routes through lib/api/client.ts, whose base URL is
@@ -38,6 +43,13 @@ export const modulesApi = {
     apiFetch<MatrixResponse>(
       `/api/v1/module-access/matrix${qs(params as Record<string, unknown> | undefined)}`,
     ),
+
+  // Slice 8: caller-state read of the caller's OWN tenant's enabled
+  // modules. GATE_EXEMPT backend endpoint — a TENANT persona can power
+  // the launcher without an admin governance grant (the matrix endpoint
+  // is gated on ADMIN.TENANTS.VIEW.TENANT).
+  myModules: () =>
+    apiFetch<MyModulesResponse>(`/api/v1/module-access/me`),
 
   // Idempotency-Key generated per call (not per mutation-hook instantiation):
   // a 500-then-retry produces two distinct intents and must use two keys.

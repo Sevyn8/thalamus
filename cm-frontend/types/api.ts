@@ -224,6 +224,17 @@ export type MatrixRow = Omit<Schemas["MatrixRow"], "cells"> & {
 export type MatrixResponse = Omit<Schemas["MatrixResponse"], "items"> & {
   items: MatrixRow[];
 };
+// Slice 8: GET /module-access/me caller-state read. Same module_code
+// bridge to the hand-maintained ModuleCode union as the matrix cells.
+export type MyModuleItem = Omit<Schemas["MyModuleItem"], "module_code"> & {
+  module_code: ModuleCode;
+};
+export type MyModulesResponse = Omit<
+  Schemas["MyModulesResponse"],
+  "modules"
+> & {
+  modules: MyModuleItem[];
+};
 
 
 // Dashboard stats (Phase 5e.4 wired against Sanjeev's two endpoints

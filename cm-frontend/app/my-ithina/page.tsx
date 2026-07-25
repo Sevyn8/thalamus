@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 
 import { useAuthSnapshot } from "@/lib/auth/auth-cache";
-import { useModuleMatrix } from "@/lib/hooks/use-modules";
+import { useMyModules } from "@/lib/hooks/use-modules";
 import { Skeleton } from "@/components/shared/Skeleton";
 import { ErrorInline } from "@/components/shared/ErrorInline";
 import { IthinaLogo } from "@/components/chrome/IthinaLogo";
@@ -13,59 +13,47 @@ import {
   getFirstName,
   getTimeOfDayGreeting,
 } from "@/lib/format/greeting";
-import type { MatrixResponse } from "@/types/api";
-import type { Persona } from "@/lib/auth/personas";
-
-// Resolves the TENANT persona's matrix row across both deploy modes:
-//
-//   Real backend (RLS): the matrix endpoint returns a single row
-//     scoped to the JWT's tenant_id. Use it directly.
-//
-//   MSW (no RLS simulation per modules.ts handler comment): all
-//     non-TERMINATED tenant rows return. Find the user's row by
-//     direct tenant_id match. Phase 5f.X consolidated to a single
-//     canonical Sanjeev UUID namespace; the prior DIS-side vs
-//     Ithina-side alias bridge and " Group" suffix-stripping
-//     fallback both retired.
-function findTenantRow(matrix: MatrixResponse, persona: Persona) {
-  const items = matrix.items;
-  if (items.length === 1) return items[0] ?? null;
-  if (persona.tenantId) {
-    return items.find((r) => r.tenant_id === persona.tenantId) ?? null;
-  }
-  return null;
-}
+import type { ModuleCode } from "@/types/api";
 
 // Phase 5d.1: My Ithina launcher. 3-column tile grid; tiles
 // resolve per persona via getVisibleTiles.
 //
 // PLATFORM personas see the full 9-tile shape (Admin + DIS
-// available; 7 placeholders Coming Soon). TENANT personas see
-// only the modules enabled for their tenant per the module-access
-// matrix.
+// available; 7 placeholders Coming Soon) with no per-tenant fetch.
+// TENANT personas see only the modules enabled for their own tenant,
+// read via the tenant-scoped GET /module-access/me (Slice 8). The
+// admin matrix endpoint is gated on ADMIN.TENANTS.VIEW.TENANT and
+// would 403 a tenant user without that governance grant.
 //
 // Loading shape: skeleton placeholders matching tile dimensions so
-// the layout doesn't jump when the matrix query resolves.
+// the layout doesn't jump when the query resolves.
 
 export default function MyIthinaPage() {
   const snapshot = useAuthSnapshot();
   const persona = snapshot?.user ?? null;
   const isTenantPersona = persona?.userType === "TENANT";
 
-  const matrix = useModuleMatrix(undefined);
-  const matrixLoading = isTenantPersona && matrix.isLoading;
-  const matrixError = isTenantPersona && matrix.error;
+  // Only TENANT personas need the per-tenant module read; PLATFORM
+  // tiles are static.
+  const myModules = useMyModules({ enabled: isTenantPersona });
+  const modulesLoading = isTenantPersona && myModules.isLoading;
+  const modulesError = isTenantPersona && myModules.error;
 
-  const tenantRow = useMemo(() => {
-    if (!isTenantPersona || !persona || !matrix.data) return null;
-    return findTenantRow(matrix.data, persona);
-  }, [isTenantPersona, persona, matrix.data]);
+  const enabledModules = useMemo(() => {
+    const set = new Set<ModuleCode>();
+    if (isTenantPersona && myModules.data) {
+      for (const m of myModules.data.modules) {
+        if (m.status === "ENABLED") set.add(m.module_code);
+      }
+    }
+    return set;
+  }, [isTenantPersona, myModules.data]);
 
   const tiles = useMemo(() => {
     if (!persona) return [];
-    if (isTenantPersona && !matrix.data) return [];
-    return getVisibleTiles(persona, tenantRow);
-  }, [persona, isTenantPersona, matrix.data, tenantRow]);
+    if (isTenantPersona && !myModules.data) return [];
+    return getVisibleTiles(persona, enabledModules);
+  }, [persona, isTenantPersona, myModules.data, enabledModules]);
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-8 px-6 py-12">
@@ -93,9 +81,9 @@ export default function MyIthinaPage() {
             <Skeleton key={i} variant="card" className="h-40 w-full" />
           ))}
         </div>
-      ) : matrixError ? (
+      ) : modulesError ? (
         <ErrorInline message="Failed to load workspace access." />
-      ) : matrixLoading ? (
+      ) : modulesLoading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2, 3, 4, 5].map((i) => (
             <Skeleton key={i} variant="card" className="h-40 w-full" />

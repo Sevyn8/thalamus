@@ -53,6 +53,11 @@ export type CreateOrgNodeModalProps = {
   onOpenChange: (open: boolean) => void;
   tenantId: string;
   defaultParent: OrgNodeTreeItem | null;
+  // Slice 8: parentless (first-node) mode. Hides the parent picker,
+  // preselects HQ, and omits parent_id from the POST so the backend
+  // resolves the parent to the tenant root. Used by the org page's
+  // root-only empty-state CTA.
+  parentless?: boolean;
 };
 
 export function CreateOrgNodeModal({
@@ -60,6 +65,7 @@ export function CreateOrgNodeModal({
   onOpenChange,
   tenantId,
   defaultParent,
+  parentless = false,
 }: CreateOrgNodeModalProps) {
   const mutation = useCreateOrgNode(tenantId);
   const [parent, setParent] = useState<OrgNodeTreeItem | null>(defaultParent);
@@ -71,14 +77,22 @@ export function CreateOrgNodeModal({
   useEffect(() => {
     if (open) {
       setParent(defaultParent);
-      setNodeType("");
+      // Parentless first node: HQ is the natural first type under the
+      // tenant root. Otherwise the user picks after choosing a parent.
+      setNodeType(parentless ? "HQ" : "");
       setCode("");
       setName("");
       setFormError(null);
     }
-  }, [open, defaultParent]);
+  }, [open, defaultParent, parentless]);
 
-  const parentOrdinal = parent ? NODE_TYPE_ORDINAL[parent.node_type] : null;
+  // In parentless mode the effective parent is the tenant root (ordinal
+  // TENANT), so any assignable type above TENANT is allowed.
+  const parentOrdinal = parentless
+    ? NODE_TYPE_ORDINAL.TENANT
+    : parent
+      ? NODE_TYPE_ORDINAL[parent.node_type]
+      : null;
   const allowedTypes =
     parentOrdinal === null
       ? []
@@ -90,7 +104,7 @@ export function CreateOrgNodeModal({
     e.preventDefault();
     setFormError(null);
 
-    if (!parent) {
+    if (!parentless && !parent) {
       setFormError("Pick a parent node.");
       return;
     }
@@ -110,7 +124,9 @@ export function CreateOrgNodeModal({
     }
 
     const payload: OrgNodeCreatePayload = {
-      parent_id: parent.id,
+      // Parentless: omit parent_id so the backend resolves it to the
+      // tenant root (Slice 8). Otherwise send the picked parent.
+      ...(parentless ? {} : { parent_id: parent!.id }),
       node_type: nodeType,
       code: code.trim(),
       name: name.trim(),
@@ -185,28 +201,37 @@ export function CreateOrgNodeModal({
           </div>
         ) : null}
 
-        <div className="flex flex-col gap-1">
-          <FieldLabel htmlFor="parent" required>
-            Parent
-          </FieldLabel>
-          <div className="max-h-56 overflow-auto rounded-md border border-border">
-            <OrgNodePicker
-              tenantId={tenantId}
-              selectedNodeId={parent?.id ?? null}
-              onSelect={setParent}
-            />
+        {parentless ? (
+          <div className="flex flex-col gap-1">
+            <FieldLabel htmlFor="parent">Parent</FieldLabel>
+            <p className="text-caption text-foreground-muted">
+              First node — it will be added directly under the tenant root.
+            </p>
           </div>
-          {parent ? (
-            <p className="text-caption text-foreground-muted">
-              Selected: <span className="font-medium">{parent.name}</span> (
-              {NODE_TYPE_LABEL[parent.node_type]})
-            </p>
-          ) : (
-            <p className="text-caption text-foreground-muted">
-              Pick a parent from the tree above.
-            </p>
-          )}
-        </div>
+        ) : (
+          <div className="flex flex-col gap-1">
+            <FieldLabel htmlFor="parent" required>
+              Parent
+            </FieldLabel>
+            <div className="max-h-56 overflow-auto rounded-md border border-border">
+              <OrgNodePicker
+                tenantId={tenantId}
+                selectedNodeId={parent?.id ?? null}
+                onSelect={setParent}
+              />
+            </div>
+            {parent ? (
+              <p className="text-caption text-foreground-muted">
+                Selected: <span className="font-medium">{parent.name}</span> (
+                {NODE_TYPE_LABEL[parent.node_type]})
+              </p>
+            ) : (
+              <p className="text-caption text-foreground-muted">
+                Pick a parent from the tree above.
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="flex flex-col gap-1">
           <FieldLabel htmlFor="node_type" required>
@@ -217,7 +242,7 @@ export function CreateOrgNodeModal({
             className={SELECT_CLASS}
             value={nodeType}
             onChange={(e) => setNodeType(e.target.value as OrgNodeType | "")}
-            disabled={!parent || allowedTypes.length === 0}
+            disabled={(!parentless && !parent) || allowedTypes.length === 0}
           >
             <option value="">Select a type…</option>
             {allowedTypes.map((t) => (

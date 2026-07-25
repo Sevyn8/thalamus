@@ -1,5 +1,5 @@
 import type { Persona } from "@/lib/auth/personas";
-import type { MatrixRow, ModuleCode } from "@/types/api";
+import type { ModuleCode } from "@/types/api";
 
 import {
   LAUNCHER_TILES,
@@ -31,7 +31,7 @@ import {
 //                          on the tenant's per-module contract).
 //
 // Pure function — no React, no hooks. Page composes the inputs from
-// useAuthSnapshot + useModuleMatrix.
+// useAuthSnapshot + (TENANT) useMyModules.
 
 export type ResolvedTile = LauncherTileConfig & {
   state: "available" | "coming-soon";
@@ -39,9 +39,10 @@ export type ResolvedTile = LauncherTileConfig & {
 
 export function getVisibleTiles(
   persona: Persona,
-  // The TENANT persona's matrix row, if available. null for PLATFORM
-  // (no per-tenant gating needed) or while the matrix query is loading.
-  tenantRow: MatrixRow | null,
+  // The set of module codes ENABLED for the TENANT persona's own tenant
+  // (Slice 8: sourced from GET /module-access/me). Ignored for PLATFORM
+  // personas, whose tiles are static. Empty while the query loads.
+  enabledModules: ReadonlySet<ModuleCode>,
 ): ResolvedTile[] {
   if (persona.userType === "PLATFORM") {
     return LAUNCHER_TILES.map((t) => ({
@@ -53,18 +54,7 @@ export function getVisibleTiles(
     }));
   }
 
-  // TENANT path. Hide Admin entirely; gate the rest by matrix cells.
-  // Phase 5f.V: cast widening retired. MatrixCell.module_code is now
-  // narrowed to the hand-maintained ModuleCode union (via the
-  // Omit<>&{} bridge in types/api.ts), so Set<ModuleCode> takes the
-  // values directly. See types/api.ts ModuleCode awaited-debt comment
-  // for the DIS hand-extension rationale.
-  const enabledModules = new Set<ModuleCode>(
-    (tenantRow?.cells ?? [])
-      .filter((c) => c.status === "ENABLED")
-      .map((c) => c.module_code),
-  );
-
+  // TENANT path. Gate every tile by the tenant's enabled module set.
   return LAUNCHER_TILES.flatMap<ResolvedTile>((t) => {
     if (t.moduleCode === null) return []; // Insights / Workforce
     if (!enabledModules.has(t.moduleCode)) return [];

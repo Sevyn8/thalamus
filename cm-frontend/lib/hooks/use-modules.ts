@@ -36,6 +36,21 @@ export function useModuleMatrix(params?: ModuleMatrixParams) {
   });
 }
 
+// Slice 8: the caller's OWN tenant's enabled modules. Powers the
+// tenant-persona launcher via the GATE_EXEMPT /module-access/me read
+// (the matrix endpoint is admin-gated and 403s for tenant users). Only
+// enable it for TENANT personas; PLATFORM tiles are static and need no
+// fetch. userId in the queryKey per the cross-persona cache-bleed rule.
+export function useMyModules(options?: { enabled?: boolean }) {
+  const userId = useAuthSnapshot()?.user?.userId ?? null;
+  return useQuery({
+    queryKey: ["module-access-me", userId],
+    queryFn: modulesApi.myModules,
+    staleTime: 5 * 60_000,
+    enabled: (options?.enabled ?? true) && !!userId,
+  });
+}
+
 // Phase 5j: write cutover. Server-wait UX (no optimistic state) per
 // Architectural Finding #28; the matrix cell toggle is a single binary
 // flip with a short server roundtrip, optimistic state is not justified.
