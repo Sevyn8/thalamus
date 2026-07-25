@@ -29,6 +29,7 @@ key layout is unit-testable independently of any GCS call.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from datetime import timedelta
 from typing import Protocol, runtime_checkable
 from uuid import UUID, uuid4
@@ -134,6 +135,7 @@ class GcsSignedUrlGenerator:
         *,
         credentials: object | None = None,
         client: storage.Client | None = None,
+        token_provider: Callable[[], str] | None = None,
     ) -> None:
         bucket = settings.gcs_documents_bucket
         if not bucket:
@@ -143,6 +145,10 @@ class GcsSignedUrlGenerator:
         self._bucket_name = bucket
         self._service_account_email = settings.gcs_signer_service_account_email
         self._credentials = credentials
+        # Keyless-signing access-token source. None -> the real runtime
+        # path (google.auth.default + refresh). Tests inject a fake so the
+        # keyless branch is exercisable without network / metadata server.
+        self._token_provider = token_provider
         if client is not None:
             self._client = client
         elif credentials is not None:
@@ -150,6 +156,37 @@ class GcsSignedUrlGenerator:
         else:
             # Cloud Run: application default credentials (metadata server).
             self._client = storage.Client()
+
+    def _runtime_access_token(self) -> str:
+        """Return an OAuth access token for the runtime service account,
+        used by the keyless V4 signing path (IAM signBlob).
+
+        The metadata credential on Cloud Run holds no private key, so the
+        google-cloud-storage signer falls back to demanding one unless BOTH
+        ``service_account_email`` AND ``access_token`` are passed to
+        ``generate_signed_url`` (verified in the vendored
+        ``_signing.generate_signed_url_v4``). This mints that token by
+        refreshing application-default credentials.
+
+        Per-call refresh is intentional at this volume (document
+        upload/download is low-frequency, staff-driven); a token cache is a
+        deliberate follow-up, not shipped here.
+        """
+        if self._token_provider is not None:
+            return self._token_provider()
+        import google.auth
+        import google.auth.transport.requests
+
+        creds, _ = google.auth.default()
+        # google.auth's base Credentials.refresh is not fully typed.
+        creds.refresh(google.auth.transport.requests.Request())  # type: ignore[no-untyped-call]
+        token = getattr(creds, "token", None)
+        if not token:
+            raise DocumentStorageUnavailableError(
+                "could not obtain a runtime access token for signed-URL "
+                "generation"
+            )
+        return str(token)
 
     @property
     def bucket(self) -> str:
@@ -175,8 +212,12 @@ class GcsSignedUrlGenerator:
             # Offline signing with a private-key credential.
             kwargs["credentials"] = self._credentials
         elif self._service_account_email is not None:
-            # Keyless signing on Cloud Run via IAM signBlob.
+            # Keyless signing on Cloud Run via IAM signBlob. BOTH
+            # service_account_email AND access_token must be passed, or the
+            # library falls back to demanding a private key on the metadata
+            # credential (which it lacks). Applies to uploads and downloads.
             kwargs["service_account_email"] = self._service_account_email
+            kwargs["access_token"] = self._runtime_access_token()
         url: str = blob.generate_signed_url(**kwargs)
         return url
 

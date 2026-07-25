@@ -171,3 +171,100 @@ def test_build_gcs_signer_none_when_signer_email_unset() -> None:
     # signing error. Same guard posture as the missing-bucket case.
     settings = Settings(gcs_documents_bucket="b")  # type: ignore[call-arg]
     assert build_gcs_signer(settings) is None
+
+
+# ---------------------------------------------------------------------------
+# Keyless V4 signing (IAM signBlob) path: BOTH service_account_email AND
+# access_token must reach blob.generate_signed_url, for uploads AND
+# downloads. Regression for the Cloud Run 500 ("you need a private key to
+# sign credentials") caused by passing only the email. A capturing fake
+# client records the kwargs; a fake token_provider keeps it offline.
+# ---------------------------------------------------------------------------
+
+
+class _CapturingBlob:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def generate_signed_url(self, **kwargs: object) -> str:
+        self.calls.append(kwargs)
+        return "https://signed.example/captured"
+
+
+class _CapturingBucket:
+    def __init__(self, blob: _CapturingBlob) -> None:
+        self._blob = blob
+
+    def blob(self, object_name: str) -> _CapturingBlob:
+        return self._blob
+
+
+class _CapturingClient:
+    def __init__(self, blob: _CapturingBlob) -> None:
+        self._blob = blob
+
+    def bucket(self, name: str) -> _CapturingBucket:
+        return _CapturingBucket(self._blob)
+
+
+def _keyless_signer(blob: _CapturingBlob) -> GcsSignedUrlGenerator:
+    settings = Settings(  # type: ignore[call-arg]
+        gcs_documents_bucket="my-bucket",
+        gcs_signer_service_account_email="signer@p.iam.gserviceaccount.com",
+    )
+    return GcsSignedUrlGenerator(
+        settings,
+        credentials=None,
+        client=_CapturingClient(blob),  # type: ignore[arg-type]
+        token_provider=lambda: "test-access-token",
+    )
+
+
+def test_keyless_upload_passes_email_and_token() -> None:
+    blob = _CapturingBlob()
+    _keyless_signer(blob).generate_upload_url(
+        object_name="tenants/t/documents/u/f.pdf",
+        content_type="application/pdf",
+        expiry_seconds=900,
+    )
+    assert len(blob.calls) == 1
+    call = blob.calls[0]
+    assert call["service_account_email"] == "signer@p.iam.gserviceaccount.com"
+    assert call["access_token"] == "test-access-token"
+    assert "credentials" not in call
+    assert call["method"] == "PUT"
+    assert call["content_type"] == "application/pdf"
+
+
+def test_keyless_download_passes_email_and_token() -> None:
+    blob = _CapturingBlob()
+    _keyless_signer(blob).generate_download_url(
+        object_name="tenants/t/documents/u/f.pdf",
+        expiry_seconds=300,
+    )
+    assert len(blob.calls) == 1
+    call = blob.calls[0]
+    assert call["service_account_email"] == "signer@p.iam.gserviceaccount.com"
+    assert call["access_token"] == "test-access-token"
+    assert "credentials" not in call
+    assert call["method"] == "GET"
+
+
+def test_rsa_path_passes_credentials_not_token() -> None:
+    """Regression: the private-key (offline) path still passes credentials
+    and does NOT pass access_token / service_account_email."""
+    creds = _offline_credentials()
+    settings = Settings(gcs_documents_bucket="my-bucket")  # type: ignore[call-arg]
+    blob = _CapturingBlob()
+    gen = GcsSignedUrlGenerator(
+        settings,
+        credentials=creds,
+        client=_CapturingClient(blob),  # type: ignore[arg-type]
+    )
+    gen.generate_upload_url(
+        object_name="o", content_type="application/pdf", expiry_seconds=900
+    )
+    call = blob.calls[0]
+    assert call["credentials"] is creds
+    assert "access_token" not in call
+    assert "service_account_email" not in call
