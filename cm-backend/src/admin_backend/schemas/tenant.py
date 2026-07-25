@@ -39,6 +39,13 @@ from admin_backend.models.tenant import (
 )
 from admin_backend.models.tenant_module_access import ModuleCode
 
+# Slice 7: monthly_revenue_usd is NUMERIC(15,2) in the DDL, so the largest
+# storable value is 13 integer digits + 2 decimals. Bounding the request
+# schema here rejects out-of-range values with a Pydantic 422 before the
+# DB raises numeric_value_out_of_range (defense-in-depth alongside the
+# repo's DB-error -> 422 mapping). ge=0 mirrors the DDL nonnegative CHECK.
+_MAX_MONTHLY_REVENUE_USD = Decimal("9999999999999.99")
+
 
 class TenantRead(BaseModel):
     """Tenant entity as returned by the API."""
@@ -175,7 +182,9 @@ class TenantCreateRequest(BaseModel):
     number_of_stores: int = Field(ge=1)
     number_of_stores_as_of_date: date
     display_code: str | None = Field(default=None, max_length=64)
-    monthly_revenue_usd: Decimal | None = None
+    monthly_revenue_usd: Decimal | None = Field(
+        default=None, ge=0, le=_MAX_MONTHLY_REVENUE_USD
+    )
     monthly_revenue_as_of_date: date | None = None
     modules_enabled: list[ModuleCode] = Field(
         default_factory=list, validate_default=True
@@ -253,7 +262,9 @@ class TenantPatchRequest(BaseModel):
         default=None, min_length=1, max_length=200
     )
     contact_email: EmailStr | None = None
-    monthly_revenue_usd: Decimal | None = None
+    monthly_revenue_usd: Decimal | None = Field(
+        default=None, ge=0, le=_MAX_MONTHLY_REVENUE_USD
+    )
     monthly_revenue_as_of_date: date | None = None
     number_of_stores: int | None = Field(default=None, ge=1)
     number_of_stores_as_of_date: date | None = None

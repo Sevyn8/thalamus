@@ -43,11 +43,12 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Any, Literal, NoReturn
 from uuid import UUID
 
 from sqlalchemy import String, and_, cast, func, or_, select, text
 from sqlalchemy.dialects.postgresql import aggregate_order_by
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin_backend.audit.emit import (
@@ -60,6 +61,7 @@ from admin_backend.auth.context import AuthContext
 from admin_backend.config import get_settings
 from admin_backend.errors import (
     DuplicateTenantNameError,
+    InvalidTenantFieldError,
     InvalidTenantNameForSlugError,
     OnboardingIncompleteError,
 )
@@ -281,6 +283,53 @@ _TRANSITION_ALLOWED_SOURCES: dict[str, frozenset[str]] = {
     "ACTIVE": frozenset({"TRIAL", "SUSPENDED"}),
     "TRIAL": frozenset({"ONBOARDING"}),
 }
+
+
+# Slice 7: DB constraint -> 422 field mapping for tenant writes. A CHECK
+# violation (IntegrityError) or numeric overflow (DataError) on a tenant
+# INSERT/UPDATE is mapped to InvalidTenantFieldError naming the field,
+# instead of bubbling as an unhandled 500. Constraint names are the DDL
+# CHECK names; the psycopg diag carries the offending constraint. Any
+# constraint not in this table re-raises (still 500 -- e.g. an unexpected
+# FK violation is a real server fault, not caller input).
+_TENANT_CONSTRAINT_FIELDS: dict[str, tuple[str, str]] = {
+    "ck_tenants_monthly_revenue_as_of_consistency": (
+        "monthly_revenue_as_of_date",
+        "monthly_revenue_usd and monthly_revenue_as_of_date must be set "
+        "together or both left empty",
+    ),
+    "ck_tenants_monthly_revenue_nonnegative": (
+        "monthly_revenue_usd",
+        "must be zero or greater",
+    ),
+    "ck_tenants_number_of_stores_as_of_consistency": (
+        "number_of_stores_as_of_date",
+        "number_of_stores and number_of_stores_as_of_date must be set "
+        "together",
+    ),
+}
+
+
+def _map_tenant_write_error(exc: IntegrityError | DataError) -> NoReturn:
+    """Map a caught tenant-write DB error to a 422, or re-raise.
+
+    ``IntegrityError`` (pgcode 23514, CHECK violation) is dispatched by the
+    psycopg diag constraint name; ``DataError`` (pgcode 22003, numeric field
+    overflow) maps to ``monthly_revenue_usd`` (the sole caller-controlled
+    NUMERIC column). Anything unrecognised re-raises unchanged.
+    """
+    orig = getattr(exc, "orig", None)
+    sqlstate = getattr(orig, "sqlstate", None)
+    constraint = getattr(getattr(orig, "diag", None), "constraint_name", None)
+    if constraint in _TENANT_CONSTRAINT_FIELDS:
+        field, reason = _TENANT_CONSTRAINT_FIELDS[constraint]
+        raise InvalidTenantFieldError(field=field, reason=reason) from exc
+    if sqlstate == "22003":  # numeric_value_out_of_range
+        raise InvalidTenantFieldError(
+            field="monthly_revenue_usd",
+            reason="value is out of the allowed range",
+        ) from exc
+    raise exc
 
 
 class TenantsRepo:
@@ -653,47 +702,53 @@ class TenantsRepo:
             name, display_code
         )
 
-        insert_tenant = await session.execute(
-            text(
-                f"""
-                INSERT INTO {schema}.tenants (
-                    name, region, tier, industry, country,
-                    primary_contact_name, contact_email,
-                    number_of_stores, number_of_stores_as_of_date,
-                    display_code,
-                    monthly_revenue_usd, monthly_revenue_as_of_date,
-                    created_by_user_id, updated_by_user_id
-                ) VALUES (
-                    :name,
-                    CAST(:region AS {schema}.tenant_region_enum),
-                    CAST(:tier AS {schema}.tenant_tier_enum),
-                    CAST(:industry AS {schema}.tenant_industry_enum),
-                    :country,
-                    :primary_contact_name, :contact_email,
-                    :number_of_stores, :number_of_stores_as_of_date,
-                    :display_code,
-                    :monthly_revenue_usd, :monthly_revenue_as_of_date,
-                    :actor, :actor
-                )
-                RETURNING id
-                """
-            ),
-            {
-                "name": name,
-                "region": region,
-                "tier": tier,
-                "industry": industry,
-                "country": country,
-                "primary_contact_name": primary_contact_name,
-                "contact_email": contact_email,
-                "number_of_stores": number_of_stores,
-                "number_of_stores_as_of_date": number_of_stores_as_of_date,
-                "display_code": display_code,
-                "monthly_revenue_usd": monthly_revenue_usd,
-                "monthly_revenue_as_of_date": monthly_revenue_as_of_date,
-                "actor": actor_user_id,
-            },
-        )
+        try:
+            insert_tenant = await session.execute(
+                text(
+                    f"""
+                    INSERT INTO {schema}.tenants (
+                        name, region, tier, industry, country,
+                        primary_contact_name, contact_email,
+                        number_of_stores, number_of_stores_as_of_date,
+                        display_code,
+                        monthly_revenue_usd, monthly_revenue_as_of_date,
+                        created_by_user_id, updated_by_user_id
+                    ) VALUES (
+                        :name,
+                        CAST(:region AS {schema}.tenant_region_enum),
+                        CAST(:tier AS {schema}.tenant_tier_enum),
+                        CAST(:industry AS {schema}.tenant_industry_enum),
+                        :country,
+                        :primary_contact_name, :contact_email,
+                        :number_of_stores, :number_of_stores_as_of_date,
+                        :display_code,
+                        :monthly_revenue_usd, :monthly_revenue_as_of_date,
+                        :actor, :actor
+                    )
+                    RETURNING id
+                    """
+                ),
+                {
+                    "name": name,
+                    "region": region,
+                    "tier": tier,
+                    "industry": industry,
+                    "country": country,
+                    "primary_contact_name": primary_contact_name,
+                    "contact_email": contact_email,
+                    "number_of_stores": number_of_stores,
+                    "number_of_stores_as_of_date": number_of_stores_as_of_date,
+                    "display_code": display_code,
+                    "monthly_revenue_usd": monthly_revenue_usd,
+                    "monthly_revenue_as_of_date": monthly_revenue_as_of_date,
+                    "actor": actor_user_id,
+                },
+            )
+        except (IntegrityError, DataError) as exc:
+            # Numeric overflow / CHECK violation on the tenant row -> 422
+            # naming the field; the surrounding transaction rolls back at
+            # dependency teardown, so no partial (org_node/module) rows.
+            _map_tenant_write_error(exc)
         new_tenant_id: UUID = insert_tenant.scalar_one()
 
         # Step 6.20.1: tenant-root org_node row. Same transaction as the
@@ -934,13 +989,18 @@ class TenantsRepo:
         # ``tg_tenants_set_updated_at`` per the DDL; no need to set it
         # explicitly in the UPDATE clause.
 
-        result = await session.execute(
-            text(
-                f"UPDATE {schema}.tenants SET {', '.join(set_parts)} "
-                "WHERE id = :tenant_id RETURNING id"
-            ),
-            params,
-        )
+        try:
+            result = await session.execute(
+                text(
+                    f"UPDATE {schema}.tenants SET {', '.join(set_parts)} "
+                    "WHERE id = :tenant_id RETURNING id"
+                ),
+                params,
+            )
+        except (IntegrityError, DataError) as exc:
+            # Numeric overflow / CHECK violation (e.g. revenue set without
+            # its as-of date) -> 422 naming the field, not a raw 500.
+            _map_tenant_write_error(exc)
         if result.first() is None:
             return None
 

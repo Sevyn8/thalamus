@@ -865,9 +865,9 @@ async def send_invitation(
     )
     await email_sender.send_email(
         to=user.email,
-        subject="Your Ithina invitation",
+        subject="Your Sevyn8 invitation",
         body=(
-            "You have been invited to Ithina. Set your password to accept your "
+            "You have been invited to Sevyn8. Set your password to accept your "
             f"invitation: {ticket_url}"
         ),
     )

@@ -49,14 +49,14 @@ async def test_send_email_request_shape(settings: Settings) -> None:
         assert body == {
             "personalizations": [{"to": [{"email": "invitee@tenant.test"}]}],
             "from": {"email": "noreply@sevyn8.com"},
-            "subject": "Your Ithina invitation",
+            "subject": "Your Sevyn8 invitation",
             "content": [{"type": "text/plain", "value": "set your password: https://x/t"}],
         }
         return httpx.Response(202)
 
     await _sender(settings, handler).send_email(
         to="invitee@tenant.test",
-        subject="Your Ithina invitation",
+        subject="Your Sevyn8 invitation",
         body="set your password: https://x/t",
     )
 

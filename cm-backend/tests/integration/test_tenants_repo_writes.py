@@ -40,6 +40,7 @@ from admin_backend.config import get_settings
 from admin_backend.db.session import get_tenant_session
 from admin_backend.errors import (
     DuplicateTenantNameError,
+    InvalidTenantFieldError,
     InvalidTenantNameForSlugError,
 )
 from admin_backend.models.tenant_module_access import ModuleCode
@@ -418,6 +419,85 @@ async def test_ru4_update_rename_to_self_succeeds(
     )
     assert updated is not None
     assert updated.tenant.name == "RU4-SameName"
+
+
+# ============================================================================
+# RU5-RU7: DB-constraint -> 422 mapping (Slice 7 item 1). These drive the
+# repo directly with values that bypass the request-schema bounds, so they
+# exercise the IntegrityError / DataError -> InvalidTenantFieldError mapping
+# that backstops the endpoint.
+# ============================================================================
+
+
+async def _create_then_bad_update(
+    repo, make_platform_user, session_factory, platform_auth, name, fields,
+):
+    """Create a tenant then run an update that violates a DB constraint,
+    inside a dedicated session so the resulting transaction abort is rolled
+    back by get_tenant_session's begin() context (the exception propagates
+    out of the loop). The tenant is never committed, so no cleanup is
+    needed. Returns the raised exception."""
+    actor = await make_platform_user(status="ACTIVE")
+    raised: Exception | None = None
+    try:
+        async for session in get_tenant_session(platform_auth, session_factory):
+            created = await repo.create(
+                session, **_base_create_kwargs(name, actor.id)
+            )
+            await repo.update(
+                session, created.tenant.id, fields=fields, actor_user_id=actor.id
+            )
+    except Exception as exc:  # noqa: BLE001 - captured for assertion
+        raised = exc
+    return raised
+
+
+async def test_ru5_update_revenue_without_date_maps_to_422(
+    repo, make_platform_user, session_factory, platform_auth
+) -> None:
+    """LOAD-BEARING: revenue set without its as-of date -> the both-or-
+    neither CHECK violation is mapped to InvalidTenantFieldError, not a
+    raw IntegrityError/500."""
+    exc = await _create_then_bad_update(
+        repo, make_platform_user, session_factory, platform_auth,
+        "RU5-RevNoDate", {"monthly_revenue_usd": Decimal("100.00")},
+    )
+    assert isinstance(exc, InvalidTenantFieldError)
+    assert exc.context["field"] == "monthly_revenue_as_of_date"
+
+
+async def test_ru6_update_numeric_overflow_maps_to_422(
+    repo, make_platform_user, session_factory, platform_auth
+) -> None:
+    """LOAD-BEARING: a value beyond NUMERIC(15,2) -> DataError mapped to
+    InvalidTenantFieldError naming monthly_revenue_usd."""
+    exc = await _create_then_bad_update(
+        repo, make_platform_user, session_factory, platform_auth,
+        "RU6-Overflow",
+        {
+            "monthly_revenue_usd": Decimal("99999999999999999"),
+            "monthly_revenue_as_of_date": date(2026, 1, 1),
+        },
+    )
+    assert isinstance(exc, InvalidTenantFieldError)
+    assert exc.context["field"] == "monthly_revenue_usd"
+
+
+async def test_ru7_update_negative_revenue_maps_to_422(
+    repo, make_platform_user, session_factory, platform_auth
+) -> None:
+    """A negative revenue -> nonnegative CHECK violation mapped to
+    InvalidTenantFieldError naming monthly_revenue_usd."""
+    exc = await _create_then_bad_update(
+        repo, make_platform_user, session_factory, platform_auth,
+        "RU7-Negative",
+        {
+            "monthly_revenue_usd": Decimal("-5.00"),
+            "monthly_revenue_as_of_date": date(2026, 1, 1),
+        },
+    )
+    assert isinstance(exc, InvalidTenantFieldError)
+    assert exc.context["field"] == "monthly_revenue_usd"
 
 
 # ============================================================================

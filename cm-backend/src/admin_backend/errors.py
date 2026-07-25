@@ -234,6 +234,28 @@ class DuplicateTenantNameError(ClientError):
     code = "DUPLICATE_TENANT_NAME"
 
 
+class InvalidTenantFieldError(ClientError):
+    """Raised by ``TenantsRepo.create`` / ``.update`` when a DB constraint
+    on a tenant field is violated (Slice 7): a numeric-range overflow or a
+    CHECK violation (monthly-revenue nonnegative / the revenue and
+    stores as-of-date both-or-neither consistency). Maps the DB error to a
+    422 in the standard envelope naming the offending field, instead of an
+    unhandled 500. The caller supplied the value, so naming the field is
+    not disclosure; ``field`` is also in ``exc.context``.
+    """
+
+    http_status = 422
+    code = "INVALID_TENANT_FIELD"
+
+    def __init__(self, *, field: str, reason: str) -> None:
+        super().__init__(
+            f"Invalid value for {field}: {reason}",
+            field=field,
+            reason=reason,
+        )
+        self.public_message = f"Invalid value for '{field}': {reason}."
+
+
 class InvalidTenantNameForSlugError(ClientError):
     """Raised by ``slug_for_tenant_root`` (Step 6.20.1) when the input
     name (or display_code) slugifies to an empty string.

@@ -779,6 +779,108 @@ async def test_p10_rename_to_same_name_is_noop_success(
 
 
 # ============================================================================
+# P11-P14: revenue constraint mapping + bounds (Slice 7 item 1)
+# ============================================================================
+
+
+async def test_p11_patch_revenue_without_date_returns_422_field(
+    app_client, super_admin_jwt, cleanup_tenants_router,
+) -> None:
+    """LOAD-BEARING (Slice 7): the staging 500 repro. Setting
+    monthly_revenue_usd (in range) without its as-of date violates the
+    both-or-neither CHECK; the repo maps it to 422 INVALID_TENANT_FIELD
+    naming monthly_revenue_as_of_date, not an unhandled 500."""
+    create = app_client.post(
+        "/api/v1/tenants",
+        json=_valid_create_body("P11-RevNoDate"),
+        headers=_auth(super_admin_jwt),
+    )
+    tenant_id = UUID(create.json()["id"])
+    cleanup_tenants_router.append(tenant_id)
+
+    patch = app_client.patch(
+        f"/api/v1/tenants/{tenant_id}",
+        json={"monthly_revenue_usd": "909090909"},
+        headers=_auth(super_admin_jwt),
+    )
+    assert patch.status_code == 422, patch.text
+    body = patch.json()
+    assert body["code"] == "INVALID_TENANT_FIELD"
+    assert "monthly_revenue_as_of_date" in body["message"]
+
+
+async def test_p12_patch_revenue_over_max_returns_422(
+    app_client, super_admin_jwt, cleanup_tenants_router,
+) -> None:
+    """A revenue above NUMERIC(15,2) max is rejected by the request-schema
+    bound (Pydantic 422) before reaching the DB."""
+    create = app_client.post(
+        "/api/v1/tenants",
+        json=_valid_create_body("P12-RevOverMax"),
+        headers=_auth(super_admin_jwt),
+    )
+    tenant_id = UUID(create.json()["id"])
+    cleanup_tenants_router.append(tenant_id)
+
+    patch = app_client.patch(
+        f"/api/v1/tenants/{tenant_id}",
+        json={
+            "monthly_revenue_usd": "10000000000000.00",
+            "monthly_revenue_as_of_date": "2026-01-01",
+        },
+        headers=_auth(super_admin_jwt),
+    )
+    assert patch.status_code == 422, patch.text
+
+
+async def test_p13_patch_revenue_at_max_succeeds(
+    app_client, super_admin_jwt, cleanup_tenants_router,
+) -> None:
+    """Boundary: the exact NUMERIC(15,2) max with its as-of date -> 200."""
+    create = app_client.post(
+        "/api/v1/tenants",
+        json=_valid_create_body("P13-RevAtMax"),
+        headers=_auth(super_admin_jwt),
+    )
+    tenant_id = UUID(create.json()["id"])
+    cleanup_tenants_router.append(tenant_id)
+
+    patch = app_client.patch(
+        f"/api/v1/tenants/{tenant_id}",
+        json={
+            "monthly_revenue_usd": "9999999999999.99",
+            "monthly_revenue_as_of_date": "2026-01-01",
+        },
+        headers=_auth(super_admin_jwt),
+    )
+    assert patch.status_code == 200, patch.text
+    assert patch.json()["monthly_revenue_usd"] == "9999999999999.99"
+
+
+async def test_p14_patch_negative_revenue_returns_422(
+    app_client, super_admin_jwt, cleanup_tenants_router,
+) -> None:
+    """A negative revenue is rejected by the request-schema bound (ge=0)."""
+    create = app_client.post(
+        "/api/v1/tenants",
+        json=_valid_create_body("P14-NegRev"),
+        headers=_auth(super_admin_jwt),
+    )
+    tenant_id = UUID(create.json()["id"])
+    cleanup_tenants_router.append(tenant_id)
+
+    patch = app_client.patch(
+        f"/api/v1/tenants/{tenant_id}",
+        json={
+            "monthly_revenue_usd": "-1.00",
+            "monthly_revenue_as_of_date": "2026-01-01",
+        },
+        headers=_auth(super_admin_jwt),
+    )
+    assert patch.status_code == 422, patch.text
+
+
+# ============================================================================
 # POST /tenants/{id}/suspend (S1-S6)
 # ============================================================================
 
