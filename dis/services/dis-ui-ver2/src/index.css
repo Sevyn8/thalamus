@@ -140,21 +140,16 @@
     gap: 11px;
     border-bottom: 1px solid var(--ink-line);
   }
+  /* The animated Sevyn8 convergence-loop mark (public/sevyn8-mark-animated.svg)
+     replaces the prior gradient-circle placeholder. Square, transparent SVG;
+     no crop or background so the full mark and its spectrum animation show on
+     the dark sidebar. */
   .mark {
     width: 26px;
     height: 26px;
-    border-radius: 50%;
     flex: none;
-    background: conic-gradient(from 210deg, var(--cyan), var(--ion), var(--magenta), var(--cyan));
-    display: grid;
-    place-items: center;
-  }
-  .mark::after {
-    content: '';
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #fff;
+    display: block;
+    object-fit: contain;
   }
   .wordmark {
     font-weight: 600;

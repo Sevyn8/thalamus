@@ -58,8 +58,14 @@ export function Shell() {
     <div className="app">
       <aside className="side">
         <div className="brand">
-          <div className="mark" />
-          <div className="wordmark">Ithina</div>
+          <img
+            className="mark"
+            src="/sevyn8-mark-animated.svg"
+            alt="Sevyn8"
+            width={26}
+            height={26}
+          />
+          <div className="wordmark">Sevyn8</div>
           <div className="tag">DIS</div>
         </div>
         {NAV.map((group) => (

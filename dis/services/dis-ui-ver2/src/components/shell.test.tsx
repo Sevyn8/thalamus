@@ -36,11 +36,11 @@ function renderShell() {
 }
 
 describe('Shell — brand, footer, nav', () => {
-  it('brand reads "Ithina" + DIS chip (not SEVYN8)', () => {
+  it('brand reads "Sevyn8" + DIS chip (not Ithina)', () => {
     renderShell()
-    expect(screen.getByText('Ithina')).toBeInTheDocument()
+    expect(screen.getByText('Sevyn8')).toBeInTheDocument()
     expect(screen.getByText('DIS')).toBeInTheDocument()
-    expect(screen.queryByText('SEVYN8')).not.toBeInTheDocument()
+    expect(screen.queryByText('Ithina')).not.toBeInTheDocument()
   })
 
   it('footer keeps "Data Ingestion System" and drops "Spectrum Intelligence v4"', () => {
