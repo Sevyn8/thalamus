@@ -1,15 +1,20 @@
 import { cn } from "@/lib/utils";
 
-// Phase 5d.7: shared Ithina brandmark. Three consumers at three
-// sizes — Sidebar (32px), My Ithina launcher (48px), dev-login
-// (64px). Constrained literal-union size prop resists
-// over-generalization; if a 4th size lands, widen here.
+// Phase 5d.7: shared Ithina brandmark. Two live consumers —
+// Sidebar (32px) and My Sevyn8 launcher (48px). Constrained
+// literal-union size prop resists over-generalization; if a 4th
+// size lands, widen here.
 //
-// Slice 7 (item 8): renders the animated Sevyn8 mark
-// (/public/sevyn8-mark-animated.svg, the convergence-loop brand
-// asset) at all sizes, replacing the prior Cortex /logo.svg. The
-// component keeps its internal name (IthinaLogo) — internal
-// identifiers are not renamed. Visible on light + dark backgrounds.
+// Slice 7b (item 1): renders the completed animated Sevyn8 mark
+// (/public/sevyn8-mark-motion.svg, the convergence-loop brand
+// asset with a self-contained CSS comet animation; spectrum
+// gradient and geometry are the brand asset's verbatim, and it
+// falls back to the static spectrum rendering under
+// prefers-reduced-motion). Replaces the prior broken
+// sevyn8-mark-animated.svg, which shipped no <style> and rendered
+// as a black blob. The component keeps its internal name
+// (IthinaLogo) — internal identifiers are not renamed. The
+// spectrum stroke reads on both light and dark sidebars.
 
 export type IthinaLogoSize = 32 | 48 | 64;
 
@@ -27,7 +32,7 @@ export function IthinaLogo({
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src="/sevyn8-mark-animated.svg"
+      src="/sevyn8-mark-motion.svg"
       alt="Sevyn8"
       width={size}
       height={size}
