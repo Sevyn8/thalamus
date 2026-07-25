@@ -264,6 +264,94 @@ def platform_auth() -> AuthContext:
     )
 
 
+async def seed_completion_facts(
+    app_client: TestClient,
+    tenant_id: UUID,
+    *,
+    auth0: bool = True,
+    invited: bool = True,
+    docs: bool = True,
+) -> None:
+    """Stamp the three DB-only facts the Slice-6 complete-onboarding gate
+    requires beyond the section rows: the Auth0 organization id
+    (tenants.auth0_org_id), an invited admin user (tenant_users.invited_at),
+    and a verified document (tenant_documents all VERIFIED).
+
+    None of the three is reachable via the API locally: provision-auth0 and
+    send-invitation return 503 without an Auth0 management client, and
+    upload-url returns 503 without GCS. So the facts are written directly,
+    the same pattern as test_ob1b. The flags let a test omit exactly one
+    fact to exercise a specific missing-fact branch of the gate.
+
+    Reaches the DB through the TestClient's own app.state.session_factory
+    (set by each file's app_client fixture) so no test signature needs the
+    session fixtures. The inserted tenant_users + tenant_documents rows are
+    cleaned by each file's per-tenant cleanup fixture, which deletes those
+    tables for the tracked tenant before the tenant row itself.
+    """
+    schema = get_settings().db_schema
+    session_factory = app_client.app.state.session_factory  # type: ignore[attr-defined]
+    auth = AuthContext(  # type: ignore[call-arg]
+        **_VALID_AUTH_BASE,
+        user_id=uuid.uuid4(),
+        tenant_id=None,
+        user_type="PLATFORM",
+    )
+    async for session in get_tenant_session(auth, session_factory):
+        if auth0:
+            await session.execute(
+                text(
+                    f"UPDATE {schema}.tenants "
+                    "SET auth0_org_id = :org WHERE id = :tid"
+                ),
+                {"org": f"org_test_{tenant_id.hex[:12]}", "tid": tenant_id},
+            )
+        if invited:
+            # INVITED + invited_at set + auth0_sub NULL + accepted NULL is
+            # the valid "invitation sent, not yet accepted" state (honours
+            # ck_tenant_users_auth0_sub_consistency +
+            # ck_tenant_users_invitation_accepted_consistency).
+            await session.execute(
+                text(
+                    f"""
+                    INSERT INTO {schema}.tenant_users (
+                        tenant_id, email, full_name, status, invited_at
+                    ) VALUES (
+                        :tid, :email, 'Onboarding Admin', 'INVITED', now()
+                    )
+                    """
+                ),
+                {
+                    "tid": tenant_id,
+                    "email": f"admin-{tenant_id.hex[:8]}@test.example.com",
+                },
+            )
+        if docs:
+            # A VERIFIED document requires verified_by_user_id (FK
+            # platform_users) + verified_at (ck_tenant_documents_verification
+            # _consistency). Reference any seeded platform user; the row is
+            # deleted at teardown before that user, so the RESTRICT FK holds.
+            pid = (
+                await session.execute(
+                    text(f"SELECT id FROM {schema}.platform_users LIMIT 1")
+                )
+            ).scalar_one()
+            await session.execute(
+                text(
+                    f"""
+                    INSERT INTO {schema}.tenant_documents (
+                        tenant_id, document_type, gcs_object_uri,
+                        verification_status, verified_by_user_id, verified_at
+                    ) VALUES (
+                        :tid, 'PAN_CARD', 'gs://test/doc', 'VERIFIED',
+                        :pid, now()
+                    )
+                    """
+                ),
+                {"tid": tenant_id, "pid": pid},
+            )
+
+
 @pytest.fixture
 def tenant_auth_factory() -> Callable[[UUID], AuthContext]:
     """Returns a callable: tenant_id -> TENANT-context AuthContext."""

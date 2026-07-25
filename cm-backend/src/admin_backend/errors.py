@@ -331,13 +331,15 @@ class InvalidSectionKeyError(ClientError):
 
 
 class OnboardingIncompleteError(ClientError):
-    """Raised by ``POST /tenants/{id}/complete-onboarding`` (Slice 2)
-    when the required sections are not all present: legal profile,
-    billing profile, and at least one contact. Document completeness is
-    deliberately NOT gated in Slice 2 (documents are Slice 3).
+    """Raised by ``POST /tenants/{id}/complete-onboarding`` when the
+    required facts are not all present. Slice 6 (option a) extends the
+    Slice-2 set (legal profile, billing profile, >=1 contact) with three
+    more pure-DB gates: the Auth0 organization provisioned
+    (``auth0_organization``), at least one invited admin user
+    (``admin_invited``), and documents all-verified (``documents``).
 
     409, consistent with the existing invalid-state error shape. The
-    missing section names are in ``public_message``; ``missing`` goes to
+    missing fact names are in ``public_message``; ``missing`` goes to
     ``exc.context``.
     """
 

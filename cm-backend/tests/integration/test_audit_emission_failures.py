@@ -44,6 +44,8 @@ from admin_backend.config import Settings, get_settings
 from admin_backend.db.session import get_tenant_session
 from admin_backend.main import create_app
 
+from tests.integration.conftest import seed_completion_facts
+
 
 pytestmark = pytest.mark.asyncio
 
@@ -97,9 +99,10 @@ def _tenant_jwt(settings: Settings, tenant_id: UUID) -> str:
     )
 
 
-def _seed_required_sections(app_client: Any, jwt: str, tenant_id: UUID) -> None:
-    """PUT legal profile + billing profile + one contact so
-    complete-onboarding passes the Slice 2 section gate."""
+async def _seed_required_sections(app_client: Any, jwt: str, tenant_id: UUID) -> None:
+    """Make a tenant fully completable under the Slice-6 gate: section rows
+    via the API plus the three DB-only facts (Auth0 org, invited admin,
+    verified document) via seed_completion_facts."""
     for path, body in (
         ("legal-profile",
          {"legal_entity_name": "Acme Retail Private Limited",
@@ -114,6 +117,7 @@ def _seed_required_sections(app_client: Any, jwt: str, tenant_id: UUID) -> None:
             headers=_auth(jwt),
         )
         assert resp.status_code == 200, resp.text
+    await seed_completion_facts(app_client, tenant_id)
 
 
 @pytest_asyncio.fixture
@@ -137,6 +141,8 @@ async def cleanup_tenants_for_audit(
                 "tenant_legal_profile",
                 "tenant_billing_profile",
                 "tenant_contacts",
+                "tenant_documents",
+                "tenant_users",
                 "tenant_onboarding",
             ):
                 await session.execute(
@@ -545,7 +551,7 @@ async def test_af6_suspend_on_suspended_emits_conflict(
     # Slice 1: reach TRIAL (via complete-onboarding) before the first
     # suspend so the TRIAL -> SUSPENDED premise holds.
     # Slice 2: complete-onboarding requires legal + billing + >=1 contact.
-    _seed_required_sections(app_client, super_admin_jwt, tenant_id)
+    await _seed_required_sections(app_client, super_admin_jwt, tenant_id)
     complete = app_client.post(
         f"/api/v1/tenants/{tenant_id}/complete-onboarding",
         headers=_auth(super_admin_jwt),
@@ -600,7 +606,7 @@ async def test_af7_activate_on_active_emits_conflict(
     # Slice 1: reach TRIAL (via complete-onboarding) before the first
     # activate so the TRIAL -> ACTIVE premise holds.
     # Slice 2: complete-onboarding requires legal + billing + >=1 contact.
-    _seed_required_sections(app_client, super_admin_jwt, tenant_id)
+    await _seed_required_sections(app_client, super_admin_jwt, tenant_id)
     complete = app_client.post(
         f"/api/v1/tenants/{tenant_id}/complete-onboarding",
         headers=_auth(super_admin_jwt),
@@ -845,7 +851,7 @@ async def test_af_n1_conflict_failure_carries_composed_result_label_and_enrichme
     # Slice 1: reach TRIAL (via complete-onboarding) before the first
     # suspend so the double-suspend CONFLICT path is exercised.
     # Slice 2: complete-onboarding requires legal + billing + >=1 contact.
-    _seed_required_sections(app_client, super_admin_jwt, tenant_id)
+    await _seed_required_sections(app_client, super_admin_jwt, tenant_id)
     complete = app_client.post(
         f"/api/v1/tenants/{tenant_id}/complete-onboarding",
         headers=_auth(super_admin_jwt),

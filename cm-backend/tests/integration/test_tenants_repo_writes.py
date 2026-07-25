@@ -105,13 +105,16 @@ async def cleanup_tenants(
             )
             # Slice 1: ``repo.create`` now provisions a 1:1
             # tenant_onboarding row (flag 5b); FK ON DELETE RESTRICT.
-            # Slice 2: transition tests seed legal / billing / contact
-            # section rows (via ``_to_trial``) to pass the complete-
-            # onboarding section gate; all FK ON DELETE RESTRICT.
+            # Slice 2/6: transition tests seed legal / billing / contact
+            # section rows plus (Slice 6) a verified document and an invited
+            # admin user (via ``_to_trial``) to pass the complete-onboarding
+            # gate; all FK ON DELETE RESTRICT.
             for _t in (
                 "tenant_legal_profile",
                 "tenant_billing_profile",
                 "tenant_contacts",
+                "tenant_documents",
+                "tenant_users",
                 "tenant_onboarding",
             ):
                 await session.execute(
@@ -153,14 +156,17 @@ def _base_create_kwargs(name: str, actor_id: UUID) -> dict[str, Any]:
 
 
 async def _seed_required_sections(session, tenant_id, actor_id) -> None:
-    """Seed legal profile + billing profile + one contact so
-    complete-onboarding passes the Slice 2 section gate.
+    """Make a tenant fully completable under the Slice-6 gate.
 
-    Slice 2 gates ONBOARDING -> TRIAL on a legal profile, a billing
-    profile, and at least one contact being present. Repo-level
-    transition tests seed the three via ``OnboardingRepo`` (no audit
-    emission: ``auth`` / ``request_id`` omitted).
+    Slice 2 gated ONBOARDING -> TRIAL on legal + billing + >=1 contact;
+    Slice 6 (option a) adds the Auth0 organization provisioned, >=1 invited
+    admin user, and documents all-verified. Sections go through
+    ``OnboardingRepo``; the three new facts are direct session writes (they
+    are pure DB facts, not reachable via a repo method here). ``actor_id``
+    is a platform_users id, reused as the document's verified_by (FK).
+    No audit emission (``auth`` / ``request_id`` omitted).
     """
+    schema = get_settings().db_schema
     ob = OnboardingRepo()
     await ob.upsert_legal_profile(
         session,
@@ -187,6 +193,41 @@ async def _seed_required_sections(session, tenant_id, actor_id) -> None:
         tenant_id,
         items=[{"contact_type": "PRIMARY", "name": "Dana Ops"}],
         actor_user_id=actor_id,
+    )
+    # Slice 6 facts (direct writes; see test_ob1b pattern).
+    await session.execute(
+        text(
+            f"UPDATE {schema}.tenants SET auth0_org_id = :org WHERE id = :tid"
+        ),
+        {"org": f"org_test_{tenant_id.hex[:12]}", "tid": tenant_id},
+    )
+    await session.execute(
+        text(
+            f"""
+            INSERT INTO {schema}.tenant_users (
+                tenant_id, email, full_name, status, invited_at
+            ) VALUES (
+                :tid, :email, 'Onboarding Admin', 'INVITED', now()
+            )
+            """
+        ),
+        {
+            "tid": tenant_id,
+            "email": f"admin-{tenant_id.hex[:8]}@test.example.com",
+        },
+    )
+    await session.execute(
+        text(
+            f"""
+            INSERT INTO {schema}.tenant_documents (
+                tenant_id, document_type, gcs_object_uri,
+                verification_status, verified_by_user_id, verified_at
+            ) VALUES (
+                :tid, 'PAN_CARD', 'gs://test/doc', 'VERIFIED', :pid, now()
+            )
+            """
+        ),
+        {"tid": tenant_id, "pid": actor_id},
     )
 
 

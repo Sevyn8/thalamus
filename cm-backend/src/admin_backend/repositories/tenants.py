@@ -1113,11 +1113,15 @@ class TenantsRepo:
             ``_TRANSITION_ALLOWED_SOURCES['TRIAL']``).
           - ``(row, OK)`` after the status flip + completion stamp.
 
-        Section gating (Slice 2 item 6): raises ``OnboardingIncompleteError``
-        (409) if the legal profile, billing profile, or at least one
-        contact is missing. Document completeness is deliberately NOT
-        gated here (documents are Slice 3). The ONBOARDING-source rule is
-        checked first, so a non-ONBOARDING tenant still gets INVALID_STATE.
+        Gating (Slice 6 option a): raises ``OnboardingIncompleteError``
+        (409) unless ALL of these hold: legal profile, billing profile,
+        at least one contact, the Auth0 organization provisioned
+        (tenants.auth0_org_id set), at least one invited admin user
+        (tenant_users.invited_at set), and documents all-verified (>=1
+        document, none PENDING_REVIEW or REJECTED). All are pure DB reads;
+        the onboarding wizard's client gate mirrors them exactly. The
+        ONBOARDING-source rule is checked first, so a non-ONBOARDING
+        tenant still gets INVALID_STATE.
 
         The tenants status flip and the ``tenant_onboarding`` stamp run in
         the request transaction, so a failure of either leaves no partial
@@ -1142,7 +1146,11 @@ class TenantsRepo:
         if current.status not in _TRANSITION_ALLOWED_SOURCES["TRIAL"]:
             return None, TransitionResult.INVALID_STATE
 
-        # Section gating: legal profile + billing profile + >=1 contact.
+        # Gating (Slice 6 option a): legal profile + billing profile +
+        # >=1 contact + Auth0 org provisioned + >=1 invited admin user +
+        # documents all-verified. All pure DB reads (auth0_org_id since
+        # Slice 5; documents verification since Slice 3). The onboarding
+        # wizard's client gate mirrors these exactly.
         presence = (
             await session.execute(
                 text(
@@ -1153,12 +1161,27 @@ class TenantsRepo:
                       EXISTS(SELECT 1 FROM {schema}.tenant_billing_profile
                              WHERE tenant_id = :tenant_id) AS billing,
                       EXISTS(SELECT 1 FROM {schema}.tenant_contacts
-                             WHERE tenant_id = :tenant_id) AS contacts
+                             WHERE tenant_id = :tenant_id) AS contacts,
+                      EXISTS(SELECT 1 FROM {schema}.tenants
+                             WHERE id = :tenant_id
+                               AND auth0_org_id IS NOT NULL) AS auth0_org,
+                      EXISTS(SELECT 1 FROM {schema}.tenant_users
+                             WHERE tenant_id = :tenant_id
+                               AND invited_at IS NOT NULL) AS admin_invited,
+                      (SELECT COUNT(*) FROM {schema}.tenant_documents
+                             WHERE tenant_id = :tenant_id) AS doc_total,
+                      (SELECT COUNT(*) FROM {schema}.tenant_documents
+                             WHERE tenant_id = :tenant_id
+                               AND verification_status <> 'VERIFIED')
+                             AS doc_unverified
                     """
                 ),
                 {"tenant_id": tenant_id},
             )
         ).one()
+        docs_all_verified = (
+            int(presence.doc_total) >= 1 and int(presence.doc_unverified) == 0
+        )
         missing: list[str] = []
         if not presence.legal:
             missing.append("legal_profile")
@@ -1166,6 +1189,12 @@ class TenantsRepo:
             missing.append("billing_profile")
         if not presence.contacts:
             missing.append("contacts")
+        if not presence.auth0_org:
+            missing.append("auth0_organization")
+        if not presence.admin_invited:
+            missing.append("admin_invited")
+        if not docs_all_verified:
+            missing.append("documents")
         if missing:
             raise OnboardingIncompleteError(missing=missing)
 

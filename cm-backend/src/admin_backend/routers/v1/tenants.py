@@ -491,10 +491,13 @@ async def complete_tenant_onboarding(
     returns 409 ``INVALID_STATE_TRANSITION``; a missing / RLS-filtered
     tenant returns 404 ``TENANT_NOT_FOUND`` (RLS-as-404 per D-17).
 
-    Slice 2 item 6: requires the legal profile, billing profile, and at
-    least one contact to exist; otherwise 409 ``ONBOARDING_INCOMPLETE``
-    (raised from the repo). Document completeness is not gated here.
-    Emits one COMPLETE_ONBOARDING audit event on success (item 5).
+    Gating (Slice 6 option a): requires legal profile, billing profile,
+    at least one contact, the Auth0 organization provisioned
+    (tenants.auth0_org_id), at least one invited admin user
+    (tenant_users.invited_at), and documents all-verified; otherwise 409
+    ``ONBOARDING_INCOMPLETE`` naming the missing facts (raised from the
+    repo). All are pure DB reads. Emits one COMPLETE_ONBOARDING audit
+    event on success.
     """
     row, result = await _repo.complete_onboarding(
         session,

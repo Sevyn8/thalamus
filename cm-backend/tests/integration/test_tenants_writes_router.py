@@ -45,6 +45,8 @@ from admin_backend.config import Settings, get_settings
 from admin_backend.db.session import get_tenant_session
 from admin_backend.main import create_app
 
+from tests.integration.conftest import seed_completion_facts
+
 
 @pytest.fixture
 def app_client(
@@ -131,12 +133,15 @@ async def cleanup_tenants_router(
             )
             # Slice 1: POST /tenants now provisions a 1:1 tenant_onboarding
             # row (flag 5b); its FK back to tenants is ON DELETE RESTRICT.
-            # Slice 2: complete-onboarding setup seeds legal / billing /
-            # contact section rows; all FK ON DELETE RESTRICT.
+            # Slice 2/6: complete-onboarding setup seeds legal / billing /
+            # contact section rows plus (Slice 6) a verified document and an
+            # invited admin user; all FK ON DELETE RESTRICT.
             for _t in (
                 "tenant_legal_profile",
                 "tenant_billing_profile",
                 "tenant_contacts",
+                "tenant_documents",
+                "tenant_users",
                 "tenant_onboarding",
             ):
                 await session.execute(
@@ -213,12 +218,17 @@ _BILLING_BODY = {"payment_terms": "NET_30", "currency": "INR"}
 _CONTACT_BODY = {"items": [{"contact_type": "PRIMARY", "name": "Dana Ops"}]}
 
 
-def _seed_required_sections(app_client: Any, jwt: str, tenant_id: UUID) -> None:
-    """PUT legal profile + billing profile + one contact so
-    complete-onboarding passes the Slice 2 section gate.
+async def _seed_required_sections(
+    app_client: Any, jwt: str, tenant_id: UUID
+) -> None:
+    """Make a tenant fully completable under the Slice-6 gate: the section
+    rows (legal + billing + contact) via the API, plus the three DB-only
+    facts (Auth0 org, invited admin, verified document).
 
-    Slice 2 gates ONBOARDING -> TRIAL on a legal profile, a billing
-    profile, and at least one contact being present.
+    Slice 6 extends the gate from legal + billing + contact to also require
+    the Auth0 organization provisioned, >=1 invited admin, and documents
+    all-verified. Those three are not reachable via the API locally, so
+    seed_completion_facts writes them directly (test_ob1b pattern).
     """
     for path, body in (
         ("legal-profile", _LEGAL_BODY),
@@ -231,18 +241,20 @@ def _seed_required_sections(app_client: Any, jwt: str, tenant_id: UUID) -> None:
             headers=_auth(jwt),
         )
         assert resp.status_code == 200, resp.text
+    await seed_completion_facts(app_client, tenant_id)
 
 
-def _complete_onboarding(app_client: Any, jwt: str, tenant_id: UUID) -> None:
+async def _complete_onboarding(
+    app_client: Any, jwt: str, tenant_id: UUID
+) -> None:
     """Move a freshly-created ONBOARDING tenant to TRIAL.
 
-    Slice 1: tenants now land in ONBOARDING at create (the DDL default),
-    so transition tests that need a TRIAL / ACTIVE source first drive the
-    tenant through complete-onboarding. Slice 2: complete-onboarding now
-    requires legal + billing + >=1 contact, so seed those first. Asserts
-    the transition succeeds.
+    Tenants land in ONBOARDING at create, so transition tests that need a
+    TRIAL / ACTIVE source first drive the tenant through complete-onboarding.
+    Seeds all six gate facts (Slice 6) first, then asserts the transition
+    succeeds.
     """
-    _seed_required_sections(app_client, jwt, tenant_id)
+    await _seed_required_sections(app_client, jwt, tenant_id)
     resp = app_client.post(
         f"/api/v1/tenants/{tenant_id}/complete-onboarding",
         headers=_auth(jwt),
@@ -589,7 +601,7 @@ async def test_p4_allowed_on_suspended_tenant(
     )
     tenant_id = UUID(create.json()["id"])
     cleanup_tenants_router.append(tenant_id)
-    _complete_onboarding(app_client, super_admin_jwt, tenant_id)
+    await _complete_onboarding(app_client, super_admin_jwt, tenant_id)
 
     suspend = app_client.post(
         f"/api/v1/tenants/{tenant_id}/suspend",
@@ -782,7 +794,7 @@ async def test_s1_trial_to_suspended(
     tenant_id = UUID(create.json()["id"])
     cleanup_tenants_router.append(tenant_id)
     assert create.json()["status"] == "ONBOARDING"
-    _complete_onboarding(app_client, super_admin_jwt, tenant_id)
+    await _complete_onboarding(app_client, super_admin_jwt, tenant_id)
 
     resp = app_client.post(
         f"/api/v1/tenants/{tenant_id}/suspend",
@@ -804,7 +816,7 @@ async def test_s2_active_to_suspended(
     )
     tenant_id = UUID(create.json()["id"])
     cleanup_tenants_router.append(tenant_id)
-    _complete_onboarding(app_client, super_admin_jwt, tenant_id)
+    await _complete_onboarding(app_client, super_admin_jwt, tenant_id)
 
     activate = app_client.post(
         f"/api/v1/tenants/{tenant_id}/activate",
@@ -830,7 +842,7 @@ async def test_s3_suspended_to_suspended_returns_409(
     )
     tenant_id = UUID(create.json()["id"])
     cleanup_tenants_router.append(tenant_id)
-    _complete_onboarding(app_client, super_admin_jwt, tenant_id)
+    await _complete_onboarding(app_client, super_admin_jwt, tenant_id)
     app_client.post(
         f"/api/v1/tenants/{tenant_id}/suspend",
         headers=_auth(super_admin_jwt),
@@ -921,7 +933,7 @@ async def test_a1_trial_to_active(
     )
     tenant_id = UUID(create.json()["id"])
     cleanup_tenants_router.append(tenant_id)
-    _complete_onboarding(app_client, super_admin_jwt, tenant_id)
+    await _complete_onboarding(app_client, super_admin_jwt, tenant_id)
 
     resp = app_client.post(
         f"/api/v1/tenants/{tenant_id}/activate",
@@ -941,7 +953,7 @@ async def test_a2_suspended_to_active_clears_suspended_columns(
     )
     tenant_id = UUID(create.json()["id"])
     cleanup_tenants_router.append(tenant_id)
-    _complete_onboarding(app_client, super_admin_jwt, tenant_id)
+    await _complete_onboarding(app_client, super_admin_jwt, tenant_id)
 
     app_client.post(
         f"/api/v1/tenants/{tenant_id}/suspend",
@@ -967,7 +979,7 @@ async def test_a3_active_to_active_returns_409(
     )
     tenant_id = UUID(create.json()["id"])
     cleanup_tenants_router.append(tenant_id)
-    _complete_onboarding(app_client, super_admin_jwt, tenant_id)
+    await _complete_onboarding(app_client, super_admin_jwt, tenant_id)
     app_client.post(
         f"/api/v1/tenants/{tenant_id}/activate",
         headers=_auth(super_admin_jwt),
@@ -1110,7 +1122,7 @@ async def test_co1_complete_onboarding_moves_onboarding_to_trial(
     assert create.json()["status"] == "ONBOARDING"
 
     # Slice 2: complete-onboarding requires legal + billing + >=1 contact.
-    _seed_required_sections(app_client, super_admin_jwt, tenant_id)
+    await _seed_required_sections(app_client, super_admin_jwt, tenant_id)
     resp = app_client.post(
         f"/api/v1/tenants/{tenant_id}/complete-onboarding",
         headers=_auth(super_admin_jwt),
@@ -1130,7 +1142,7 @@ async def test_co2_complete_onboarding_on_non_onboarding_returns_409(
     )
     tenant_id = UUID(create.json()["id"])
     cleanup_tenants_router.append(tenant_id)
-    _complete_onboarding(app_client, super_admin_jwt, tenant_id)
+    await _complete_onboarding(app_client, super_admin_jwt, tenant_id)
 
     resp = app_client.post(
         f"/api/v1/tenants/{tenant_id}/complete-onboarding",
@@ -1197,7 +1209,7 @@ async def test_co5_platform_admin_can_complete_onboarding(
     pa_jwt = _platform_jwt_for_user(settings, pa.id)
 
     # Slice 2: complete-onboarding requires legal + billing + >=1 contact.
-    _seed_required_sections(app_client, super_admin_jwt, tenant_id)
+    await _seed_required_sections(app_client, super_admin_jwt, tenant_id)
     resp = app_client.post(
         f"/api/v1/tenants/{tenant_id}/complete-onboarding",
         headers=_auth(pa_jwt),

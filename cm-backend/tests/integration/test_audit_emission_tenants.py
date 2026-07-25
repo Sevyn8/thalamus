@@ -38,6 +38,8 @@ from admin_backend.config import Settings, get_settings
 from admin_backend.db.session import get_tenant_session
 from admin_backend.main import create_app
 
+from tests.integration.conftest import seed_completion_facts
+
 
 pytestmark = pytest.mark.asyncio
 
@@ -83,9 +85,10 @@ def _valid_create_body(name: str) -> dict[str, Any]:
     }
 
 
-def _seed_required_sections(app_client: Any, jwt: str, tenant_id: UUID) -> None:
-    """PUT legal profile + billing profile + one contact so
-    complete-onboarding passes the Slice 2 section gate."""
+async def _seed_required_sections(app_client: Any, jwt: str, tenant_id: UUID) -> None:
+    """Make a tenant fully completable under the Slice-6 gate: section rows
+    via the API plus the three DB-only facts (Auth0 org, invited admin,
+    verified document) via seed_completion_facts."""
     for path, body in (
         ("legal-profile",
          {"legal_entity_name": "Acme Retail Private Limited",
@@ -100,6 +103,7 @@ def _seed_required_sections(app_client: Any, jwt: str, tenant_id: UUID) -> None:
             headers=_auth(jwt),
         )
         assert resp.status_code == 200, resp.text
+    await seed_completion_facts(app_client, tenant_id)
 
 
 @pytest_asyncio.fixture
@@ -128,6 +132,8 @@ async def cleanup_tenants_for_audit(
                 "tenant_legal_profile",
                 "tenant_billing_profile",
                 "tenant_contacts",
+                "tenant_documents",
+                "tenant_users",
                 "tenant_onboarding",
             ):
                 await session.execute(
@@ -371,7 +377,7 @@ async def test_as5_suspend_success_emits_suspend_action_with_status_diff(
     # suspend. complete-onboarding emits no audit row (out of scope), so
     # the suspend-row assertions below are unaffected.
     # Slice 2: complete-onboarding requires legal + billing + >=1 contact.
-    _seed_required_sections(app_client, super_admin_jwt, tenant_id)
+    await _seed_required_sections(app_client, super_admin_jwt, tenant_id)
     complete = app_client.post(
         f"/api/v1/tenants/{tenant_id}/complete-onboarding",
         headers=_auth(super_admin_jwt),
@@ -421,7 +427,7 @@ async def test_as6_activate_success_emits_activate_action_with_status_diff(
 
     # Slice 1: reach TRIAL (via complete-onboarding) before suspend.
     # Slice 2: complete-onboarding requires legal + billing + >=1 contact.
-    _seed_required_sections(app_client, super_admin_jwt, tenant_id)
+    await _seed_required_sections(app_client, super_admin_jwt, tenant_id)
     complete = app_client.post(
         f"/api/v1/tenants/{tenant_id}/complete-onboarding",
         headers=_auth(super_admin_jwt),
