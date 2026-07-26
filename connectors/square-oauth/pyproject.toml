@@ -1,0 +1,20 @@
+[project]
+name = "thalamus-square-oauth"
+version = "0.0.0"
+description = "Square OAuth + Secret Manager token vault shared by the DIS BFF (writes on connect) and the Square connector runtime (reads + refresh). Vendor-specific to Square by design (S2); a vendor-agnostic vault is a later extraction if a second connector needs it. Deliberately SDK-free (no thalamus_connector_sdk import) so the BFF can depend on it without pulling the connector service graph."
+requires-python = ">=3.12"
+dependencies = [
+  # DisError root for the package's own (SDK-free) error family + logging.
+  "dis-core",
+  # GCP Secret Manager token vault (one secret per tenant/source).
+  "google-cloud-secret-manager>=2.20",
+  # Square OAuth token endpoint calls (authorize URL build is offline; exchange/refresh are httpx).
+  "httpx>=0.27",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/thalamus_square_oauth"]

@@ -95,6 +95,9 @@ dev = [
   # editable alongside the dis packages they reuse.
   "thalamus-connector-sdk",
   "thalamus-square",
+  # Square OAuth + Secret Manager token vault (S2), shared by the BFF and the
+  # connector runtime. SDK-free so the BFF can depend on it without the connector graph.
+  "thalamus-square-oauth",
 
   # Import-graph contracts (slice-05): forbidden imports between the pure
   # pipeline libs and the I/O-bearing libs. Run via `make lint` (lint-imports).
@@ -133,6 +136,7 @@ known-first-party = [
   "dis_ui_server",
   "thalamus_connector_sdk",
   "thalamus_square",
+  "thalamus_square_oauth",
 ]
 
 [tool.mypy]
@@ -154,6 +158,12 @@ exclude = "^services/dis-ui/"
 # The google-cloud namespace packages (pubsub, storage) ship no py.typed mypy
 # can use; standard resolution, scoped to the namespace — not a blanket ignore.
 module = "google.cloud.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# google-api-core exceptions (NotFound, used by the square-oauth Secret Manager
+# adapter) are untyped; scope the ignore to the namespace, not a blanket ignore.
+module = "google.api_core.*"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
@@ -285,6 +295,7 @@ members = [
   # dis-storage, dis-audit) as workspace members.
   "../connectors/sdk",
   "../connectors/thalamus-square",
+  "../connectors/square-oauth",
 ]
 
 [tool.uv.sources]
@@ -308,3 +319,4 @@ streaming-consumer = { workspace = true }
 dis-ui-server = { workspace = true }
 thalamus-connector-sdk = { workspace = true }
 thalamus-square = { workspace = true }
+thalamus-square-oauth = { workspace = true }

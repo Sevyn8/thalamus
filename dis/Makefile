@@ -72,6 +72,7 @@ MYPY_PACKAGES = \
 	services/streaming-consumer \
 	../connectors/sdk \
 	../connectors/thalamus-square \
+	../connectors/square-oauth \
 	tests \
 	tools
 
