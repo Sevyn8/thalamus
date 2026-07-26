@@ -595,7 +595,7 @@ def test_ae_n6_conflict_qualifier_dispatch_for_all_9_codes() -> None:
     codes = [
         "DUPLICATE_TENANT_NAME",
         "INVALID_STATE_TRANSITION",
-        "DUPLICATE_TENANT_USER_EMAIL",
+        "EMAIL_ALREADY_EXISTS",
         "ROLE_ASSIGNMENT_CONFLICT",
         "DUPLICATE_ORG_NODE_CODE",
         "DUPLICATE_STORE_CODE",

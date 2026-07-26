@@ -351,7 +351,7 @@ async def test_af3_post_duplicate_email_emits_conflict(
     session_factory,
     platform_auth,
 ) -> None:
-    """LOAD-BEARING: 409 from ``DuplicateTenantUserEmailError`` emits
+    """LOAD-BEARING: 409 from ``EmailAlreadyExistsError`` emits
     CONFLICT with the conflict-shape details.
     """
     tenant_id, root_id, _ = await _seed_tenant_with_root(

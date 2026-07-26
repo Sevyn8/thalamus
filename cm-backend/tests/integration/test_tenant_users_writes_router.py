@@ -382,7 +382,7 @@ async def test_c4_duplicate_email_same_tenant_returns_409(
     cleanup_tenant_users_router,
 ) -> None:
     """Two POSTs with the same email in the same tenant -> 409
-    DUPLICATE_TENANT_USER_EMAIL on the second."""
+    EMAIL_ALREADY_EXISTS (side=tenant) on the second."""
     tenant_id, root_id, _root_path = await _seed_tenant_with_root(
         make_tenant, make_org_node, name="C4-Tenant"
     )
@@ -407,10 +407,10 @@ async def test_c4_duplicate_email_same_tenant_returns_409(
         headers=_auth(super_admin_jwt),
     )
     assert r2.status_code == 409, r2.text
-    assert r2.json()["code"] == "DUPLICATE_TENANT_USER_EMAIL"
+    assert r2.json()["code"] == "EMAIL_ALREADY_EXISTS"
 
 
-async def test_c5_same_email_different_tenants_returns_201_each(
+async def test_c5_same_email_different_tenants_rejected(
     app_client,
     super_admin_jwt,
     make_tenant,
@@ -418,7 +418,9 @@ async def test_c5_same_email_different_tenants_returns_201_each(
     make_role,
     cleanup_tenant_users_router,
 ) -> None:
-    """Same email in different tenants is allowed (per-tenant unique)."""
+    """Slice 9 OVERTURNS the prior "same email across tenants = two rows"
+    behavior. The same email in a second tenant is now rejected with 409
+    EMAIL_ALREADY_EXISTS (side=tenant)."""
     tenant_a_id, ra_id, _ra_path = await _seed_tenant_with_root(
         make_tenant, make_org_node, name="C5-TenantA"
     )
@@ -453,8 +455,8 @@ async def test_c5_same_email_different_tenants_returns_201_each(
         json=body_b,
         headers=_auth(super_admin_jwt),
     )
-    assert r_b.status_code == 201, r_b.text
-    cleanup_tenant_users_router.append(UUID(r_b.json()["id"]))
+    assert r_b.status_code == 409, r_b.text
+    assert r_b.json()["code"] == "EMAIL_ALREADY_EXISTS"
 
 
 async def test_c6_email_uppercase_normalized_to_lowercase(
@@ -1039,7 +1041,7 @@ async def test_p10_email_collision_returns_409(
         headers=_auth(super_admin_jwt),
     )
     assert resp.status_code == 409, resp.text
-    assert resp.json()["code"] == "DUPLICATE_TENANT_USER_EMAIL"
+    assert resp.json()["code"] == "EMAIL_ALREADY_EXISTS"
 
 
 async def test_p11_rename_to_own_email_returns_200(
@@ -2181,3 +2183,182 @@ async def test_p1_self_edit_with_new_roles_shape_returns_403(
     )
     assert resp.status_code == 403, resp.text
     assert resp.json()["code"] == "SELF_EDIT_FORBIDDEN"
+
+
+# ============================================================================
+# Slice 9 : one email = one identity (global cross-entity uniqueness)
+# ============================================================================
+
+
+class _MgmtSpy:
+    """Records whether any Auth0 management method was invoked. Item 3:
+    a rejected create must never reach Auth0."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def get_user_by_email(self, *args: Any, **kwargs: Any) -> Any:
+        self.calls += 1
+        return None
+
+    async def create_user_in_org(self, *args: Any, **kwargs: Any) -> Any:
+        self.calls += 1
+        return None
+
+    async def create_password_change_ticket(
+        self, *args: Any, **kwargs: Any
+    ) -> str:
+        self.calls += 1
+        return "https://example.test/ticket"
+
+    async def update_user_email(self, *args: Any, **kwargs: Any) -> None:
+        self.calls += 1
+
+    async def aclose(self) -> None:
+        # Awaited by the lifespan shutdown (main.py); not counted as an
+        # identity call.
+        return None
+
+
+async def test_s9_create_rejects_email_in_platform_users(
+    app_client: TestClient,
+    super_admin_jwt: str,
+    make_tenant: Any,
+    make_org_node: Any,
+    make_role: Any,
+    make_platform_user: Any,
+    cleanup_tenant_users_router: list[UUID],
+) -> None:
+    """Slice 9: creating a tenant_user with an email already held by a
+    platform user -> 409 EMAIL_ALREADY_EXISTS, message names the platform
+    side (never the other tenant)."""
+    tenant_id, root_id, _ = await _seed_tenant_with_root(
+        make_tenant, make_org_node, name="S9-Platform"
+    )
+    role = await make_role(audience="TENANT")
+    collision = f"s9-plat-{uuid.uuid4().hex[:8]}@test.example.com"
+    await make_platform_user(email=collision)
+
+    body = _valid_create_body(
+        tenant_id=tenant_id, role_assignments=[(role.id, root_id)]
+    )
+    body["email"] = collision
+    resp = app_client.post(
+        "/api/v1/tenant-users", json=body, headers=_auth(super_admin_jwt)
+    )
+    assert resp.status_code == 409, resp.text
+    payload = resp.json()
+    assert payload["code"] == "EMAIL_ALREADY_EXISTS"
+    assert payload["message"] == "This email is already in use on the platform."
+
+
+async def test_s9_create_rejects_email_in_another_tenant(
+    app_client: TestClient,
+    super_admin_jwt: str,
+    make_tenant: Any,
+    make_org_node: Any,
+    make_role: Any,
+    make_tenant_user: Any,
+    cleanup_tenant_users_router: list[UUID],
+) -> None:
+    """Slice 9: creating a tenant_user with an email already held by a
+    user in a DIFFERENT tenant -> 409 EMAIL_ALREADY_EXISTS, message names
+    the tenant side and does NOT leak the other tenant's identity."""
+    tenant_a = await make_tenant(name="S9-Other-A")
+    collision = f"s9-cross-{uuid.uuid4().hex[:8]}@test.example.com"
+    await make_tenant_user(
+        tenant_id=tenant_a.id,
+        email=collision,
+        status="INVITED",
+    )
+
+    tenant_b_id, root_b, _ = await _seed_tenant_with_root(
+        make_tenant, make_org_node, name="S9-Other-B"
+    )
+    role = await make_role(audience="TENANT")
+    body = _valid_create_body(
+        tenant_id=tenant_b_id, role_assignments=[(role.id, root_b)]
+    )
+    body["email"] = collision
+    resp = app_client.post(
+        "/api/v1/tenant-users", json=body, headers=_auth(super_admin_jwt)
+    )
+    assert resp.status_code == 409, resp.text
+    payload = resp.json()
+    assert payload["code"] == "EMAIL_ALREADY_EXISTS"
+    assert payload["message"] == "This email is already in use by a tenant."
+    # No identity disclosure: the other tenant's id/name never appears.
+    blob = resp.text
+    assert str(tenant_a.id) not in blob
+    assert "S9-Other-A" not in blob
+
+
+async def test_s9_create_rejection_makes_no_auth0_call(
+    app_client: TestClient,
+    super_admin_jwt: str,
+    make_tenant: Any,
+    make_org_node: Any,
+    make_role: Any,
+    make_platform_user: Any,
+    cleanup_tenant_users_router: list[UUID],
+) -> None:
+    """Item 3: the 409 fires BEFORE any Auth0 call. A management-client
+    spy on app.state records zero invocations on a rejected create."""
+    spy = _MgmtSpy()
+    app_client.app.state.mgmt_client = spy  # type: ignore[attr-defined]
+
+    tenant_id, root_id, _ = await _seed_tenant_with_root(
+        make_tenant, make_org_node, name="S9-NoAuth0"
+    )
+    role = await make_role(audience="TENANT")
+    collision = f"s9-noauth0-{uuid.uuid4().hex[:8]}@test.example.com"
+    await make_platform_user(email=collision)
+
+    body = _valid_create_body(
+        tenant_id=tenant_id, role_assignments=[(role.id, root_id)]
+    )
+    body["email"] = collision
+    resp = app_client.post(
+        "/api/v1/tenant-users", json=body, headers=_auth(super_admin_jwt)
+    )
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["code"] == "EMAIL_ALREADY_EXISTS"
+    assert spy.calls == 0
+
+
+async def test_s9_patch_email_rejects_platform_email(
+    app_client: TestClient,
+    super_admin_jwt: str,
+    make_tenant: Any,
+    make_org_node: Any,
+    make_role: Any,
+    make_platform_user: Any,
+    cleanup_tenant_users_router: list[UUID],
+) -> None:
+    """Slice 9: PATCH email to a value already held by a platform user ->
+    409 EMAIL_ALREADY_EXISTS (platform side)."""
+    tenant_id, root_id, _ = await _seed_tenant_with_root(
+        make_tenant, make_org_node, name="S9-Patch"
+    )
+    role = await make_role(audience="TENANT")
+    body = _valid_create_body(
+        tenant_id=tenant_id, role_assignments=[(role.id, root_id)]
+    )
+    created = app_client.post(
+        "/api/v1/tenant-users", json=body, headers=_auth(super_admin_jwt)
+    )
+    assert created.status_code == 201, created.text
+    user_id = UUID(created.json()["id"])
+    cleanup_tenant_users_router.append(user_id)
+
+    collision = f"s9-patch-plat-{uuid.uuid4().hex[:8]}@test.example.com"
+    await make_platform_user(email=collision)
+    resp = app_client.patch(
+        f"/api/v1/tenant-users/{user_id}",
+        json={"email": collision},
+        headers=_auth(super_admin_jwt),
+    )
+    assert resp.status_code == 409, resp.text
+    payload = resp.json()
+    assert payload["code"] == "EMAIL_ALREADY_EXISTS"
+    assert payload["message"] == "This email is already in use on the platform."

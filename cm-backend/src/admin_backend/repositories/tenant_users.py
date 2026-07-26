@@ -59,7 +59,7 @@ from admin_backend.audit.emit import (
 from admin_backend.auth.context import AuthContext
 from admin_backend.config import get_settings
 from admin_backend.errors import (
-    DuplicateTenantUserEmailError,
+    EmailAlreadyExistsError,
     InvalidOrgNodeError,
     InvalidRoleAudienceError,
     InvalidRoleError,
@@ -106,6 +106,23 @@ RoleLabelList = list[RoleLabelDict]
 # concurrent-edit race; other IntegrityErrors propagate (per the Step
 # 6.14 LD7 operator note).
 _UQ_ACTIVE_INDEX_NAME = "uq_tenant_user_role_assignments_active"
+
+# Slice 9: the global one-email-per-tenant_users index. It is the
+# authoritative backstop for cross-tenant email collisions that the
+# RLS-scoped app-layer pre-check cannot see under a TENANT session, and
+# for the concurrent same-email create/rename race.
+_UQ_TENANT_USERS_EMAIL = "uq_tenant_users_email"
+
+
+def _raise_email_exists_if_unique_violation(exc: IntegrityError) -> None:
+    """Map an ``IntegrityError`` to ``EmailAlreadyExistsError`` iff it is
+    the global ``uq_tenant_users_email`` violation; otherwise return so
+    the caller can re-raise the original (other IntegrityErrors, e.g.
+    auth0_sub uniqueness, must not be masked)."""
+    orig = getattr(exc, "orig", None)
+    constraint = getattr(getattr(orig, "diag", None), "constraint_name", None)
+    if constraint == _UQ_TENANT_USERS_EMAIL:
+        raise EmailAlreadyExistsError(side="tenant") from exc
 
 
 # Sort keys map to ORM column expressions. Stable secondary sort by
@@ -463,55 +480,65 @@ class TenantUsersRepo:
                 invalid_org_node_ids=[str(o) for o in invalid],
             )
 
-    async def _raise_if_email_taken(
+    async def _raise_if_email_in_use(
         self,
         session: AsyncSession,
         *,
-        tenant_id: UUID,
         email: str,
         exclude_user_id: UUID | None,
     ) -> None:
-        """Per-tenant uniqueness check on ``tenant_users.email``.
+        """Global one-email-one-identity pre-check (Slice 9).
 
-        Schema-level ``uq_tenant_users_tenant_email`` enforces the
-        constraint at the DB layer; the app-layer pre-check (same
-        transaction) surfaces the conflict as a domain-shaped 409
-        rather than letting the unique-index violation surface as 500.
+        An email may belong to exactly ONE entity platform-wide: one
+        platform user OR one tenant user of exactly one tenant. This
+        pre-check surfaces a domain-shaped 409 before the write.
 
-        ``exclude_user_id`` lets ``update`` skip the rename-to-self
-        case: a PATCH that keeps the email unchanged would otherwise
-        always reject.
+        Two sides:
+          * platform_users has NO RLS, so this SELECT is authoritative
+            for EVERY caller (a TENANT OWNER session can read it too).
+            A hit means the email belongs to a platform user -> 409
+            side=platform.
+          * tenant_users is RLS-scoped. Under a PLATFORM session this
+            SELECT sees every tenant (full cross-tenant check). Under a
+            TENANT OWNER session it sees only that tenant, so a
+            cross-tenant collision is NOT visible here -- it is caught
+            authoritatively by the global ``uq_tenant_users_email``
+            index at INSERT/UPDATE and mapped by
+            ``_raise_email_exists_if_unique_violation``. This pre-check
+            still gives a clean 409 for the common (same-session) case.
+
+        Neither message names the other tenant (no identity disclosure).
+        ``exclude_user_id`` skips the rename-to-self case on update.
         """
         schema = get_settings().db_schema
+        platform_hit = await session.execute(
+            text(
+                f"SELECT 1 FROM {schema}.platform_users "
+                "WHERE email = :email LIMIT 1"
+            ),
+            {"email": email},
+        )
+        if platform_hit.first() is not None:
+            raise EmailAlreadyExistsError(side="platform")
+
         if exclude_user_id is None:
-            row = await session.execute(
+            tenant_hit = await session.execute(
                 text(
                     f"SELECT 1 FROM {schema}.tenant_users "
-                    "WHERE tenant_id = :tenant_id AND email = :email "
-                    "LIMIT 1"
+                    "WHERE email = :email LIMIT 1"
                 ),
-                {"tenant_id": tenant_id, "email": email},
+                {"email": email},
             )
         else:
-            row = await session.execute(
+            tenant_hit = await session.execute(
                 text(
                     f"SELECT 1 FROM {schema}.tenant_users "
-                    "WHERE tenant_id = :tenant_id "
-                    "AND email = :email AND id != :exclude_id LIMIT 1"
+                    "WHERE email = :email AND id != :exclude_id LIMIT 1"
                 ),
-                {
-                    "tenant_id": tenant_id,
-                    "email": email,
-                    "exclude_id": exclude_user_id,
-                },
+                {"email": email, "exclude_id": exclude_user_id},
             )
-        if row.first() is not None:
-            raise DuplicateTenantUserEmailError(
-                f"tenant_user email already taken in tenant {tenant_id}: "
-                f"{email!r}",
-                tenant_id=str(tenant_id),
-                email=email,
-            )
+        if tenant_hit.first() is not None:
+            raise EmailAlreadyExistsError(side="tenant")
 
     async def _tenant_exists(
         self,
@@ -820,7 +847,8 @@ class TenantUsersRepo:
           3. ``InvalidOrgNodeError`` (422) on missing/archived/
              cross-tenant org_node.
           4. ``TenantNotFoundError`` (caller-side) on invisible tenant.
-          5. ``DuplicateTenantUserEmailError`` (409) on email collision.
+          5. ``EmailAlreadyExistsError`` (409) when the email is already
+             in use platform-wide (platform user or any tenant's user).
         """
         schema = get_settings().db_schema
 
@@ -836,39 +864,45 @@ class TenantUsersRepo:
 
         await self._validate_org_nodes(session, tenant_id, org_node_ids)
 
-        await self._raise_if_email_taken(
+        await self._raise_if_email_in_use(
             session,
-            tenant_id=tenant_id,
             email=email,
             exclude_user_id=None,
         )
 
-        insert_user = await session.execute(
-            text(
-                f"""
-                INSERT INTO {schema}.tenant_users (
-                    tenant_id, email, full_name, status,
-                    auth0_sub, invited_at, invitation_accepted_at,
-                    created_by_user_id, created_by_user_type,
-                    updated_by_user_id, updated_by_user_type
-                ) VALUES (
-                    :tenant_id, :email, :full_name,
-                    CAST('INVITED' AS {schema}.tenant_user_status_enum),
-                    NULL, now(), NULL,
-                    :actor, CAST(:actor_type AS {schema}.actor_user_type_enum),
-                    :actor, CAST(:actor_type AS {schema}.actor_user_type_enum)
-                )
-                RETURNING id
-                """
-            ),
-            {
-                "tenant_id": tenant_id,
-                "email": email,
-                "full_name": full_name,
-                "actor": actor_user_id,
-                "actor_type": actor_user_type.value,
-            },
-        )
+        try:
+            insert_user = await session.execute(
+                text(
+                    f"""
+                    INSERT INTO {schema}.tenant_users (
+                        tenant_id, email, full_name, status,
+                        auth0_sub, invited_at, invitation_accepted_at,
+                        created_by_user_id, created_by_user_type,
+                        updated_by_user_id, updated_by_user_type
+                    ) VALUES (
+                        :tenant_id, :email, :full_name,
+                        CAST('INVITED' AS {schema}.tenant_user_status_enum),
+                        NULL, now(), NULL,
+                        :actor, CAST(:actor_type AS {schema}.actor_user_type_enum),
+                        :actor, CAST(:actor_type AS {schema}.actor_user_type_enum)
+                    )
+                    RETURNING id
+                    """
+                ),
+                {
+                    "tenant_id": tenant_id,
+                    "email": email,
+                    "full_name": full_name,
+                    "actor": actor_user_id,
+                    "actor_type": actor_user_type.value,
+                },
+            )
+        except IntegrityError as exc:
+            # Global-uniqueness backstop: catches a cross-tenant collision
+            # the RLS-scoped pre-check could not see (TENANT session), and
+            # the concurrent same-email race.
+            _raise_email_exists_if_unique_violation(exc)
+            raise
         new_user_id: UUID = insert_user.scalar_one()
 
         # Diff against empty current_set collapses to all-INSERT.
@@ -952,8 +986,10 @@ class TenantUsersRepo:
         (RLS-as-404 per D-17). Caller raises
         ``TenantUserNotFoundError`` on ``None``.
 
-        ``email`` change: pre-checks per-tenant uniqueness excluding
-        self via ``uq_tenant_users_tenant_email``.
+        ``email`` change: pre-checks global one-email-one-identity
+        uniqueness (platform + all tenants) excluding self; the global
+        ``uq_tenant_users_email`` index backstops the cross-tenant case
+        invisible to an RLS-scoped TENANT session.
 
         ``roles`` change (diff-replace):
           - unchanged (role_id, org_node_id) tuples are NOT touched
@@ -1019,9 +1055,8 @@ class TenantUsersRepo:
             )
 
         if "email" in fields:
-            await self._raise_if_email_taken(
+            await self._raise_if_email_in_use(
                 session,
-                tenant_id=tenant_id,
                 email=fields["email"],
                 exclude_user_id=user_id,
             )
@@ -1045,14 +1080,20 @@ class TenantUsersRepo:
                 "actor_type": actor_user_type.value,
                 **col_fields,
             }
-            await session.execute(
-                text(
-                    f"UPDATE {schema}.tenant_users "
-                    f"SET {', '.join(set_parts)} "
-                    "WHERE id = :user_id"
-                ),
-                params,
-            )
+            try:
+                await session.execute(
+                    text(
+                        f"UPDATE {schema}.tenant_users "
+                        f"SET {', '.join(set_parts)} "
+                        "WHERE id = :user_id"
+                    ),
+                    params,
+                )
+            except IntegrityError as exc:
+                # Global-uniqueness backstop for a cross-tenant email
+                # rename collision invisible to the RLS-scoped pre-check.
+                _raise_email_exists_if_unique_violation(exc)
+                raise
         elif new_role_assignments is not None:
             # Roles-only PATCH still needs to bump the audit-actor pair
             # on tenant_users so the user's updated_by_* reflects this

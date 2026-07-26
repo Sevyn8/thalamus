@@ -59,9 +59,9 @@ async def test_at_n1_new_revision_is_at_alembic_head(
     """LOAD-BEARING: the migration chain is applied to the current head.
 
     The head advances whenever a new migration lands on top; this
-    constant is bumped in lockstep. Slice 5 (Access & users) added
-    ``53c293517c44`` (tenants.auth0_org_id, option a) on top of Slice 3's
-    ``b755e9d4081c``, so the head is now ``53c293517c44``.
+    constant is bumped in lockstep. Slice 9 (one email = one identity)
+    added ``f4b8c1d2e3a9`` (global UNIQUE(email) on tenant_users) on top
+    of Slice 5's ``53c293517c44``, so the head is now ``f4b8c1d2e3a9``.
     """
     schema = get_settings().db_schema
     async for session in get_tenant_session(platform_auth, session_factory):
@@ -69,7 +69,7 @@ async def test_at_n1_new_revision_is_at_alembic_head(
             text(f"SELECT version_num FROM {schema}.alembic_version")
         )
         head = result.scalar_one()
-    assert head == "53c293517c44"
+    assert head == "f4b8c1d2e3a9"
 
 
 # ---------------------------------------------------------------------------

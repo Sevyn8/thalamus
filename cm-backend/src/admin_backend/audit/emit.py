@@ -358,7 +358,7 @@ def _label_for_resource_type(
 _CONFLICT_QUALIFIERS: dict[str, str] = {
     "DUPLICATE_TENANT_NAME": "tenant name already exists",
     "INVALID_STATE_TRANSITION": "status change not allowed",
-    "DUPLICATE_TENANT_USER_EMAIL": "email already in use for this tenant",
+    "EMAIL_ALREADY_EXISTS": "email already in use",
     "ROLE_ASSIGNMENT_CONFLICT": "role assignment conflict, please retry",
     "DUPLICATE_ORG_NODE_CODE": "code already in use for this tenant",
     "DUPLICATE_STORE_CODE": "store code already in use for this tenant",

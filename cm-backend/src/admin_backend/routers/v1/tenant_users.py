@@ -428,8 +428,10 @@ async def create_tenant_user(
         catalogue.
       - 422 ``INVALID_ROLE_AUDIENCE`` when a role exists but is not
         TENANT audience.
-      - 409 ``DUPLICATE_TENANT_USER_EMAIL`` when the email already
-        exists within ``tenant_id``.
+      - 409 ``EMAIL_ALREADY_EXISTS`` when the email is already in use
+        platform-wide (Slice 9: one email = one identity). The message
+        names which side (platform vs a tenant) without naming the
+        other tenant.
       - 404 ``TENANT_NOT_FOUND`` when the target tenant is missing or
         RLS-filtered.
     """
@@ -483,8 +485,8 @@ async def patch_tenant_user(
         ``roles`` content.
       - 403 ``SELF_EDIT_FORBIDDEN`` when a TENANT caller targets their
         own user_id.
-      - 409 ``DUPLICATE_TENANT_USER_EMAIL`` on rename collision in
-        the same tenant.
+      - 409 ``EMAIL_ALREADY_EXISTS`` on rename to an email already in
+        use platform-wide (Slice 9).
       - 404 ``TENANT_USER_NOT_FOUND`` when the row is missing or
         RLS-filtered.
       - Allowed in any state (INVITED, ACTIVE, SUSPENDED).

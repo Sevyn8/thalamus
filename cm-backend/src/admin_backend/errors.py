@@ -24,7 +24,7 @@ layer should learn nothing about the internal failure shape from the
 response body. Subclasses override only ``internal_message`` (via the
 constructor) for log clarity.
 """
-from typing import Any
+from typing import Any, Literal
 
 
 class AdminBackendError(Exception):
@@ -551,20 +551,39 @@ class SelfEditForbiddenError(ClientError):
     code = "SELF_EDIT_FORBIDDEN"
 
 
-class DuplicateTenantUserEmailError(ClientError):
+class EmailAlreadyExistsError(ClientError):
     """Raised by ``TenantUsersRepo.create`` / ``.update`` (on email
-    change) when another tenant_user in the same tenant already holds
-    the supplied email.
+    change) when the supplied email is already in use anywhere on the
+    platform (Slice 9: one email = one identity).
 
-    Per-tenant uniqueness is enforced at the schema layer via
-    ``uq_tenant_users_tenant_email``; the app-layer pre-check (same
-    transaction) surfaces the conflict as a domain-shaped 409 rather
-    than letting the unique-index violation surface as 500.
+    An email may belong to exactly ONE entity platform-wide: one
+    platform user OR one tenant user of exactly one tenant. The
+    tenant-side collision is also backstopped at the schema layer by the
+    global ``uq_tenant_users_email`` unique index; the platform-side and
+    cross-tenant cases are app-layer checks (cross-table uniqueness
+    cannot be a single SQL constraint). The pre-check surfaces a
+    domain-shaped 409 rather than letting the unique-index violation
+    surface as 500.
+
+    ``side`` selects the public message but NEVER names the other
+    tenant: 'platform' -> already used by a platform user; 'tenant' ->
+    already used by some tenant's user. ``side`` is also in
+    ``exc.context`` for logs.
     """
 
-    public_message = "A user with this email already exists in this tenant."
     http_status = 409
-    code = "DUPLICATE_TENANT_USER_EMAIL"
+    code = "EMAIL_ALREADY_EXISTS"
+
+    def __init__(self, *, side: Literal["platform", "tenant"]) -> None:
+        super().__init__(
+            f"email already in use (side={side})",
+            side=side,
+        )
+        self.public_message = (
+            "This email is already in use on the platform."
+            if side == "platform"
+            else "This email is already in use by a tenant."
+        )
 
 
 class InvalidRoleAudienceError(ClientError):

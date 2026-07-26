@@ -17,10 +17,18 @@
 --   * RLS enabled with FORCE; tenant-scoped policy on app.tenant_id.
 --   * Auth0 is the credential authority. auth0_sub maps Auth0 identity
 --     to local row. NULL during INVITED state, populated on first login.
---   * Email unique per tenant: UNIQUE(tenant_id, email). Same human
---     across tenants (e.g., Maria at Buc-ee's AND at Zabka) has two
---     separate rows. Future evolution to one-row-per-human noted in
---     forward-notes (FN-AB-XX).
+--   * Email is GLOBALLY unique on tenant_users: UNIQUE(email). Slice 9
+--     (one email = one identity) OVERTURNED the earlier "same human
+--     across tenants has two rows" intent (Maria at Buc-ee's AND at
+--     Zabka is no longer allowed). An email belongs to exactly ONE
+--     entity platform-wide: one platform user OR one tenant user of
+--     exactly one tenant. Tenants are separate legal entities; identity
+--     must not straddle a legal/trust boundary. NOTE: the DDL here shows
+--     the initial per-tenant index; the global index swap is applied by
+--     migration slice9_global_email_uniqueness (frozen-DDL convention).
+--     Cross-TABLE uniqueness (platform_users vs tenant_users) cannot be
+--     one SQL constraint; it is enforced in the application layer
+--     (TenantUsersRepo) and the seed loader.
 --   * Audit columns use pattern (b): *_user_id UUID + *_user_type enum,
 --     no FK. created_by/updated_by can be a platform_user (Phase 1:
 --     Ithina staff invites tenant users) or eventually a tenant_user
@@ -180,7 +188,10 @@ CREATE TABLE tenant_users (
 -- Indexes beyond PK (which auto-creates an index)
 -- ----------------------------------------------------------------------------
 
--- Email unique per tenant.
+-- Email unique per tenant (INITIAL schema). Slice 9 replaces this with a
+-- global UNIQUE(email) via migration slice9_global_email_uniqueness
+-- (uq_tenant_users_email); the per-tenant index below is the as-shipped
+-- state, not the live state, per the frozen-DDL convention.
 CREATE UNIQUE INDEX uq_tenant_users_tenant_email
     ON tenant_users (tenant_id, email);
 
@@ -278,10 +289,14 @@ CREATE POLICY tenant_users_tenant_isolation
 --           ck_tenant_users_email_lowercase CHECK rejects mixed-case
 --           values.
 --
--- AI-TU-07: Future evolution -- one-row-per-human across tenants
---           (currently one row per tenant per human). Migration path
---           involves making auth0_sub globally unique and decoupling
---           tenant_id to a separate membership table. Parked.
+-- AI-TU-07: OVERTURNED by Slice 9 (one email = one identity). The
+--           earlier idea of one-row-per-human ACROSS tenants (a shared
+--           membership table) is explicitly rejected: an email belongs
+--           to exactly one entity platform-wide (one platform user OR
+--           one tenant user of one tenant). Email is now globally unique
+--           on tenant_users (uq_tenant_users_email, via migration
+--           slice9_global_email_uniqueness) and cross-table uniqueness
+--           vs platform_users is enforced in the app layer.
 --
 -- AI-TU-08: App must set updated_by_user_id and updated_by_user_type
 --           on every UPDATE. The trigger refreshes updated_at
