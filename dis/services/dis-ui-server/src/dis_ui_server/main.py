@@ -43,6 +43,12 @@ from dis_ui_server.errors_http import register_error_handlers
 from dis_ui_server.handlers import health
 from dis_ui_server.publisher import PubsubPublisher
 from dis_ui_server.suggest.gemini_client import GeminiSuggester
+from thalamus_square_oauth import (
+    SQUARE_READ_SCOPES,
+    GoogleSecretBackend,
+    SquareOAuthClient,
+    SquareTokenVault,
+)
 
 _log = get_logger(SERVICE_NAME)
 
@@ -97,6 +103,31 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         timeout_s=config.gemini_timeout_s,
         thinking_budget=config.gemini_thinking_budget,
     )
+    # Square OAuth connect (S2), optional at boot (like the GEMINI_* config): built once when
+    # fully configured, else left None so the OAuth endpoints 503. Construction is I/O-free
+    # (httpx.Client build; the Secret Manager client is credential-lazy), so an unreachable
+    # backend never blocks startup. Tests override these with fakes after startup.
+    if config.square_oauth_configured:
+        # square_oauth_configured guarantees these four are set; assert narrows for typing.
+        assert config.square_client_id is not None
+        assert config.square_app_secret is not None
+        assert config.square_oauth_redirect_uri is not None
+        assert config.square_oauth_state_key is not None
+        secrets_project = config.square_secrets_project_id or config.pubsub_project_id
+        app.state.square_oauth_client = SquareOAuthClient(
+            base_url=config.square_oauth_base_url,
+            client_id=config.square_client_id,
+            client_secret=config.square_app_secret,
+            redirect_uri=config.square_oauth_redirect_uri,
+            scopes=SQUARE_READ_SCOPES,
+            environment=config.square_oauth_environment,
+        )
+        app.state.square_token_vault = SquareTokenVault(GoogleSecretBackend(project_id=secrets_project))
+        app.state.square_oauth_state_key = config.square_oauth_state_key
+    else:
+        app.state.square_oauth_client = None
+        app.state.square_token_vault = None
+        app.state.square_oauth_state_key = None
     _log.bind(stage="startup").info("dis-ui-server started")
     try:
         yield

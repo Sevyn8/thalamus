@@ -52,6 +52,12 @@ from dis_core.errors import (
 from dis_core.logging import get_logger
 from dis_core.trace_id import TraceIdNotSetError, get_trace_id
 from dis_ui_server.config import SERVICE_NAME
+from dis_ui_server.oauth.errors import (
+    InvalidOauthStateError,
+    OauthNotConfiguredError,
+    OauthStateTenantMismatchError,
+    SquareTokenExchangeError,
+)
 
 _log = get_logger(SERVICE_NAME)
 
@@ -86,6 +92,13 @@ _STATUS_BY_ERROR: dict[type[DisError], int] = {
     # upload's GCS write path (path construction inputs are validated upstream).
     StorageError: 503,
     EventPublishError: 503,  # object already written: the accepted-orphan posture
+    # Square OAuth connect (S2). Optional-at-boot feature: unconfigured -> 503; bad/expired
+    # signed state -> 422 (well-formed request, content fails a gate); state tenant vs caller
+    # mismatch -> 403; a failed code exchange -> 502 (upstream vendor failure).
+    OauthNotConfiguredError: 503,
+    InvalidOauthStateError: 422,
+    OauthStateTenantMismatchError: 403,
+    SquareTokenExchangeError: 502,
 }
 
 _FALLBACK_STATUS = 500

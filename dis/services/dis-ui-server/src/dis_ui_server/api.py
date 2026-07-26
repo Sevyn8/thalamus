@@ -22,6 +22,7 @@ from dis_ui_server.handlers import (
     audit,
     canonical,
     connector_health,
+    connectors_square,
     csv_uploads,
     dashboard,
     mapping_suggestions,
@@ -46,3 +47,4 @@ api_router.include_router(runs.router)
 api_router.include_router(canonical.router)
 api_router.include_router(sources.router)
 api_router.include_router(connector_health.router)
+api_router.include_router(connectors_square.router)

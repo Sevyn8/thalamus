@@ -63,6 +63,9 @@ dependencies = [
   "google-auth>=2.53",
   # Slice 51b: fast JSON encode/decode for keyset-cursor pagination (pagination.py).
   "orjson>=3.10",
+  # S2: Square OAuth client + Secret Manager token vault, shared with the connector.
+  # SDK-free, so this adds no connector service graph to the BFF.
+  "thalamus-square-oauth",
 ]
 
 [build-system]

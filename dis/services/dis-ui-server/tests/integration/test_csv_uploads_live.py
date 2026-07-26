@@ -145,7 +145,10 @@ def inactive_store(upload_env: dict[str, str]) -> Iterator[str]:
 @pytest.fixture
 def verify_subscription(upload_env: dict[str, str]) -> Iterator[Callable[[], list[dict[str, Any]]]]:
     """A throwaway subscription on csv.received, created BEFORE the publish."""
-    from google.cloud import pubsub_v1
+    # attr-defined: google-cloud-secret-manager (thalamus_square_oauth, S2) ships py.typed and
+    # makes google.cloud a resolved namespace in this service's mypy run, so the untyped sibling
+    # pubsub_v1 no longer resolves as an attribute. Runtime import is unaffected.
+    from google.cloud import pubsub_v1  # type: ignore[attr-defined]
 
     project = upload_env["PUBSUB_PROJECT_ID"]
     subscriber = pubsub_v1.SubscriberClient()

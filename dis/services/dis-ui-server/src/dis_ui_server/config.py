@@ -81,8 +81,23 @@ _GEMINI_IMPERSONATE_SA = "GEMINI_IMPERSONATE_SA"
 _GEMINI_MODEL = "GEMINI_MODEL"
 _GEMINI_TIMEOUT_S = "GEMINI_TIMEOUT_S"
 _GEMINI_THINKING_BUDGET = "GEMINI_THINKING_BUDGET"
+# OPTIONAL (Square OAuth, S2): the connect endpoints. ALL optional at boot (like the
+# GEMINI_* knobs) — unset leaves the OAuth endpoints returning a fail-loud 503 while the
+# rest of the BFF runs unchanged. SQUARE_APP_SECRET + STATE_SIGNING_KEY are secret-backed
+# env (Cloud Run secret_key_ref); the rest are plain. The per-tenant token secrets are
+# created at runtime by the callback, not env.
+_SQUARE_CLIENT_ID = "SQUARE_CLIENT_ID"
+_SQUARE_APP_SECRET = "SQUARE_APP_SECRET"
+_SQUARE_OAUTH_BASE_URL = "SQUARE_OAUTH_BASE_URL"
+_SQUARE_OAUTH_REDIRECT_URI = "SQUARE_OAUTH_REDIRECT_URI"
+_SQUARE_OAUTH_STATE_KEY = "STATE_SIGNING_KEY"
+_SQUARE_SECRETS_PROJECT_ID = "SQUARE_SECRETS_PROJECT_ID"
 
 SERVICE_NAME = "dis-ui-server"
+
+# Default Square OAuth host when SQUARE_OAUTH_BASE_URL is unset (sandbox). The environment
+# stamped onto stored token sets is derived from this host.
+SQUARE_SANDBOX_OAUTH_BASE_URL = "https://connect.squareupsandbox.com"
 
 # The CSV-upload Phase 1 publish target. The contract name (hard rule 10) is
 # "csv.received" and remains the default, so local dev (provisioned by
@@ -196,6 +211,33 @@ class UiServerConfig:
     gemini_model: str | None = None
     gemini_timeout_s: float | None = None
     gemini_thinking_budget: int | None = None
+    # OPTIONAL Square OAuth (S2); all unset -> the OAuth endpoints 503, rest of the BFF
+    # unaffected. secrets project defaults to the pubsub project (same GCP project).
+    square_client_id: str | None = None
+    square_app_secret: str | None = None
+    square_oauth_base_url: str = SQUARE_SANDBOX_OAUTH_BASE_URL
+    square_oauth_redirect_uri: str | None = None
+    square_oauth_state_key: str | None = None
+    square_secrets_project_id: str | None = None
+
+    @property
+    def square_oauth_configured(self) -> bool:
+        """True only when every piece the connect flow needs is present (client id, app
+        secret, redirect URI, state-signing key). base_url and secrets project have
+        defaults, so they never gate this."""
+        return all(
+            (
+                self.square_client_id,
+                self.square_app_secret,
+                self.square_oauth_redirect_uri,
+                self.square_oauth_state_key,
+            )
+        )
+
+    @property
+    def square_oauth_environment(self) -> str:
+        """sandbox vs production, derived from the OAuth host (stamped onto token sets)."""
+        return "sandbox" if "squareupsandbox" in self.square_oauth_base_url else "production"
 
     @classmethod
     def from_env(cls) -> UiServerConfig:
@@ -246,6 +288,13 @@ class UiServerConfig:
         gemini_model = _optional_str_env(_GEMINI_MODEL)
         gemini_timeout_s = _optional_float_env(_GEMINI_TIMEOUT_S)
         gemini_thinking_budget = _optional_int_env(_GEMINI_THINKING_BUDGET)
+        # OPTIONAL Square OAuth (S2): read with no raise; unset -> the endpoints 503.
+        square_client_id = os.environ.get(_SQUARE_CLIENT_ID) or None
+        square_app_secret = os.environ.get(_SQUARE_APP_SECRET) or None
+        square_oauth_base_url = os.environ.get(_SQUARE_OAUTH_BASE_URL) or SQUARE_SANDBOX_OAUTH_BASE_URL
+        square_oauth_redirect_uri = os.environ.get(_SQUARE_OAUTH_REDIRECT_URI) or None
+        square_oauth_state_key = os.environ.get(_SQUARE_OAUTH_STATE_KEY) or None
+        square_secrets_project_id = os.environ.get(_SQUARE_SECRETS_PROJECT_ID) or pubsub_project_id
         return cls(
             postgres_url=postgres_url,
             gcs_bucket_bronze=gcs_bucket_bronze,
@@ -260,6 +309,12 @@ class UiServerConfig:
             gemini_model=gemini_model,
             gemini_timeout_s=gemini_timeout_s,
             gemini_thinking_budget=gemini_thinking_budget,
+            square_client_id=square_client_id,
+            square_app_secret=square_app_secret,
+            square_oauth_base_url=square_oauth_base_url,
+            square_oauth_redirect_uri=square_oauth_redirect_uri,
+            square_oauth_state_key=square_oauth_state_key,
+            square_secrets_project_id=square_secrets_project_id,
         )
 
 
