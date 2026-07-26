@@ -123,6 +123,37 @@ def test_well_formed_unknown_tenant_gets_an_empty_list(
     assert response.json() == []
 
 
+def _platform_ops(mint_token: Callable[..., str]) -> str:
+    return mint_token(user_type="PLATFORM", tenant_id=None, roles=("dis:ops", "dis:read"))
+
+
+def test_platform_ops_reads_an_acted_for_tenants_stores(
+    live_client: TestClient, mint_token: Callable[..., str], stack_env: dict[str, str]
+) -> None:
+    # The cross-tenant read (Finding 2a): a PLATFORM ops caller names the acted-for tenant in the
+    # PATH and gets exactly that tenant's stores — same rows the tenant's own token would see.
+    for tenant in (TENANT_A, TENANT_B):
+        expected = _mirror_truth(stack_env, tenant)
+        assert expected, f"seed data missing for {tenant} — run make run-local"
+        response = live_client.get(
+            f"/api/v1/stores-onboarded/for-tenant/{tenant}", headers=_bearer(_platform_ops(mint_token))
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert [UUID(s["store_id"]) for s in body] == [row["store_id"] for row in expected]
+        assert [s["name"] for s in body] == [row["name"] for row in expected]
+
+
+def test_for_tenant_is_forbidden_to_a_tenant_caller(
+    live_client: TestClient, mint_token: Callable[..., str]
+) -> None:
+    # A TENANT caller has no business on the cross-tenant surface (it uses /stores-onboarded).
+    response = live_client.get(
+        f"/api/v1/stores-onboarded/for-tenant/{TENANT_B}", headers=_bearer(mint_token(tenant_id=TENANT_A))
+    )
+    assert response.status_code == 403
+
+
 def test_tenant_id_comes_from_the_token_only(
     live_client: TestClient, mint_token: Callable[..., str], stack_env: dict[str, str]
 ) -> None:

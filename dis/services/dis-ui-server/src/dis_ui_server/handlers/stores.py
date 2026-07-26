@@ -10,13 +10,15 @@ cross-tenant store read is a later endpoint.
 from __future__ import annotations
 
 from typing import Annotated, Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import Row
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from dis_core.errors import TenantScopeError
 from dis_ui_server.auth.identity import Identity
-from dis_ui_server.auth.scope import require_tenant, tenant_uuid_of
+from dis_ui_server.auth.scope import ReadScope, require_read_scope, require_tenant, tenant_uuid_of
 from dis_ui_server.repos.stores import list_onboarded_stores
 from dis_ui_server.schemas.stores import OnboardedStore, StoreStatus, StoreTaxTreatment
 
@@ -58,4 +60,32 @@ async def get_stores_onboarded(
     """The tenant's onboarded stores, stable order (name, store_id); bare array."""
     engine: AsyncEngine = request.app.state.engine
     rows = await list_onboarded_stores(engine, tenant_uuid_of(identity))
+    return [_to_wire(row) for row in rows]
+
+
+@router.get("/stores-onboarded/for-tenant/{tenant_id}")
+async def get_stores_onboarded_for_tenant(
+    request: Request,
+    tenant_id: UUID,
+    scope: Annotated[ReadScope, Depends(require_read_scope)],
+) -> list[OnboardedStore]:
+    """An acted-for tenant's onboarded stores, for a PLATFORM ops caller (the cross-tenant
+    counterpart of ``GET /stores-onboarded``, promised as "a later endpoint" above).
+
+    ``/stores-onboarded`` is token-tenant-pinned; a PLATFORM ops caller carries no tenant
+    claim, so the acted-for tenant rides the PATH — the read-side analog of the write
+    impersonation (Slice 17b / D92), honoured ONLY on a PLATFORM + ``dis:ops`` token.
+    ``require_read_scope`` yields ``is_platform`` True for exactly that posture (PLATFORM
+    without ``dis:ops`` is already a 403 there); a TENANT caller has no business on this
+    cross-tenant surface (it uses ``/stores-onboarded``), so it is refused 403. The read still
+    goes through the single ``repos/stores.py`` chokepoint that owns the in-query tenant
+    predicate (D41) — here scoped to the acted-for tenant.
+    """
+    if not scope.is_platform:
+        raise TenantScopeError(
+            "cross-tenant store read requires a PLATFORM ops caller",
+            tenant_id=None,
+        )
+    engine: AsyncEngine = request.app.state.engine
+    rows = await list_onboarded_stores(engine, tenant_id)
     return [_to_wire(row) for row in rows]
