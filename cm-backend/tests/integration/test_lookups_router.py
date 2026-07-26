@@ -120,11 +120,11 @@ def test_l1_get_lookups_returns_all_requested_lists(app_client, settings):
     # tenant_industry: 6 rows.
     assert len(lookups["tenant_industry"]) == 6
 
-    # module_code from Step 3.4.5: 5 rows post-2026-05-12 ROOS retirement
-    # (seed loader's --reset deletes the ROOS lookups row to align local
-    # state with the post-cleanup wire vocabulary; ModuleCodeLiteral is
-    # narrowed to 5 values).
-    assert len(lookups["module_code"]) == 5
+    # module_code: 6 rows. Post-2026-05-12 ROOS retirement left 5 (the
+    # seed loader's --reset deletes the ROOS lookups row); the DIS module
+    # catalog migration (a1c4e7f09d2b) added DIS, bringing the wire
+    # vocabulary to 6 (ModuleCodeLiteral matches).
+    assert len(lookups["module_code"]) == 6
 
 
 # ---- L2: unknown list_name returns an empty array -------------------------

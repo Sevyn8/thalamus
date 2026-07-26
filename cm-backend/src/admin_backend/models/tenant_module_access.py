@@ -48,6 +48,11 @@ class ModuleCode(str, Enum):
     PROMOTIONS_ASSISTANT = "PROMOTIONS_ASSISTANT"
     GOAL_CONSOLE = "GOAL_CONSOLE"
     ADMIN = "ADMIN"
+    # DIS (Data Integration System) added to the catalog: grantable per
+    # tenant via Module Access, default disabled (no seeded
+    # tenant_module_access row), served at the DIS Cloud Run UI. Added to
+    # ``module_code_enum`` by the DIS-module-catalog migration.
+    DIS = "DIS"
 
 
 class ModuleAccessStatus(str, Enum):

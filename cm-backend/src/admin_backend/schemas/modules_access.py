@@ -48,6 +48,7 @@ ModuleCodeLiteral = Literal[
     "PERISHABLES_ASSISTANT",
     "PROMOTIONS_ASSISTANT",
     "ADMIN",
+    "DIS",
 ]
 
 

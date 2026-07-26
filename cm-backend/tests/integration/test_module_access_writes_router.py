@@ -271,6 +271,42 @@ async def test_c1_enable_on_missing_creates_row(
     assert db_row.disabled_by_user_id is None
 
 
+async def test_dis_default_disabled_then_grantable(
+    app_client,
+    super_admin_jwt,
+    make_tenant,
+    cleanup_module_access_router,
+    session_factory,
+    platform_auth,
+) -> None:
+    """DIS module catalog entry: default DISABLED, grantable via enable.
+
+    DIS was added to the catalog (migration a1c4e7f09d2b) with a lookups
+    row but NO seeded ``tenant_module_access`` row, so it is default
+    DISABLED for every tenant (contrast ADMIN). This test proves both
+    halves: (1) no DIS row exists for a fresh tenant, and (2) the
+    existing enable endpoint grants it — exercising the
+    ``module_code_enum`` ADD VALUE + ``ModuleCode.DIS`` end to end (the
+    path param binds ``ModuleCode.DIS`` and the repo CASTs it to
+    ``module_code_enum``).
+    """
+    tenant = await make_tenant(name="DIS-Grant-Tenant", with_root=True)
+    # Default disabled: no tenant_module_access row for DIS yet.
+    pre = await _fetch_tma_row_by_tenant_module(
+        session_factory, platform_auth, tenant.id, "DIS"
+    )
+    assert pre is None
+    # Grant via the existing PLATFORM enable endpoint.
+    url = f"/api/v1/module-access/{tenant.id}/DIS/enable"
+    resp = app_client.post(url, headers=_auth(super_admin_jwt))
+    assert resp.status_code == 200, resp.text
+    j = resp.json()
+    cleanup_module_access_router.append(UUID(j["id"]))
+    assert j["status"] == "ENABLED"
+    assert j["module"] == "DIS"
+    assert j["disabled_at"] is None
+
+
 async def test_c2_enable_on_disabled_flips_to_enabled_and_overwrites(
     app_client,
     super_admin_jwt,

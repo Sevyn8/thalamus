@@ -63,6 +63,9 @@ _EXPECTED_MODULE_ORDER: list[str] = [
     "PERISHABLES_ASSISTANT",
     "PROMOTIONS_ASSISTANT",
     "ADMIN",
+    # DIS added to the catalog (migration a1c4e7f09d2b) at display_order=7,
+    # so it sorts after ADMIN (=6). Default DISABLED for every tenant.
+    "DIS",
 ]
 
 
@@ -128,7 +131,7 @@ def test_m1_modules_platform_envelope(app_client, settings, super_admin_jwt):
     assert resp.status_code == 200
     body = resp.json()
     assert set(body.keys()) == {"items"}
-    assert len(body["items"]) == 5
+    assert len(body["items"]) == 6
 
     # Locked module ordering anchored on lookups.display_order.
     actual_codes = [item["module_code"] for item in body["items"]]
@@ -438,7 +441,7 @@ async def test_x2_matrix_cell_synthesis_under_rls(
     assert resp.status_code == 200
     items = resp.json()["items"]
     row = next(r for r in items if r["tenant_id"] == str(tenant.id))
-    assert len(row["cells"]) == 5
+    assert len(row["cells"]) == 6
 
     cell_status_by_code = {c["module_code"]: c["status"] for c in row["cells"]}
     # Three ENABLED.
@@ -487,7 +490,7 @@ async def test_x3_matrix_platform_envelope(
             "status_label",
             "cells",
         }
-        assert len(row["cells"]) == 5
+        assert len(row["cells"]) == 6
 
 
 # ---- X4: sort=name_asc orders alphabetically ------------------------------
