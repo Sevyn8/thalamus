@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin_backend.auth.context import AuthContext
@@ -34,6 +34,7 @@ from admin_backend.models.permission import (
     PermissionScope,
 )
 from admin_backend.models.tenant_module_access import ModuleCode
+from admin_backend.repositories.tenant_users import TenantUsersRepo
 from admin_backend.schemas.me import (
     MeCanDoResponse,
     MePermissionsResponse,
@@ -42,6 +43,11 @@ from admin_backend.schemas.me import (
 
 
 router = APIRouter(prefix="/me", tags=["me"])
+
+# Reused for the implicit invite-acceptance reconciliation on a TENANT
+# user's first authenticated /me/permissions call (AuthBoundary's boot
+# request). Stateless singleton, matching the repo convention.
+_tenant_users_repo = TenantUsersRepo()
 
 
 @router.get(
@@ -62,9 +68,20 @@ router = APIRouter(prefix="/me", tags=["me"])
     ),
 )
 async def get_me_permissions(
+    request: Request,
     auth: AuthContext = Depends(get_auth_context),
     session: AsyncSession = Depends(get_tenant_session_dep),
 ) -> MePermissionsResponse:
+    # Implicit invite-acceptance (the real acceptance mechanism). A TENANT
+    # user reaching this authenticated boot call has completed the Auth0
+    # side, so first login IS acceptance: reconcile an INVITED row here
+    # (stamp auth0_sub from the verified token, flip to ACTIVE). No-op after
+    # the first login. Only for TENANT users; PLATFORM users have no
+    # tenant_users row.
+    if auth.user_type == "TENANT":
+        await _tenant_users_repo.reconcile_acceptance_on_login(
+            session, auth=auth, request_id=request.state.request_id
+        )
     grants = await get_permissions_for_user(session, auth)
     return MePermissionsResponse(
         permissions=[

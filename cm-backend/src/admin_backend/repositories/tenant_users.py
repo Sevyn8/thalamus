@@ -1473,6 +1473,62 @@ class TenantUsersRepo:
 
         return result_row, TransitionResult.OK
 
+    async def reconcile_acceptance_on_login(
+        self,
+        session: AsyncSession,
+        *,
+        auth: AuthContext,
+        request_id: UUID | None = None,
+    ) -> TenantUserDetailRow | None:
+        """Implicit invite-acceptance on a TENANT user's first authenticated
+        request. This is the real acceptance mechanism: a valid CM token for
+        a TENANT user proves they completed the Auth0 side (set a password,
+        logged in), so first login IS acceptance. It replaces the
+        placeholder-era journey (the dead accept-invite page + a
+        placeholder ticket result_url that never touched CM).
+
+        Lightweight guard first: only an INVITED row with ``auth0_sub`` NULL
+        needs reconciling. Otherwise this is a no-op returning ``None`` (no
+        write, no lock). When it fires it delegates to ``accept_invitation``
+        (status=ACTIVE + ``auth0_sub`` from the verified token +
+        ``invitation_accepted_at`` + the ACCEPT_INVITATION audit row) and
+        returns the reconciled row.
+
+        Idempotent: after the first login ``auth0_sub`` is set, so the guard
+        short-circuits. Concurrent first requests serialize on
+        ``accept_invitation``'s SELECT FOR UPDATE (the loser re-reads ACTIVE
+        and gets INVALID_STATE, swallowed here). Caller invokes this only for
+        TENANT users; ``auth.sub`` is the verified token subject.
+        """
+        schema = get_settings().db_schema
+        guard = await session.execute(
+            text(
+                f"SELECT status, auth0_sub FROM {schema}.tenant_users "
+                "WHERE id = :id"
+            ),
+            {"id": auth.user_id},
+        )
+        rec = guard.first()
+        if (
+            rec is None
+            or rec.auth0_sub is not None
+            or str(rec.status) != "INVITED"
+        ):
+            return None
+        # accept_invitation emits audit only when auth AND request_id are
+        # both provided (repo both-or-neither convention). The /me hook
+        # always supplies request_id; repo-level callers may omit it to
+        # skip emission.
+        row, _result = await self.accept_invitation(
+            session,
+            auth.user_id,
+            auth0_sub=auth.sub,
+            actor_user_id=auth.user_id,
+            auth=auth if request_id is not None else None,
+            request_id=request_id,
+        )
+        return row
+
     async def mark_invited(
         self,
         session: AsyncSession,
