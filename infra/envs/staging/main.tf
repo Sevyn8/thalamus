@@ -177,6 +177,13 @@ module "dis_ui_server_service" {
   bronze_bucket_name = google_storage_bucket.dis_bronze.name
   csv_topic_id       = google_pubsub_topic.csv_received.id
   csv_received_topic = google_pubsub_topic.csv_received.name
+
+  # Square OAuth connect (S2). client id + redirect URL are per-env; the OAuth base URL
+  # and the two secret names ride the module defaults (sandbox host, square-app-secret,
+  # dis-ui-oauth-state-key). The app secret + state key are created out of band in
+  # Secret Manager.
+  square_client_id          = "sandbox-sq0idb-UNkdYKb0-JH_8P2vSsuBIg"
+  square_oauth_redirect_uri = "https://dis-ui-ver2-697546531605.asia-south1.run.app/connectors/square/callback"
 }
 
 module "csv_ingest_worker_service" {

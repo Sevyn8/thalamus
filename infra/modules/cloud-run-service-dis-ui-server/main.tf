@@ -46,6 +46,55 @@ resource "google_secret_manager_secret_iam_member" "database_url" {
   member    = "serviceAccount:${google_service_account.dis_ui_server.email}"
 }
 
+# --- Square OAuth connect (S2) ---
+# The app secret and the state-signing key are secret-backed env (created out of band).
+# Data sources resolve their ids for the IAM grants and fail the plan fast if missing.
+data "google_secret_manager_secret" "square_app_secret" {
+  project   = var.project_id
+  secret_id = var.secret_square_app_secret
+}
+
+data "google_secret_manager_secret" "oauth_state_key" {
+  project   = var.project_id
+  secret_id = var.secret_oauth_state_key
+}
+
+resource "google_secret_manager_secret_iam_member" "square_app_secret" {
+  project   = var.project_id
+  secret_id = data.google_secret_manager_secret.square_app_secret.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.dis_ui_server.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "oauth_state_key" {
+  project   = var.project_id
+  secret_id = data.google_secret_manager_secret.oauth_state_key.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.dis_ui_server.email}"
+}
+
+# The callback creates one Secret Manager secret per tenant/source and adds versions to it.
+# secretmanager.secrets.create is a PROJECT-level permission (cannot be resource-scoped), so
+# this is a narrow project-scoped custom role rather than roles/secretmanager.admin.
+resource "google_project_iam_custom_role" "square_token_vault_writer" {
+  project     = var.project_id
+  role_id     = "squareTokenVaultWriter"
+  title       = "Square token vault writer (dis-ui-server)"
+  description = "Create + add versions + access the per-tenant Square OAuth token secrets."
+  permissions = [
+    "secretmanager.secrets.create",
+    "secretmanager.secrets.get",
+    "secretmanager.versions.add",
+    "secretmanager.versions.access",
+  ]
+}
+
+resource "google_project_iam_member" "square_token_vault_writer" {
+  project = var.project_id
+  role    = google_project_iam_custom_role.square_token_vault_writer.id
+  member  = "serviceAccount:${google_service_account.dis_ui_server.email}"
+}
+
 resource "google_storage_bucket_iam_member" "bronze_object_admin" {
   bucket = var.bronze_bucket_name
   role   = "roles/storage.objectAdmin"
@@ -73,6 +122,12 @@ locals {
     DIS_AUTH_MODE         = var.dis_auth_mode         # AUTH0 -> RS256/JWKS verifier (real Auth0 tokens)
     JWT_ISSUER            = var.jwt_issuer            # Auth0 issuer; backend derives AUTH0_JWKS_URL from it
     JWT_AUDIENCE          = var.jwt_audience          # DIS API audience
+    # Square OAuth connect (S2). config.py reads these; unset -> the OAuth endpoints 503.
+    # SQUARE_APP_SECRET + STATE_SIGNING_KEY are secret env (below), never plain.
+    SQUARE_CLIENT_ID          = var.square_client_id          # Square application id (public)
+    SQUARE_OAUTH_BASE_URL     = var.square_oauth_base_url     # sandbox host default
+    SQUARE_OAUTH_REDIRECT_URI = var.square_oauth_redirect_uri # exact URL registered at Square
+    SQUARE_SECRETS_PROJECT_ID = var.project_id                # token vault lives in this project
   }
 }
 
@@ -142,6 +197,27 @@ resource "google_cloud_run_v2_service" "dis_ui_server" {
         }
       }
 
+      # Square OAuth secrets (S2): value by reference only, never inline.
+      env {
+        name = "SQUARE_APP_SECRET" # the Square client_secret; never logged
+        value_source {
+          secret_key_ref {
+            secret  = data.google_secret_manager_secret.square_app_secret.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name = "STATE_SIGNING_KEY" # HMAC key signing the OAuth state token
+        value_source {
+          secret_key_ref {
+            secret  = data.google_secret_manager_secret.oauth_state_key.secret_id
+            version = "latest"
+          }
+        }
+      }
+
       # Liveness path: /healthz (handlers/health.py:38; DB-free, returns 200
       # fast). NOT /readyz (which opens the dis-rls session and needs the DB).
       startup_probe {
@@ -166,6 +242,8 @@ resource "google_cloud_run_v2_service" "dis_ui_server" {
 
   depends_on = [
     google_secret_manager_secret_iam_member.database_url,
+    google_secret_manager_secret_iam_member.square_app_secret,
+    google_secret_manager_secret_iam_member.oauth_state_key,
     google_storage_bucket_iam_member.bronze_object_admin,
     google_pubsub_topic_iam_member.csv_publisher,
   ]

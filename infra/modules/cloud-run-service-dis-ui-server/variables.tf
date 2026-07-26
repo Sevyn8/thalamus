@@ -116,3 +116,35 @@ variable "secret_database_url" {
   description = "Secret Manager secret name holding the full SQLAlchemy POSTGRES_URL (private-IP TCP, sslmode=require)."
   default     = "dis-database-url"
 }
+
+# --- Square OAuth connect (S2). client_id + redirect_uri are per-env inputs; base URL and
+#     the two secret names ride defaults. The app secret and state-signing key are
+#     secret-backed env (created out of band, referenced by name). ---
+
+variable "square_client_id" {
+  type        = string
+  description = "SQUARE_CLIENT_ID: the Square application ID (public). Sandbox app id for staging."
+}
+
+variable "square_oauth_base_url" {
+  type        = string
+  description = "SQUARE_OAUTH_BASE_URL: the Square OAuth host. Sandbox default; prod is https://connect.squareup.com."
+  default     = "https://connect.squareupsandbox.com"
+}
+
+variable "square_oauth_redirect_uri" {
+  type        = string
+  description = "SQUARE_OAUTH_REDIRECT_URI: the exact redirect URL registered in the Square dashboard (the SPA callback route)."
+}
+
+variable "secret_square_app_secret" {
+  type        = string
+  description = "Secret Manager secret name holding the Square application secret (client_secret). Created out of band."
+  default     = "square-app-secret"
+}
+
+variable "secret_oauth_state_key" {
+  type        = string
+  description = "Secret Manager secret name holding the HMAC key that signs the OAuth state token. Created out of band."
+  default     = "dis-ui-oauth-state-key"
+}
