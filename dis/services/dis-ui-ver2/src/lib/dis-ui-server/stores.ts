@@ -69,3 +69,32 @@ export function useStoresOnboarded(snapshot: AuthSnapshot | null) {
     retry: false,
   })
 }
+
+// GET /api/v1/stores-onboarded/for-tenant/{tenantId} -> a PLATFORM ops caller's cross-tenant
+// read of an acted-for tenant's onboarded stores (the counterpart of getStoresOnboarded, which
+// is token-tenant-pinned and 403s for a PLATFORM caller). Real mode calls the live endpoint;
+// fixture mode returns the acted-for tenant's inlined fixtures, so local dev + tests need no
+// backend.
+export async function getStoresOnboardedForTenant(tenantId: string): Promise<OnboardedStore[]> {
+  if (isRealMode()) {
+    return getJson<OnboardedStore[]>(
+      `/api/v1/stores-onboarded/for-tenant/${encodeURIComponent(tenantId)}`,
+    )
+  }
+  return [...(STORE_FIXTURES[tenantId] ?? [])]
+}
+
+// The acted-for tenant's stores for the PLATFORM Square journey. Disabled until a tenant is
+// chosen (tenantId null/''), so it never fires before the caller has picked one.
+export function useStoresOnboardedForTenant(
+  snapshot: AuthSnapshot | null,
+  tenantId: string | null,
+) {
+  return useQuery({
+    queryKey: ['dis-ui-server', 'stores-onboarded', 'for-tenant', tenantId ?? 'none'],
+    queryFn: () => getStoresOnboardedForTenant(tenantId as string),
+    enabled: snapshot !== null && tenantId !== null && tenantId !== '',
+    staleTime: Infinity,
+    retry: false,
+  })
+}

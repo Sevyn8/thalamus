@@ -21,10 +21,23 @@ vi.mock('../../../lib/dis-ui-server/mapping-templates', () => ({
 vi.mock('../../../lib/dis-ui-server/square-oauth', () => ({
   getSquareAuthorizeUrl: vi.fn().mockResolvedValue({ authorize_url: 'https://sq.test/x', state: 's' }),
 }))
+// Store reads: TENANT via /stores-onboarded, PLATFORM via the acted-for cross-tenant read.
+// Each returns a single store so it auto-selects (the common sandbox case).
+vi.mock('../../../lib/dis-ui-server/stores', () => ({
+  useStoresOnboarded: vi.fn(() => ({
+    data: [{ store_id: 's1', name: 'Buc-ees Katy', store_code: 'AMB-001', status: 'active' }],
+    isPending: false,
+  })),
+  useStoresOnboardedForTenant: vi.fn(() => ({
+    data: [{ store_id: 's2', name: 'Zabka #1', store_code: 'ZAB-001', status: 'active' }],
+    isPending: false,
+  })),
+}))
 
 import { createMappingTemplateIfAbsent } from '../../../lib/dis-ui-server/mapping-templates'
 import { createSourceIfAbsent } from '../../../lib/dis-ui-server/sources'
 import { getSquareAuthorizeUrl } from '../../../lib/dis-ui-server/square-oauth'
+import { useStoresOnboarded } from '../../../lib/dis-ui-server/stores'
 
 const TENANT_SNAP = { userId: 'u', tenantId: 't', storeId: null, roles: [], userType: 'TENANT' as const }
 const PLATFORM_SNAP = {
@@ -58,7 +71,11 @@ describe('SquareJourney — TENANT persona', () => {
     fireEvent.click(screen.getByRole('button', { name: /Register source & template/ }))
     await screen.findByRole('button', { name: /Sign in with Square/ })
     expect(createSourceIfAbsent).toHaveBeenCalledWith(
-      expect.objectContaining({ source_id: 'square_pos_v2', acting_for_tenant_id: undefined }),
+      expect.objectContaining({
+        source_id: 'square_pos_v2',
+        acting_for_tenant_id: undefined,
+        store_id: 'AMB-001', // the real onboarded store, auto-selected (no more W-001 hardcode)
+      }),
     )
     expect(createMappingTemplateIfAbsent).toHaveBeenCalledWith(
       expect.objectContaining({ template_type: 'snapshot', acting_for_tenant_id: undefined }),
@@ -112,7 +129,11 @@ describe('SquareJourney — PLATFORM persona', () => {
     fireEvent.click(screen.getByRole('button', { name: /Register source & template/ }))
     await screen.findByRole('button', { name: /Sign in with Square/ })
     expect(createSourceIfAbsent).toHaveBeenCalledWith(
-      expect.objectContaining({ source_id: 'square_pos_v2', acting_for_tenant_id: 'ten-zabka' }),
+      expect.objectContaining({
+        source_id: 'square_pos_v2',
+        acting_for_tenant_id: 'ten-zabka',
+        store_id: 'ZAB-001', // the acted-for tenant's store, from the cross-tenant read
+      }),
     )
     expect(createMappingTemplateIfAbsent).toHaveBeenCalledWith(
       expect.objectContaining({ template_type: 'snapshot', acting_for_tenant_id: 'ten-zabka' }),
@@ -149,5 +170,60 @@ describe('SquareJourney — first-pull affordance (both personas)', () => {
       'href',
       '/canonical',
     )
+  })
+})
+
+describe('SquareJourney — store selection (PLATFORM)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    sessionStorage.clear()
+  })
+
+  it('hides the store picker until a tenant is selected, then shows the acted-for stores', () => {
+    renderJourney('/connect/square', PLATFORM_SNAP)
+    // No tenant chosen yet -> the cross-tenant store read is gated, no picker.
+    expect(screen.queryByLabelText('Store to connect')).toBeNull()
+    fireEvent.change(screen.getByLabelText('Tenant to connect'), { target: { value: 'ten-zabka' } })
+    expect(screen.getByLabelText('Store to connect')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /ZAB-001/ })).toBeInTheDocument()
+  })
+})
+
+describe('SquareJourney — store selection (TENANT)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    sessionStorage.clear()
+    // Default: one onboarded store (auto-selects). Individual tests override for multi/empty.
+    vi.mocked(useStoresOnboarded).mockReturnValue({
+      data: [{ store_id: 's1', name: 'Buc-ees Katy', store_code: 'AMB-001', status: 'active' }],
+      isPending: false,
+    } as never)
+  })
+
+  it('shows the store picker with the real onboarded store', () => {
+    renderJourney('/connect/square', TENANT_SNAP)
+    expect(screen.getByLabelText('Store to connect')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /AMB-001/ })).toBeInTheDocument()
+  })
+
+  it('requires an explicit pick when multiple stores exist (Register disabled until chosen)', () => {
+    vi.mocked(useStoresOnboarded).mockReturnValue({
+      data: [
+        { store_id: 's1', name: 'Store A', store_code: 'AMB-001', status: 'active' },
+        { store_id: 's2', name: 'Store B', store_code: 'AMB-002', status: 'active' },
+      ],
+      isPending: false,
+    } as never)
+    renderJourney('/connect/square', TENANT_SNAP)
+    expect(screen.getByRole('button', { name: /Register source & template/ })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Store to connect'), { target: { value: 'AMB-002' } })
+    expect(screen.getByRole('button', { name: /Register source & template/ })).toBeEnabled()
+  })
+
+  it('disables Register with a hint when no store has a store code', () => {
+    vi.mocked(useStoresOnboarded).mockReturnValue({ data: [], isPending: false } as never)
+    renderJourney('/connect/square', TENANT_SNAP)
+    expect(screen.getByText(/No onboarded store with a store code/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Register source & template/ })).toBeDisabled()
   })
 })

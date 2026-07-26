@@ -1,16 +1,17 @@
 import type { MappingColumn } from '../../../lib/dis-ui-server/mapping-templates'
 
 // The Square journey's registration config. Reuses the equivalence-proven set (the same one
-// OnboardSquare + the spine's provisioning.py use): channel='api', store W-001, a 'snapshot'
-// template with one column per SNAPSHOT_HEADER field. The source_id is also the vault key
-// (authorize-url binds it into the signed state; complete writes the vault at it) and the
-// connector trigger's key, so all three line up for the sandbox acceptance target.
+// OnboardSquare + the spine's provisioning.py use): channel='api', a 'snapshot' template with
+// one column per SNAPSHOT_HEADER field. The source_id is also the vault key (authorize-url binds
+// it into the signed state; complete writes the vault at it) and the connector trigger's key, so
+// all three line up for the sandbox acceptance target.
 //
-// Generalized Square-location -> DIS store_id mapping is a documented deferral (Sanjeev spec /
-// S4); the sandbox journey uses the single W-001 store.
+// The store is NO LONGER hardcoded: the Register step selects a real onboarded store (the
+// retired W-001 was OnboardSquare's equivalence config; the seeded DIS store is AMB-001 now).
+// See SquareJourney's store picker (TENANT reads /stores-onboarded; PLATFORM reads the acted-for
+// tenant's stores via /stores-onboarded/for-tenant/{id}).
 
 export const SQUARE_SOURCE_ID = 'square_pos_v2'
-export const SQUARE_STORE_CODE = 'W-001'
 export const SQUARE_DISPLAY_NAME = 'Square POS (sandbox)'
 export const SQUARE_TEMPLATE_NAME = 'square snapshot'
 

@@ -5,6 +5,11 @@ import { useAuth } from '../../../auth/useAuth'
 import { createMappingTemplateIfAbsent } from '../../../lib/dis-ui-server/mapping-templates'
 import { createSourceIfAbsent, useSources } from '../../../lib/dis-ui-server/sources'
 import { getSquareAuthorizeUrl } from '../../../lib/dis-ui-server/square-oauth'
+import {
+  useStoresOnboarded,
+  useStoresOnboardedForTenant,
+} from '../../../lib/dis-ui-server/stores'
+import type { OnboardedStore } from '../../../lib/dis-ui-server/stores'
 import { distinctTenants, tenantName } from '../../../lib/dis-ui-server/tenant-label'
 import { StepRail } from '../StepRail'
 import type { RailStep } from '../StepRail'
@@ -13,7 +18,6 @@ import {
   SNAPSHOT_COLUMNS,
   SQUARE_DISPLAY_NAME,
   SQUARE_SOURCE_ID,
-  SQUARE_STORE_CODE,
   SQUARE_TEMPLATE_NAME,
   writeSquarePending,
 } from './config'
@@ -82,6 +86,34 @@ export function SquareJourney() {
   const actedFor = isPlatform && selectedTenant !== '' ? selectedTenant : undefined
   const platformNeedsTenant = isPlatform && selectedTenant === ''
 
+  // Store selection (replaces the retired W-001 hardcode; the seeded DIS store is AMB-001 now).
+  // TENANT reads its own onboarded stores; PLATFORM reads the acted-for tenant's stores via the
+  // cross-tenant endpoint (gated on the tenant selection). Exactly one query fires per persona:
+  // the other is passed null so it stays disabled (a PLATFORM caller must never hit the
+  // token-tenant-pinned /stores-onboarded, which 403s for it).
+  const tenantStoresQuery = useStoresOnboarded(isPlatform ? null : snapshot)
+  const platformStoresQuery = useStoresOnboardedForTenant(
+    snapshot,
+    isPlatform ? (selectedTenant === '' ? null : selectedTenant) : null,
+  )
+  const storesQuery = isPlatform ? platformStoresQuery : tenantStoresQuery
+
+  const [selectedStore, setSelectedStore] = useState('')
+  // Only stores with a store_code are selectable (store_code is the source's store_id; a NULL
+  // code, D55, cannot be a source key). Label pairs the name with the code for disambiguation.
+  const storeOptions = useMemo(
+    () =>
+      (storesQuery.data ?? [])
+        .filter((s): s is OnboardedStore & { store_code: string } => s.store_code !== null)
+        .map((s) => ({ code: s.store_code, label: `${s.name} (${s.store_code})` })),
+    [storesQuery.data],
+  )
+  // Single store auto-selects (derived, no effect): the explicit pick wins, else the sole
+  // option, else empty (multi-store requires an explicit pick before Register enables).
+  const effectiveStore =
+    selectedStore !== '' ? selectedStore : storeOptions.length === 1 ? storeOptions[0].code : ''
+  const needsStore = effectiveStore === ''
+
   async function register(): Promise<void> {
     setRegisterPhase('running')
     setError(null)
@@ -90,7 +122,7 @@ export function SquareJourney() {
         source_id: SQUARE_SOURCE_ID,
         display_name: SQUARE_DISPLAY_NAME,
         channel: 'api',
-        store_id: SQUARE_STORE_CODE,
+        store_id: effectiveStore,
         acting_for_tenant_id: actedFor,
       })
       // Idempotent on re-entry: the template create is 409-tolerant (name already used by a
@@ -154,21 +186,51 @@ export function SquareJourney() {
     )
   }
 
+  function storePicker() {
+    // Not shown until a PLATFORM caller has picked a tenant (the store read is gated on it).
+    if (isPlatform && selectedTenant === '') return null
+    return (
+      <div className="field" style={{ marginBottom: 16 }}>
+        <label htmlFor="sq-store">Store to connect</label>
+        {storesQuery.isPending ? (
+          <span className="hint">Loading stores...</span>
+        ) : storeOptions.length === 0 ? (
+          <span className="hint">
+            No onboarded store with a store code is available for this tenant.
+          </span>
+        ) : (
+          <select
+            id="sq-store"
+            value={effectiveStore}
+            onChange={(e) => setSelectedStore(e.target.value)}
+          >
+            {storeOptions.length > 1 ? <option value="">Select a store...</option> : null}
+            {storeOptions.map((s) => (
+              <option key={s.code} value={s.code}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+    )
+  }
+
   function panel() {
     if (step === 0) {
       return (
         <>
           <p className="sub" style={{ marginBottom: 16 }}>
             Registers the Square source <span className="mono">{SQUARE_SOURCE_ID}</span> and an
-            ACTIVE snapshot mapping template for store{' '}
-            <span className="mono">{SQUARE_STORE_CODE}</span>.
+            ACTIVE snapshot mapping template for the selected store.
           </p>
           {tenantPicker()}
+          {storePicker()}
           <button
             type="button"
             className="btn pri"
             onClick={() => void register()}
-            disabled={registerPhase === 'running' || platformNeedsTenant}
+            disabled={registerPhase === 'running' || platformNeedsTenant || needsStore}
           >
             {registerPhase === 'running' ? 'Registering...' : 'Register source & template'}
           </button>
