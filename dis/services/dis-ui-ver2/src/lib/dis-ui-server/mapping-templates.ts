@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 
 import type { AuthSnapshot } from '../../auth/AuthSnapshot'
-import { getJson, patchJson, postJson } from './client'
+import { DisUiServerHttpError, getJson, patchJson, postJson } from './client'
 import { isRealMode } from './mode'
 
 // Mapping-template endpoints (slice 14b, D68): a mapping is a TEMPLATE - a version lineage
@@ -556,6 +556,25 @@ export async function createMappingTemplate(
     rules,
     true, // create writes the v1 ACTIVE (create-as-ACTIVE, D88)
   )
+}
+
+// Create a template, TOLERATING a 409 (the BFF's ex_csm_template_name_per_source: the
+// template_name is already used by another template of this source — e.g. a prior run of a
+// re-entrant journey). Any other error propagates (never silently swallowed). Returns true if
+// newly created, false if it already existed. Mirrors createSourceIfAbsent so the Square
+// Register step is idempotent on re-entry (source 409 + template 409 -> advance, not error).
+export async function createMappingTemplateIfAbsent(
+  body: MappingTemplateCreate,
+): Promise<boolean> {
+  try {
+    await createMappingTemplate(body)
+    return true
+  } catch (err) {
+    if (err instanceof DisUiServerHttpError && err.status === 409) {
+      return false
+    }
+    throw err
+  }
 }
 
 // Activation is no longer a separate step: create-as-ACTIVE (D88) writes the v1 ACTIVE in one

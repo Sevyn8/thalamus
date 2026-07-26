@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 
 import { useAuth } from '../../../auth/useAuth'
-import { createMappingTemplate } from '../../../lib/dis-ui-server/mapping-templates'
+import { createMappingTemplateIfAbsent } from '../../../lib/dis-ui-server/mapping-templates'
 import { createSourceIfAbsent, useSources } from '../../../lib/dis-ui-server/sources'
 import { getSquareAuthorizeUrl } from '../../../lib/dis-ui-server/square-oauth'
 import { distinctTenants, tenantName } from '../../../lib/dis-ui-server/tenant-label'
@@ -56,6 +56,9 @@ export function SquareJourney() {
   const [registerPhase, setRegisterPhase] = useState<Phase>('idle')
   const [connectPhase, setConnectPhase] = useState<Phase>('idle')
   const [error, setError] = useState<string | null>(null)
+  // Re-entry: on a second pass both the source and the template already exist (each 409,
+  // tolerated). Surface an "already registered" note on Connect instead of a step error.
+  const [alreadyRegistered, setAlreadyRegistered] = useState(false)
 
   // PLATFORM tenant picker: distinct tenants from the sources list (auto-populated, no new
   // endpoint). Pre-select the resume hint's tenant when returning mid-connect.
@@ -83,20 +86,23 @@ export function SquareJourney() {
     setRegisterPhase('running')
     setError(null)
     try {
-      await createSourceIfAbsent({
+      const sourceCreated = await createSourceIfAbsent({
         source_id: SQUARE_SOURCE_ID,
         display_name: SQUARE_DISPLAY_NAME,
         channel: 'api',
         store_id: SQUARE_STORE_CODE,
         acting_for_tenant_id: actedFor,
       })
-      await createMappingTemplate({
+      // Idempotent on re-entry: the template create is 409-tolerant (name already used by a
+      // prior run's template of this source), the same posture as the source create above.
+      const templateCreated = await createMappingTemplateIfAbsent({
         source_id: SQUARE_SOURCE_ID,
         template_name: SQUARE_TEMPLATE_NAME,
         template_type: 'snapshot',
         columns: SNAPSHOT_COLUMNS,
         acting_for_tenant_id: actedFor,
       })
+      setAlreadyRegistered(!sourceCreated && !templateCreated)
       setRegisterPhase('idle')
       setStep(1)
     } catch (err) {
@@ -172,6 +178,11 @@ export function SquareJourney() {
     if (step === 1) {
       return (
         <>
+          {alreadyRegistered ? (
+            <div className="okbox" role="status" style={{ marginBottom: 12 }}>
+              Source and mapping template were already registered. Continue to authorize Square.
+            </div>
+          ) : null}
           <p className="sub" style={{ marginBottom: 16 }}>
             You will be sent to Square to authorize read access (locations, catalogue, inventory,
             orders). Square returns you here to finish.

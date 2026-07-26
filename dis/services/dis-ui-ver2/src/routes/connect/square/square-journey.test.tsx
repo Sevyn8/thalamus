@@ -16,13 +16,13 @@ vi.mock('../../../lib/dis-ui-server/sources', () => ({
   useSources: vi.fn(() => ({ data: FLEET_SOURCES, isPending: false })),
 }))
 vi.mock('../../../lib/dis-ui-server/mapping-templates', () => ({
-  createMappingTemplate: vi.fn().mockResolvedValue({ template_id: 'tmpl_1' }),
+  createMappingTemplateIfAbsent: vi.fn().mockResolvedValue(true),
 }))
 vi.mock('../../../lib/dis-ui-server/square-oauth', () => ({
   getSquareAuthorizeUrl: vi.fn().mockResolvedValue({ authorize_url: 'https://sq.test/x', state: 's' }),
 }))
 
-import { createMappingTemplate } from '../../../lib/dis-ui-server/mapping-templates'
+import { createMappingTemplateIfAbsent } from '../../../lib/dis-ui-server/mapping-templates'
 import { createSourceIfAbsent } from '../../../lib/dis-ui-server/sources'
 import { getSquareAuthorizeUrl } from '../../../lib/dis-ui-server/square-oauth'
 
@@ -60,7 +60,7 @@ describe('SquareJourney — TENANT persona', () => {
     expect(createSourceIfAbsent).toHaveBeenCalledWith(
       expect.objectContaining({ source_id: 'square_pos_v2', acting_for_tenant_id: undefined }),
     )
-    expect(createMappingTemplate).toHaveBeenCalledWith(
+    expect(createMappingTemplateIfAbsent).toHaveBeenCalledWith(
       expect.objectContaining({ template_type: 'snapshot', acting_for_tenant_id: undefined }),
     )
   })
@@ -70,6 +70,27 @@ describe('SquareJourney — TENANT persona', () => {
     fireEvent.click(screen.getByRole('button', { name: /Register source & template/ }))
     fireEvent.click(await screen.findByRole('button', { name: /Sign in with Square/ }))
     await waitFor(() => expect(getSquareAuthorizeUrl).toHaveBeenCalledWith('square_pos_v2', undefined))
+  })
+
+  it('re-entry with both source + template pre-existing advances to Connect with a note', async () => {
+    // Both writes report "already exists" (409, tolerated) -> the journey must advance, not error.
+    vi.mocked(createSourceIfAbsent).mockResolvedValueOnce(false)
+    vi.mocked(createMappingTemplateIfAbsent).mockResolvedValueOnce(false)
+    renderJourney('/connect/square', TENANT_SNAP)
+    fireEvent.click(screen.getByRole('button', { name: /Register source & template/ }))
+    await screen.findByRole('button', { name: /Sign in with Square/ })
+    expect(screen.getByText(/already registered/i)).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('surfaces a genuine (non-409) template error instead of advancing', async () => {
+    // A non-409 from the template create is re-thrown by createMappingTemplateIfAbsent; the
+    // Register step must show it and stay put (no Connect button).
+    vi.mocked(createMappingTemplateIfAbsent).mockRejectedValueOnce(new Error('template boom'))
+    renderJourney('/connect/square', TENANT_SNAP)
+    fireEvent.click(screen.getByRole('button', { name: /Register source & template/ }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('template boom')
+    expect(screen.queryByRole('button', { name: /Sign in with Square/ })).toBeNull()
   })
 })
 
@@ -93,7 +114,7 @@ describe('SquareJourney — PLATFORM persona', () => {
     expect(createSourceIfAbsent).toHaveBeenCalledWith(
       expect.objectContaining({ source_id: 'square_pos_v2', acting_for_tenant_id: 'ten-zabka' }),
     )
-    expect(createMappingTemplate).toHaveBeenCalledWith(
+    expect(createMappingTemplateIfAbsent).toHaveBeenCalledWith(
       expect.objectContaining({ template_type: 'snapshot', acting_for_tenant_id: 'ten-zabka' }),
     )
   })
