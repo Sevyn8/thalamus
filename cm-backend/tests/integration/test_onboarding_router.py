@@ -25,6 +25,7 @@ from admin_backend.config import Settings, get_settings
 from admin_backend.db.session import get_tenant_session
 from admin_backend.main import create_app
 from admin_backend.models.tenant import TenantStatus
+from admin_backend.repositories.tenant_users import TenantUsersRepo
 
 from tests.integration.conftest import seed_completion_facts
 
@@ -551,17 +552,15 @@ async def test_ob3_admin_invited_true_when_invited_at_set(
     app_client, super_admin_jwt, make_tenant, make_tenant_user,
     session_factory, platform_auth,
 ) -> None:
-    """LOAD-BEARING: admin_invited derives from tenant_users.invited_at."""
+    """LOAD-BEARING: admin_invited derives from tenant_users.invited_at.
+
+    invited_at is set via the sole legitimate writer (repo.mark_invited,
+    the send-invitation endpoint's last step), not a raw back-write."""
     tenant = await make_tenant(name="OB3")
     tu = await make_tenant_user(tenant_id=tenant.id, status="INVITED")
-    schema = get_settings().db_schema
     async for session in get_tenant_session(platform_auth, session_factory):
-        await session.execute(
-            text(
-                f"UPDATE {schema}.tenant_users SET invited_at = now() "
-                "WHERE id = :id"
-            ),
-            {"id": tu.id},
+        await TenantUsersRepo().mark_invited(
+            session, tu.id, actor_user_id=platform_auth.user_id
         )
     body = app_client.get(
         f"/api/v1/tenants/{tenant.id}/onboarding",

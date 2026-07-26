@@ -2362,3 +2362,33 @@ async def test_s9_patch_email_rejects_platform_email(
     payload = resp.json()
     assert payload["code"] == "EMAIL_ALREADY_EXISTS"
     assert payload["message"] == "This email is already in use on the platform."
+
+
+async def test_c12_create_leaves_invited_at_null(
+    app_client: TestClient,
+    super_admin_jwt: str,
+    make_tenant: Any,
+    make_org_node: Any,
+    make_role: Any,
+    cleanup_tenant_users_router: list[UUID],
+) -> None:
+    """State-truth: a freshly created tenant_user has invited_at NULL.
+
+    invited_at is the "invite email dispatched" marker, written only by
+    mark_invited (the send-invitation endpoint's last step). It must NOT be
+    set at row creation, else a merely-created admin reads as INVITED and
+    satisfies the complete-onboarding gate before any invite is sent."""
+    tenant_id, root_id, _ = await _seed_tenant_with_root(
+        make_tenant, make_org_node, name="C12-Tenant"
+    )
+    role = await make_role(audience="TENANT")
+    body = _valid_create_body(
+        tenant_id=tenant_id, role_assignments=[(role.id, root_id)]
+    )
+    resp = app_client.post(
+        "/api/v1/tenant-users", json=body, headers=_auth(super_admin_jwt)
+    )
+    assert resp.status_code == 201, resp.text
+    j = resp.json()
+    cleanup_tenant_users_router.append(UUID(j["id"]))
+    assert j["invited_at"] is None

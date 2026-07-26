@@ -72,6 +72,7 @@ from admin_backend.models.tenant_module_access import (
     ModuleCode,
     TenantModuleAccess,
 )
+from admin_backend.repositories.tenant_users import TenantUsersRepo
 
 
 @pytest.fixture(scope="module")
@@ -311,20 +312,34 @@ async def seed_completion_facts(
             # the valid "invitation sent, not yet accepted" state (honours
             # ck_tenant_users_auth0_sub_consistency +
             # ck_tenant_users_invitation_accepted_consistency).
-            await session.execute(
-                text(
-                    f"""
-                    INSERT INTO {schema}.tenant_users (
-                        tenant_id, email, full_name, status, invited_at
-                    ) VALUES (
-                        :tid, :email, 'Onboarding Admin', 'INVITED', now()
-                    )
-                    """
-                ),
-                {
-                    "tid": tenant_id,
-                    "email": f"admin-{tenant_id.hex[:8]}@test.example.com",
-                },
+            #
+            # invited_at is written via the SOLE legitimate writer,
+            # repo.mark_invited (the send-invitation endpoint's last step),
+            # not a raw back-write. The full send-invitation endpoint is
+            # 503 locally (no Auth0 mgmt client), but mark_invited is a pure
+            # DB write reachable here -- the honest path for the invited
+            # fact. The row is created with invited_at NULL (matching
+            # create), then marked.
+            new_id = (
+                await session.execute(
+                    text(
+                        f"""
+                        INSERT INTO {schema}.tenant_users (
+                            tenant_id, email, full_name, status
+                        ) VALUES (
+                            :tid, :email, 'Onboarding Admin', 'INVITED'
+                        )
+                        RETURNING id
+                        """
+                    ),
+                    {
+                        "tid": tenant_id,
+                        "email": f"admin-{tenant_id.hex[:8]}@test.example.com",
+                    },
+                )
+            ).scalar_one()
+            _row, _res = await TenantUsersRepo().mark_invited(
+                session, UUID(str(new_id)), actor_user_id=auth.user_id
             )
         if docs:
             # A VERIFIED document requires verified_by_user_id (FK

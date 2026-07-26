@@ -825,6 +825,14 @@ class TenantUsersRepo:
         ``auth0_sub`` and ``invitation_accepted_at`` stay NULL until
         Stage 3's Auth0 invite-accept callback).
 
+        ``invited_at`` is left NULL at creation: it is the "invite email
+        dispatched" marker, written ONLY by ``mark_invited`` after a
+        successful ticket + SendGrid send (the ``send-invitation``
+        endpoint). Setting it at row creation conflated "created" with
+        "invited" and made a merely-created admin read as INVITED (and
+        satisfy the complete-onboarding gate) even when provisioning
+        failed and no email was sent.
+
         Step 6.14 (vs 6.10.1): ``role_assignments`` is a list of
         ``(role_id, org_node_id)`` tuples. Tenant-root-only anchoring
         is retired; any non-archived org_node in the same tenant is
@@ -882,7 +890,7 @@ class TenantUsersRepo:
                     ) VALUES (
                         :tenant_id, :email, :full_name,
                         CAST('INVITED' AS {schema}.tenant_user_status_enum),
-                        NULL, now(), NULL,
+                        NULL, NULL, NULL,
                         :actor, CAST(:actor_type AS {schema}.actor_user_type_enum),
                         :actor, CAST(:actor_type AS {schema}.actor_user_type_enum)
                     )

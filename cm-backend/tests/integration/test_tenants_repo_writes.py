@@ -202,6 +202,13 @@ async def _seed_required_sections(session, tenant_id, actor_id) -> None:
         ),
         {"org": f"org_test_{tenant_id.hex[:12]}", "tid": tenant_id},
     )
+    # invited_at direct-write (repo-level exception). The honest writer
+    # repo.mark_invited calls session.expire_all(), which is incompatible
+    # with this repo-writes test's shared ORM session (it expires the
+    # in-flight Tenant object the caller still uses). The router-level
+    # complete-onboarding gate tests exercise the honest mark_invited path
+    # via seed_completion_facts (conftest); this low-level seed writes the
+    # column directly.
     await session.execute(
         text(
             f"""
