@@ -13,6 +13,13 @@ vi.mock('../../../lib/dis-ui-server/square-oauth', () => ({
 import { completeSquareOAuth } from '../../../lib/dis-ui-server/square-oauth'
 
 const SNAP = { userId: 'u', tenantId: 't', storeId: null, roles: [], userType: 'TENANT' as const }
+const PLATFORM_SNAP = {
+  userId: 'ops',
+  tenantId: null,
+  storeId: null,
+  roles: ['dis:ops'],
+  userType: 'PLATFORM' as const,
+}
 
 // A marker for the journey route so success navigation is observable (renders the query).
 function JourneyMarker(): React.ReactElement {
@@ -20,20 +27,20 @@ function JourneyMarker(): React.ReactElement {
   return <div>JOURNEY connected={params.get('connected')} source={params.get('source_id')}</div>
 }
 
-function renderCallback(entry: string): void {
+function renderCallback(entry: string, snapshot: typeof SNAP | typeof PLATFORM_SNAP = SNAP): void {
   renderWithProviders(
     <Routes>
       <Route path="/connectors/square/callback" element={<SquareCallback />} />
       <Route path="/connect/square" element={<JourneyMarker />} />
     </Routes>,
-    { snapshot: SNAP, initialEntries: [entry] },
+    { snapshot, initialEntries: [entry] },
   )
 }
 
 describe('SquareCallback', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('completes the exchange and routes into the journey (connected)', async () => {
+  it('completes the exchange and routes into the journey (TENANT)', async () => {
     vi.mocked(completeSquareOAuth).mockResolvedValue({
       connector: 'square',
       status: 'connected',
@@ -42,6 +49,19 @@ describe('SquareCallback', () => {
     })
     renderCallback('/connectors/square/callback?code=c&state=s')
     expect(await screen.findByText(/JOURNEY connected=1 source=square_pos_v2/)).toBeInTheDocument()
+    expect(completeSquareOAuth).toHaveBeenCalledWith({ code: 'c', state: 's' })
+  })
+
+  it('completes the exchange for a PLATFORM caller too (tenant rides the state, not the body)', async () => {
+    vi.mocked(completeSquareOAuth).mockResolvedValue({
+      connector: 'square',
+      status: 'connected',
+      source_id: 'square_pos_v2',
+      merchant_id: 'M2',
+    })
+    renderCallback('/connectors/square/callback?code=c&state=s', PLATFORM_SNAP)
+    expect(await screen.findByText(/JOURNEY connected=1 source=square_pos_v2/)).toBeInTheDocument()
+    // The client POSTs only {code, state}; the acted-for tenant was bound into the state.
     expect(completeSquareOAuth).toHaveBeenCalledWith({ code: 'c', state: 's' })
   })
 

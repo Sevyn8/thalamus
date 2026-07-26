@@ -30,5 +30,32 @@ export const SNAPSHOT_COLUMNS: MappingColumn[] = [
 
 // sessionStorage key: a resume hint set before the OAuth redirect, so a session that expires
 // mid-consent (bounced to login, then back) can show "resume connecting Square" instead of a
-// blank restart. Cleared on a successful complete.
+// blank restart. Carries the acted-for tenant so a PLATFORM resume keeps its selection. Cleared
+// on a successful complete.
 export const SQUARE_PENDING_KEY = 'square.connect.pending'
+
+export type SquarePending = {
+  source_id: string
+  // The PLATFORM acted-for tenant for this connect, or null for a TENANT connect.
+  acting_for_tenant_id: string | null
+}
+
+export function writeSquarePending(pending: SquarePending): void {
+  sessionStorage.setItem(SQUARE_PENDING_KEY, JSON.stringify(pending))
+}
+
+export function readSquarePending(): SquarePending | null {
+  const raw = sessionStorage.getItem(SQUARE_PENDING_KEY)
+  if (raw === null) return null
+  try {
+    const parsed = JSON.parse(raw) as Partial<SquarePending>
+    if (typeof parsed.source_id !== 'string') return null
+    return {
+      source_id: parsed.source_id,
+      acting_for_tenant_id:
+        typeof parsed.acting_for_tenant_id === 'string' ? parsed.acting_for_tenant_id : null,
+    }
+  } catch {
+    return null
+  }
+}

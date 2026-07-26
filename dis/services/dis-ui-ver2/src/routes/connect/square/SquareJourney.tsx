@@ -1,18 +1,21 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 
+import { useAuth } from '../../../auth/useAuth'
 import { createMappingTemplate } from '../../../lib/dis-ui-server/mapping-templates'
-import { createSourceIfAbsent } from '../../../lib/dis-ui-server/sources'
+import { createSourceIfAbsent, useSources } from '../../../lib/dis-ui-server/sources'
 import { getSquareAuthorizeUrl } from '../../../lib/dis-ui-server/square-oauth'
+import { distinctTenants, tenantName } from '../../../lib/dis-ui-server/tenant-label'
 import { StepRail } from '../StepRail'
 import type { RailStep } from '../StepRail'
 import {
+  readSquarePending,
   SNAPSHOT_COLUMNS,
   SQUARE_DISPLAY_NAME,
-  SQUARE_PENDING_KEY,
   SQUARE_SOURCE_ID,
   SQUARE_STORE_CODE,
   SQUARE_TEMPLATE_NAME,
+  writeSquarePending,
 } from './config'
 
 // The Square connect journey (its own route/component tree; reuses the StepRail primitive).
@@ -24,6 +27,13 @@ import {
 //                  which POSTs /complete (writes the token vault) and routes back here (?connected=1).
 //   3. First pull - honest affordance: the first pull is operator-run (no scheduler yet, S4); links
 //                  to Ingestion Runs (status) and Canonical Explorer (the acceptance target).
+//
+// Persona: a PLATFORM (ops) caller connects a CLIENT's Square, so it must name the acted-for
+// tenant on every write/connect call (resolve_acted_for on the BFF; a missing one is 403
+// tenant_scope). The Register step surfaces a tenant picker sourced from the sources list (the
+// cleanest existing PLATFORM-readable, tenant-attributed read); the selection threads through
+// register + mapping-template + authorize-url and into the resume hint. A TENANT caller never
+// sends the field (the server pins its own tenant; naming one is a 403).
 
 const STEPS: RailStep[] = [
   { title: 'Register', desc: 'Source & mapping template' },
@@ -36,6 +46,9 @@ type Phase = 'idle' | 'running' | 'error'
 export function SquareJourney() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
+  const { snapshot } = useAuth()
+  const isPlatform = snapshot?.userType === 'PLATFORM'
+
   // The callback routes back here with ?connected=1 after a successful complete; jump to the
   // first-pull step. A fresh entry starts at Register.
   const connected = params.get('connected') === '1'
@@ -44,14 +57,27 @@ export function SquareJourney() {
   const [connectPhase, setConnectPhase] = useState<Phase>('idle')
   const [error, setError] = useState<string | null>(null)
 
-  const merchantId = params.get('merchant_id')
-  const connectedSourceId = params.get('source_id') ?? SQUARE_SOURCE_ID
-  // A resume hint: set before the OAuth redirect, so returning after a mid-consent login shows
-  // that a connect was in progress rather than a blank restart.
-  const resuming =
-    !connected &&
-    typeof sessionStorage !== 'undefined' &&
-    sessionStorage.getItem(SQUARE_PENDING_KEY) !== null
+  // PLATFORM tenant picker: distinct tenants from the sources list (auto-populated, no new
+  // endpoint). Pre-select the resume hint's tenant when returning mid-connect.
+  const sourcesQuery = useSources(snapshot)
+  const [selectedTenant, setSelectedTenant] = useState<string>(
+    () => readSquarePending()?.acting_for_tenant_id ?? '',
+  )
+  const tenantOptions = useMemo(() => {
+    const rows = sourcesQuery.data ?? []
+    const nameById = new Map<string, string | null>()
+    for (const row of rows) {
+      if (!nameById.has(row.tenant_id)) nameById.set(row.tenant_id, row.tenant_name ?? null)
+    }
+    return distinctTenants([...nameById.keys()])
+      .filter((id): id is string => id !== null)
+      .map((id) => ({ id, label: tenantName(nameById.get(id) ?? null, id) }))
+  }, [sourcesQuery.data])
+
+  // The acted-for tenant sent to the BFF: the PLATFORM selection, or undefined for a TENANT
+  // caller (the field is then omitted from every call).
+  const actedFor = isPlatform && selectedTenant !== '' ? selectedTenant : undefined
+  const platformNeedsTenant = isPlatform && selectedTenant === ''
 
   async function register(): Promise<void> {
     setRegisterPhase('running')
@@ -62,12 +88,14 @@ export function SquareJourney() {
         display_name: SQUARE_DISPLAY_NAME,
         channel: 'api',
         store_id: SQUARE_STORE_CODE,
+        acting_for_tenant_id: actedFor,
       })
       await createMappingTemplate({
         source_id: SQUARE_SOURCE_ID,
         template_name: SQUARE_TEMPLATE_NAME,
         template_type: 'snapshot',
         columns: SNAPSHOT_COLUMNS,
+        acting_for_tenant_id: actedFor,
       })
       setRegisterPhase('idle')
       setStep(1)
@@ -81,13 +109,43 @@ export function SquareJourney() {
     setConnectPhase('running')
     setError(null)
     try {
-      const { authorize_url } = await getSquareAuthorizeUrl(SQUARE_SOURCE_ID)
-      sessionStorage.setItem(SQUARE_PENDING_KEY, SQUARE_SOURCE_ID)
+      const { authorize_url } = await getSquareAuthorizeUrl(SQUARE_SOURCE_ID, actedFor)
+      writeSquarePending({ source_id: SQUARE_SOURCE_ID, acting_for_tenant_id: actedFor ?? null })
       window.location.href = authorize_url
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start the Square connection')
       setConnectPhase('error')
     }
+  }
+
+  function tenantPicker() {
+    if (!isPlatform) return null
+    return (
+      <div className="field" style={{ marginBottom: 16 }}>
+        <label htmlFor="sq-tenant">Tenant to connect</label>
+        {sourcesQuery.isPending ? (
+          <span className="hint">Loading tenants...</span>
+        ) : tenantOptions.length === 0 ? (
+          <span className="hint">
+            No tenants available to connect. A tenant needs at least one registered source to
+            appear here.
+          </span>
+        ) : (
+          <select
+            id="sq-tenant"
+            value={selectedTenant}
+            onChange={(e) => setSelectedTenant(e.target.value)}
+          >
+            <option value="">Select a tenant...</option>
+            {tenantOptions.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+    )
   }
 
   function panel() {
@@ -99,11 +157,12 @@ export function SquareJourney() {
             ACTIVE snapshot mapping template for store{' '}
             <span className="mono">{SQUARE_STORE_CODE}</span>.
           </p>
+          {tenantPicker()}
           <button
             type="button"
             className="btn pri"
             onClick={() => void register()}
-            disabled={registerPhase === 'running'}
+            disabled={registerPhase === 'running' || platformNeedsTenant}
           >
             {registerPhase === 'running' ? 'Registering...' : 'Register source & template'}
           </button>
@@ -113,11 +172,6 @@ export function SquareJourney() {
     if (step === 1) {
       return (
         <>
-          {resuming ? (
-            <div className="warnbox" role="note" style={{ marginBottom: 12 }}>
-              Resuming your Square connection. Sign in with Square to finish.
-            </div>
-          ) : null}
           <p className="sub" style={{ marginBottom: 16 }}>
             You will be sent to Square to authorize read access (locations, catalogue, inventory,
             orders). Square returns you here to finish.
@@ -134,6 +188,8 @@ export function SquareJourney() {
       )
     }
     // step 2: first pull (honest affordance)
+    const connectedSourceId = params.get('source_id') ?? SQUARE_SOURCE_ID
+    const merchantId = params.get('merchant_id')
     return (
       <>
         <div className="okbox" role="status" style={{ marginBottom: 12 }}>

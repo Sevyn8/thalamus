@@ -22,10 +22,21 @@ export type SquareOAuthResult = {
   merchant_id: string
 }
 
-export async function getSquareAuthorizeUrl(sourceId: string): Promise<SquareAuthorizeUrl> {
+// actingForTenantId is the PLATFORM impersonation target (the ops-connects-a-client journey).
+// The BFF resolves it via resolve_acted_for and binds it into the signed state, so complete
+// writes the vault for that tenant. TENANT callers pass undefined (the server pins their token
+// tenant; naming one would be a 403). Undefined -> the query param is omitted.
+export async function getSquareAuthorizeUrl(
+  sourceId: string,
+  actingForTenantId?: string,
+): Promise<SquareAuthorizeUrl> {
   if (isRealMode()) {
+    const acted =
+      actingForTenantId === undefined
+        ? ''
+        : `&acting_for_tenant_id=${encodeURIComponent(actingForTenantId)}`
     return getJson<SquareAuthorizeUrl>(
-      `/api/v1/connectors/square/oauth/authorize-url?source_id=${encodeURIComponent(sourceId)}`,
+      `/api/v1/connectors/square/oauth/authorize-url?source_id=${encodeURIComponent(sourceId)}${acted}`,
     )
   }
   // Fixture: a same-origin stub authorize URL that redirects straight back to the callback,
