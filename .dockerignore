@@ -1,0 +1,13 @@
+# Monorepo-root build context (used by dis/services/dis-ui-server/Dockerfile, built
+# from here). The Dockerfile's explicit COPYs bound the IMAGE; this file bounds the
+# CONTEXT sent to the daemon, keeping ~1.6GB of virtualenvs / node_modules / git out
+# of it. None of these are ever a COPY source.
+**/.venv/
+**/node_modules/
+.git/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.terraform/

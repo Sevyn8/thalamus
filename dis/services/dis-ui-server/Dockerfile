@@ -1,11 +1,14 @@
-# dis-ui-server — the DIS UI backend-for-frontend (Slice 13a foundation).
+# dis-ui-server — the DIS UI backend-for-frontend.
 #
-# FIRST service Dockerfile in this repo (convention-setting). The service is a
-# uv-workspace member, so the build context is the REPO ROOT and the workspace
-# member directories are copied explicitly (uv refuses a workspace whose
-# declared members are absent):
+# The build context is the MONOREPO ROOT. The uv workspace is rooted at dis/ and
+# declares members at ../connectors/* (siblings of dis/), so a dis/-rooted context
+# can never provide them. Every COPY is therefore dis/-prefixed, and the connectors
+# workspace members in this service's dependency closure are copied to /connectors
+# (beside the /app workspace root) so uv's ../connectors/* sources resolve.
 #
-#   docker build -f services/dis-ui-server/Dockerfile -t dis-ui-server .
+# Canonical build command (run from the monorepo root):
+#
+#   docker build -f dis/services/dis-ui-server/Dockerfile -t dis-ui-server .
 #
 # Run (the container needs POSTGRES_URL; /healthz answers without a DB):
 #
@@ -24,14 +27,21 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /app
 
-# The workspace skeleton: root project + every declared member (libs, services).
+# Connectors workspace members in dis-ui-server's closure, at /connectors so the
+# workspace's ../connectors/* sources resolve (../connectors from /app == /connectors).
+# dis-ui-server depends on thalamus-square-oauth only; it is SDK-free (deps: dis-core,
+# google-cloud-secret-manager, httpx), so connectors/sdk and connectors/thalamus-square
+# are NOT in the closure and are not copied.
+COPY connectors/square-oauth /connectors/square-oauth
+
+# The dis workspace skeleton: root project + the declared members this build reaches.
 # Explicit COPYs keep the image free of repo junk regardless of context contents.
-COPY pyproject.toml uv.lock ./
-COPY libs libs
-COPY services/mirror-sync-consumer services/mirror-sync-consumer
-COPY services/csv-ingest-worker services/csv-ingest-worker
-COPY services/streaming-consumer services/streaming-consumer
-COPY services/dis-ui-server services/dis-ui-server
+COPY dis/pyproject.toml dis/uv.lock ./
+COPY dis/libs libs
+COPY dis/services/mirror-sync-consumer services/mirror-sync-consumer
+COPY dis/services/csv-ingest-worker services/csv-ingest-worker
+COPY dis/services/streaming-consumer services/streaming-consumer
+COPY dis/services/dis-ui-server services/dis-ui-server
 
 # Install ONLY this service's dependency closure, locked (--frozen: the lock is
 # authoritative; a drifted lock fails the build instead of resolving silently).
