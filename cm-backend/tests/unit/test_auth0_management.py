@@ -17,6 +17,7 @@ from admin_backend.auth.auth0_management import (
     Auth0ManagementClientProtocol,
     Auth0User,
     Organization,
+    _generate_initial_password,
 )
 from admin_backend.config import Settings
 from admin_backend.errors import Auth0ManagementError
@@ -198,11 +199,25 @@ async def test_get_organization_by_name_missing_returns_none(settings: Settings)
 # ---------------------------------------------------------------------------
 
 
+def _assert_policy_password(pw: object) -> None:
+    """Auth0 default policy: length >= 24 and all four character classes."""
+    assert isinstance(pw, str)
+    assert len(pw) >= 24
+    assert any(c.isupper() for c in pw)
+    assert any(c.islower() for c in pw)
+    assert any(c.isdigit() for c in pw)
+    assert any(not c.isalnum() for c in pw)
+
+
 async def test_create_user_request_shape_and_parse(settings: Settings) -> None:
     def responder(request: httpx.Request) -> httpx.Response:
         assert request.method == "POST"
         assert request.url.path == "/api/v2/users"
-        assert _body(request) == {
+        body = _body(request)
+        # The password is required by Auth0 and must satisfy the policy
+        # deterministically; it is separated out and the rest asserted exact.
+        _assert_policy_password(body.pop("password", None))
+        assert body == {
             "email": "a@tenant.test",
             "connection": "Username-Password-Authentication",
             "email_verified": False,
@@ -221,6 +236,48 @@ async def test_create_user_request_shape_and_parse(settings: Settings) -> None:
     )
     assert isinstance(user, Auth0User)
     assert user.user_id == "auth0|abc"
+
+
+def test_generate_initial_password_satisfies_policy() -> None:
+    """Every generated password satisfies Auth0's policy (no luck-based
+    reliance on token entropy). Sampled across many draws."""
+    for _ in range(200):
+        _assert_policy_password(_generate_initial_password())
+
+
+async def test_create_user_400_names_itself_without_leaking_password(
+    settings: Settings,
+) -> None:
+    """A create_user 400 surfaces Auth0's response ``message`` in the error
+    (observability), and the generated request password never appears in the
+    error string or context (request bodies are never logged)."""
+    captured: dict[str, Any] = {}
+
+    def responder(request: httpx.Request) -> httpx.Response:
+        captured.update(_body(request))
+        return httpx.Response(
+            400, json={"message": "PasswordStrengthError: too weak"}
+        )
+
+    rec = _Recorder()
+    rec.responder = responder
+    with pytest.raises(Auth0ManagementError) as excinfo:
+        await _client(settings, rec).create_user(
+            email="b@tenant.test",
+            connection="Username-Password-Authentication",
+            app_metadata={"tenant_id": "t1", "user_type": "TENANT"},
+        )
+
+    err = excinfo.value
+    # Response message excerpt is present (self-naming 4xx).
+    assert "PasswordStrengthError: too weak" in str(err)
+    assert err.context.get("body_excerpt") == "PasswordStrengthError: too weak"
+    assert err.context.get("status_code") == 400
+    # The request password was generated and sent, but must NOT be logged.
+    sent_password = captured["password"]
+    _assert_policy_password(sent_password)
+    assert sent_password not in str(err)
+    assert sent_password not in repr(err.context)
 
 
 async def test_get_user_by_email_found(settings: Settings) -> None:

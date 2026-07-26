@@ -29,6 +29,8 @@ config, resolved by 2c (likely a future setting), not assumed here.
 from __future__ import annotations
 
 import asyncio
+import secrets
+import string
 import time
 from typing import Any, Protocol, runtime_checkable
 
@@ -43,6 +45,62 @@ from admin_backend.errors import Auth0ManagementError
 _TOKEN_SKEW_SECONDS = 60
 # Per-request timeout for Management calls.
 _HTTP_TIMEOUT_SECONDS = 10.0
+
+# Bound on the Auth0 error-body excerpt attached to Auth0ManagementError so a
+# 4xx names itself without archaeology. Never includes the request body.
+_ERROR_BODY_EXCERPT_LIMIT = 300
+
+# Auth0 Database connections require a password on POST /users. CM creates the
+# user with a throwaway password satisfying Auth0's default policy; the user
+# never learns it and sets their own via the password-change ticket. The
+# special set is a conservative subset Auth0 accepts.
+_PASSWORD_SPECIALS = "!@#$%^&*()-_=+"
+_PASSWORD_LENGTH = 28  # >= 24 with margin
+
+
+def _generate_initial_password() -> str:
+    """Return a cryptographically random single-use password that
+    deterministically satisfies Auth0's default policy (length >= 24 and at
+    least one each of upper, lower, digit, special).
+
+    Not left to ``token_urlsafe`` luck: one character from each required
+    class is seeded explicitly, the remainder drawn from the combined pool,
+    then shuffled with a CSPRNG-backed shuffler. Never stored, logged, or
+    returned to any caller: the user sets their own password via the
+    password-change ticket.
+    """
+    pools = (
+        string.ascii_uppercase,
+        string.ascii_lowercase,
+        string.digits,
+        _PASSWORD_SPECIALS,
+    )
+    combined = "".join(pools)
+    chars = [secrets.choice(pool) for pool in pools]
+    chars += [
+        secrets.choice(combined)
+        for _ in range(_PASSWORD_LENGTH - len(pools))
+    ]
+    secrets.SystemRandom().shuffle(chars)
+    return "".join(chars)
+
+
+def _error_body_excerpt(resp: httpx.Response) -> str:
+    """Bounded, log-safe excerpt of an Auth0 error RESPONSE body.
+
+    Prefers the JSON ``message`` field (Auth0's human-readable reason);
+    falls back to the raw text. Truncated to ``_ERROR_BODY_EXCERPT_LIMIT``.
+    Operates on the RESPONSE only, never the request body (which may carry
+    the create-user password).
+    """
+    excerpt: str
+    try:
+        data = resp.json()
+        message = data.get("message") if isinstance(data, dict) else None
+        excerpt = message if isinstance(message, str) else resp.text
+    except (ValueError, UnicodeDecodeError):
+        excerpt = resp.text
+    return excerpt[:_ERROR_BODY_EXCERPT_LIMIT]
 
 
 class Organization(BaseModel):
@@ -209,10 +267,13 @@ class Auth0ManagementClient:
         resp: httpx.Response, operation: str, *, expected: tuple[int, ...]
     ) -> None:
         if resp.status_code not in expected:
+            excerpt = _error_body_excerpt(resp)
             raise Auth0ManagementError(
-                f"Auth0 Management {operation} returned {resp.status_code}",
+                f"Auth0 Management {operation} returned "
+                f"{resp.status_code}: {excerpt}",
                 operation=operation,
                 status_code=resp.status_code,
+                body_excerpt=excerpt,
             )
 
     # -- Organizations ------------------------------------------------------
@@ -250,6 +311,10 @@ class Auth0ManagementClient:
             "email": email,
             "connection": connection,
             "email_verified": email_verified,
+            # Required by Auth0 Database connections on POST /users. A
+            # throwaway single-use password (never stored/logged/returned);
+            # the user sets their own via the password-change ticket.
+            "password": _generate_initial_password(),
         }
         if app_metadata is not None:
             body["app_metadata"] = app_metadata
