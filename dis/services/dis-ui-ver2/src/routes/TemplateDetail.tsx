@@ -2,10 +2,15 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 
 import { useAuth } from '../auth/useAuth'
+import { DisUiServerHttpError } from '../lib/dis-ui-server/client'
 import { useTemplateMappingFieldsForType } from '../lib/dis-ui-server/mapping-fields'
 import type { CatalogField } from '../lib/dis-ui-server/mapping-fields'
 import type { MappingTemplateVersion, TemplateStatus } from '../lib/dis-ui-server/mapping-templates'
-import { activeTemplateVersion, useMappingTemplate } from '../lib/dis-ui-server/mapping-templates'
+import {
+  activeTemplateVersion,
+  patchMappingTemplate,
+  useMappingTemplate,
+} from '../lib/dis-ui-server/mapping-templates'
 import { useSources } from '../lib/dis-ui-server/sources'
 
 // Mapping Template detail — mockup-faithful (template-detail.html): KPI row + "Versions &
@@ -64,6 +69,11 @@ export function TemplateDetail() {
   const d = query.data
   const fields = useTemplateMappingFieldsForType(d?.template_type ?? null)
   const [view, setView] = useState<'business' | 'technical'>('business')
+  // Inline rename (backend already supports PATCH template_name; this is the missing UI surface).
+  const [editingName, setEditingName] = useState(false)
+  const [nameDraft, setNameDraft] = useState('')
+  const [renamePhase, setRenamePhase] = useState<'idle' | 'saving'>('idle')
+  const [renameError, setRenameError] = useState<string | null>(null)
 
   const active = d !== undefined ? activeTemplateVersion(d) : null
   const rules = buildRules(active, fields.data ?? [])
@@ -80,6 +90,60 @@ export function TemplateDetail() {
       : null
   const isPushPull = sourceChannel === 'api' || sourceChannel === 'reverse_api'
 
+  // Acted-for tenant for the rename write. The template wire shape carries no tenant_id, so a
+  // PLATFORM caller derives it from the template's source (same /sources read the upload guard
+  // uses above). A TENANT caller never sends it (the server pins its own tenant; naming one is a
+  // 403). If a PLATFORM caller's source is not in the visible set, actedFor is undefined and the
+  // write surfaces the server's 403 inline rather than guessing a tenant.
+  const isPlatform = snapshot?.userType === 'PLATFORM'
+  const actedFor =
+    isPlatform && d !== undefined
+      ? ((sources.data ?? []).find((s) => s.source_id === d.source_id)?.tenant_id ?? undefined)
+      : undefined
+
+  function startRename(): void {
+    if (d === undefined) return
+    setNameDraft(d.template_name)
+    setRenameError(null)
+    setEditingName(true)
+  }
+
+  function cancelRename(): void {
+    setEditingName(false)
+    setRenameError(null)
+  }
+
+  async function saveRename(): Promise<void> {
+    if (d === undefined) return
+    const next = nameDraft.trim()
+    if (next === '' || next === d.template_name) {
+      setEditingName(false)
+      return
+    }
+    setRenamePhase('saving')
+    setRenameError(null)
+    try {
+      await patchMappingTemplate(d.template_id, {
+        template_name: next,
+        acting_for_tenant_id: actedFor,
+      })
+      setEditingName(false)
+      setRenamePhase('idle')
+      await query.refetch()
+    } catch (err) {
+      setRenamePhase('idle')
+      if (err instanceof DisUiServerHttpError && err.status === 409) {
+        setRenameError(
+          err.message !== ''
+            ? err.message
+            : 'That name is already used by another template of this source.',
+        )
+      } else {
+        setRenameError(err instanceof Error ? err.message : 'Rename failed')
+      }
+    }
+  }
+
   return (
     <>
       <div className="pagehead">
@@ -89,7 +153,51 @@ export function TemplateDetail() {
               &larr; Data Ingestion Templates
             </Link>
           </div>
-          <h1>{d?.template_name ?? 'Mapping Template'}</h1>
+          {d === undefined ? (
+            <h1>Mapping Template</h1>
+          ) : editingName ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <input
+                aria-label="Template name"
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                disabled={renamePhase === 'saving'}
+              />
+              <button
+                type="button"
+                className="btn pri"
+                disabled={renamePhase === 'saving'}
+                onClick={() => void saveRename()}
+              >
+                {renamePhase === 'saving' ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={renamePhase === 'saving'}
+                onClick={cancelRename}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <h1>{d.template_name}</h1>
+              <button
+                type="button"
+                className="btn"
+                aria-label="Rename template"
+                onClick={startRename}
+              >
+                Rename
+              </button>
+            </div>
+          )}
+          {renameError !== null ? (
+            <p role="alert" className="failbox" style={{ marginTop: 6 }}>
+              {renameError}
+            </p>
+          ) : null}
           {d !== undefined ? (
             <div className="sub">
               <span className="id">{d.source_id}</span> · {d.template_type}

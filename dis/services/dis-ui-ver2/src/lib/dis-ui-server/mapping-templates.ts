@@ -116,6 +116,8 @@ export type MappingTemplateCreate = {
 export type MappingTemplatePatch = {
   template_name?: string
   mapping_rules?: SourceMappingRules
+  // PLATFORM impersonation target; the tenant path never sets it (mirrors the create body).
+  acting_for_tenant_id?: string
 }
 
 // The real wire shapes OMIT the UI-only `ingestion_mode` (see header). Type the raw response
