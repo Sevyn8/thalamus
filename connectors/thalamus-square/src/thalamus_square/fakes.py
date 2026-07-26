@@ -62,9 +62,9 @@ _CANNED_INVENTORY: dict[str, str] = {"VAR_COFFEE": "37", "VAR_CHIPS": "12"}
 
 
 class FakeTokenStore:
-    """A dev token store: any tenant resolves to a dummy sandbox token."""
+    """A dev token store: any tenant/source resolves to a dummy sandbox token."""
 
-    def get_token(self, tenant_id: UUID) -> str:
+    def get_token(self, tenant_id: UUID, source_id: str) -> str:
         return "fake-sandbox-token"
 
 

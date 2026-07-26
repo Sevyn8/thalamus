@@ -73,18 +73,22 @@ class _SecretApi(Protocol):
 
 class GoogleSecretBackend:
     """SecretBackend over ``SecretManagerServiceClient``. Maps NotFound to None on read and
-    creates-then-adds on first write. Automatic replication."""
+    creates-then-adds on first write. Automatic replication.
 
-    def __init__(self, *, project_id: str, api: _SecretApi) -> None:
+    The real client is built LAZILY on first use (not at construction), so wiring this into
+    a pipeline never resolves ADC credentials until an actual secret call is made — matching
+    the credential-lazy posture of the other data-plane clients. Tests inject ``api``."""
+
+    def __init__(self, *, project_id: str, api: _SecretApi | None = None) -> None:
         self._project_id = project_id
         self._api = api
 
-    @classmethod
-    def from_project(cls, project_id: str) -> GoogleSecretBackend:
-        """Construct with a real ``SecretManagerServiceClient`` (ADC credentials)."""
-        from google.cloud import secretmanager
+    def _client(self) -> _SecretApi:
+        if self._api is None:
+            from google.cloud import secretmanager
 
-        return cls(project_id=project_id, api=cast(_SecretApi, secretmanager.SecretManagerServiceClient()))
+            self._api = cast(_SecretApi, secretmanager.SecretManagerServiceClient())
+        return self._api
 
     def _project_path(self) -> str:
         return f"projects/{self._project_id}"
@@ -94,19 +98,21 @@ class GoogleSecretBackend:
 
     def access_latest(self, secret_id: str) -> bytes | None:
         name = f"{self._secret_path(secret_id)}/versions/latest"
+        api = self._client()
         try:
-            response = self._api.access_secret_version(name=name)
+            response = api.access_secret_version(name=name)
         except NotFound:
             return None
         return response.payload.data
 
     def add_version(self, secret_id: str, data: bytes) -> None:
+        api = self._client()
         try:
-            self._api.add_secret_version(parent=self._secret_path(secret_id), payload={"data": data})
+            api.add_secret_version(parent=self._secret_path(secret_id), payload={"data": data})
         except NotFound:
-            self._api.create_secret(
+            api.create_secret(
                 parent=self._project_path(),
                 secret_id=secret_id,
                 secret={"replication": {"automatic": {}}},
             )
-            self._api.add_secret_version(parent=self._secret_path(secret_id), payload={"data": data})
+            api.add_secret_version(parent=self._secret_path(secret_id), payload={"data": data})

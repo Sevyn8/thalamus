@@ -3441,6 +3441,7 @@ dependencies = [
     { name = "dis-core" },
     { name = "httpx" },
     { name = "thalamus-connector-sdk" },
+    { name = "thalamus-square-oauth" },
 ]
 
 [package.metadata]
@@ -3449,6 +3450,7 @@ requires-dist = [
     { name = "dis-core" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "thalamus-connector-sdk" },
+    { name = "thalamus-square-oauth" },
 ]
 
 [[package]]

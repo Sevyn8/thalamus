@@ -48,7 +48,7 @@ class SquareAdapter:
         self._token_store = token_store
 
     def authenticate(self, trigger: ConnectorTrigger) -> AuthContext:
-        token = self._token_store.get_token(trigger.tenant_id)
+        token = self._token_store.get_token(trigger.tenant_id, trigger.source_id)
         locations = self._api.list_locations(token)  # validates the token; raises on 401/403
         location_ids = [str(loc.get("id")) for loc in locations if loc.get("id")]
         store_by_code = {str(loc.get("id")): str(loc.get("name") or "") for loc in locations if loc.get("id")}

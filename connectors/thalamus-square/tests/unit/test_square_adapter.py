@@ -38,7 +38,7 @@ def _trigger(domain: Domain) -> ConnectorTrigger:
 
 
 class _FakeTokenStore:
-    def get_token(self, tenant_id: UUID) -> str:
+    def get_token(self, tenant_id: UUID, source_id: str) -> str:
         return "sandbox-token"
 
 

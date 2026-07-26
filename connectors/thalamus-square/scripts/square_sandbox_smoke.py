@@ -37,8 +37,8 @@ def main() -> int:
 
     try:
         # EnvTokenStore reads SQUARE_ACCESS_TOKEN; a missing token raises ConnectorAuthError.
-        # The tenant id is irrelevant for the single-token env store; use a throwaway UUID.
-        token = EnvTokenStore().get_token(uuid4())
+        # tenant/source are irrelevant for the single-token env store; use throwaway values.
+        token = EnvTokenStore().get_token(uuid4(), "sandbox-smoke")
     except Exception as exc:  # operator-facing script: surface any startup failure
         print(f"[smoke] FAILED to resolve access token: {type(exc).__name__}: {exc}")
         return 1

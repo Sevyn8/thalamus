@@ -16,9 +16,11 @@ from thalamus_square_oauth.errors import (
 )
 from thalamus_square_oauth.naming import secret_id_for
 from thalamus_square_oauth.payload import SquareTokenSet
+from thalamus_square_oauth.scopes import SQUARE_READ_SCOPES
 from thalamus_square_oauth.vault import GoogleSecretBackend, SecretBackend, SquareTokenVault
 
 __all__ = [
+    "SQUARE_READ_SCOPES",
     "GoogleSecretBackend",
     "SecretBackend",
     "SquareOAuthClient",

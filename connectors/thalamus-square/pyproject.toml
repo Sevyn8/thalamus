@@ -12,6 +12,9 @@ dependencies = [
   "dis-canonical",
   # Square API client (sandbox + production share the same shapes).
   "httpx>=0.27",
+  # S2: the Secret Manager OAuth token vault + Square OAuth client (VaultTokenStore reads
+  # and refreshes through it). SDK-free package shared with the BFF.
+  "thalamus-square-oauth",
 ]
 
 [build-system]

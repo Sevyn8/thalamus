@@ -14,10 +14,20 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from thalamus_connector_sdk.errors import ConnectorConfigError
+
 _SQUARE_API_BASE_URL = "SQUARE_API_BASE_URL"
 _SQUARE_API_VERSION = "SQUARE_API_VERSION"
+_SQUARE_CLIENT_ID = "SQUARE_CLIENT_ID"
+_SQUARE_APP_SECRET = "SQUARE_APP_SECRET"
+_SQUARE_SECRETS_PROJECT_ID = "SQUARE_SECRETS_PROJECT_ID"
+_SQUARE_OAUTH_REFRESH_SKEW_SECONDS = "SQUARE_OAUTH_REFRESH_SKEW_SECONDS"
 
 SANDBOX_BASE_URL = "https://connect.squareupsandbox.com"
+
+# Refresh an access token this many seconds before its expiry by default (3 days). Square
+# access tokens live ~30 days, so any daily-ish connector run always holds a fresh token.
+DEFAULT_REFRESH_SKEW_SECONDS = 3 * 24 * 60 * 60
 
 # Pinned Square-Version header. Upgrade policy: Square dates API versions and supports
 # each for roughly a year past release; a pinned version keeps request/response shapes
@@ -42,4 +52,50 @@ class SquareConfig:
         return cls(
             base_url=os.environ.get(_SQUARE_API_BASE_URL, SANDBOX_BASE_URL),
             api_version=os.environ.get(_SQUARE_API_VERSION, DEFAULT_API_VERSION),
+        )
+
+
+@dataclass(frozen=True)
+class SquareOAuthConfig:
+    """Resolved OAuth profile for the production token vault (S2).
+
+    The OAuth host is the same Square host as the API (``SQUARE_API_BASE_URL``), so it is not
+    a separate env var; ``environment`` (sandbox vs production, stamped onto stored token
+    sets) is derived from that host. ``client_id`` / ``client_secret`` / the Secret Manager
+    project are REQUIRED (no silent fallback, code-quality rule 4): a missing one raises
+    ``ConnectorConfigError`` at connector startup. The connector only ever refreshes, so no
+    redirect URI is needed here (that is the BFF's connect concern).
+    """
+
+    client_id: str
+    client_secret: str
+    secrets_project_id: str
+    oauth_base_url: str
+    environment: str
+    refresh_skew_seconds: float
+
+    @classmethod
+    def from_env(cls) -> SquareOAuthConfig:
+        client_id = os.environ.get(_SQUARE_CLIENT_ID)
+        if not client_id:
+            raise ConnectorConfigError(f"{_SQUARE_CLIENT_ID} is not set; cannot refresh Square OAuth tokens")
+        client_secret = os.environ.get(_SQUARE_APP_SECRET)
+        if not client_secret:
+            raise ConnectorConfigError(f"{_SQUARE_APP_SECRET} is not set; cannot refresh Square OAuth tokens")
+        secrets_project_id = os.environ.get(_SQUARE_SECRETS_PROJECT_ID)
+        if not secrets_project_id:
+            raise ConnectorConfigError(
+                f"{_SQUARE_SECRETS_PROJECT_ID} is not set; cannot reach the Secret Manager token vault"
+            )
+        oauth_base_url = os.environ.get(_SQUARE_API_BASE_URL, SANDBOX_BASE_URL)
+        environment = "sandbox" if "squareupsandbox" in oauth_base_url else "production"
+        raw_skew = os.environ.get(_SQUARE_OAUTH_REFRESH_SKEW_SECONDS)
+        refresh_skew_seconds = float(raw_skew) if raw_skew else float(DEFAULT_REFRESH_SKEW_SECONDS)
+        return cls(
+            client_id=client_id,
+            client_secret=client_secret,
+            secrets_project_id=secrets_project_id,
+            oauth_base_url=oauth_base_url,
+            environment=environment,
+            refresh_skew_seconds=refresh_skew_seconds,
         )
