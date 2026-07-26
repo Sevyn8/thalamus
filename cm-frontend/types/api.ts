@@ -85,21 +85,16 @@ export type OrgNodeType = Schemas["OrgNodeType"];
 // follow Sanjeev shipment; the surfaces above are intentional debt, not
 // orphans.
 
-// ModuleCode: backend's `Module.code` is a free-form `string`. The frontend
-// keeps this enum for compile-time safety in module-summary UI.
+// ModuleCode: the module_code enums in the spec (ModuleCard / MatrixCell /
+// MyModuleItem / ModuleAccessRead.module) now include DIS — backend shipped DIS
+// to module_code_enum + the lookups catalog (migration a1c4e7f09d2b), so the
+// launcher's DIS tile gates via the same matrix mechanism as the product modules.
 //
-// AWAITED DEBT (Phase 5d.1): "DIS" is a frontend-only addition. Awaits
-// backend adding DIS to the module_code_enum so the launcher's DIS tile
-// gates via the same matrix mechanism as product modules. MSW handlers
-// seed it ENABLED for tenants holding any product module (Buc-ee's +
-// Żabka Group). Retire this union override when backend ships DIS in
-// ModuleCode; generated type then becomes canonical.
-//
-// (Phase 5f.V audit: ROOS retirement awaited-debt paragraph removed.
-// Backend retired ROOS from the openapi spec at commit 9462e11 and the
-// regenerated openapi-generated.ts at d1d1dd7 reflects it. The only
-// remaining justification for hand-maintaining this union is the DIS
-// addition above.)
+// This hand-maintained union is KEPT for now (option A): it stays byte-correct
+// (the same 6 values as the regenerated enums) and preserves the compile-time
+// module vocabulary the module-summary UI relies on. Full retirement — aliasing
+// this union and the Omit<>&{} bridges below to the generated enums so the
+// generated type becomes canonical — is a deferred type-hygiene pass (option B).
 export type ModuleCode =
   | "GOAL_CONSOLE"
   | "PRICING_OS"
@@ -205,10 +200,9 @@ export type AuditDetail = AuditEvent & {
 // deleted; backend's tagline field has no equivalent (UI dropped it
 // per integration plan).
 //
-// Phase 5e.0: `module_code` is narrowed to the hand-maintained
-// ModuleCode union (which retired ROOS + adds DIS). openapi.json
-// is stale on both points until backend re-exports — until then,
-// the hand union is the canonical surface for consumers.
+// `module_code` bridges to the hand-maintained ModuleCode union. The spec now
+// ships DIS (and ROOS stays retired), so the union and the generated enums
+// agree; the bridge is retained under option A (retired in the option-B pass).
 export type ModuleCard = Omit<Schemas["ModuleCard"], "module_code"> & {
   module_code: ModuleCode;
 };

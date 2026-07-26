@@ -1980,7 +1980,7 @@ export interface components {
              * Module Code
              * @enum {string}
              */
-            module_code: "GOAL_CONSOLE" | "PRICING_OS" | "PERISHABLES_ASSISTANT" | "PROMOTIONS_ASSISTANT" | "ADMIN";
+            module_code: "GOAL_CONSOLE" | "PRICING_OS" | "PERISHABLES_ASSISTANT" | "PROMOTIONS_ASSISTANT" | "ADMIN" | "DIS";
             /**
              * Status
              * @enum {string}
@@ -2148,7 +2148,7 @@ export interface components {
              * @description Stable wire code matching ``module_code_enum``. Use this for any frontend dispatch logic — labels can change, codes are append-only.
              * @enum {string}
              */
-            module_code: "GOAL_CONSOLE" | "PRICING_OS" | "PERISHABLES_ASSISTANT" | "PROMOTIONS_ASSISTANT" | "ADMIN";
+            module_code: "GOAL_CONSOLE" | "PRICING_OS" | "PERISHABLES_ASSISTANT" | "PROMOTIONS_ASSISTANT" | "ADMIN" | "DIS";
             /**
              * Module Label
              * @description Display name resolved from ``lookups`` (``list_name='module_code'``). COALESCE-fallback to the raw enum code if a lookup row is missing. Always present.
@@ -2172,7 +2172,7 @@ export interface components {
          *     above).
          * @enum {string}
          */
-        ModuleCode: "PRICING_OS" | "PERISHABLES_ASSISTANT" | "PROMOTIONS_ASSISTANT" | "GOAL_CONSOLE" | "ADMIN";
+        ModuleCode: "PRICING_OS" | "PERISHABLES_ASSISTANT" | "PROMOTIONS_ASSISTANT" | "GOAL_CONSOLE" | "ADMIN" | "DIS";
         /**
          * ModulesDeployedCard
          * @description KPI card 8: Modules deployed.
@@ -2267,7 +2267,7 @@ export interface components {
              * Module Code
              * @enum {string}
              */
-            module_code: "GOAL_CONSOLE" | "PRICING_OS" | "PERISHABLES_ASSISTANT" | "PROMOTIONS_ASSISTANT" | "ADMIN";
+            module_code: "GOAL_CONSOLE" | "PRICING_OS" | "PERISHABLES_ASSISTANT" | "PROMOTIONS_ASSISTANT" | "ADMIN" | "DIS";
             /**
              * Module Label
              * @description Display label resolved server-side via ``lookups.list_name='module_code'`` with COALESCE fallback to the raw enum code.

@@ -5056,7 +5056,8 @@
               "PRICING_OS",
               "PERISHABLES_ASSISTANT",
               "PROMOTIONS_ASSISTANT",
-              "ADMIN"
+              "ADMIN",
+              "DIS"
             ],
             "title": "Module Code"
           },
@@ -5324,7 +5325,8 @@
               "PRICING_OS",
               "PERISHABLES_ASSISTANT",
               "PROMOTIONS_ASSISTANT",
-              "ADMIN"
+              "ADMIN",
+              "DIS"
             ],
             "title": "Module Code",
             "description": "Stable wire code matching ``module_code_enum``. Use this for any frontend dispatch logic \u2014 labels can change, codes are append-only."
@@ -5363,7 +5365,8 @@
           "PERISHABLES_ASSISTANT",
           "PROMOTIONS_ASSISTANT",
           "GOAL_CONSOLE",
-          "ADMIN"
+          "ADMIN",
+          "DIS"
         ],
         "title": "ModuleCode",
         "description": "Platform-fixed module codes. Mirrors ``module_code_enum`` in DDL,\nminus ROOS (retired from Python vocabulary 2026-05-12; see comment\nabove)."
@@ -5468,7 +5471,8 @@
               "PRICING_OS",
               "PERISHABLES_ASSISTANT",
               "PROMOTIONS_ASSISTANT",
-              "ADMIN"
+              "ADMIN",
+              "DIS"
             ],
             "title": "Module Code"
           },
