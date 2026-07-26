@@ -64,15 +64,23 @@ class SquareOAuthClient:
         self._clock = clock
 
     def authorize_url(self, *, state: str) -> str:
-        """The seller-facing authorization URL. ``session=false`` per Square's guidance for
-        production apps; scopes are space-joined; ``state`` is the caller's signed token."""
+        """The seller-facing authorization URL. Scopes are space-joined; ``state`` is the
+        caller's signed token.
+
+        ``session`` is environment-aware. Square documents ``session=false`` as required for
+        PRODUCTION (it forces a fresh login so a seller with multiple Square accounts picks the
+        right one) and does not document the omitted default. Sandbox test sellers have no
+        interactive login, so ``session=false`` renders a BLANK authorize page; we therefore
+        OMIT ``session`` for sandbox (Square uses the test seller's session) and keep
+        ``session=false`` for production per Square's guidance."""
         params = {
             "client_id": self._client_id,
             "scope": " ".join(self._scopes),
             "state": state,
-            "session": "false",
             "redirect_uri": self._redirect_uri,
         }
+        if self._environment != "sandbox":
+            params["session"] = "false"
         return f"{self._base_url}/oauth2/authorize?{urlencode(params)}"
 
     def exchange_code(self, code: str) -> SquareTokenSet:

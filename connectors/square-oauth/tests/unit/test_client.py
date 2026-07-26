@@ -30,20 +30,24 @@ _TOKEN_JSON = {
 }
 
 
-def _client(handler: httpx.MockTransport, *, secret: str = "app-secret") -> SquareOAuthClient:
+def _client(
+    handler: httpx.MockTransport, *, secret: str = "app-secret", environment: str = "sandbox"
+) -> SquareOAuthClient:
     return SquareOAuthClient(
         base_url=_BASE,
         client_id="app-id",
         client_secret=secret,
         redirect_uri=_REDIRECT,
         scopes=_SCOPES,
-        environment="sandbox",
+        environment=environment,
         http=httpx.Client(transport=handler),
         clock=lambda: _FIXED_NOW,
     )
 
 
-def test_authorize_url_has_scopes_state_and_session_false() -> None:
+def test_authorize_url_sandbox_omits_session() -> None:
+    # Sandbox test sellers have no interactive login; session=false blanks the
+    # authorize page, so it is omitted for sandbox.
     client = _client(httpx.MockTransport(lambda req: httpx.Response(200)))
     url = client.authorize_url(state="signed-state")
     parsed = urlparse(url)
@@ -52,8 +56,17 @@ def test_authorize_url_has_scopes_state_and_session_false() -> None:
     assert params["client_id"] == ["app-id"]
     assert params["scope"] == ["MERCHANT_PROFILE_READ ITEMS_READ INVENTORY_READ ORDERS_READ"]
     assert params["state"] == ["signed-state"]
-    assert params["session"] == ["false"]
     assert params["redirect_uri"] == [_REDIRECT]
+    assert "session" not in params
+
+
+def test_authorize_url_production_sets_session_false() -> None:
+    # Production keeps session=false per Square's guidance (correct-account selection).
+    client = _client(
+        httpx.MockTransport(lambda req: httpx.Response(200)), environment="production"
+    )
+    params = parse_qs(urlparse(client.authorize_url(state="s")).query)
+    assert params["session"] == ["false"]
 
 
 def test_exchange_code_posts_authorization_code_and_stamps_scopes_env_clock() -> None:
