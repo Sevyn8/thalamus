@@ -1600,7 +1600,7 @@
           "tenant-users"
         ],
         "summary": "Create Tenant User",
-        "description": "Create a tenant user in INVITED state with bundled role\nassignments. Multi-audience.\n\nServer-forces ``status=INVITED``; ``auth0_sub`` and\n``invitation_accepted_at`` stay NULL until the Stage 3 Auth0\ninvite-accept callback. Bundled TENANT-audience role assignments\nanchor at the tenant root org_node (locked decision 4); the\nhandler-side validator pre-checks audience + existence for a clean\n422 ahead of the DB trigger reject.\n\nGate: ``ADMIN.USERS.CONFIGURE.TENANT`` (SUPER_ADMIN +\nPLATFORM_ADMIN + OWNER per the seed). Multi-audience: PLATFORM\ncallers pass via GLOBAL->TENANT cascade; TENANT OWNER passes\ndirectly. TENANT-side tenant-isolation enforced by RLS \u2014 a TENANT\nJWT with a body referencing another tenant_id finds the tenant\nroot invisible and surfaces as 404 ``TENANT_NOT_FOUND``.\n\nErrors:\n  - 422 ``INVALID_ROLE`` when a role_id is missing from the\n    catalogue.\n  - 422 ``INVALID_ROLE_AUDIENCE`` when a role exists but is not\n    TENANT audience.\n  - 409 ``DUPLICATE_TENANT_USER_EMAIL`` when the email already\n    exists within ``tenant_id``.\n  - 404 ``TENANT_NOT_FOUND`` when the target tenant is missing or\n    RLS-filtered.",
+        "description": "Create a tenant user in INVITED state with bundled role\nassignments. Multi-audience.\n\nServer-forces ``status=INVITED``; ``auth0_sub`` and\n``invitation_accepted_at`` stay NULL until the Stage 3 Auth0\ninvite-accept callback. Bundled TENANT-audience role assignments\nanchor at the tenant root org_node (locked decision 4); the\nhandler-side validator pre-checks audience + existence for a clean\n422 ahead of the DB trigger reject.\n\nGate: ``ADMIN.USERS.CONFIGURE.TENANT`` (SUPER_ADMIN +\nPLATFORM_ADMIN + OWNER per the seed). Multi-audience: PLATFORM\ncallers pass via GLOBAL->TENANT cascade; TENANT OWNER passes\ndirectly. TENANT-side tenant-isolation enforced by RLS \u2014 a TENANT\nJWT with a body referencing another tenant_id finds the tenant\nroot invisible and surfaces as 404 ``TENANT_NOT_FOUND``.\n\nErrors:\n  - 422 ``INVALID_ROLE`` when a role_id is missing from the\n    catalogue.\n  - 422 ``INVALID_ROLE_AUDIENCE`` when a role exists but is not\n    TENANT audience.\n  - 409 ``EMAIL_ALREADY_EXISTS`` when the email is already in use\n    platform-wide (Slice 9: one email = one identity). The message\n    names which side (platform vs a tenant) without naming the\n    other tenant.\n  - 404 ``TENANT_NOT_FOUND`` when the target tenant is missing or\n    RLS-filtered.",
         "operationId": "create_tenant_user_api_v1_tenant_users_post",
         "requestBody": {
           "required": true,
@@ -1684,7 +1684,7 @@
           "tenant-users"
         ],
         "summary": "Patch Tenant User",
-        "description": "Partial update of a tenant user. Multi-audience.\n\nEditable fields: ``full_name``, ``email``, ``roles`` (replace-set).\nOther fields rejected at the schema layer via ``extra=\"forbid\"``.\n\nBehaviour:\n  - 422 ``EMPTY_PATCH`` when no fields set.\n  - 422 ``INVALID_ROLE`` / ``INVALID_ROLE_AUDIENCE`` on bad\n    ``roles`` content.\n  - 403 ``SELF_EDIT_FORBIDDEN`` when a TENANT caller targets their\n    own user_id.\n  - 409 ``DUPLICATE_TENANT_USER_EMAIL`` on rename collision in\n    the same tenant.\n  - 404 ``TENANT_USER_NOT_FOUND`` when the row is missing or\n    RLS-filtered.\n  - Allowed in any state (INVITED, ACTIVE, SUSPENDED).",
+        "description": "Partial update of a tenant user. Multi-audience.\n\nEditable fields: ``full_name``, ``email``, ``roles`` (replace-set).\nOther fields rejected at the schema layer via ``extra=\"forbid\"``.\n\nBehaviour:\n  - 422 ``EMPTY_PATCH`` when no fields set.\n  - 422 ``INVALID_ROLE`` / ``INVALID_ROLE_AUDIENCE`` on bad\n    ``roles`` content.\n  - 403 ``SELF_EDIT_FORBIDDEN`` when a TENANT caller targets their\n    own user_id.\n  - 409 ``EMAIL_ALREADY_EXISTS`` on rename to an email already in\n    use platform-wide (Slice 9).\n  - 404 ``TENANT_USER_NOT_FOUND`` when the row is missing or\n    RLS-filtered.\n  - Allowed in any state (INVITED, ACTIVE, SUSPENDED).",
         "operationId": "patch_tenant_user_api_v1_tenant_users__user_id__patch",
         "parameters": [
           {
@@ -1857,28 +1857,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/tenant-users/me/accept-invitation": {
-      "post": {
-        "tags": [
-          "tenant-users"
-        ],
-        "summary": "Accept Invitation",
-        "description": "Self-service invite-accept (INVITED -> ACTIVE) per D-40.\n\nA TENANT self-service action: the accepting user is identified by the\nVERIFIED TOKEN, never a path/body id. The row id is ``auth.user_id`` and\nthe ``auth0_sub`` is ``auth.sub`` (the raw verified token sub). No PLATFORM\n``require()`` gate: an INVITED user holds no role assignments, so any\npermission gate would deny them. The route is authenticated by\n``AuthMiddleware`` (a valid token is required) and is listed in\n``GATE_EXEMPT_PATHS`` (the /me/ self-service pattern) so the mandatory-gate\n-discipline test passes.\n\n404 if the row is not visible; 409 if it is not in INVITED state (re-accept\nis rejected, not a silent no-op). Writes are atomic: status=ACTIVE +\nauth0_sub + invitation_accepted_at + a TENANT updated_by actor pair.",
-        "operationId": "accept_invitation_api_v1_tenant_users_me_accept_invitation_post",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TenantUserRead"
                 }
               }
             }

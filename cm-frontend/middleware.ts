@@ -22,7 +22,6 @@ import { auth0 } from "@/lib/auth0";
 const PUBLIC_PREFIXES = [
   "/auth", // Auth0 SDK routes (login/logout/callback/profile/access-token)
   "/forgot-password",
-  "/accept-invite",
   "/mfa",
 ] as const;
 

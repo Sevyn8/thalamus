@@ -596,8 +596,10 @@ export interface paths {
          *         catalogue.
          *       - 422 ``INVALID_ROLE_AUDIENCE`` when a role exists but is not
          *         TENANT audience.
-         *       - 409 ``DUPLICATE_TENANT_USER_EMAIL`` when the email already
-         *         exists within ``tenant_id``.
+         *       - 409 ``EMAIL_ALREADY_EXISTS`` when the email is already in use
+         *         platform-wide (Slice 9: one email = one identity). The message
+         *         names which side (platform vs a tenant) without naming the
+         *         other tenant.
          *       - 404 ``TENANT_NOT_FOUND`` when the target tenant is missing or
          *         RLS-filtered.
          */
@@ -638,8 +640,8 @@ export interface paths {
          *         ``roles`` content.
          *       - 403 ``SELF_EDIT_FORBIDDEN`` when a TENANT caller targets their
          *         own user_id.
-         *       - 409 ``DUPLICATE_TENANT_USER_EMAIL`` on rename collision in
-         *         the same tenant.
+         *       - 409 ``EMAIL_ALREADY_EXISTS`` on rename to an email already in
+         *         use platform-wide (Slice 9).
          *       - 404 ``TENANT_USER_NOT_FOUND`` when the row is missing or
          *         RLS-filtered.
          *       - Allowed in any state (INVITED, ACTIVE, SUSPENDED).
@@ -737,39 +739,6 @@ export interface paths {
          *     the management client or the Auth0 database-connection name is unconfigured.
          */
         post: operations["provision_tenant_user_auth0_api_v1_tenant_users__user_id__provision_auth0_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/tenant-users/me/accept-invitation": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Accept Invitation
-         * @description Self-service invite-accept (INVITED -> ACTIVE) per D-40.
-         *
-         *     A TENANT self-service action: the accepting user is identified by the
-         *     VERIFIED TOKEN, never a path/body id. The row id is ``auth.user_id`` and
-         *     the ``auth0_sub`` is ``auth.sub`` (the raw verified token sub). No PLATFORM
-         *     ``require()`` gate: an INVITED user holds no role assignments, so any
-         *     permission gate would deny them. The route is authenticated by
-         *     ``AuthMiddleware`` (a valid token is required) and is listed in
-         *     ``GATE_EXEMPT_PATHS`` (the /me/ self-service pattern) so the mandatory-gate
-         *     -discipline test passes.
-         *
-         *     404 if the row is not visible; 409 if it is not in INVITED state (re-accept
-         *     is rejected, not a silent no-op). Writes are atomic: status=ACTIVE +
-         *     auth0_sub + invitation_accepted_at + a TENANT updated_by actor pair.
-         */
-        post: operations["accept_invitation_api_v1_tenant_users_me_accept_invitation_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5309,26 +5278,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    accept_invitation_api_v1_tenant_users_me_accept_invitation_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TenantUserRead"];
                 };
             };
         };
