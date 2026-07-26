@@ -7,6 +7,9 @@ import { BatchUpload } from './BatchUpload'
 import { Callback } from './Callback'
 import { CanonicalExplorer } from './CanonicalExplorer'
 import { Connect } from './Connect'
+import { CsvRoute } from './connect/CsvRoute'
+import { SquareCallback } from './connect/square/SquareCallback'
+import { SquareJourney } from './connect/square/SquareJourney'
 import { ConnectorHealth } from './ConnectorHealth'
 import { Credentials } from './Credentials'
 import { Dashboard } from './Dashboard'
@@ -43,8 +46,15 @@ export function AppRoutes() {
           <Route path="/audit" element={<Audit />} />
           <Route path="/notifications" element={<NotificationsRoute />} />
           <Route path="/connect" element={<Connect />} />
-          {/* Onboard Square (e2e slice steps 6-7) - provisions the api-source + ACTIVE snapshot
-              template via the real BFF, then views connector health. Does not fire a pull. */}
+          {/* Manual CSV journey: the UNCHANGED CsvWizard hosted at its own route. */}
+          <Route path="/connect/csv" element={<CsvRoute />} />
+          {/* Square journey (S3): register -> connect (OAuth) -> first pull. */}
+          <Route path="/connect/square" element={<SquareJourney />} />
+          {/* Square OAuth callback (registered Square redirect URL). Inside AuthBoundary so the
+              Bearer is present; App.tsx skipRedirectCallback keeps the Auth0 SDK off its query. */}
+          <Route path="/connectors/square/callback" element={<SquareCallback />} />
+          {/* Onboard Square: DEV UTILITY (provisioning parity tool), hidden from nav. The
+              customer journey is /connect/square. */}
           <Route path="/onboard-square" element={<OnboardSquare />} />
           {/* Ingestion Runs — real (GET /api/v1/runs over bronze, D111). */}
           <Route path="/ingestion-runs" element={<IngestionRuns />} />

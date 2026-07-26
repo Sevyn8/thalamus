@@ -93,6 +93,10 @@ export function OnboardSquare() {
 
   return (
     <section className="mx-auto mt-10 max-w-2xl px-4">
+      <div className="warnbox" role="note" style={{ marginBottom: 12 }}>
+        <b>DEV UTILITY</b> — provisioning parity tool (asserts UI-provisioned config equals the
+        spine's). The customer journey is <span className="font-mono">/connect/square</span>.
+      </div>
       <h1 className="mb-1 text-2xl font-semibold">Onboard Square</h1>
       <p className="mb-4 text-sm text-gray-500">
         Provisions the Square api-source and an ACTIVE snapshot template for {STORE_CODE}, then

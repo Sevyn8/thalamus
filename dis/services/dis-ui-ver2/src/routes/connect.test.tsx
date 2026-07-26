@@ -1,66 +1,71 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
-import type { ReactNode } from 'react'
+import { fireEvent, screen } from '@testing-library/react'
+import { Route, Routes } from 'react-router'
 
+import { renderWithProviders } from '../test/renderWithProviders'
 import { Connect } from './Connect'
 
-// Connect picker: the "Source & method" tile grid. Manual CSV is live (no badge); the other five
-// methods carry a muted "Coming soon" marker but stay live buttons — clicking one still opens its
-// preview walkthrough (badge is a marker only, never a click block).
+// Connect: the catalog-driven source-card grid (S3). Each source is its own card; active cards
+// navigate to their journey route, coming-soon cards are badged and non-navigable. The old
+// transport-method tiles + the PosWizard preview are retired.
+
+const SNAP = { userId: 'u', tenantId: 't', storeId: null, roles: [], userType: 'TENANT' as const }
 
 function renderConnect(): void {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const tree: ReactNode = (
-    <QueryClientProvider client={qc}>
-      <Connect />
-    </QueryClientProvider>
+  renderWithProviders(
+    <Routes>
+      <Route path="/connect" element={<Connect />} />
+      <Route path="/connect/square" element={<div>SQUARE JOURNEY</div>} />
+      <Route path="/connect/csv" element={<div>CSV WIZARD</div>} />
+    </Routes>,
+    { snapshot: SNAP, initialEntries: ['/connect'] },
   )
-  render(tree)
 }
 
-const NON_CSV_TILES = ['Native connector', 'API pull', 'Webhook push', 'SFTP', 'iPaaS / custom']
-
-function tileByTitle(title: string): HTMLElement {
-  return screen.getByText(title).closest('.choice') as HTMLElement
+function cardByName(name: string): HTMLElement {
+  return screen.getByText(name).closest('.choice') as HTMLElement
 }
 
-describe('Connect picker — Coming soon markers', () => {
-  it('badges the five non-CSV tiles and leaves Manual CSV unbadged', () => {
+describe('Connect — source-card grid', () => {
+  it('renders the four source cards', () => {
     renderConnect()
-    for (const title of NON_CSV_TILES) {
-      expect(within(tileByTitle(title)).getByText('Coming soon')).toBeInTheDocument()
-    }
-    expect(within(tileByTitle('Manual CSV')).queryByText('Coming soon')).toBeNull()
-    // exactly five markers across the grid, no more.
-    expect(screen.getAllByText('Coming soon')).toHaveLength(5)
-  })
-
-  it('renders all six tiles as live (enabled) buttons', () => {
-    renderConnect()
-    const tiles = ['Manual CSV', ...NON_CSV_TILES].map(tileByTitle)
-    expect(tiles).toHaveLength(6)
-    for (const tile of tiles) {
-      expect(tile.tagName).toBe('BUTTON')
-      expect(tile).toBeEnabled()
+    for (const name of ['Manual CSV', 'Square', 'Clover', 'Shopify']) {
+      expect(cardByName(name)).toBeInTheDocument()
     }
   })
 
-  it('keeps a badged tile clickable — clicking opens its preview walkthrough', () => {
+  it('badges only the coming-soon cards (Clover, Shopify)', () => {
     renderConnect()
-    // Native connector is badged; clicking it must still leave the picker for the PosWizard preview.
-    fireEvent.click(screen.getByText('Native connector'))
-    expect(screen.queryByText('iPaaS / custom')).toBeNull() // picker tiles gone (lede removed; use a tile as the picker marker)
-    // PosWizard preview walkthrough is now on screen.
-    expect(screen.getByText(/no live connection is made/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Back/ })).toBeInTheDocument()
+    expect(screen.getAllByText('Coming soon')).toHaveLength(2)
+    expect(cardByName('Clover').querySelector('.choice__soon')).not.toBeNull()
+    expect(cardByName('Shopify').querySelector('.choice__soon')).not.toBeNull()
+    expect(cardByName('Manual CSV').querySelector('.choice__soon')).toBeNull()
+    expect(cardByName('Square').querySelector('.choice__soon')).toBeNull()
   })
 
-  it('keeps another badged tile (SFTP) clickable — click-through is not blocked', () => {
+  it('enables active cards and disables coming-soon cards', () => {
     renderConnect()
-    fireEvent.click(screen.getByText('SFTP'))
-    // left the picker for SFTP's walkthrough (picker sub-copy gone, back affordance present).
-    expect(screen.queryByText('iPaaS / custom')).toBeNull() // picker tiles gone (lede removed; use a tile as the picker marker)
-    expect(screen.getByRole('heading', { name: /SFTP isn.t available yet/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Back/ })).toBeInTheDocument()
+    expect(cardByName('Manual CSV')).toBeEnabled()
+    expect(cardByName('Square')).toBeEnabled()
+    expect(cardByName('Clover')).toBeDisabled()
+    expect(cardByName('Shopify')).toBeDisabled()
+  })
+
+  it('navigates to the Square journey when the Square card is clicked', () => {
+    renderConnect()
+    fireEvent.click(cardByName('Square'))
+    expect(screen.getByText('SQUARE JOURNEY')).toBeInTheDocument()
+  })
+
+  it('navigates to the CSV wizard when the Manual CSV card is clicked', () => {
+    renderConnect()
+    fireEvent.click(cardByName('Manual CSV'))
+    expect(screen.getByText('CSV WIZARD')).toBeInTheDocument()
+  })
+
+  it('has no legacy method tiles', () => {
+    renderConnect()
+    for (const gone of ['API pull', 'Webhook push', 'SFTP', 'iPaaS / custom', 'Native connector']) {
+      expect(screen.queryByText(gone)).toBeNull()
+    }
   })
 })

@@ -35,6 +35,10 @@ function Auth0ProviderWithNavigate({ children }: { children: ReactNode }) {
       onRedirectCallback={(appState?: AppState) => {
         navigate(appState?.returnTo ?? '/', { replace: true })
       }}
+      // The Square OAuth callback (/connectors/square/callback) carries Square's own ?code&state.
+      // Without this, the Auth0 SDK would try to process them as an Auth0 login response and error.
+      // Skip the SDK's redirect handling on exactly that path so SquareCallback owns the exchange.
+      skipRedirectCallback={window.location.pathname === '/connectors/square/callback'}
     >
       {children}
     </Auth0Provider>
