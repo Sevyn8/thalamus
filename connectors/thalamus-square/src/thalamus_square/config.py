@@ -18,7 +18,14 @@ _SQUARE_API_BASE_URL = "SQUARE_API_BASE_URL"
 _SQUARE_API_VERSION = "SQUARE_API_VERSION"
 
 SANDBOX_BASE_URL = "https://connect.squareupsandbox.com"
-DEFAULT_API_VERSION = "2024-06-04"
+
+# Pinned Square-Version header. Upgrade policy: Square dates API versions and supports
+# each for roughly a year past release; a pinned version keeps request/response shapes
+# stable across our deploys (Square applies the pinned version, not "latest"). Bump this
+# to a current stable version deliberately (read Square's API changelog first, then
+# re-run the sandbox smoke script), never silently. 2026-01-22 is the current stable
+# version as of this pin.
+DEFAULT_API_VERSION = "2026-01-22"
 
 SERVICE_NAME = "thalamus-square"
 
