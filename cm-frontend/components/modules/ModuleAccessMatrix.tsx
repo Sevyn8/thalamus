@@ -31,29 +31,10 @@ import {
 import { initials, avatarTone } from "@/lib/utils/initials";
 import { cn } from "@/lib/utils";
 import type { WritableModuleCode } from "@/lib/api/modules";
-import type {
-  MatrixRow,
-  ModuleCard,
-  ModuleCode,
-} from "@/types/api";
+import type { MatrixRow, ModuleCard } from "@/types/api";
 
 const ADMIN_TOOLTIP =
   "Admin module is required for every tenant and cannot be disabled.";
-
-const DIS_TOOLTIP =
-  "DIS module access ships post-v0 when DIS-as-module lands server-side.";
-
-// Modules where the backend write endpoints accept the module_code as
-// a path param (per Step 6.15's ModuleCode enum). ADMIN is structurally
-// non-disable-able (DDL constraint on the backend); DIS is a frontend-
-// only enum widening for launcher tile gating (see types/api.ts) and
-// would 422 if invoked.
-const WRITABLE_MODULES: readonly WritableModuleCode[] = [
-  "PRICING_OS",
-  "PERISHABLES_ASSISTANT",
-  "PROMOTIONS_ASSISTANT",
-  "GOAL_CONSOLE",
-];
 
 export type ModuleAccessMatrixProps = {
   rows: MatrixRow[];
@@ -203,10 +184,14 @@ export function ModuleAccessMatrix({
                     : false;
                 const key = `${row.tenant_id}:${m.module_code}`;
                 const isPending = pendingKeys.has(key);
+                // Toggleability is catalog-driven: every module the matrix
+                // ships toggles like any other (DIS included, now that it is
+                // a real backend module). ADMIN is the sole exception and
+                // keeps its lock, mirroring the backend DDL constraint that
+                // ADMIN cannot be disabled. There is no page-local allowlist
+                // gating which modules toggle (a stale one predating DIS was
+                // the cause of the inert DIS toggle).
                 const isAdmin = m.module_code === "ADMIN";
-                const isWritable = (WRITABLE_MODULES as readonly ModuleCode[]).includes(
-                  m.module_code,
-                );
 
                 if (isAdmin) {
                   return (
@@ -220,23 +205,6 @@ export function ModuleAccessMatrix({
                           className="h-3.5 w-3.5 text-muted-foreground"
                           aria-hidden="true"
                         />
-                      </span>
-                    </TableCell>
-                  );
-                }
-
-                if (!isWritable) {
-                  // DIS today (frontend-only enum widening; not in
-                  // backend ModuleCode). Render the Switch read-only
-                  // until DIS-as-module lands server-side per Step 6.15
-                  // forward note.
-                  return (
-                    <TableCell key={m.module_code} className="text-center">
-                      <span
-                        title={DIS_TOOLTIP}
-                        className="inline-flex items-center"
-                      >
-                        <Switch checked={enabled} disabled />
                       </span>
                     </TableCell>
                   );

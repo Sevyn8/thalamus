@@ -29,11 +29,12 @@ export type ModuleMatrixParams = {
 
 export type ModuleAccessRead = components["schemas"]["ModuleAccessRead"];
 
-// Backend ModuleCode enum (Step 6.15). The frontend's hand-extended
-// ModuleCode union (types/api.ts) is wider — adds DIS for launcher
-// tile gating. The write endpoints reject DIS as 422 because DIS is
-// not in the backend enum. Callers must not invoke enable/disable
-// with DIS until DIS-as-module ships server-side.
+// Backend ModuleCode enum (the enable/disable path-param vocabulary).
+// DIS shipped server-side (added to the backend enum + module_code
+// lookups), so it is now a real writable module here: enable/disable
+// accept DIS like any other module, and the Module Access matrix toggles
+// it. ADMIN remains structurally non-disable-able (backend DDL
+// constraint); the matrix keeps ADMIN locked.
 export type WritableModuleCode = components["schemas"]["ModuleCode"];
 
 export const modulesApi = {
