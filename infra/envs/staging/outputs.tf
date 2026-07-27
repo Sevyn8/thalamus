@@ -79,3 +79,13 @@ output "streaming_consumer_service_account_email" {
   value       = module.streaming_consumer_service.service_account_email
   description = "streaming-consumer runtime SA (secretAccessor, objectViewer on bronze, subscriber on the ingress sub, project pubsub.viewer)."
 }
+
+output "square_connector_job_name" {
+  value       = module.square_connector_job.job_name
+  description = "Square connector Cloud Run JOB name. Execute one pull with: gcloud run jobs execute <name> --region asia-south1 --args=\"--tenant-id,<uuid>,--store-id,<uuid>,--source-id,<slug>,--template-id,<uuid>,--run-key,<key>,--store-code,<code>\" --wait"
+}
+
+output "square_connector_service_account_email" {
+  value       = module.square_connector_job.service_account_email
+  description = "square-connector runtime SA (secretAccessor on dis-database-url + square-app-secret, project squareTokenVaultRefresher, objectAdmin on bronze, publisher on the ingress topic; deliberately no pubsub.viewer)."
+}

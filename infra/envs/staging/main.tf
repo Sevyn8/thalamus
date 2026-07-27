@@ -214,3 +214,39 @@ module "streaming_consumer_service" {
   bronze_bucket_name = google_storage_bucket.dis_bronze.name
   subscription_id    = google_pubsub_subscription.ingress_ready_sub.id
 }
+
+# --- Wave 3: the Square connector, as a Cloud Run JOB ---
+#
+# One execution is one trigger: pull Square's catalog, write the CSV into bronze,
+# publish ingress.ready. It feeds the SAME ingress.ready topic csv-ingest-worker
+# publishes to, so streaming_consumer_service turns the result into canonical rows
+# with no further wiring.
+#
+# The run target (tenant/store/source/template/run-key) is NOT here and not in the
+# module: it is supplied per execution via `gcloud run jobs execute --args`. A
+# multi-tenant connector's terraform must not know a tenant's ids, and a bare
+# execute failing loudly on argparse (exit 2) is the intended behaviour.
+#
+# square_client_id must match the app id dis_ui_server_service connects with: the
+# BFF mints the per-tenant token with that app, and the connector refreshes it with
+# the same client_id + square-app-secret pair.
+
+module "square_connector_job" {
+  source = "../../modules/cloud-run-service-square-connector"
+
+  project_id       = var.project_id
+  region           = var.region
+  image            = var.square_connector_image
+  vpc_connector_id = module.network.vpc_connector_id
+
+  # Referencing the inline resources makes Terraform create the bucket + topic
+  # (and their IAM) before the job.
+  bronze_bucket_name  = google_storage_bucket.dis_bronze.name
+  ingress_topic_id    = google_pubsub_topic.ingress_ready.id
+  ingress_ready_topic = google_pubsub_topic.ingress_ready.name
+
+  # Same Square sandbox app as the BFF's connect flow. The OAuth/API host and the
+  # two secret names ride the module defaults (sandbox host, dis-database-url,
+  # square-app-secret).
+  square_client_id = "sandbox-sq0idb-UNkdYKb0-JH_8P2vSsuBIg"
+}

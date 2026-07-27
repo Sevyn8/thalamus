@@ -184,3 +184,9 @@ variable "streaming_consumer_image" {
   description = "streaming-consumer container image. Defaults to the v1 tag pushed this session."
   default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/streaming-consumer:v1"
 }
+
+variable "square_connector_image" {
+  type        = string
+  description = "square-connector container image (the Cloud Run JOB). Built from connectors/thalamus-square/Dockerfile with the MONOREPO ROOT as build context."
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/square-connector:v2"
+}
