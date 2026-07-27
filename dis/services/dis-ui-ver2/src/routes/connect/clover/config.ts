@@ -10,12 +10,22 @@ export const CLOVER_TEMPLATE_NAME = 'clover snapshot'
 
 // The Clover App Market listing for this app. Opened by the Install step's "not sure" door.
 //
-// UNVERIFIED URL SHAPE: every other Clover fact in this lane was confirmed against the live
-// sandbox, but this listing path was not - it needs a browser session on a merchant account.
-// The blast radius is one link: a wrong path lands on the App Market home rather than the
+// THE OBSERVED WORKING PATH IS MERCHANT-SCOPED, AND WE CANNOT USE IT. A live browser session
+// confirmed this form:
+//
+//     sandbox.dev.clover.com/appmarket/m/{merchantId}/apps/T4RKJYVE63ARA
+//
+// The /m/{merchantId}/ segment is impossible at the Install step: we do not know the
+// merchant until consent completes, which is the entire reason that step exists. So the
+// generic form below - the same path without the merchant segment - is the only candidate,
+// and it is UNVERIFIED. Every other Clover fact in this lane was confirmed against the live
+// sandbox; this one is an inference from the merchant-scoped form.
+//
+// The blast radius is one link. A wrong path lands on the App Market home rather than the
 // listing, and the step is a signpost that writes nothing, so nothing is corrupted. The
-// confirmed fallback, if this turns out wrong, is that the AUTHORIZE url itself silently
-// diverts to the listing when the app is not installed.
+// PROVEN fallback is that the AUTHORIZE url itself silently diverts to the listing when the
+// app is not installed - that behaviour is confirmed, and it is what the launch route's
+// resume branch is built on.
 export const CLOVER_APP_MARKET_URL = 'https://sandbox.dev.clover.com/appmarket/apps/T4RKJYVE63ARA'
 
 // The columns of the CSV the C2 connector actually writes

@@ -1,9 +1,12 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 
+import { useAuth } from '../../../auth/useAuth'
 import { getCloverAuthorizeUrl } from '../../../lib/dis-ui-server/clover-oauth'
 import { createMappingTemplateIfAbsent } from '../../../lib/dis-ui-server/mapping-templates'
 import { createSourceIfAbsent } from '../../../lib/dis-ui-server/sources'
+import { useStoresOnboarded, useStoresOnboardedForTenant } from '../../../lib/dis-ui-server/stores'
+import type { OnboardedStore } from '../../../lib/dis-ui-server/stores'
 import { JourneyShell } from '../JourneyShell'
 import type { JourneyDefinition, JourneyStep } from '../journey'
 import {
@@ -53,6 +56,8 @@ const STEP_META = [
 
 export function CloverJourney() {
   const [params] = useSearchParams()
+  const { snapshot } = useAuth()
+  const isPlatform = snapshot?.userType === 'PLATFORM'
 
   // The launch route sends the browser back here in one of two shapes: connected (consent
   // finished) or resume-at-connect (installed but not authorised, merchant known).
@@ -70,6 +75,67 @@ export function CloverJourney() {
   // tolerated). Surface a note on the next step instead of a step error.
   const [alreadyRegistered, setAlreadyRegistered] = useState(false)
 
+  // Store selection, the SAME pattern as the Square journey - not a Clover variant.
+  // ConnectorTrigger.store_id is required, so a source registered without a store cannot be
+  // pulled at all; the field being absent was a consistency defect, not a vendor difference.
+  //
+  // TENANT reads its own onboarded stores. Exactly one query fires per persona: the other is
+  // passed null so it stays disabled (a PLATFORM caller must never hit the
+  // token-tenant-pinned /stores-onboarded, which 403s for it).
+  //
+  // The PLATFORM cross-tenant read is wired but INERT here, and deliberately so: this
+  // journey is self-serve TENANT only and threads no acted-for tenant anywhere, so a
+  // PLATFORM caller's register would 403 at resolve_acted_for regardless. Square gates this
+  // read on its tenant picker; Clover has none yet, so there is no tenant to read for.
+  // When the ops journey lands, the tenant picker and this read arrive together.
+  const tenantStoresQuery = useStoresOnboarded(isPlatform ? null : snapshot)
+  const platformStoresQuery = useStoresOnboardedForTenant(snapshot, null)
+  const storesQuery = isPlatform ? platformStoresQuery : tenantStoresQuery
+
+  const [selectedStore, setSelectedStore] = useState('')
+  // Only stores with a store_code are selectable (store_code is the source's store_id; a NULL
+  // code, D55, cannot be a source key). Label pairs the name with the code for disambiguation.
+  const storeOptions = useMemo(
+    () =>
+      (storesQuery.data ?? [])
+        .filter((s): s is OnboardedStore & { store_code: string } => s.store_code !== null)
+        .map((s) => ({ code: s.store_code, label: `${s.name} (${s.store_code})` })),
+    [storesQuery.data],
+  )
+  // Single store auto-selects (derived, no effect): the explicit pick wins, else the sole
+  // option, else empty (multi-store requires an explicit pick before Register enables).
+  const effectiveStore =
+    selectedStore !== '' ? selectedStore : storeOptions.length === 1 ? storeOptions[0].code : ''
+  const needsStore = effectiveStore === ''
+
+  function storePicker() {
+    return (
+      <div className="field" style={{ marginBottom: 16 }}>
+        <label htmlFor="cl-store">Store to connect</label>
+        {storesQuery.isPending ? (
+          <span className="hint">Loading stores...</span>
+        ) : storeOptions.length === 0 ? (
+          <span className="hint">
+            No onboarded store with a store code is available for this tenant.
+          </span>
+        ) : (
+          <select
+            id="cl-store"
+            value={effectiveStore}
+            onChange={(e) => setSelectedStore(e.target.value)}
+          >
+            {storeOptions.length > 1 ? <option value="">Select a store...</option> : null}
+            {storeOptions.map((s) => (
+              <option key={s.code} value={s.code}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+    )
+  }
+
   async function register(): Promise<void> {
     setRegisterPhase('running')
     setError(null)
@@ -78,6 +144,7 @@ export function CloverJourney() {
         source_id: CLOVER_SOURCE_ID,
         display_name: CLOVER_DISPLAY_NAME,
         channel: 'api',
+        store_id: effectiveStore,
       })
       const templateCreated = await createMappingTemplateIfAbsent({
         source_id: CLOVER_SOURCE_ID,
@@ -111,10 +178,13 @@ export function CloverJourney() {
   function body(index: number) {
     if (index === STEP_REGISTER) {
       return (
-        <p className="sub" style={{ marginBottom: 16 }}>
-          Registers the Clover source <span className="mono">{CLOVER_SOURCE_ID}</span> and an
-          ACTIVE snapshot mapping template for your catalogue.
-        </p>
+        <>
+          <p className="sub" style={{ marginBottom: 16 }}>
+            Registers the Clover source <span className="mono">{CLOVER_SOURCE_ID}</span> and an
+            ACTIVE snapshot mapping template for the selected store.
+          </p>
+          {storePicker()}
+        </>
       )
     }
     if (index === STEP_INSTALL) {
@@ -178,6 +248,7 @@ export function CloverJourney() {
         label: 'Register source & template',
         runningLabel: 'Registering...',
         running: registerPhase === 'running',
+        disabled: needsStore,
         onAct: () => void register(),
       },
     },

@@ -14,10 +14,20 @@ vi.mock('../../../lib/dis-ui-server/mapping-templates', () => ({
 vi.mock('../../../lib/dis-ui-server/clover-oauth', () => ({
   getCloverAuthorizeUrl: vi.fn().mockResolvedValue({ authorize_url: 'https://cl.test/x', state: 's' }),
 }))
+// Store reads, the same shape the Square journey's test mocks. Default: one onboarded store
+// so it auto-selects (the common sandbox case); individual tests override for multi/empty.
+vi.mock('../../../lib/dis-ui-server/stores', () => ({
+  useStoresOnboarded: vi.fn(() => ({
+    data: [{ store_id: 's1', name: 'Buc-ees Katy', store_code: 'AMB-001', status: 'active' }],
+    isPending: false,
+  })),
+  useStoresOnboardedForTenant: vi.fn(() => ({ data: [], isPending: false })),
+}))
 
 import { getCloverAuthorizeUrl } from '../../../lib/dis-ui-server/clover-oauth'
 import { createMappingTemplateIfAbsent } from '../../../lib/dis-ui-server/mapping-templates'
 import { createSourceIfAbsent } from '../../../lib/dis-ui-server/sources'
+import { useStoresOnboarded } from '../../../lib/dis-ui-server/stores'
 
 const TENANT = { userId: 'u', tenantId: 't', storeId: null, roles: [], userType: 'TENANT' as const }
 
@@ -34,6 +44,10 @@ function render(entry = '/connect/clover'): void {
 beforeEach(() => {
   vi.clearAllMocks()
   sessionStorage.clear()
+  vi.mocked(useStoresOnboarded).mockReturnValue({
+    data: [{ store_id: 's1', name: 'Buc-ees Katy', store_code: 'AMB-001', status: 'active' }],
+    isPending: false,
+  } as never)
 })
 
 // -- register ---------------------------------------------------------------------------
@@ -43,7 +57,12 @@ test('register creates the source and template with no acted-for tenant', async 
   fireEvent.click(screen.getByRole('button', { name: 'Register source & template' }))
   await screen.findByRole('button', { name: 'Continue to authorise' })
   expect(createSourceIfAbsent).toHaveBeenCalledWith(
-    expect.objectContaining({ source_id: 'clover_pos_v1', channel: 'api' }),
+    expect.objectContaining({
+      source_id: 'clover_pos_v1',
+      channel: 'api',
+      // ConnectorTrigger.store_id is required, so a source with no store cannot be pulled.
+      store_id: 'AMB-001',
+    }),
   )
   // Self-serve TENANT: the tenant is derived server-side from the Bearer, never a param.
   expect(vi.mocked(createSourceIfAbsent).mock.calls[0][0]).not.toHaveProperty(
@@ -154,4 +173,45 @@ test('a completed connect opens at the terminal step', () => {
   )
   // Terminal: no accent forward action anywhere on the panel.
   expect(document.querySelectorAll('.btn.pri')).toHaveLength(0)
+})
+
+
+// -- store selection: the same pattern as Square, not a Clover variant -------------------
+
+test('a single onboarded store auto-selects and Register is enabled', () => {
+  render()
+  expect(screen.getByRole('option', { name: /AMB-001/ })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Register source & template' })).toBeEnabled()
+})
+
+test('multiple stores require an explicit pick before Register enables', () => {
+  vi.mocked(useStoresOnboarded).mockReturnValue({
+    data: [
+      { store_id: 's1', name: 'Store A', store_code: 'AMB-001', status: 'active' },
+      { store_id: 's2', name: 'Store B', store_code: 'AMB-002', status: 'active' },
+    ],
+    isPending: false,
+  } as never)
+  render()
+  expect(screen.getByRole('button', { name: 'Register source & template' })).toBeDisabled()
+  fireEvent.change(screen.getByLabelText('Store to connect'), { target: { value: 'AMB-002' } })
+  expect(screen.getByRole('button', { name: 'Register source & template' })).toBeEnabled()
+})
+
+test('a store with no store_code is not selectable', () => {
+  // store_code IS the source's store_id; a NULL code (D55) cannot be a source key.
+  vi.mocked(useStoresOnboarded).mockReturnValue({
+    data: [{ store_id: 's1', name: 'Codeless', store_code: null, status: 'active' }],
+    isPending: false,
+  } as never)
+  render()
+  expect(screen.getByText(/No onboarded store with a store code/i)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Register source & template' })).toBeDisabled()
+})
+
+test('no stores at all disables Register with a hint rather than failing later', () => {
+  vi.mocked(useStoresOnboarded).mockReturnValue({ data: [], isPending: false } as never)
+  render()
+  expect(screen.getByText(/No onboarded store with a store code/i)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Register source & template' })).toBeDisabled()
 })
