@@ -28,8 +28,9 @@ import json
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
-# Measured against the live sandbox: access tokens live 30 minutes, refresh tokens 1 year.
-# Recorded here as documentation for whoever picks a skew; nothing reads them.
+# Measured against the live sandbox (2026-07-27): the access token expiry came back at
+# exactly 30 minutes, the refresh token at 1 year. Documentation for whoever picks a skew;
+# nothing reads them.
 ACCESS_TOKEN_LIFETIME_SECONDS = 30 * 60
 REFRESH_TOKEN_LIFETIME_SECONDS = 365 * 24 * 60 * 60
 
@@ -101,6 +102,10 @@ class CloverTokenSet:
         Checked BEFORE the network call: once this is true neither the refresh leg nor the
         recovery leg can succeed (the previous token is strictly older), so the store fails
         fast with the terminal re-consent error instead of burning two doomed requests.
+
+        Observed (2026-07-27): ``refresh_token_expiration`` moves forward ~1 year on every
+        rotation, so an actively-refreshing connector never approaches it — this guard fires
+        only for a connector that has been idle for a year.
         """
         return now.timestamp() >= self.refresh_token_expiration
 

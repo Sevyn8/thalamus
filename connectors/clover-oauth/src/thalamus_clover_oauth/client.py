@@ -155,6 +155,9 @@ class CloverOAuthClient:
     def refresh(self, refresh_token: str, *, merchant_id: str, employee_id: str | None) -> CloverTokenSet:
         """Rotate the token pair. DESTRUCTIVE: on success ``refresh_token`` is now dead.
 
+        Observed (2026-07-27, twice): the refresh token rotates on EVERY call — Clover never
+        hands the same one back, unlike Square's code flow.
+
         No ``client_secret`` on this leg — Clover does not accept one here. The returned
         record does NOT yet carry ``previous_refresh_token``; the caller stamps the spent
         token via :meth:`CloverTokenSet.carrying_previous` before persisting, because only

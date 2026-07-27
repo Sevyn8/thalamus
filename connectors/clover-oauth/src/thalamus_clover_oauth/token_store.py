@@ -146,6 +146,9 @@ class CloverTokenStore:
         ``previous_refresh_token`` is N-1, two generations back, and should be rejected. So
         the record's CURRENT token is attempt 1 and ``previous_refresh_token`` is attempt 2.
 
+        CONFIRMED against the live Clover sandbox (2026-07-27): after a simulated lost
+        persist, recovery with the just-rejected current token was ACCEPTED.
+
         Which attempt succeeds is itself diagnostic and is logged: the current token winning
         means the ROTATION landed and our PERSIST was lost; the previous one winning means
         the rotation itself never took effect. Those point at different bugs.

@@ -34,13 +34,11 @@ Typical run:
     ... simulate-lost-persist            # rotate and discard, reproducing a crashed persist
     ... recover                          # which generation does Clover actually accept?
 
-That last pair is the EXPERIMENT. The store tries the just-rejected token before
-``previous_refresh_token``, on the reasoning that a spent refresh token stays valid as a
-RECOVERY token for ~2 weeks — so after a lost persist the eligible generation is the one
-just presented, not the one two back. That is reasoned from docs, not observed. Run
-``simulate-lost-persist`` then ``recover --token current``; if Clover rejects it and only
-``--token previous`` is accepted, the store's ordering is wrong and must be reverted to
-previous-only.
+That last pair is how the store's recovery ordering was settled: it tries the
+just-rejected token before ``previous_refresh_token``, because a spent refresh token stays
+valid as a RECOVERY token for ~2 weeks. CONFIRMED against the live sandbox (2026-07-27):
+after ``simulate-lost-persist``, ``recover --token current`` returned ACCEPTED. The
+commands remain for re-checking that behaviour against a future Clover change.
 
 NO TOKEN VALUE IS EVER PRINTED. Only lengths, prefixes, and expiry times.
 """
@@ -216,12 +214,11 @@ def cmd_simulate_lost_persist(args: argparse.Namespace) -> int:
 def cmd_recover(args: argparse.Namespace) -> int:
     """Force the D4 recovery leg and REPORT WHICH CANDIDATE Clover accepts.
 
-    The point of the `--token` choice is to settle empirically which generation Clover
-    treats as recovery-eligible. The reasoning behind the store's order is that a spent
-    refresh token stays valid as a RECOVERY token for ~2 weeks, so after a lost persist the
-    eligible one is the token just rejected (the record's CURRENT), not `previous`, which is
-    two generations back. That is reasoned from docs, not observation — this command is how
-    it gets confirmed or falsified.
+    The `--token` choice is what settled which generation Clover treats as
+    recovery-eligible: a spent refresh token stays valid as a RECOVERY token for ~2 weeks,
+    so after a lost persist the eligible one is the token just rejected (the record's
+    CURRENT), not `previous`, which is two generations back. CONFIRMED against the live
+    sandbox (2026-07-27): `--token current` returned ACCEPTED after a simulated lost persist.
     """
     tenant = UUID(args.tenant_id)
     vault = _vault(args)
