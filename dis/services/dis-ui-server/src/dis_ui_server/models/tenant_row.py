@@ -3,9 +3,16 @@
 Column set mirrors the LIVE table (introspected in Slice 8 plan mode): 9 columns,
 PK ``tenant_id``, ``display_code`` nullable (faithful copy of CM's nullable
 source column, D55). Like ``identity_mirror.stores`` the table is RLS-OFF (D41),
-so EVERY read of this model MUST carry an explicit ``tenant_id`` predicate — the
-in-query scoping is the only isolation. That predicate lives in ONE place,
-``repos/tenants.py``; do not query this model anywhere else.
+so there is no database backstop: every read of this model must be isolated by
+the QUERY or by its CALLER, and both live in ONE place, ``repos/tenants.py``.
+Do not query this model anywhere else.
+
+A tenant-facing read carries an explicit ``tenant_id`` predicate — the in-query
+scoping is then the only isolation. The one CROSS-TENANT read
+(``list_actable_tenants``, the PLATFORM ops tenant list) carries none by design;
+its isolation is RELOCATED, not dropped — ``handlers/tenants.py`` refuses any
+caller that is not PLATFORM + ``dis:ops`` before the query runs. Adding an
+unpredicated read without an equivalent caller-side gate is a cross-tenant leak.
 
 dis-ui-server never writes this table (Mirror Sync owns it); the model is typed
 read metadata only.

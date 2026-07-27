@@ -33,6 +33,7 @@ from dis_ui_server.handlers import (
     sources,
     stores,
     template_mapping_fields,
+    tenants,
 )
 
 api_router = APIRouter(prefix=API_PREFIX)
@@ -50,3 +51,4 @@ api_router.include_router(sources.router)
 api_router.include_router(connector_health.router)
 api_router.include_router(connectors_square.router)
 api_router.include_router(connectors_clover.router)
+api_router.include_router(tenants.router)
