@@ -184,6 +184,12 @@ module "dis_ui_server_service" {
   # Secret Manager.
   square_client_id          = "sandbox-sq0idb-UNkdYKb0-JH_8P2vSsuBIg"
   square_oauth_redirect_uri = "https://dis-ui-ver2-697546531605.asia-south1.run.app/connectors/square/callback"
+
+  # Clover OAuth connect (C3). The app secret rides the module default
+  # (clover-app-secret, created out of band); the state key is shared with Square.
+  # The redirect is the LAUNCH path, which is what is registered in the Clover dashboard.
+  clover_client_id          = "T4RKJYVE63ARA"
+  clover_oauth_redirect_uri = "https://dis-ui-ver2-697546531605.asia-south1.run.app/connectors/clover/launch"
 }
 
 module "csv_ingest_worker_service" {

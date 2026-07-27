@@ -15,6 +15,17 @@
 #   3. Two extra runtime grants: storage.objectAdmin on the bronze bucket (CSV
 #      upload writes) and pubsub.publisher on the csv.received topic (the
 #      csv.received publish). One DB secret (dis-database-url), not three.
+#   4. TWO vendor OAuth connect flows, Square (S2) and Clover (C3), each with its
+#      own client id / redirect / app secret. The state-signing key is SHARED and
+#      belongs to neither: one secret, one env var, both vendors.
+#
+# squareTokenVaultWriter COVERS CLOVER TOO. The role's NAME is Square-specific, its
+# GRANT is not: it is project-level and unconditioned
+# (secretmanager.secrets.create/get + versions.add/access), so it already permits
+# the clover-oauth-* per-tenant secrets the Clover callback creates. That is why C3
+# added no second role. Do NOT narrow it to a square-oauth-* name prefix without
+# moving Clover to its own role first - the Clover connect flow would start failing
+# at the vault write, after a successful vendor exchange.
 #
 # NOT granted here, by design:
 #   - roles/cloudsql.client: dis-ui-server connects over the private IP at the
@@ -69,6 +80,21 @@ resource "google_secret_manager_secret_iam_member" "square_app_secret" {
 resource "google_secret_manager_secret_iam_member" "oauth_state_key" {
   project   = var.project_id
   secret_id = data.google_secret_manager_secret.oauth_state_key.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.dis_ui_server.email}"
+}
+
+# --- Clover OAuth connect (C3) ---
+# Same shape as the Square block above. The state-signing key is NOT duplicated: it is
+# shared across vendors and already granted above.
+data "google_secret_manager_secret" "clover_app_secret" {
+  project   = var.project_id
+  secret_id = var.secret_clover_app_secret
+}
+
+resource "google_secret_manager_secret_iam_member" "clover_app_secret" {
+  project   = var.project_id
+  secret_id = data.google_secret_manager_secret.clover_app_secret.secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.dis_ui_server.email}"
 }
@@ -128,6 +154,21 @@ locals {
     SQUARE_OAUTH_BASE_URL     = var.square_oauth_base_url     # sandbox host default
     SQUARE_OAUTH_REDIRECT_URI = var.square_oauth_redirect_uri # exact URL registered at Square
     SQUARE_SECRETS_PROJECT_ID = var.project_id                # token vault lives in this project
+    # Clover OAuth connect (C3). config.py reads these; unset -> the Clover endpoints 503.
+    # CLOVER_APP_SECRET is secret env (below), never plain. CLOVER_SECRETS_PROJECT_ID is
+    # left unset and defaults to the pubsub project, exactly as Square's does.
+    CLOVER_CLIENT_ID = var.clover_client_id # Clover application id (public)
+    # SET EXPLICITLY, not left to the config default, because this is not merely a host:
+    # thalamus_clover_oauth derives environment = "sandbox" if "sandbox" in base_url else
+    # "production" at client construction and STAMPS IT ONTO EVERY STORED TOKEN RECORD.
+    # A silent default deciding a credential's environment is the same shape as
+    # SQUARE_API_BASE_URL on the connector side. Clover hosts are per-REGION as well as
+    # per-environment, so production must set this deliberately.
+    CLOVER_OAUTH_BASE_URL = var.clover_oauth_base_url
+    # The LAUNCH path, not the callback: launch is the redirect_uri empirically proven
+    # accepted by Clover, and Clover requires the value to match a URL registered in the
+    # dashboard. CloverCallback forwards to CloverLaunch, so routing loses nothing.
+    CLOVER_OAUTH_REDIRECT_URI = var.clover_oauth_redirect_uri
   }
 }
 
@@ -209,7 +250,17 @@ resource "google_cloud_run_v2_service" "dis_ui_server" {
       }
 
       env {
-        name = "STATE_SIGNING_KEY" # HMAC key signing the OAuth state token
+        name = "CLOVER_APP_SECRET" # the Clover app secret; never logged
+        value_source {
+          secret_key_ref {
+            secret  = data.google_secret_manager_secret.clover_app_secret.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name = "STATE_SIGNING_KEY" # HMAC key signing the OAuth state token (SHARED: both vendors)
         value_source {
           secret_key_ref {
             secret  = data.google_secret_manager_secret.oauth_state_key.secret_id
@@ -244,6 +295,7 @@ resource "google_cloud_run_v2_service" "dis_ui_server" {
     google_secret_manager_secret_iam_member.database_url,
     google_secret_manager_secret_iam_member.square_app_secret,
     google_secret_manager_secret_iam_member.oauth_state_key,
+    google_secret_manager_secret_iam_member.clover_app_secret,
     google_storage_bucket_iam_member.bronze_object_admin,
     google_pubsub_topic_iam_member.csv_publisher,
   ]

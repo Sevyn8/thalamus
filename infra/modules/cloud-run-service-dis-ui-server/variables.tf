@@ -148,3 +148,29 @@ variable "secret_oauth_state_key" {
   description = "Secret Manager secret name holding the HMAC key that signs the OAuth state token. Created out of band."
   default     = "dis-ui-oauth-state-key"
 }
+
+# --- Clover OAuth connect (C3). Same shape as the Square block: client_id + redirect_uri
+#     are per-env inputs, base URL and the secret name ride defaults. The state-signing key
+#     is SHARED with Square and is not repeated here. ---
+
+variable "clover_client_id" {
+  type        = string
+  description = "CLOVER_CLIENT_ID: the Clover application ID (public). Sandbox app id for staging."
+}
+
+variable "clover_oauth_base_url" {
+  type        = string
+  description = "CLOVER_OAUTH_BASE_URL: the Clover OAuth host. NOT just a host - thalamus_clover_oauth derives the token record's environment stamp from whether it contains 'sandbox', so set it deliberately. Clover hosts are per-region as well as per-environment."
+  default     = "https://sandbox.dev.clover.com"
+}
+
+variable "clover_oauth_redirect_uri" {
+  type        = string
+  description = "CLOVER_OAUTH_REDIRECT_URI: the exact redirect URL registered in the Clover dashboard. Use the LAUNCH path (/connectors/clover/launch) - it is the form proven accepted, and CloverCallback forwards to it."
+}
+
+variable "secret_clover_app_secret" {
+  type        = string
+  description = "Secret Manager secret name holding the Clover application secret. Created out of band."
+  default     = "clover-app-secret"
+}
