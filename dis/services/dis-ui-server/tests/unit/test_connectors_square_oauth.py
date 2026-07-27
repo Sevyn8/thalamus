@@ -261,7 +261,7 @@ def test_config_oauth_configured_when_all_present() -> None:
         square_client_id="id",
         square_app_secret="secret",
         square_oauth_redirect_uri="https://ui.test/cb",
-        square_oauth_state_key="key",
+        oauth_state_key="key",
     )
     assert config.square_oauth_configured is True
     assert config.square_oauth_base_url == SQUARE_SANDBOX_OAUTH_BASE_URL

@@ -90,7 +90,9 @@ _SQUARE_CLIENT_ID = "SQUARE_CLIENT_ID"
 _SQUARE_APP_SECRET = "SQUARE_APP_SECRET"
 _SQUARE_OAUTH_BASE_URL = "SQUARE_OAUTH_BASE_URL"
 _SQUARE_OAUTH_REDIRECT_URI = "SQUARE_OAUTH_REDIRECT_URI"
-_SQUARE_OAUTH_STATE_KEY = "STATE_SIGNING_KEY"
+# SHARED ACROSS CONNECTORS, not Square-specific: the HS256 key signing the stateless OAuth
+# `state` token. One key, one secret, every vendor. Read once into `oauth_state_key`.
+_OAUTH_STATE_KEY = "STATE_SIGNING_KEY"
 _SQUARE_SECRETS_PROJECT_ID = "SQUARE_SECRETS_PROJECT_ID"
 
 SERVICE_NAME = "dis-ui-server"
@@ -217,8 +219,20 @@ class UiServerConfig:
     square_app_secret: str | None = None
     square_oauth_base_url: str = SQUARE_SANDBOX_OAUTH_BASE_URL
     square_oauth_redirect_uri: str | None = None
-    square_oauth_state_key: str | None = None
     square_secrets_project_id: str | None = None
+    # CANONICAL, and deliberately NOT under the square_ prefix: the OAuth state-signing key
+    # is a SHARED primitive every connector's connect flow uses (the mechanism in
+    # oauth/state.py is vendor-agnostic and each vendor echoes `state` back verbatim).
+    # Published unconditionally in the lifespan, so one vendor being unconfigured can never
+    # take another vendor's connect flow down with it.
+    oauth_state_key: str | None = None
+
+    @property
+    def square_oauth_state_key(self) -> str | None:
+        """Alias for :attr:`oauth_state_key`, kept ONLY so connectors_square.py and its
+        tests need no edit. DERIVED, never separately parsed: two independent reads of one
+        env var is how the two drift apart later. New connectors read the canonical field."""
+        return self.oauth_state_key
 
     @property
     def square_oauth_configured(self) -> bool:
@@ -293,7 +307,7 @@ class UiServerConfig:
         square_app_secret = os.environ.get(_SQUARE_APP_SECRET) or None
         square_oauth_base_url = os.environ.get(_SQUARE_OAUTH_BASE_URL) or SQUARE_SANDBOX_OAUTH_BASE_URL
         square_oauth_redirect_uri = os.environ.get(_SQUARE_OAUTH_REDIRECT_URI) or None
-        square_oauth_state_key = os.environ.get(_SQUARE_OAUTH_STATE_KEY) or None
+        oauth_state_key = os.environ.get(_OAUTH_STATE_KEY) or None
         square_secrets_project_id = os.environ.get(_SQUARE_SECRETS_PROJECT_ID) or pubsub_project_id
         return cls(
             postgres_url=postgres_url,
@@ -313,7 +327,7 @@ class UiServerConfig:
             square_app_secret=square_app_secret,
             square_oauth_base_url=square_oauth_base_url,
             square_oauth_redirect_uri=square_oauth_redirect_uri,
-            square_oauth_state_key=square_oauth_state_key,
+            oauth_state_key=oauth_state_key,
             square_secrets_project_id=square_secrets_project_id,
         )
 

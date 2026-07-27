@@ -103,6 +103,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         timeout_s=config.gemini_timeout_s,
         thinking_budget=config.gemini_thinking_budget,
     )
+    # The OAuth state-signing key is SHARED across connectors, so it is published
+    # UNCONDITIONALLY, outside any vendor branch. Publishing a shared primitive inside the
+    # Square branch would mean an unconfigured Square silently disabled every other
+    # vendor's connect flow.
+    app.state.oauth_state_key = config.oauth_state_key
     # Square OAuth connect (S2), optional at boot (like the GEMINI_* config): built once when
     # fully configured, else left None so the OAuth endpoints 503. Construction is I/O-free
     # (httpx.Client build; the Secret Manager client is credential-lazy), so an unreachable
