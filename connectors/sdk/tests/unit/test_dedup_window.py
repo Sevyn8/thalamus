@@ -21,6 +21,7 @@ import thalamus_connector_sdk.pipeline as pipeline_module
 from csv_ingest_worker.bronze import PriorIngest
 from dis_audit import AuditEvent
 from thalamus_connector_sdk import (
+    RATE_LIMIT_UNKNOWN,
     AuthContext,
     ConnectorAudit,
     ConnectorPipeline,
@@ -143,9 +144,15 @@ def _wire(monkeypatch: pytest.MonkeyPatch, recorder: _Recorder, *, prior: PriorI
         recorder.add("mark_published", bronze_id)
 
     async def fake_health_seen(
-        conn: Any, *, tenant_id: UUID, source_id: str, metadata: dict[str, Any] | None = None
+        conn: Any,
+        *,
+        tenant_id: UUID,
+        source_id: str,
+        metadata: dict[str, Any] | None = None,
+        rate_limit_state: Any = RATE_LIMIT_UNKNOWN,
     ) -> None:
         recorder.add("health_seen", source_id)
+        recorder.add("health_seen_rate_limit", rate_limit_state)
 
     async def fake_health_error(
         conn: Any,
@@ -154,8 +161,10 @@ def _wire(monkeypatch: pytest.MonkeyPatch, recorder: _Recorder, *, prior: PriorI
         source_id: str,
         detail: str,
         metadata: dict[str, Any] | None = None,
+        rate_limit_state: Any = RATE_LIMIT_UNKNOWN,
     ) -> None:
         recorder.add("health_error", detail)
+        recorder.add("health_error_rate_limit", rate_limit_state)
 
     monkeypatch.setattr(pipeline_module, "rls_session", fake_rls_session)
     monkeypatch.setattr(pipeline_module, "find_prior", fake_find_prior)
@@ -223,3 +232,34 @@ async def test_failed_prior_is_no_op() -> None:
 
     assert outcome.disposition == "duplicate_noop"
     assert "publish" not in recorder.names()
+
+
+async def test_duplicate_paths_preserve_a_stored_rate_limit_posture() -> None:
+    """NEGATIVE CASE (D116): a no-op never extracted, so it must not clear the posture.
+
+    Every duplicate branch emits health-seen. None of them ran an extract, so none knows
+    whether the vendor is throttling — they pass the ignorance sentinel, and the SQL's
+    CASE WHEN leaves any stored ``rate_limit_state`` untouched. Passing an authoritative
+    ``None`` here would silently clear a real throttle recorded by the previous run.
+    """
+    priors = {
+        "published": _prior(
+            processing_status="PUBLISHED", published_at=datetime(2026, 7, 18, 9, 1, tzinfo=UTC)
+        ),
+        "failed": _prior(processing_status="FAILED"),
+        "resumed": _prior(processing_status="RECEIVED"),
+    }
+    for label, prior in priors.items():
+        monkeypatch = pytest.MonkeyPatch()
+        recorder = _Recorder()
+        pipeline = _wire(monkeypatch, recorder, prior=prior)
+        try:
+            await pipeline.run(_trigger())
+        finally:
+            monkeypatch.undo()
+
+        stamped = [payload for name, payload in recorder.calls if name == "health_seen_rate_limit"]
+        assert stamped, f"{label}: the duplicate path must still emit health-seen"
+        assert all(value is RATE_LIMIT_UNKNOWN for value in stamped), (
+            f"{label}: a duplicate no-op must preserve, never stamp, the posture"
+        )

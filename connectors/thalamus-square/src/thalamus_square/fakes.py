@@ -71,6 +71,10 @@ class FakeTokenStore:
 class FakeSquareApi:
     """Canned Square API (offline). Snapshot pull uses locations + catalog + inventory."""
 
+    def rate_limit_state(self) -> str | None:
+        """Never throttled: the fake serves canned data and makes no vendor call."""
+        return None
+
     def list_locations(self, token: str) -> list[dict[str, Any]]:
         return [_LOCATION]
 

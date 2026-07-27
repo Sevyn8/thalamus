@@ -11,7 +11,13 @@ from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
-from thalamus_connector_sdk import AuthContext, Domain, ExtractResult, ExtractRow
+from thalamus_connector_sdk import (
+    RATE_LIMIT_THROTTLED,
+    AuthContext,
+    Domain,
+    ExtractResult,
+    ExtractRow,
+)
 from thalamus_connector_sdk.trigger import ConnectorTrigger
 from thalamus_square.adapter import SquareAdapter
 from thalamus_square.mapping import SALES_HEADER, SNAPSHOT_HEADER
@@ -43,6 +49,12 @@ class _FakeTokenStore:
 
 
 class _FakeApi:
+    # Overridden per-test to drive the posture the adapter must carry onto ExtractResult.
+    posture: str | None = None
+
+    def rate_limit_state(self) -> str | None:
+        return self.posture
+
     def list_locations(self, token: str) -> list[dict[str, Any]]:
         return [{"id": "LOC_1", "name": "Flagship"}]
 
@@ -186,3 +198,26 @@ def test_adapter_satisfies_protocol_shape() -> None:
     assert isinstance(auth, AuthContext)
     result = _adapter().extract(auth, Domain.CATALOG, None)
     assert isinstance(result.rows[0], ExtractRow)
+
+
+# -- the rate-limit posture the adapter carries onto ExtractResult (D116) -----------
+
+
+def test_extract_carries_the_api_posture_onto_every_domain() -> None:
+    # The adapter is the courier: it reads the posture off the API client and puts it on
+    # the result, exactly as dropped_count already rides that object to the health emit.
+    api = _FakeApi()
+    api.posture = RATE_LIMIT_THROTTLED
+    adapter = SquareAdapter(api=api, token_store=_FakeTokenStore())
+    auth = adapter.authenticate(_trigger(Domain.CATALOG))
+    for domain in (Domain.CATALOG, Domain.INVENTORY, Domain.ORDERS):
+        result = adapter.extract(auth, domain, None)
+        assert result.rate_limit_state == RATE_LIMIT_THROTTLED, domain
+
+
+def test_extract_reports_none_when_the_api_saw_no_rate_limit() -> None:
+    # None must reach the result unchanged: it is the value that CLEARS a stored posture.
+    adapter = SquareAdapter(api=_FakeApi(), token_store=_FakeTokenStore())
+    auth = adapter.authenticate(_trigger(Domain.CATALOG))
+    for domain in (Domain.CATALOG, Domain.INVENTORY, Domain.ORDERS):
+        assert adapter.extract(auth, domain, None).rate_limit_state is None, domain

@@ -46,18 +46,25 @@ from dis_rls import rls_session
 from dis_storage import build_object_path
 from thalamus_connector_sdk.adapter import (
     DROPPED_SAMPLE_MAX,
+    RATE_LIMIT_EXHAUSTED,
     AuthContext,
     ConnectorAdapter,
     Cursor,
     ExtractResult,
     ExtractRow,
     PreflightResult,
+    merge_rate_limit_state,
 )
 from thalamus_connector_sdk.audit import ConnectorAudit
 from thalamus_connector_sdk.csv_serialize import DELIMITER, serialize_rows
 from thalamus_connector_sdk.errors import ConnectorError
-from thalamus_connector_sdk.health import upsert_health_error, upsert_health_seen
-from thalamus_connector_sdk.reason_codes import failure_code_for_reason
+from thalamus_connector_sdk.health import (
+    RATE_LIMIT_UNKNOWN,
+    RateLimitState,
+    upsert_health_error,
+    upsert_health_seen,
+)
+from thalamus_connector_sdk.reason_codes import ConnectorReasonCode, failure_code_for_reason
 from thalamus_connector_sdk.trigger import ConnectorTrigger
 
 # The bronze provenance channel for API-pull connectors (already in the bronze CHECK
@@ -258,7 +265,13 @@ class ConnectorPipeline:
             duration_ms=lap.lap(),
             event_data={"topic": INGRESS_READY_TOPIC},
         )
-        await self._emit_health_seen(trigger, dropped_count=extract.dropped_count)
+        # This path EXTRACTED, so it knows the posture authoritatively: a None here is
+        # "no rate-limit response this run" and CLEARS a stored throttle (D116).
+        await self._emit_health_seen(
+            trigger,
+            dropped_count=extract.dropped_count,
+            rate_limit_state=extract.rate_limit_state,
+        )
         log.info("ingested")
         return ConnectorOutcome("ingested", trigger.trace_id, bronze_id, extract.next_cursor)
 
@@ -276,6 +289,9 @@ class ConnectorPipeline:
         primary_cursor: Cursor | None = None
         dropped_count = 0
         dropped_sample: list[str] = []
+        # Folded most-severe-first across domains: one trigger writes one posture, and a
+        # throttle on any domain is a throttle for the run.
+        rate_limit_state: str | None = None
         for index, domain in enumerate(trigger.domains):
             result = self.adapter.extract(auth, domain, trigger.cursor)
             if index == 0:
@@ -285,6 +301,7 @@ class ConnectorPipeline:
             rows.extend(result.rows)
             dropped_count += result.dropped_count
             dropped_sample.extend(result.dropped_sample)
+            rate_limit_state = merge_rate_limit_state(rate_limit_state, result.rate_limit_state)
         return ExtractResult(
             domain=trigger.domains[0],
             header=tuple(header),
@@ -292,6 +309,7 @@ class ConnectorPipeline:
             next_cursor=primary_cursor,
             dropped_count=dropped_count,
             dropped_sample=tuple(dropped_sample[:DROPPED_SAMPLE_MAX]),
+            rate_limit_state=rate_limit_state,
         )
 
     # -- duplicate / failure paths (mirror csv-ingest-worker) -------------------
@@ -507,19 +525,39 @@ class ConnectorPipeline:
             failure_message=str(exc),
             event_data={"reason": exc.reason.value, "detail": exc.detail},
         )
-        await self._emit_health_error(trigger, detail=exc.reason.value)
+        # The retry budget ran out on a vendor rate limit: that IS the posture, stamped off
+        # the error (there is no ExtractResult to carry it). Any other reason leaves the
+        # stored posture alone - a failure for another cause says nothing about throttling.
+        rate_limit_state: RateLimitState = (
+            RATE_LIMIT_EXHAUSTED if exc.reason is ConnectorReasonCode.RATE_LIMITED else RATE_LIMIT_UNKNOWN
+        )
+        await self._emit_health_error(trigger, detail=exc.reason.value, rate_limit_state=rate_limit_state)
 
-    async def _emit_health_seen(self, trigger: ConnectorTrigger, *, dropped_count: int = 0) -> None:
+    async def _emit_health_seen(
+        self,
+        trigger: ConnectorTrigger,
+        *,
+        dropped_count: int = 0,
+        rate_limit_state: RateLimitState = RATE_LIMIT_UNKNOWN,
+    ) -> None:
         """Stamp a successful arrival on telemetry.connector_health (best-effort).
 
         ``dropped_count`` (>0) rides the health metadata as a coarse hint for the health
         surface; the full detail (the sku_id sample) lives on the RECEIVED audit, not here.
+
+        ``rate_limit_state`` defaults to preserve: the duplicate no-op paths reach here
+        without having extracted, so they genuinely do not know the posture. The ingest
+        path passes what it observed.
         """
         metadata = {"dropped_count": dropped_count} if dropped_count else None
         try:
             async with rls_session(self.engine, trigger.tenant_id) as conn:
                 await upsert_health_seen(
-                    conn, tenant_id=trigger.tenant_id, source_id=trigger.source_id, metadata=metadata
+                    conn,
+                    tenant_id=trigger.tenant_id,
+                    source_id=trigger.source_id,
+                    metadata=metadata,
+                    rate_limit_state=rate_limit_state,
                 )
         except Exception:  # noqa: BLE001 - telemetry never blocks ingest (D116, hard rule 11)
             _log.bind(
@@ -529,12 +567,27 @@ class ConnectorPipeline:
                 source_id=trigger.source_id,
             ).warning("connector-health seen-emit failed; ingest unaffected (fire-and-forget)")
 
-    async def _emit_health_error(self, trigger: ConnectorTrigger, *, detail: str) -> None:
-        """Stamp a failed run on telemetry.connector_health (best-effort, same posture)."""
+    async def _emit_health_error(
+        self,
+        trigger: ConnectorTrigger,
+        *,
+        detail: str,
+        rate_limit_state: RateLimitState = RATE_LIMIT_UNKNOWN,
+    ) -> None:
+        """Stamp a failed run on telemetry.connector_health (best-effort, same posture).
+
+        ``rate_limit_state`` defaults to preserve; only the rate-limit failure itself
+        (via ``_emit_terminal_failure``) passes a value. A preflight failure, for
+        instance, says nothing about throttling.
+        """
         try:
             async with rls_session(self.engine, trigger.tenant_id) as conn:
                 await upsert_health_error(
-                    conn, tenant_id=trigger.tenant_id, source_id=trigger.source_id, detail=detail
+                    conn,
+                    tenant_id=trigger.tenant_id,
+                    source_id=trigger.source_id,
+                    detail=detail,
+                    rate_limit_state=rate_limit_state,
                 )
         except Exception:  # noqa: BLE001 - telemetry never blocks ingest (D116, hard rule 11)
             _log.bind(

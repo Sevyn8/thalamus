@@ -19,9 +19,13 @@ import pytest
 import thalamus_connector_sdk.pipeline as pipeline_module
 from dis_audit import AuditEvent, Stage
 from thalamus_connector_sdk import (
+    RATE_LIMIT_EXHAUSTED,
+    RATE_LIMIT_THROTTLED,
+    RATE_LIMIT_UNKNOWN,
     AuthContext,
     ConnectorAudit,
     ConnectorAuthError,
+    ConnectorExtractError,
     ConnectorPipeline,
     ConnectorReasonCode,
     ConnectorTrigger,
@@ -127,6 +131,8 @@ class _FakeAdapter:
         next_cursor: str | None = "cursor-out",
         dropped_count: int = 0,
         dropped_sample: tuple[str, ...] = (),
+        rate_limit_state: str | None = None,
+        extract_error: ConnectorExtractError | None = None,
     ) -> None:
         self._header = header
         self._rows = _rows() if rows is None else rows
@@ -134,6 +140,8 @@ class _FakeAdapter:
         self._next_cursor = next_cursor
         self._dropped_count = dropped_count
         self._dropped_sample = dropped_sample
+        self._rate_limit_state = rate_limit_state
+        self._extract_error = extract_error
 
     def authenticate(self, trigger: ConnectorTrigger) -> AuthContext:
         if self._auth_error is not None:
@@ -144,6 +152,8 @@ class _FakeAdapter:
         return Discovery(locations=(), native_schema={})
 
     def extract(self, auth: AuthContext, domain: Domain, cursor: str | None) -> ExtractResult:
+        if self._extract_error is not None:
+            raise self._extract_error
         return ExtractResult(
             domain=domain,
             header=self._header,
@@ -151,6 +161,7 @@ class _FakeAdapter:
             next_cursor=self._next_cursor,
             dropped_count=self._dropped_count,
             dropped_sample=self._dropped_sample,
+            rate_limit_state=self._rate_limit_state,
         )
 
     def preflight(self, extract: ExtractResult) -> PreflightResult:
@@ -180,9 +191,15 @@ def _wire(
         recorder.add("mark_published", bronze_id)
 
     async def fake_health_seen(
-        conn: Any, *, tenant_id: UUID, source_id: str, metadata: dict[str, Any] | None = None
+        conn: Any,
+        *,
+        tenant_id: UUID,
+        source_id: str,
+        metadata: dict[str, Any] | None = None,
+        rate_limit_state: Any = RATE_LIMIT_UNKNOWN,
     ) -> None:
         recorder.add("health_seen", metadata)
+        recorder.add("health_seen_rate_limit", rate_limit_state)
 
     async def fake_health_error(
         conn: Any,
@@ -191,8 +208,10 @@ def _wire(
         source_id: str,
         detail: str,
         metadata: dict[str, Any] | None = None,
+        rate_limit_state: Any = RATE_LIMIT_UNKNOWN,
     ) -> None:
         recorder.add("health_error", detail)
+        recorder.add("health_error_rate_limit", rate_limit_state)
 
     monkeypatch.setattr(pipeline_module, "rls_session", fake_rls_session)
     monkeypatch.setattr(pipeline_module, "find_prior", fake_find_prior)
@@ -328,3 +347,104 @@ async def test_auth_failure_is_terminal_no_bronze() -> None:
     assert "insert" not in names
     assert "publish" not in names
     assert "health_error" in names
+
+
+# -- rate-limit posture -> connector-health (D116) ----------------------------------
+#
+# Which call site stamps the posture, and which preserves it. The duplicate-path
+# preserve case lives in test_dedup_window.py (that file owns the prior-row branches).
+
+
+async def test_clean_success_stamps_an_authoritative_none_that_clears_the_posture() -> None:
+    # POSITIVE CLEAR: this path extracted, so None is "no rate-limit response this run",
+    # not ignorance. Without this the first throttle a connector ever sees would pin the
+    # surface to 'rate_limited' permanently (derive_status reads any non-null as such).
+    monkeypatch = pytest.MonkeyPatch()
+    recorder = _Recorder()
+    pipeline = _wire(monkeypatch, recorder, adapter=_FakeAdapter(rate_limit_state=None))
+    try:
+        await pipeline.run(_trigger())
+    finally:
+        monkeypatch.undo()
+
+    assert recorder.first("health_seen_rate_limit") is None
+
+
+async def test_absorbed_throttle_rides_the_extract_result_to_the_health_emit() -> None:
+    monkeypatch = pytest.MonkeyPatch()
+    recorder = _Recorder()
+    adapter = _FakeAdapter(rate_limit_state=RATE_LIMIT_THROTTLED)
+    pipeline = _wire(monkeypatch, recorder, adapter=adapter)
+    try:
+        await pipeline.run(_trigger())
+    finally:
+        monkeypatch.undo()
+
+    assert recorder.first("health_seen_rate_limit") == RATE_LIMIT_THROTTLED
+
+
+async def test_rate_limited_extract_failure_stamps_exhausted() -> None:
+    # The retry budget ran out: there is no ExtractResult, so the pipeline stamps the
+    # posture off the error's reason code (reusing ConnectorReasonCode.RATE_LIMITED).
+    monkeypatch = pytest.MonkeyPatch()
+    recorder = _Recorder()
+    adapter = _FakeAdapter(
+        extract_error=ConnectorExtractError(
+            "Square returned HTTP 429 after 5 attempts", reason=ConnectorReasonCode.RATE_LIMITED
+        )
+    )
+    pipeline = _wire(monkeypatch, recorder, adapter=adapter)
+    try:
+        outcome = await pipeline.run(_trigger())
+    finally:
+        monkeypatch.undo()
+
+    assert outcome.disposition == "extract_failed"
+    assert recorder.first("health_error_rate_limit") == RATE_LIMIT_EXHAUSTED
+
+
+async def test_non_rate_limited_failure_preserves_a_stored_posture() -> None:
+    # NEGATIVE CASE: a vendor outage says nothing about throttling. Stamping None here
+    # would clear a real throttle recorded by the previous run.
+    monkeypatch = pytest.MonkeyPatch()
+    recorder = _Recorder()
+    adapter = _FakeAdapter(
+        extract_error=ConnectorExtractError(
+            "Square unreachable", reason=ConnectorReasonCode.VENDOR_UNAVAILABLE
+        )
+    )
+    pipeline = _wire(monkeypatch, recorder, adapter=adapter)
+    try:
+        await pipeline.run(_trigger())
+    finally:
+        monkeypatch.undo()
+
+    assert recorder.first("health_error_rate_limit") is RATE_LIMIT_UNKNOWN
+
+
+async def test_preflight_failure_preserves_a_stored_posture() -> None:
+    # NEGATIVE CASE, second shape: the preflight error path shares _emit_health_error but
+    # must not touch the posture either.
+    monkeypatch = pytest.MonkeyPatch()
+    recorder = _Recorder()
+    pipeline = _wire(monkeypatch, recorder, adapter=_FakeAdapter(rows=()))
+    try:
+        await pipeline.run(_trigger())
+    finally:
+        monkeypatch.undo()
+
+    assert recorder.first("health_error_rate_limit") is RATE_LIMIT_UNKNOWN
+
+
+async def test_multi_domain_trigger_folds_the_posture_most_severe_first() -> None:
+    # One trigger writes ONE posture: a throttle on any domain is a throttle for the run.
+    monkeypatch = pytest.MonkeyPatch()
+    recorder = _Recorder()
+    adapter = _FakeAdapter(rate_limit_state=RATE_LIMIT_THROTTLED)
+    pipeline = _wire(monkeypatch, recorder, adapter=adapter)
+    try:
+        await pipeline.run(_trigger(domains=[Domain.CATALOG, Domain.INVENTORY]))
+    finally:
+        monkeypatch.undo()
+
+    assert recorder.first("health_seen_rate_limit") == RATE_LIMIT_THROTTLED

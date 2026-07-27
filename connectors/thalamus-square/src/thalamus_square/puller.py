@@ -33,7 +33,12 @@ from typing import Any, Protocol
 
 import httpx
 
-from thalamus_connector_sdk import ConnectorAuthError, ConnectorExtractError, ConnectorReasonCode
+from thalamus_connector_sdk import (
+    RATE_LIMIT_THROTTLED,
+    ConnectorAuthError,
+    ConnectorExtractError,
+    ConnectorReasonCode,
+)
 
 # Retry / backoff policy (module constants so the bounds are auditable in one place).
 _MAX_ATTEMPTS = 5
@@ -68,6 +73,8 @@ class OrdersPage:
 
 class SquareApi(Protocol):
     """The Square operations the adapter needs (cursor incremental)."""
+
+    def rate_limit_state(self) -> str | None: ...
 
     def list_locations(self, token: str) -> list[dict[str, Any]]: ...
 
@@ -122,6 +129,25 @@ class SquarePuller:
         # real sleeping in tests. In production these default to time.sleep + a real RNG.
         self._sleep = sleep
         self._rng = rng or random.Random()
+        # Set once a 429 has been ABSORBED (retried and recovered from) by this instance.
+        # A 429 that exhausts the budget raises RATE_LIMITED instead, and the pipeline
+        # stamps 'exhausted' off that error - this flag is only the recovered case.
+        #
+        # Monotonic for the life of the instance, which is correct BECAUSE one process
+        # runs exactly one trigger today (the Cloud Run Job model: real_transport builds
+        # the puller, runs one pull, exits). A future long-lived transport driving many
+        # triggers through one puller MUST construct a puller per run or add a reset, or
+        # the first throttle would leak into every later run's posture.
+        self._absorbed_rate_limit = False
+
+    def rate_limit_state(self) -> str | None:
+        """The coarse posture for ``telemetry.connector_health.rate_limit_state`` (D116).
+
+        ``RATE_LIMIT_THROTTLED`` once this instance has absorbed a 429, else None. None is
+        a positive "no rate-limit response observed", which is what clears a stored
+        posture on the next healthy run. Never a count, a delay, or vendor text.
+        """
+        return RATE_LIMIT_THROTTLED if self._absorbed_rate_limit else None
 
     def _backoff_delay(self, attempt: int, retry_after: float | None) -> float:
         """Seconds to wait before the next attempt. Honours Retry-After (bounded) when the
@@ -187,6 +213,10 @@ class SquarePuller:
 
             if status in _RETRYABLE_STATUS:
                 if not last:
+                    # A 429 we are about to retry is an ABSORBED rate limit: record the
+                    # posture before sleeping. A retryable 5xx is not a rate limit.
+                    if status == 429:
+                        self._absorbed_rate_limit = True
                     self._sleep(self._backoff_delay(attempt, _parse_retry_after(response)))
                     continue
                 # Attempt cap reached: surface a typed error. 429 stays RATE_LIMITED;

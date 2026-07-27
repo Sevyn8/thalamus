@@ -109,6 +109,7 @@ class SquareAdapter:
             next_cursor=page.next_cursor,
             dropped_count=len(dropped),
             dropped_sample=tuple(dropped[:DROPPED_SAMPLE_MAX]),
+            rate_limit_state=self._api.rate_limit_state(),
         )
 
     def _extract_orders(
@@ -117,5 +118,9 @@ class SquareAdapter:
         page = self._api.search_orders(auth.token, location_ids=location_ids, cursor=cursor)
         rows: list[ExtractRow] = orders_to_rows(page.orders)
         return ExtractResult(
-            domain=Domain.ORDERS, header=SALES_HEADER, rows=tuple(rows), next_cursor=page.next_cursor
+            domain=Domain.ORDERS,
+            header=SALES_HEADER,
+            rows=tuple(rows),
+            next_cursor=page.next_cursor,
+            rate_limit_state=self._api.rate_limit_state(),
         )
