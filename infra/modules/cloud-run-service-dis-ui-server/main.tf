@@ -19,13 +19,22 @@
 #      own client id / redirect / app secret. The state-signing key is SHARED and
 #      belongs to neither: one secret, one env var, both vendors.
 #
-# squareTokenVaultWriter COVERS CLOVER TOO. The role's NAME is Square-specific, its
-# GRANT is not: it is project-level and unconditioned
-# (secretmanager.secrets.create/get + versions.add/access), so it already permits
-# the clover-oauth-* per-tenant secrets the Clover callback creates. That is why C3
-# added no second role. Do NOT narrow it to a square-oauth-* name prefix without
-# moving Clover to its own role first - the Clover connect flow would start failing
-# at the vault write, after a successful vendor exchange.
+# tokenVaultWriter SERVES EVERY VENDOR'S TOKEN VAULT. It is project-level and
+# unconditioned because the per-tenant secret names are minted at OAuth-complete time
+# (square-oauth-* / clover-oauth-*) and cannot be resource-scoped at plan time.
+#
+# THE LAST TWO PERMISSIONS ARE THE D5 VERSION PRUNE, and they are on the WRITER
+# deliberately: the prune is not a separate maintenance job, it IS part of the write
+# path. Clover access tokens live 30 minutes, so a rotating connector would otherwise
+# accumulate ~24 secret versions per merchant per day.
+#
+# THE PREVIOUS NAME IS WHY THIS WAS UNDER-SCOPED. The role was called
+# squareTokenVaultWriter and sized for Square, which has no prune. Read while
+# reasoning about a second vendor, a vendor-specific name invited the conclusion that
+# it already covered Clover - it covered the WRITES and nothing else, and Clover's
+# prune failed in production with PermissionDenied on versions.list while the connect
+# itself appeared to succeed. The name is now vendor-neutral so the next vendor is
+# reasoned about on the permissions, not the label.
 #
 # NOT granted here, by design:
 #   - roles/cloudsql.client: dis-ui-server connects over the private IP at the
@@ -102,22 +111,26 @@ resource "google_secret_manager_secret_iam_member" "clover_app_secret" {
 # The callback creates one Secret Manager secret per tenant/source and adds versions to it.
 # secretmanager.secrets.create is a PROJECT-level permission (cannot be resource-scoped), so
 # this is a narrow project-scoped custom role rather than roles/secretmanager.admin.
-resource "google_project_iam_custom_role" "square_token_vault_writer" {
+resource "google_project_iam_custom_role" "token_vault_writer" {
   project     = var.project_id
-  role_id     = "squareTokenVaultWriter"
-  title       = "Square token vault writer (dis-ui-server)"
-  description = "Create + add versions + access the per-tenant Square OAuth token secrets."
+  role_id     = "tokenVaultWriter"
+  title       = "Token vault writer (dis-ui-server, all vendors)"
+  description = "Create, add, access and PRUNE the per-tenant OAuth token secrets for every vendor (square-oauth-* / clover-oauth-*)."
   permissions = [
     "secretmanager.secrets.create",
     "secretmanager.secrets.get",
-    "secretmanager.versions.add",
     "secretmanager.versions.access",
+    "secretmanager.versions.add",
+    # The D5 prune. Without these the vault write succeeds and the prune fails with
+    # PermissionDenied, so versions accumulate silently behind a healthy-looking connect.
+    "secretmanager.versions.list",
+    "secretmanager.versions.destroy",
   ]
 }
 
-resource "google_project_iam_member" "square_token_vault_writer" {
+resource "google_project_iam_member" "token_vault_writer" {
   project = var.project_id
-  role    = google_project_iam_custom_role.square_token_vault_writer.id
+  role    = google_project_iam_custom_role.token_vault_writer.id
   member  = "serviceAccount:${google_service_account.dis_ui_server.email}"
 }
 
