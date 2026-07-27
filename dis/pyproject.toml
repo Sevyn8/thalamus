@@ -100,6 +100,8 @@ dev = [
   "thalamus-square-oauth",
   # Clover OAuth + Secret Manager token vault (C1), the Square analog for the Clover lane.
   "thalamus-clover-oauth",
+  # C2: the Clover connector itself (adapter + puller + mapping).
+  "thalamus-clover",
 
   # Import-graph contracts (slice-05): forbidden imports between the pure
   # pipeline libs and the I/O-bearing libs. Run via `make lint` (lint-imports).
@@ -140,6 +142,7 @@ known-first-party = [
   "thalamus_square",
   "thalamus_square_oauth",
   "thalamus_clover_oauth",
+  "thalamus_clover",
 ]
 
 [tool.mypy]
@@ -300,6 +303,7 @@ members = [
   "../connectors/thalamus-square",
   "../connectors/square-oauth",
   "../connectors/clover-oauth",
+  "../connectors/thalamus-clover",
 ]
 
 [tool.uv.sources]
@@ -325,3 +329,4 @@ thalamus-connector-sdk = { workspace = true }
 thalamus-square = { workspace = true }
 thalamus-square-oauth = { workspace = true }
 thalamus-clover-oauth = { workspace = true }
+thalamus-clover = { workspace = true }

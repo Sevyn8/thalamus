@@ -43,6 +43,7 @@ secret version before running two of these against one merchant.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -69,6 +70,20 @@ def _default_clock() -> datetime:
     return datetime.now(UTC)
 
 
+@dataclass(frozen=True)
+class CloverSession:
+    """A usable access token plus the merchant it is scoped to.
+
+    Every Clover REST path is ``/v3/merchants/{mId}/...``, so a caller needs BOTH on every
+    request. The Square lane has no equivalent and needs none: its API is not
+    merchant-scoped in the path, so a bare token is sufficient there. That is a vendor
+    difference, not something C1 overlooked.
+    """
+
+    access_token: str
+    merchant_id: str
+
+
 class CloverTokenStore:
     """Secret Manager-backed Clover access-token resolution for one (tenant, source)."""
 
@@ -86,7 +101,22 @@ class CloverTokenStore:
         self._clock = clock
 
     def get_token(self, tenant_id: UUID, source_id: str) -> str:
-        """A usable Clover access token, rotating and persisting first if required."""
+        """A usable Clover access token, rotating and persisting first if required.
+
+        Unchanged signature, kept for callers that do not need the merchant. A thin wrapper
+        over :meth:`get_session` so there is ONE rotation code path, never two that could
+        drift on the persist-before-return ordering.
+        """
+        return self.get_session(tenant_id, source_id).access_token
+
+    def get_session(self, tenant_id: UUID, source_id: str) -> CloverSession:
+        """The access token AND the merchant it is scoped to, in ONE vault read.
+
+        The merchant id is already in the stored record; returning it here costs nothing and
+        avoids a second Secret Manager access that could straddle a rotation. Rotation
+        carries ``merchant_id`` forward unchanged, so the value is stable whether or not
+        this call rotates.
+        """
         log = _log.bind(stage="token_store", tenant_id=str(tenant_id), source_id=source_id)
 
         # 1. read
@@ -99,7 +129,7 @@ class CloverTokenStore:
         # 2. still valid within skew -> use it, write nothing (D3)
         now = self._clock()
         if not current.needs_refresh(now=now, skew=self._refresh_skew):
-            return current.access_token
+            return CloverSession(access_token=current.access_token, merchant_id=current.merchant_id)
 
         # Neither leg can succeed once the refresh token itself has expired (~1 year), and
         # the recovery token is strictly older. Fail fast rather than burn two requests.
@@ -119,11 +149,19 @@ class CloverTokenStore:
         except CloverOAuthRefreshRejectedError as exc:
             # The expected shape of a lost write: our stored token was already spent.
             log.warning("Clover rejected the refresh; attempting recovery (D4)")
-            return self._recover(tenant_id, source_id, current, rejected=exc)
+            return CloverSession(
+                access_token=self._recover(tenant_id, source_id, current, rejected=exc),
+                merchant_id=current.merchant_id,
+            )
 
         # 4. PERSIST before use, stamping the token we just spent as the recovery credential
         # 5. only then return
-        return self._persist_then_return(tenant_id, source_id, rotated, spent=current.refresh_token, now=now)
+        return CloverSession(
+            access_token=self._persist_then_return(
+                tenant_id, source_id, rotated, spent=current.refresh_token, now=now
+            ),
+            merchant_id=current.merchant_id,
+        )
 
     def _recover(
         self,

@@ -37,7 +37,11 @@ from thalamus_clover_oauth.payload import (
     REFRESH_TOKEN_LIFETIME_SECONDS,
     CloverTokenSet,
 )
-from thalamus_clover_oauth.token_store import DEFAULT_REFRESH_SKEW, CloverTokenStore
+from thalamus_clover_oauth.token_store import (
+    DEFAULT_REFRESH_SKEW,
+    CloverSession,
+    CloverTokenStore,
+)
 from thalamus_clover_oauth.vault import (
     KEEP_VERSIONS,
     CloverTokenVault,
@@ -59,6 +63,7 @@ __all__ = [
     "CloverOAuthRecoveryExhaustedError",
     "CloverOAuthRefreshRejectedError",
     "CloverOAuthTransientError",
+    "CloverSession",
     "CloverTokenSet",
     "CloverTokenStore",
     "CloverTokenVault",

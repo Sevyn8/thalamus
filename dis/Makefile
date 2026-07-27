@@ -74,6 +74,7 @@ MYPY_PACKAGES = \
 	../connectors/thalamus-square \
 	../connectors/square-oauth \
 	../connectors/clover-oauth \
+	../connectors/thalamus-clover \
 	tests \
 	tools
 
