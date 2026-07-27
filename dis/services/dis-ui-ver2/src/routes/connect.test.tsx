@@ -15,6 +15,7 @@ function renderConnect(): void {
     <Routes>
       <Route path="/connect" element={<Connect />} />
       <Route path="/connect/square" element={<div>SQUARE JOURNEY</div>} />
+      <Route path="/connect/clover" element={<div>CLOVER JOURNEY</div>} />
       <Route path="/connect/csv" element={<div>CSV WIZARD</div>} />
     </Routes>,
     { snapshot: SNAP, initialEntries: ['/connect'] },
@@ -33,21 +34,28 @@ describe('Connect — source-card grid', () => {
     }
   })
 
-  it('badges only the coming-soon cards (Clover, Shopify)', () => {
+  it('badges only the coming-soon cards (Shopify)', () => {
+    // Clover left the coming-soon set when its connect journey landed (C3).
     renderConnect()
-    expect(screen.getAllByText('Coming soon')).toHaveLength(2)
-    expect(cardByName('Clover').querySelector('.choice__soon')).not.toBeNull()
+    expect(screen.getAllByText('Coming soon')).toHaveLength(1)
     expect(cardByName('Shopify').querySelector('.choice__soon')).not.toBeNull()
     expect(cardByName('Manual CSV').querySelector('.choice__soon')).toBeNull()
     expect(cardByName('Square').querySelector('.choice__soon')).toBeNull()
+    expect(cardByName('Clover').querySelector('.choice__soon')).toBeNull()
   })
 
   it('enables active cards and disables coming-soon cards', () => {
     renderConnect()
     expect(cardByName('Manual CSV')).toBeEnabled()
     expect(cardByName('Square')).toBeEnabled()
-    expect(cardByName('Clover')).toBeDisabled()
+    expect(cardByName('Clover')).toBeEnabled()
     expect(cardByName('Shopify')).toBeDisabled()
+  })
+
+  it('navigates to the Clover journey when the Clover card is clicked', () => {
+    renderConnect()
+    fireEvent.click(cardByName('Clover'))
+    expect(screen.getByText('CLOVER JOURNEY')).toBeInTheDocument()
   })
 
   it('navigates to the Square journey when the Square card is clicked', () => {

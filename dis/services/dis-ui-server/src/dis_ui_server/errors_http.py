@@ -53,6 +53,7 @@ from dis_core.logging import get_logger
 from dis_core.trace_id import TraceIdNotSetError, get_trace_id
 from dis_ui_server.config import SERVICE_NAME
 from dis_ui_server.oauth.errors import (
+    CloverTokenExchangeError,
     InvalidOauthStateError,
     OauthNotConfiguredError,
     OauthStateTenantMismatchError,
@@ -99,6 +100,7 @@ _STATUS_BY_ERROR: dict[type[DisError], int] = {
     InvalidOauthStateError: 422,
     OauthStateTenantMismatchError: 403,
     SquareTokenExchangeError: 502,
+    CloverTokenExchangeError: 502,
 }
 
 _FALLBACK_STATUS = 500

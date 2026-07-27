@@ -1,7 +1,7 @@
 """BFF-local OAuth errors (DisError subclasses), mapped to HTTP by ``errors_http``.
 
-Defined here rather than in dis-core: they are specific to this service's Square connect
-flow, and ``errors_http._STATUS_BY_ERROR`` maps them without any dis-core edit. None of them
+Defined here rather than in dis-core: they are specific to this service's connect
+flows, and ``errors_http._STATUS_BY_ERROR`` maps them without any dis-core edit. None of them
 carry token or secret material (contract: domain errors are PII/credential-free).
 
 Naming: these classes use ``Oauth`` (not ``OAuth``) deliberately. ``errors_http._code_for``
@@ -40,3 +40,9 @@ class OauthStateTenantMismatchError(DisError):
 class SquareTokenExchangeError(DisError):
     """Square rejected or failed the authorization-code exchange (502). No vendor detail is
     carried into the client response by construction."""
+
+
+class CloverTokenExchangeError(DisError):
+    """Clover rejected or failed the authorization-code exchange (502). No vendor detail is
+    carried into the client response by construction. Separate from the Square error rather
+    than a shared one so the wire `code` names the vendor the tenant was actually using."""

@@ -41,7 +41,8 @@ export const SOURCE_CARDS: SourceCard[] = [
     name: 'Clover',
     glyph: '♣',
     description: 'Live transaction data from your Clover merchant account.',
-    status: 'coming_soon',
+    status: 'active',
+    route: '/connect/clover',
   },
   {
     id: 'shopify',

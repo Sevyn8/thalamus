@@ -43,6 +43,8 @@ from dis_ui_server.errors_http import register_error_handlers
 from dis_ui_server.handlers import health
 from dis_ui_server.publisher import PubsubPublisher
 from dis_ui_server.suggest.gemini_client import GeminiSuggester
+from thalamus_clover_oauth import CloverOAuthClient, CloverTokenVault
+from thalamus_clover_oauth import GoogleSecretBackend as CloverGoogleSecretBackend
 from thalamus_square_oauth import (
     SQUARE_READ_SCOPES,
     GoogleSecretBackend,
@@ -133,6 +135,26 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.square_oauth_client = None
         app.state.square_token_vault = None
         app.state.square_oauth_state_key = None
+    # Clover OAuth connect (C3), optional at boot and gated INDEPENDENTLY of Square: one
+    # vendor being unconfigured must never disable another's connect flow. Construction is
+    # I/O-free (httpx.Client build; the Secret Manager client is credential-lazy).
+    if config.clover_oauth_configured:
+        assert config.clover_client_id is not None
+        assert config.clover_app_secret is not None
+        assert config.clover_oauth_redirect_uri is not None
+        clover_secrets_project = config.clover_secrets_project_id or config.pubsub_project_id
+        app.state.clover_oauth_client = CloverOAuthClient(
+            base_url=config.clover_oauth_base_url,
+            client_id=config.clover_client_id,
+            client_secret=config.clover_app_secret,
+            redirect_uri=config.clover_oauth_redirect_uri,
+        )
+        app.state.clover_token_vault = CloverTokenVault(
+            CloverGoogleSecretBackend(project_id=clover_secrets_project)
+        )
+    else:
+        app.state.clover_oauth_client = None
+        app.state.clover_token_vault = None
     _log.bind(stage="startup").info("dis-ui-server started")
     try:
         yield

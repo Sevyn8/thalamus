@@ -94,12 +94,24 @@ _SQUARE_OAUTH_REDIRECT_URI = "SQUARE_OAUTH_REDIRECT_URI"
 # `state` token. One key, one secret, every vendor. Read once into `oauth_state_key`.
 _OAUTH_STATE_KEY = "STATE_SIGNING_KEY"
 _SQUARE_SECRETS_PROJECT_ID = "SQUARE_SECRETS_PROJECT_ID"
+# OPTIONAL (Clover OAuth, C3), same posture as Square's: unset leaves the Clover connect
+# endpoints on a fail-loud 503 while the rest of the BFF runs unchanged. CLOVER_APP_SECRET
+# is secret-backed env; the rest are plain. The state key is SHARED (see _OAUTH_STATE_KEY).
+_CLOVER_CLIENT_ID = "CLOVER_CLIENT_ID"
+_CLOVER_APP_SECRET = "CLOVER_APP_SECRET"
+_CLOVER_OAUTH_BASE_URL = "CLOVER_OAUTH_BASE_URL"
+_CLOVER_OAUTH_REDIRECT_URI = "CLOVER_OAUTH_REDIRECT_URI"
+_CLOVER_SECRETS_PROJECT_ID = "CLOVER_SECRETS_PROJECT_ID"
 
 SERVICE_NAME = "dis-ui-server"
 
 # Default Square OAuth host when SQUARE_OAUTH_BASE_URL is unset (sandbox). The environment
 # stamped onto stored token sets is derived from this host.
 SQUARE_SANDBOX_OAUTH_BASE_URL = "https://connect.squareupsandbox.com"
+
+# Default Clover OAuth host when CLOVER_OAUTH_BASE_URL is unset. Clover hosts are per-REGION
+# as well as per-environment, so a production deploy always sets this explicitly.
+CLOVER_SANDBOX_OAUTH_BASE_URL = "https://sandbox.dev.clover.com"
 
 # The CSV-upload Phase 1 publish target. The contract name (hard rule 10) is
 # "csv.received" and remains the default, so local dev (provisioned by
@@ -226,6 +238,28 @@ class UiServerConfig:
     # Published unconditionally in the lifespan, so one vendor being unconfigured can never
     # take another vendor's connect flow down with it.
     oauth_state_key: str | None = None
+    # OPTIONAL Clover OAuth (C3); all unset -> the Clover endpoints 503, everything else
+    # unaffected. Separate from the Square block on purpose: one vendor's config must never
+    # gate another's (see oauth_state_key above, which is why it is not in either block).
+    clover_client_id: str | None = None
+    clover_app_secret: str | None = None
+    clover_oauth_base_url: str = CLOVER_SANDBOX_OAUTH_BASE_URL
+    clover_oauth_redirect_uri: str | None = None
+    clover_secrets_project_id: str | None = None
+
+    @property
+    def clover_oauth_configured(self) -> bool:
+        """True only when every piece the Clover connect flow needs is present. base_url and
+        the secrets project have defaults, so they never gate this; the state key is shared
+        and checked by the handler, not here."""
+        return all(
+            (
+                self.clover_client_id,
+                self.clover_app_secret,
+                self.clover_oauth_redirect_uri,
+                self.oauth_state_key,
+            )
+        )
 
     @property
     def square_oauth_state_key(self) -> str | None:
@@ -308,6 +342,11 @@ class UiServerConfig:
         square_oauth_base_url = os.environ.get(_SQUARE_OAUTH_BASE_URL) or SQUARE_SANDBOX_OAUTH_BASE_URL
         square_oauth_redirect_uri = os.environ.get(_SQUARE_OAUTH_REDIRECT_URI) or None
         oauth_state_key = os.environ.get(_OAUTH_STATE_KEY) or None
+        clover_client_id = os.environ.get(_CLOVER_CLIENT_ID) or None
+        clover_app_secret = os.environ.get(_CLOVER_APP_SECRET) or None
+        clover_oauth_base_url = os.environ.get(_CLOVER_OAUTH_BASE_URL) or CLOVER_SANDBOX_OAUTH_BASE_URL
+        clover_oauth_redirect_uri = os.environ.get(_CLOVER_OAUTH_REDIRECT_URI) or None
+        clover_secrets_project_id = os.environ.get(_CLOVER_SECRETS_PROJECT_ID) or pubsub_project_id
         square_secrets_project_id = os.environ.get(_SQUARE_SECRETS_PROJECT_ID) or pubsub_project_id
         return cls(
             postgres_url=postgres_url,
@@ -328,6 +367,11 @@ class UiServerConfig:
             square_oauth_base_url=square_oauth_base_url,
             square_oauth_redirect_uri=square_oauth_redirect_uri,
             oauth_state_key=oauth_state_key,
+            clover_client_id=clover_client_id,
+            clover_app_secret=clover_app_secret,
+            clover_oauth_base_url=clover_oauth_base_url,
+            clover_oauth_redirect_uri=clover_oauth_redirect_uri,
+            clover_secrets_project_id=clover_secrets_project_id,
             square_secrets_project_id=square_secrets_project_id,
         )
 
