@@ -29,6 +29,31 @@ Three reasons, strongest last:
    for an item nobody counted. This is the decisive argument and it is invisible from the
    connector side, which is why it is written here.
 
+--- stock_qty: a NEGATIVE quantity is also suppressed to NULL -------------------------------
+
+Clover's merchant setting "Allow negative stock counts" is a normal production
+configuration, so an oversold item genuinely reports a quantity below zero. Canonical
+refuses it: ``ck_sscp_stock_qty_non_negative`` is
+``CHECK (stock_qty IS NULL OR stock_qty >= 0)``. Passing the negative through would land in
+bronze and then die at the canonical boundary - failing far from its cause, in a service
+that has no idea Clover permits overselling.
+
+So a negative emits NO ``stock_qty`` key. NOT the negative value, and NOT clamped to 0:
+NULL already means "not known", which is nearer the truth than zero, whereas zero would
+assert "none in stock" when the truth is "oversold".
+
+The suppression is NOT counted into ``dropped_count``. That counter is for DROPPED ROWS
+(the non-FIXED price case below is the precedent), and the pipeline forwards it into health
+metadata and the RECEIVED audit, where it reconciles against ``bronze.row_count`` -
+"streaming consumer reports rows processed; difference points to quarantined rows", per the
+bronze DDL. A negative quantity suppresses one FIELD while the row is still emitted. Row
+dropped and field suppressed are different events and must not share a counter.
+
+An UNPARSEABLE quantity is withheld the same way but is NOT the same event, and the two are
+reported under separate reason tokens (see :data:`STOCK_SUPPRESSED_NEGATIVE` /
+:data:`STOCK_SUPPRESSED_UNPARSEABLE`). A negative is valid merchant behaviour; an
+unparseable one means Clover's wire contract changed.
+
 --- product_category: first by (sortOrder, id) --------------------------------------------
 
 A Clover item can carry 0..n categories. We take sortOrder ascending, tie-break on id, and
@@ -53,6 +78,7 @@ columns are the source's business", D18), so an unmapped source column is never 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
@@ -127,20 +153,71 @@ def first_category_name(
     return resolved[0][2]
 
 
+# Why a stock quantity was withheld. TWO tokens, not one, because the causes are
+# different in kind and must stay greppable apart:
+#
+#   NEGATIVE     - VALID Clover data we cannot store. The merchant setting "Allow negative
+#                  stock counts" is on and an item is oversold. Merchant behaviour; expected
+#                  in production; interesting only in aggregate.
+#   UNPARSEABLE  - Clover's WIRE CONTRACT CHANGED. A quantity that is not a number means the
+#                  field's type or shape moved under us. A vendor schema break, and urgent.
+#
+# Collapsing these into one message would make the day Clover changes that field's type read
+# as a busy day of overselling, and we would find out weeks later as "all our stock went null".
+STOCK_SUPPRESSED_NEGATIVE = "negative_quantity"
+STOCK_SUPPRESSED_UNPARSEABLE = "unparseable_quantity"
+
+
+@dataclass(frozen=True)
+class StockSuppressions:
+    """Item ids whose ``stock_qty`` was withheld, SPLIT BY CAUSE (see the tokens above).
+
+    Deliberately not one flat list: the adapter logs the two separately so a vendor schema
+    break can never hide inside a crowd of ordinary oversells.
+    """
+
+    negative: list[str] = field(default_factory=list)
+    unparseable: list[str] = field(default_factory=list)
+
+    def __bool__(self) -> bool:
+        return bool(self.negative or self.unparseable)
+
+
+def stock_suppression_reason(raw: str) -> str | None:
+    """The reason ``raw`` cannot be emitted as ``stock_qty``, or None when it can.
+
+    Zero passes through - it is a real count. When None is returned the caller emits the
+    vendor string VERBATIM rather than a reformatted Decimal, so the CSV carries what Clover
+    said, exactly as the price path does.
+    """
+    try:
+        quantity = Decimal(raw)
+    except (ArithmeticError, ValueError):
+        return STOCK_SUPPRESSED_UNPARSEABLE
+    return STOCK_SUPPRESSED_NEGATIVE if quantity < 0 else None
+
+
 def items_to_rows(
     items: Sequence[Mapping[str, Any]],
     *,
     categories: Mapping[str, Mapping[str, Any]],
     stock_by_item: Mapping[str, str],
     currency: str,
-) -> tuple[list[ExtractRow], list[str]]:
+) -> tuple[list[ExtractRow], list[str], StockSuppressions]:
     """Join Clover Items, Categories and ItemStocks into snapshot rows, one per item.
 
-    Returns ``(rows, dropped_ids)``; ``dropped_ids`` are the items excluded for a
-    non-FIXED price, for the connector's counted audit signal.
+    Returns ``(rows, dropped_ids, stock_suppressed_ids)``:
+
+    - ``dropped_ids`` are items EXCLUDED from ``rows`` for a non-FIXED price. These feed
+      ``ExtractResult.dropped_count``, which reconciles against ``bronze.row_count``.
+    - ``suppressions`` are items STILL EMITTED whose quantity was withheld, split by cause.
+      Deliberately SEPARATE from ``dropped_ids``: a suppressed field is not a dropped row,
+      and conflating them would corrupt that reconciliation. The adapter logs these; nothing
+      counts them into the row arithmetic.
     """
     rows: list[ExtractRow] = []
     dropped: list[str] = []
+    suppressions = StockSuppressions()
     for item in items:
         item_id = str(item.get("id") or "")
         if not item_id:
@@ -176,11 +253,18 @@ def items_to_rows(
         if category:
             values["product_category"] = category
 
-        # THE stock rule (see the module docstring): present-and-counted emits, including
-        # "0"; untracked omits the key entirely so the cell is blank -> NULL downstream.
+        # THE stock rule (see the module docstring). Three outcomes, all of which keep the
+        # row: counted emits (including "0"); untracked omits the key; negative/unparseable
+        # omits the key AND is recorded, BY CAUSE, for the adapter to log.
         quantity = stock_by_item.get(item_id)
         if quantity is not None:
-            values["stock_qty"] = quantity
+            reason = stock_suppression_reason(quantity)
+            if reason is None:
+                values["stock_qty"] = quantity
+            elif reason == STOCK_SUPPRESSED_NEGATIVE:
+                suppressions.negative.append(item_id)
+            else:
+                suppressions.unparseable.append(item_id)
 
         rows.append(ExtractRow(values=values))
-    return rows, dropped
+    return rows, dropped, suppressions

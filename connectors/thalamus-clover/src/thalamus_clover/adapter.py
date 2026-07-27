@@ -25,7 +25,15 @@ from __future__ import annotations
 from typing import Protocol
 from uuid import UUID
 
-from thalamus_clover.mapping import SNAPSHOT_HEADER, items_to_rows
+from dis_core.logging import get_logger
+from thalamus_clover.config import SERVICE_NAME
+from thalamus_clover.mapping import (
+    SNAPSHOT_HEADER,
+    STOCK_SUPPRESSED_NEGATIVE,
+    STOCK_SUPPRESSED_UNPARSEABLE,
+    StockSuppressions,
+    items_to_rows,
+)
 from thalamus_clover.puller import CloverApi
 from thalamus_clover_oauth import CloverSession
 from thalamus_connector_sdk import (
@@ -41,6 +49,12 @@ from thalamus_connector_sdk import (
     run_preflight,
 )
 from thalamus_connector_sdk.trigger import ConnectorTrigger
+
+_log = get_logger(SERVICE_NAME)
+
+# Bound on the suppressed-item sample in the warn log: enough to identify the pattern,
+# never the whole catalog.
+_SUPPRESSED_SAMPLE_MAX = 20
 
 _MERCHANT_ID = "merchant_id"
 _CURRENCY = "currency"
@@ -102,6 +116,38 @@ class CloverAdapter:
 
     # -- domain extracts --------------------------------------------------------
 
+    def _log_suppressions(self, suppressions: StockSuppressions, *, merchant_id: str) -> None:
+        """Report withheld stock quantities, the TWO CAUSES SEPARATELY.
+
+        A warn log is the only surfacing channel available without an SDK change:
+        ``dropped_count``, the health metadata and the RECEIVED audit ``event_data`` are all
+        built by the pipeline from the ROW-drop counter, and a suppressed FIELD must not ride
+        that (see mapping.py).
+
+        The two messages are deliberately distinct and carry distinct reason tokens. A
+        negative quantity is ordinary merchant behaviour; an unparseable one means Clover's
+        wire contract moved. Sharing one line would make the day Clover changes that field's
+        type read as a busy day of overselling, and we would notice weeks later as "all our
+        stock went null".
+        """
+        log = _log.bind(stage="extract", merchant_id=merchant_id)
+        if suppressions.negative:
+            log.warning(
+                f"reason={STOCK_SUPPRESSED_NEGATIVE} "
+                f"{len(suppressions.negative)} item(s) reported a NEGATIVE stock quantity; "
+                "stock_qty withheld as NULL. Clover permits overselling, canonical "
+                "ck_sscp_stock_qty_non_negative does not. Expected in production; rows still "
+                f"emitted. ids={suppressions.negative[:_SUPPRESSED_SAMPLE_MAX]}"
+            )
+        if suppressions.unparseable:
+            log.warning(
+                f"reason={STOCK_SUPPRESSED_UNPARSEABLE} "
+                f"{len(suppressions.unparseable)} item(s) reported a stock quantity that is "
+                "NOT A NUMBER; stock_qty withheld as NULL. This is a VENDOR SCHEMA BREAK, not "
+                "merchant behaviour - Clover's wire contract for that field has changed and "
+                f"the mapping needs review. ids={suppressions.unparseable[:_SUPPRESSED_SAMPLE_MAX]}"
+            )
+
     def _extract_catalog(self, auth: AuthContext, cursor: Cursor | None) -> ExtractResult:
         merchant_id = str(auth.extra.get(_MERCHANT_ID) or "")
         currency = str(auth.extra.get(_CURRENCY) or "")
@@ -110,9 +156,10 @@ class CloverAdapter:
         # count them), unlike an expand whose failure is silent.
         categories = self._api.list_categories(auth.token, merchant_id)
         stock_by_item = self._api.list_item_stocks(auth.token, merchant_id)
-        rows, dropped = items_to_rows(
+        rows, dropped, suppressions = items_to_rows(
             page.items, categories=categories, stock_by_item=stock_by_item, currency=currency
         )
+        self._log_suppressions(suppressions, merchant_id=merchant_id)
         return ExtractResult(
             domain=Domain.CATALOG,
             header=SNAPSHOT_HEADER,

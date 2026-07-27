@@ -100,6 +100,21 @@ def test_extract_catalog_produces_snapshot_rows() -> None:
     assert set(by_id) == {"ITEM_MANGO", "STAT-PENCIL-01", "ITEM_NOODLES", "ITEM_GIFTSET"}
 
 
+def test_a_negative_stock_suppresses_the_field_but_keeps_the_row() -> None:
+    class _Oversold(FakeCloverApi):
+        def list_item_stocks(self, token: str, merchant_id: str) -> dict[str, str]:
+            return {"ITEM_MANGO": "-2", "STAT-PENCIL-01": "42"}
+
+    adapter = _adapter(_Oversold())
+    result = adapter.extract(_authed(adapter), Domain.CATALOG, None)
+    rows = {r.values["sku_id"]: r.values for r in result.rows}
+    assert "stock_qty" not in rows["ITEM_MANGO"]  # withheld, not clamped
+    # The row survives and the ROW-drop counter is untouched by a FIELD suppression.
+    assert "ITEM_MANGO" in rows
+    assert result.dropped_count == 1  # still just the PER_UNIT item
+    assert "ITEM_MANGO" not in result.dropped_sample
+
+
 def test_extract_threads_both_stock_branches_end_to_end() -> None:
     adapter = _adapter()
     rows = {
