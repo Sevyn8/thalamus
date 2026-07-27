@@ -8,6 +8,9 @@ import { Callback } from './Callback'
 import { CanonicalExplorer } from './CanonicalExplorer'
 import { Connect } from './Connect'
 import { CsvRoute } from './connect/CsvRoute'
+import { CloverCallback } from './connect/clover/CloverCallback'
+import { CloverJourney } from './connect/clover/CloverJourney'
+import { CloverLaunch } from './connect/clover/CloverLaunch'
 import { SquareCallback } from './connect/square/SquareCallback'
 import { SquareJourney } from './connect/square/SquareJourney'
 import { ConnectorHealth } from './ConnectorHealth'
@@ -53,6 +56,12 @@ export function AppRoutes() {
           {/* Square OAuth callback (registered Square redirect URL). Inside AuthBoundary so the
               Bearer is present; App.tsx skipRedirectCallback keeps the Auth0 SDK off its query. */}
           <Route path="/connectors/square/callback" element={<SquareCallback />} />
+          {/* Clover journey (C3): register -> install -> connect (OAuth) -> first pull. */}
+          <Route path="/connect/clover" element={<CloverJourney />} />
+          {/* Registered Clover redirect URI; forwards to launch preserving the query. */}
+          <Route path="/connectors/clover/callback" element={<CloverCallback />} />
+          {/* The divert-catcher (D4). Also the merchant-initiated App Market landing. */}
+          <Route path="/connectors/clover/launch" element={<CloverLaunch />} />
           {/* Onboard Square: DEV UTILITY (provisioning parity tool), hidden from nav. The
               customer journey is /connect/square. */}
           <Route path="/onboard-square" element={<OnboardSquare />} />

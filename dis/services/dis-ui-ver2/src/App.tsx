@@ -35,15 +35,24 @@ function Auth0ProviderWithNavigate({ children }: { children: ReactNode }) {
       onRedirectCallback={(appState?: AppState) => {
         navigate(appState?.returnTo ?? '/', { replace: true })
       }}
-      // The Square OAuth callback (/connectors/square/callback) carries Square's own ?code&state.
-      // Without this, the Auth0 SDK would try to process them as an Auth0 login response and error.
-      // Skip the SDK's redirect handling on exactly that path so SquareCallback owns the exchange.
-      skipRedirectCallback={window.location.pathname === '/connectors/square/callback'}
+      // Vendor OAuth callbacks carry the VENDOR's own ?code&state. Without this, the Auth0
+      // SDK would try to process them as an Auth0 login response and error. Skip the SDK's
+      // redirect handling on exactly those paths so each vendor's route owns its exchange.
+      // Clover has two: the dashboard-registered callback and the launch divert-catcher,
+      // which Clover can also hit directly on a merchant-initiated App Market launch.
+      skipRedirectCallback={VENDOR_OAUTH_PATHS.has(window.location.pathname)}
     >
       {children}
     </Auth0Provider>
   )
 }
+
+// Paths where a VENDOR owns the ?code&state, not Auth0.
+const VENDOR_OAUTH_PATHS = new Set([
+  '/connectors/square/callback',
+  '/connectors/clover/callback',
+  '/connectors/clover/launch',
+])
 
 function RealModeApp() {
   return (
