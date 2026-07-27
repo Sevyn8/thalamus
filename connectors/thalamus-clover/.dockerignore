@@ -1,0 +1,14 @@
+# The canonical build runs from the MONOREPO ROOT with explicit COPYs (see the
+# Dockerfile header), which is what actually bounds the image contents; the root
+# .dockerignore bounds the context sent to the daemon. This file exists per the
+# service-directory convention (mirrors dis/services/dis-ui-server/.dockerignore);
+# patterns mirror what must never enter an image.
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+tests/
+.env
+.env.*

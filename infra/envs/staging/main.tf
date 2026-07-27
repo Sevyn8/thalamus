@@ -190,6 +190,9 @@ module "dis_ui_server_service" {
   # The redirect is the LAUNCH path, which is what is registered in the Clover dashboard.
   clover_client_id          = "T4RKJYVE63ARA"
   clover_oauth_redirect_uri = "https://dis-ui-ver2-697546531605.asia-south1.run.app/connectors/clover/launch"
+  # SHARED with the clover-connector below - see var.clover_base_url. Both services stamp
+  # `environment` onto the same token record from this host; one variable, one truth.
+  clover_oauth_base_url = var.clover_base_url
 }
 
 module "csv_ingest_worker_service" {
@@ -255,4 +258,38 @@ module "square_connector_job" {
   # two secret names ride the module defaults (sandbox host, dis-database-url,
   # square-app-secret).
   square_client_id = "sandbox-sq0idb-UNkdYKb0-JH_8P2vSsuBIg"
+}
+
+# --- Wave 3: the Clover connector, as a Cloud Run JOB (C4) ---
+#
+# One execution is one trigger: pull Clover's catalog, write the CSV into bronze,
+# publish ingress.ready. It feeds the SAME ingress.ready topic csv-ingest-worker and
+# the square-connector publish to, so streaming_consumer_service turns the result into
+# canonical rows with no further wiring.
+#
+# The run target (tenant/store/source/template/run-key) is NOT here and not in the
+# module: it is supplied per execution via `gcloud run jobs execute --args`.
+#
+# clover_client_id must match the app id dis_ui_server_service connects with: the BFF
+# mints the per-tenant token with that app, and the connector refreshes it with the same
+# client_id + clover-app-secret pair.
+
+module "clover_connector_job" {
+  source = "../../modules/cloud-run-service-clover-connector"
+
+  project_id       = var.project_id
+  region           = var.region
+  image            = var.clover_connector_image
+  vpc_connector_id = module.network.vpc_connector_id
+
+  # Referencing the inline resources makes Terraform create the bucket + topic
+  # (and their IAM) before the job.
+  bronze_bucket_name  = google_storage_bucket.dis_bronze.name
+  ingress_topic_id    = google_pubsub_topic.ingress_ready.id
+  ingress_ready_topic = google_pubsub_topic.ingress_ready.name
+
+  # Same Clover sandbox app as the BFF's connect flow, and the SAME host - see
+  # var.clover_base_url for why the host is one variable rather than two.
+  clover_client_id    = "T4RKJYVE63ARA"
+  clover_api_base_url = var.clover_base_url
 }

@@ -185,8 +185,33 @@ variable "streaming_consumer_image" {
   default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/streaming-consumer:v1"
 }
 
+# ONE Clover host for BOTH services, deliberately.
+#
+# dis-ui-server reads it as CLOVER_OAUTH_BASE_URL and the clover-connector reads it as
+# CLOVER_API_BASE_URL - two names for the same host, in two codebases. Both construct a
+# CloverOAuthClient, which derives environment = "sandbox" if "sandbox" in base_url else
+# "production" and STAMPS IT ONTO THE SAME per-tenant token record: the BFF at connect, the
+# connector on every rotation. Two writers of one field from two differently-named vars is
+# a field with two sources of truth, and it would oscillate on whichever service wrote last.
+#
+# Nothing reads the stamp today (grepped: it is written, round-tripped and displayed, never
+# branched on), so this is not a live correctness bug - but a single variable prevents the
+# drift rather than documenting it. The code-level split, and the identical Square split
+# (SQUARE_OAUTH_BASE_URL / SQUARE_API_BASE_URL), are on the ledger.
+variable "clover_base_url" {
+  type        = string
+  description = "The Clover host for BOTH dis-ui-server and the clover-connector. Sandbox for staging; production is per-region. Shared so the two services cannot stamp different environments onto one token record."
+  default     = "https://sandbox.dev.clover.com"
+}
+
 variable "square_connector_image" {
   type        = string
   description = "square-connector container image (the Cloud Run JOB). Built from connectors/thalamus-square/Dockerfile with the MONOREPO ROOT as build context."
   default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/square-connector:v2"
+}
+
+variable "clover_connector_image" {
+  type        = string
+  description = "clover-connector container image (the Cloud Run JOB). Built from connectors/thalamus-clover/Dockerfile with the MONOREPO ROOT as build context."
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/clover-connector:v1"
 }

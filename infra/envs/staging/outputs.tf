@@ -89,3 +89,13 @@ output "square_connector_service_account_email" {
   value       = module.square_connector_job.service_account_email
   description = "square-connector runtime SA (secretAccessor on dis-database-url + square-app-secret, project squareTokenVaultRefresher, objectAdmin on bronze, publisher on the ingress topic; deliberately no pubsub.viewer)."
 }
+
+output "clover_connector_job_name" {
+  value       = module.clover_connector_job.job_name
+  description = "Clover connector Cloud Run JOB name. Execute one pull with: gcloud run jobs execute <name> --region asia-south1 --args=\"--tenant-id,<uuid>,--store-id,<uuid>,--source-id,<slug>,--template-id,<uuid>,--run-key,<key>,--store-code,<code>\" --wait"
+}
+
+output "clover_connector_service_account_email" {
+  value       = module.clover_connector_job.service_account_email
+  description = "clover-connector runtime SA (secretAccessor on dis-database-url + clover-app-secret, project cloverTokenVaultRefresher incl. the D5 prune, objectAdmin on bronze, publisher on the ingress topic; deliberately no pubsub.viewer)."
+}

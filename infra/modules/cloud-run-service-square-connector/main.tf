@@ -45,14 +45,16 @@
 #     VaultTokenStore.get_token, which reads the vault FIRST and raises
 #     ConnectorAuthError ("the tenant has not connected Square") when the secret
 #     is absent, so the write path is never reached without an existing secret.
-#     Creating token secrets is the BFF's job (squareTokenVaultWriter).
+#     Creating token secrets is the BFF's job (tokenVaultWriter on
+#     cloud-run-service-dis-ui-server; renamed from squareTokenVaultWriter when it
+#     turned out to serve every vendor, not just Square).
 #   - roles/secretmanager.secretAccessor at project level: too broad. The two
 #     named secrets are resource-scoped grants; the per-tenant token vault gets
 #     the narrow custom role instead.
 #   - An IAM condition on squareTokenVaultRefresher. A name-prefix condition
 #     (resource.name.startsWith(".../secrets/square-oauth-")) is the available
-#     tightening, and it applies EQUALLY to the existing squareTokenVaultWriter
-#     on dis-ui-server. Deliberately deferred so the two roles stay consistent:
+#     tightening, and it applies EQUALLY to the BFF's tokenVaultWriter and to
+#     the Clover connector's cloverTokenVaultRefresher. Deliberately deferred so the two roles stay consistent:
 #     conditioning one while its neighbour is unconditioned is worse than
 #     conditioning neither. Tighten both together or neither.
 ###############################################################################
@@ -97,7 +99,7 @@ resource "google_secret_manager_secret_iam_member" "square_app_secret" {
 # MINTED AT OAUTH-COMPLETE TIME by the BFF. The names therefore do not exist when
 # this plan runs and cannot be resource-scoped, so this is a narrow project-scoped
 # custom role rather than roles/secretmanager.secretAccessor at project level.
-# Mirrors the squareTokenVaultWriter precedent on cloud-run-service-dis-ui-server.
+# Mirrors the tokenVaultWriter precedent on cloud-run-service-dis-ui-server.
 #
 # versions.add is REQUIRED, not optional: VaultTokenStore.get_token refreshes when
 # the access token is within the skew of expiry and then PERSISTS the rotated set
