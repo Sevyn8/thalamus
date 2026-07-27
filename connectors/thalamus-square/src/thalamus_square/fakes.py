@@ -3,7 +3,8 @@
 ``FakeSquareApi`` satisfies the ``SquareApi`` Protocol with fixed catalog + inventory data
 (a Żabka W-001 snapshot), so the spine runs a real pull with zero Square account or network.
 ``FakeTokenStore`` yields a dummy token. Both are dev/offline artifacts; the real
-``SquarePuller`` + ``EnvTokenStore`` remain the production path.
+``SquarePuller`` + ``VaultTokenStore`` remain the production path (``EnvTokenStore`` is the
+dev / smoke-script fallback, not production - see ``auth.py``).
 """
 
 from __future__ import annotations
