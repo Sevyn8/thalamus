@@ -163,3 +163,43 @@ def test_get_maps_repo_rows_to_wire(
     assert item["display_name"] == "Manual Csv Upload"
     assert item["tenant_id"] == "0190ac0e-1a01-7001-8a01-0000000000dd"  # Chunk 1: fleet attribution
     assert item["tenant_name"] == "Buc-ees"  # Chunk 9: identity_mirror.tenants.name (LEFT JOIN)
+
+
+def test_create_source_tenant_name_subquery_does_not_cross_join() -> None:
+    """REGRESSION, at compile time: the tenant_name scalar must not re-list config.sources.
+
+    The live proof is the integration test (creating a third source for a tenant that
+    already has two), but a CardinalityViolation only reproduces against real Postgres, so
+    this asserts the SQL SHAPE and runs in every unit run with no stack.
+
+    The defect: `.where(TenantRow.tenant_id == Source.tenant_id).correlate(Source)` inside a
+    RETURNING clause. A RETURNING clause has no enclosing FROM for the insert target, so
+    `.correlate()` is a no-op and SQLAlchemy auto-adds config.sources to the SUBQUERY's own
+    FROM - a cross join returning one row per source the tenant already had.
+    """
+    import re
+    from uuid import UUID
+
+    from sqlalchemy import insert, select
+    from sqlalchemy.dialects import postgresql
+
+    from dis_ui_server.models import Source, TenantRow
+
+    # Built the way create_source builds it; the assertion is on the subquery's FROM.
+    statement = (
+        insert(Source)
+        .values(tenant_id=UUID(int=1), source_id="s", display_name="d")
+        .returning(
+            Source.tenant_id,
+            select(TenantRow.name)
+            .where(TenantRow.tenant_id == UUID(int=1))
+            .scalar_subquery()
+            .label("tenant_name"),
+        )
+    )
+    sql = str(statement.compile(dialect=postgresql.dialect()))  # type: ignore[no-untyped-call]
+    subquery = re.search(r"\(SELECT.*?\)", sql, re.S)
+    assert subquery is not None, sql
+    # identity_mirror.tenants alone. config.sources here is the cross join.
+    assert "config.sources" not in subquery.group(0), subquery.group(0)
+    assert "identity_mirror.tenants" in subquery.group(0)

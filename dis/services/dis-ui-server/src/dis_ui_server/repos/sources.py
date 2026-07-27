@@ -111,13 +111,25 @@ async def create_source(
         )
         .returning(
             Source.tenant_id,  # RETURNING it too: the shared _to_row builds SourceRow (Chunk 1)
-            # Chunk 9: a READ-ONLY correlated scalar so the create echo carries the SAME tenant_name
-            # the list does (the shared _to_row reads row.tenant_name on both paths). Projection only
-            # — no change to insert/write semantics. correlate(Source) keeps Source out of the
-            # subquery FROM (it refers to the just-inserted row); LEFT-ish: NULL if unmirrored.
+            # Chunk 9: a READ-ONLY scalar so the create echo carries the SAME tenant_name the
+            # list does (the shared _to_row reads row.tenant_name on both paths). Projection
+            # only — no change to insert/write semantics. NULL if unmirrored.
+            #
+            # MATCHED AGAINST THE BIND, NOT AGAINST Source.tenant_id, AND THAT IS LOAD-BEARING.
+            # A RETURNING clause has no enclosing FROM for the insert target, so SQLAlchemy
+            # cannot correlate to it: an earlier `.where(TenantRow.tenant_id ==
+            # Source.tenant_id).correlate(Source)` compiled `.correlate()` to a no-op and
+            # auto-added config.sources to the SUBQUERY's own FROM. That is a cross join, so
+            # the scalar subquery returned one row per source the tenant already had and
+            # Postgres raised CardinalityViolation — a 500 on every genuinely new source once
+            # a tenant had two or more. It hid because createSourceIfAbsent trips the unique
+            # constraint first, so re-registering an EXISTING source 409s before RETURNING is
+            # ever evaluated.
+            #
+            # tenant_id is already a bind on this INSERT, so matching it directly needs no
+            # correlation at all. Do not reintroduce one here.
             select(TenantRow.name)
-            .where(TenantRow.tenant_id == Source.tenant_id)
-            .correlate(Source)
+            .where(TenantRow.tenant_id == tenant_id)
             .scalar_subquery()
             .label("tenant_name"),
             Source.source_id,

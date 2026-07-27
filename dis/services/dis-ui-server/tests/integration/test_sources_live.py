@@ -27,7 +27,15 @@ TENANT_A = "019e5e3c-b5d3-705f-9002-2451c4ca2626"  # buc-ees (live seed)
 TENANT_B = "019e5e3c-b5d6-7eed-93f9-3778a7a7a160"  # zabka-group (live seed)
 
 # All source_ids this suite creates (exact-match cleanup — underscores would be LIKE wildcards).
-_SMOKE_SOURCE_IDS = ["livesmoke_a", "livesmoke_plat", "livesmoke_dup", "backfill_smoke_src"]
+_SMOKE_SOURCE_IDS = [
+    "livesmoke_a",
+    "livesmoke_plat",
+    "livesmoke_dup",
+    "backfill_smoke_src",
+    "livesmoke_multi_1",
+    "livesmoke_multi_2",
+    "livesmoke_multi_3",
+]
 
 # Load the migration's backfill SQL by path (module name starts with a digit -> not importable).
 _MIG = Path(__file__).resolve().parents[4] / "alembic" / "versions" / "0013_config_sources_registry.py"
@@ -184,3 +192,49 @@ def test_backfill_populates_from_mappings(admin_engine: Engine, seeded_identity:
     assert row.display_name == "Backfill Smoke Src"  # initcap(replace('_',' '))
     assert row.channel == "api"  # best-effort from the bronze dis_channel
     assert row.status == "active"
+
+
+def test_create_succeeds_when_the_tenant_already_has_several_sources(
+    live_client: TestClient,
+    admin_engine: Engine,  # noqa: ARG001 — teardown cleanup
+    seeded_identity: Engine,  # noqa: ARG001 — provides the tenant FK targets
+    mint_token: Callable[..., str],
+) -> None:
+    """REGRESSION: creating a genuinely new source used to 500 once a tenant had two.
+
+    The INSERT's RETURNING clause built the tenant_name scalar subquery by correlating on
+    Source.tenant_id. A RETURNING clause has no enclosing FROM for the insert target, so the
+    correlation silently became a stray `config.sources` in the SUBQUERY's own FROM - a cross
+    join. The scalar then returned one row per source the tenant already had and Postgres
+    raised CardinalityViolation.
+
+    THE FIXTURE MUST HAVE AT LEAST TWO PRE-EXISTING SOURCES. With zero the cross join yields
+    nothing and with one it yields exactly one row, so both pass against the BROKEN query -
+    a single-source fixture here would be worse than no test, because it would look like
+    coverage. The third create is the one that used to fail.
+    """
+    token = mint_token(tenant_id=TENANT_A)
+    for source_id in ("livesmoke_multi_1", "livesmoke_multi_2"):
+        first = live_client.post(
+            "/api/v1/sources",
+            headers=_bearer(token),
+            json={"source_id": source_id, "display_name": source_id, "channel": "api"},
+        )
+        assert first.status_code == 201, first.text
+
+    # Two already exist for this tenant. This is the create that used to 500.
+    resp = live_client.post(
+        "/api/v1/sources",
+        headers=_bearer(token),
+        json={"source_id": "livesmoke_multi_3", "display_name": "Third", "channel": "api"},
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["source_id"] == "livesmoke_multi_3"
+    # And the echo still carries the tenant_name the list path shows - the projection the
+    # broken subquery existed to provide, now produced without the cross join.
+    listed = live_client.get("/api/v1/sources", headers=_bearer(token))
+    assert listed.status_code == 200
+    names = {r["tenant_name"] for r in listed.json()["items"]}
+    assert body["tenant_name"] in names
+    assert body["tenant_name"] is not None
