@@ -3,14 +3,14 @@ import { useSearchParams } from 'react-router'
 
 import { useAuth } from '../../../auth/useAuth'
 import { createMappingTemplateIfAbsent } from '../../../lib/dis-ui-server/mapping-templates'
-import { createSourceIfAbsent, useSources } from '../../../lib/dis-ui-server/sources'
+import { createSourceIfAbsent } from '../../../lib/dis-ui-server/sources'
 import { getSquareAuthorizeUrl } from '../../../lib/dis-ui-server/square-oauth'
 import {
   useStoresOnboarded,
   useStoresOnboardedForTenant,
 } from '../../../lib/dis-ui-server/stores'
 import type { OnboardedStore } from '../../../lib/dis-ui-server/stores'
-import { distinctTenants, tenantName } from '../../../lib/dis-ui-server/tenant-label'
+import { ActedForPicker } from '../ActedForPicker'
 import { JourneyShell } from '../JourneyShell'
 import type { JourneyDefinition, JourneyStep } from '../journey'
 import {
@@ -34,10 +34,14 @@ import {
 //
 // Persona: a PLATFORM (ops) caller connects a CLIENT's Square, so it must name the acted-for
 // tenant on every write/connect call (resolve_acted_for on the BFF; a missing one is 403
-// tenant_scope). The Register step surfaces a tenant picker sourced from the sources list (the
-// cleanest existing PLATFORM-readable, tenant-attributed read); the selection threads through
-// register + mapping-template + authorize-url and into the resume hint. A TENANT caller never
-// sends the field (the server pins its own tenant; naming one is a 403).
+// tenant_scope). The Register step mounts the shared ActedForPicker; the selection threads
+// through register + mapping-template + authorize-url and into the resume hint. A TENANT caller
+// never sends the field (the server pins its own tenant; naming one is a 403).
+//
+// The picker used to derive its tenants from the SOURCES list, which silently limited it to
+// tenants that already had a source — so the first source for a new tenant could never be
+// connected, i.e. it failed at exactly the onboarding case. It now reads the tenant mirror
+// (GET /tenants-actable).
 
 const STEP_META = [
   { title: 'Register', desc: 'Source & mapping template' },
@@ -63,22 +67,12 @@ export function SquareJourney() {
   // tolerated). Surface an "already registered" note on Connect instead of a step error.
   const [alreadyRegistered, setAlreadyRegistered] = useState(false)
 
-  // PLATFORM tenant picker: distinct tenants from the sources list (auto-populated, no new
-  // endpoint). Pre-select the resume hint's tenant when returning mid-connect.
-  const sourcesQuery = useSources(snapshot)
+  // PLATFORM tenant picker (the shared ActedForPicker owns the options and the PLATFORM-only
+  // rule; this journey owns the selection because it is what its own calls send). Pre-select
+  // the resume hint's tenant when returning mid-connect.
   const [selectedTenant, setSelectedTenant] = useState<string>(
     () => readSquarePending()?.acting_for_tenant_id ?? '',
   )
-  const tenantOptions = useMemo(() => {
-    const rows = sourcesQuery.data ?? []
-    const nameById = new Map<string, string | null>()
-    for (const row of rows) {
-      if (!nameById.has(row.tenant_id)) nameById.set(row.tenant_id, row.tenant_name ?? null)
-    }
-    return distinctTenants([...nameById.keys()])
-      .filter((id): id is string => id !== null)
-      .map((id) => ({ id, label: tenantName(nameById.get(id) ?? null, id) }))
-  }, [sourcesQuery.data])
 
   // The acted-for tenant sent to the BFF: the PLATFORM selection, or undefined for a TENANT
   // caller (the field is then omitted from every call).
@@ -155,36 +149,6 @@ export function SquareJourney() {
     }
   }
 
-  function tenantPicker() {
-    if (!isPlatform) return null
-    return (
-      <div className="field" style={{ marginBottom: 16 }}>
-        <label htmlFor="sq-tenant">Tenant to connect</label>
-        {sourcesQuery.isPending ? (
-          <span className="hint">Loading tenants...</span>
-        ) : tenantOptions.length === 0 ? (
-          <span className="hint">
-            No tenants available to connect. A tenant needs at least one registered source to
-            appear here.
-          </span>
-        ) : (
-          <select
-            id="sq-tenant"
-            value={selectedTenant}
-            onChange={(e) => setSelectedTenant(e.target.value)}
-          >
-            <option value="">Select a tenant...</option>
-            {tenantOptions.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
-    )
-  }
-
   function storePicker() {
     // Not shown until a PLATFORM caller has picked a tenant (the store read is gated on it).
     if (isPlatform && selectedTenant === '') return null
@@ -225,7 +189,7 @@ export function SquareJourney() {
             Registers the Square source <span className="mono">{SQUARE_SOURCE_ID}</span> and an
             ACTIVE snapshot mapping template for the selected store.
           </p>
-          {tenantPicker()}
+          <ActedForPicker id="sq-tenant" value={selectedTenant} onChange={setSelectedTenant} />
           {storePicker()}
         </>
       )

@@ -5,15 +5,39 @@ import { vi } from 'vitest'
 import { renderWithProviders } from '../../../test/renderWithProviders'
 import { SquareJourney } from './SquareJourney'
 
-// Mock the write/connect seams + the sources read (the tenant picker). tenant-label stays real.
+// Mock the write/connect seams + the actable-tenant read (the tenant picker). tenant-label
+// stays real.
+//
+// THE TWO TENANT FIXTURES ARE A MATCHED PAIR AND THE MISMATCH IS THE POINT. The picker is fed
+// by the tenant mirror (ACTABLE_TENANTS); the sources list (FLEET_SOURCES) is the read it used
+// to be derived from, and it does NOT contain ten-newco. So an assertion that ten-newco appears
+// in the picker is a live negative control: reverting the picker to the sources derivation
+// fails it, which is exactly the onboarding bug this replaced (a tenant with no sources yet
+// could never be selected, so nobody could connect its FIRST source).
 const FLEET_SOURCES = [
   { tenant_id: 'ten-acme', tenant_name: 'Acme Retail' },
   { tenant_id: 'ten-zabka', tenant_name: 'Zabka Group' },
 ]
+const ACTABLE_TENANTS = [
+  { tenant_id: 'ten-acme', name: 'Acme Retail', display_code: null, status: 'active' },
+  // Freshly CM-onboarded: absent from FLEET_SOURCES, so it exists ONLY in the mirror.
+  { tenant_id: 'ten-newco', name: 'Brand New Co', display_code: null, status: 'onboarding' },
+  { tenant_id: 'ten-paused', name: 'Paused Partners', display_code: null, status: 'suspended' },
+  { tenant_id: 'ten-zabka', name: 'Zabka Group', display_code: null, status: 'active' },
+]
 
+// useSources is no longer read by the journey; the mock stays because the fixture above is the
+// negative control described there. Do not delete it as "unused" without deleting that proof.
 vi.mock('../../../lib/dis-ui-server/sources', () => ({
   createSourceIfAbsent: vi.fn().mockResolvedValue(true),
   useSources: vi.fn(() => ({ data: FLEET_SOURCES, isPending: false })),
+}))
+vi.mock('../../../lib/dis-ui-server/tenants', () => ({
+  useActableTenants: vi.fn(() => ({
+    data: ACTABLE_TENANTS,
+    isPending: false,
+    isError: false,
+  })),
 }))
 vi.mock('../../../lib/dis-ui-server/mapping-templates', () => ({
   createMappingTemplateIfAbsent: vi.fn().mockResolvedValue(true),
@@ -150,10 +174,22 @@ describe('SquareJourney — PLATFORM persona', () => {
     )
   })
 
-  it('lists distinct tenants from the sources read', () => {
+  it('lists every actable tenant, INCLUDING one with no sources yet', () => {
     renderJourney('/connect/square', PLATFORM_SNAP)
     expect(screen.getByRole('option', { name: 'Acme Retail' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: 'Zabka Group' })).toBeInTheDocument()
+    // The onboarding case: ten-newco is absent from FLEET_SOURCES, so the old sources-derived
+    // picker could not offer it and its first source could never be connected.
+    expect(screen.getByRole('option', { name: 'Brand New Co' })).toBeInTheDocument()
+  })
+
+  it('shows a suspended tenant, disabled and saying why', () => {
+    renderJourney('/connect/square', PLATFORM_SNAP)
+    // Present rather than filtered out (an absent row explains nothing), unselectable, and the
+    // status is in the label so the reason is visible.
+    const suspended = screen.getByRole('option', { name: 'Paused Partners — suspended' })
+    expect(suspended).toBeInTheDocument()
+    expect(suspended).toBeDisabled()
   })
 })
 

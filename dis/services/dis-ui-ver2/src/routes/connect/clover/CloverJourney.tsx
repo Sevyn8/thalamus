@@ -7,6 +7,7 @@ import { createMappingTemplateIfAbsent } from '../../../lib/dis-ui-server/mappin
 import { createSourceIfAbsent } from '../../../lib/dis-ui-server/sources'
 import { useStoresOnboarded, useStoresOnboardedForTenant } from '../../../lib/dis-ui-server/stores'
 import type { OnboardedStore } from '../../../lib/dis-ui-server/stores'
+import { ActedForPicker } from '../ActedForPicker'
 import { JourneyShell } from '../JourneyShell'
 import type { JourneyDefinition, JourneyStep } from '../journey'
 import {
@@ -14,6 +15,7 @@ import {
   CLOVER_DISPLAY_NAME,
   CLOVER_SOURCE_ID,
   CLOVER_TEMPLATE_NAME,
+  readCloverPending,
   SNAPSHOT_COLUMNS,
   writeCloverPending,
 } from './config'
@@ -35,9 +37,12 @@ import {
 // guess costs exactly one bounce, which the launch route catches and turns into a resume.
 // A gate would have to verify something unverifiable, so it would be theatre.
 //
-// Self-serve TENANT is the primary persona: the tenant is derived server-side from the
-// Bearer token and no acted-for field is sent. PLATFORM impersonation remains supported by
-// the BFF endpoints for a later ops journey.
+// TWO PERSONAS. Self-serve TENANT is the primary one: the tenant is derived server-side from
+// the Bearer token and no acted-for field is sent. A PLATFORM (ops) caller connects a CLIENT's
+// Clover and must name the acted-for tenant on every write/connect call (resolve_acted_for on
+// the BFF; a missing one is 403 tenant_scope), so the Register step mounts the shared
+// ActedForPicker and the selection threads through register + mapping-template + authorize-url
+// and into the resume hint — the same shape as Square, not a Clover variant.
 
 type Phase = 'idle' | 'running' | 'error'
 
@@ -75,21 +80,34 @@ export function CloverJourney() {
   // tolerated). Surface a note on the next step instead of a step error.
   const [alreadyRegistered, setAlreadyRegistered] = useState(false)
 
+  // PLATFORM tenant picker (the shared ActedForPicker owns the options and the PLATFORM-only
+  // rule; this journey owns the selection because it is what its own calls send). Pre-select
+  // the resume hint's tenant when returning mid-connect.
+  const [selectedTenant, setSelectedTenant] = useState<string>(
+    () => readCloverPending()?.acting_for_tenant_id ?? '',
+  )
+  // The acted-for tenant sent to the BFF: the PLATFORM selection, or undefined for a TENANT
+  // caller (the field is then omitted from every call).
+  const actedFor = isPlatform && selectedTenant !== '' ? selectedTenant : undefined
+  const platformNeedsTenant = isPlatform && selectedTenant === ''
+
   // Store selection, the SAME pattern as the Square journey - not a Clover variant.
   // ConnectorTrigger.store_id is required, so a source registered without a store cannot be
   // pulled at all; the field being absent was a consistency defect, not a vendor difference.
   //
-  // TENANT reads its own onboarded stores. Exactly one query fires per persona: the other is
-  // passed null so it stays disabled (a PLATFORM caller must never hit the
+  // TENANT reads its own onboarded stores; PLATFORM reads the acted-for tenant's stores via the
+  // cross-tenant endpoint, gated on the tenant selection. Exactly one query fires per persona:
+  // the other is passed null so it stays disabled (a PLATFORM caller must never hit the
   // token-tenant-pinned /stores-onboarded, which 403s for it).
   //
-  // The PLATFORM cross-tenant read is wired but INERT here, and deliberately so: this
-  // journey is self-serve TENANT only and threads no acted-for tenant anywhere, so a
-  // PLATFORM caller's register would 403 at resolve_acted_for regardless. Square gates this
-  // read on its tenant picker; Clover has none yet, so there is no tenant to read for.
-  // When the ops journey lands, the tenant picker and this read arrive together.
+  // The cross-tenant read used to be passed a hardcoded null, which left it permanently
+  // disabled: react-query reports a disabled query as pending forever, so a PLATFORM caller sat
+  // on "Loading stores..." with no error and no way forward. It is fed the real selection now.
   const tenantStoresQuery = useStoresOnboarded(isPlatform ? null : snapshot)
-  const platformStoresQuery = useStoresOnboardedForTenant(snapshot, null)
+  const platformStoresQuery = useStoresOnboardedForTenant(
+    snapshot,
+    isPlatform ? (selectedTenant === '' ? null : selectedTenant) : null,
+  )
   const storesQuery = isPlatform ? platformStoresQuery : tenantStoresQuery
 
   const [selectedStore, setSelectedStore] = useState('')
@@ -109,6 +127,8 @@ export function CloverJourney() {
   const needsStore = effectiveStore === ''
 
   function storePicker() {
+    // Not shown until a PLATFORM caller has picked a tenant (the store read is gated on it).
+    if (isPlatform && selectedTenant === '') return null
     return (
       <div className="field" style={{ marginBottom: 16 }}>
         <label htmlFor="cl-store">Store to connect</label>
@@ -145,12 +165,14 @@ export function CloverJourney() {
         display_name: CLOVER_DISPLAY_NAME,
         channel: 'api',
         store_id: effectiveStore,
+        acting_for_tenant_id: actedFor,
       })
       const templateCreated = await createMappingTemplateIfAbsent({
         source_id: CLOVER_SOURCE_ID,
         template_name: CLOVER_TEMPLATE_NAME,
         template_type: 'snapshot',
         columns: SNAPSHOT_COLUMNS,
+        acting_for_tenant_id: actedFor,
       })
       setAlreadyRegistered(!sourceCreated && !templateCreated)
       setRegisterPhase('idle')
@@ -166,8 +188,8 @@ export function CloverJourney() {
     setConnectPhase('running')
     setError(null)
     try {
-      const { authorize_url } = await getCloverAuthorizeUrl(CLOVER_SOURCE_ID)
-      writeCloverPending({ source_id: CLOVER_SOURCE_ID })
+      const { authorize_url } = await getCloverAuthorizeUrl(CLOVER_SOURCE_ID, actedFor)
+      writeCloverPending({ source_id: CLOVER_SOURCE_ID, acting_for_tenant_id: actedFor ?? null })
       window.location.href = authorize_url
     } catch {
       setError('Clover could not be reached to start the connection. Try again in a moment.')
@@ -183,6 +205,7 @@ export function CloverJourney() {
             Registers the Clover source <span className="mono">{CLOVER_SOURCE_ID}</span> and an
             ACTIVE snapshot mapping template for the selected store.
           </p>
+          <ActedForPicker id="cl-tenant" value={selectedTenant} onChange={setSelectedTenant} />
           {storePicker()}
         </>
       )
@@ -248,7 +271,7 @@ export function CloverJourney() {
         label: 'Register source & template',
         runningLabel: 'Registering...',
         running: registerPhase === 'running',
-        disabled: needsStore,
+        disabled: platformNeedsTenant || needsStore,
         onAct: () => void register(),
       },
     },

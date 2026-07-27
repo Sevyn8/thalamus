@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { Route, Routes } from 'react-router'
 import { vi } from 'vitest'
 
+import type { AuthSnapshot } from '../../../auth/AuthSnapshot'
 import { renderWithProviders } from '../../../test/renderWithProviders'
 import { CloverJourney } from './CloverJourney'
 
@@ -16,12 +17,27 @@ vi.mock('../../../lib/dis-ui-server/clover-oauth', () => ({
 }))
 // Store reads, the same shape the Square journey's test mocks. Default: one onboarded store
 // so it auto-selects (the common sandbox case); individual tests override for multi/empty.
+// The PLATFORM cross-tenant read returns a DIFFERENT store, so which query fed the picker is
+// visible in the assertions rather than inferred.
 vi.mock('../../../lib/dis-ui-server/stores', () => ({
   useStoresOnboarded: vi.fn(() => ({
     data: [{ store_id: 's1', name: 'Buc-ees Katy', store_code: 'AMB-001', status: 'active' }],
     isPending: false,
   })),
-  useStoresOnboardedForTenant: vi.fn(() => ({ data: [], isPending: false })),
+  useStoresOnboardedForTenant: vi.fn(() => ({
+    data: [{ store_id: 's2', name: 'Zabka #1', store_code: 'ZAB-001', status: 'active' }],
+    isPending: false,
+  })),
+}))
+// The actable-tenant read behind the shared ActedForPicker. Includes a suspended tenant, which
+// must be offered-but-unselectable rather than hidden.
+const ACTABLE_TENANTS = [
+  { tenant_id: 'ten-newco', name: 'Brand New Co', display_code: null, status: 'onboarding' },
+  { tenant_id: 'ten-paused', name: 'Paused Partners', display_code: null, status: 'suspended' },
+  { tenant_id: 'ten-zabka', name: 'Zabka Group', display_code: null, status: 'active' },
+]
+vi.mock('../../../lib/dis-ui-server/tenants', () => ({
+  useActableTenants: vi.fn(() => ({ data: ACTABLE_TENANTS, isPending: false, isError: false })),
 }))
 
 import { getCloverAuthorizeUrl } from '../../../lib/dis-ui-server/clover-oauth'
@@ -30,14 +46,21 @@ import { createSourceIfAbsent } from '../../../lib/dis-ui-server/sources'
 import { useStoresOnboarded } from '../../../lib/dis-ui-server/stores'
 
 const TENANT = { userId: 'u', tenantId: 't', storeId: null, roles: [], userType: 'TENANT' as const }
+const PLATFORM = {
+  userId: 'ops',
+  tenantId: null,
+  storeId: null,
+  roles: ['dis:ops'],
+  userType: 'PLATFORM' as const,
+}
 
-function render(entry = '/connect/clover'): void {
+function render(entry = '/connect/clover', snapshot: AuthSnapshot = TENANT): void {
   renderWithProviders(
     <Routes>
       <Route path="/connect/clover" element={<CloverJourney />} />
       <Route path="/connect" element={<div>SOURCES GRID</div>} />
     </Routes>,
-    { snapshot: TENANT, initialEntries: [entry] },
+    { snapshot, initialEntries: [entry] },
   )
 }
 
@@ -65,9 +88,12 @@ test('register creates the source and template with no acted-for tenant', async 
     }),
   )
   // Self-serve TENANT: the tenant is derived server-side from the Bearer, never a param.
-  expect(vi.mocked(createSourceIfAbsent).mock.calls[0][0]).not.toHaveProperty(
-    'acting_for_tenant_id',
-  )
+  // Asserted against the WIRE, not key-presence: the journey now always passes the field and
+  // lets it be undefined for a TENANT (the same shape as Square), and JSON.stringify drops an
+  // undefined value — so "never a param" is a statement about the serialized body.
+  const body = vi.mocked(createSourceIfAbsent).mock.calls[0][0]
+  expect(body.acting_for_tenant_id).toBeUndefined()
+  expect(JSON.stringify(body)).not.toContain('acting_for_tenant_id')
   expect(createMappingTemplateIfAbsent).toHaveBeenCalledWith(
     expect.objectContaining({ template_type: 'snapshot', source_id: 'clover_pos_v1' }),
   )
@@ -154,7 +180,11 @@ test('connect requests the authorize url for clover_pos_v1', async () => {
   await reachInstall()
   fireEvent.click(screen.getByRole('button', { name: 'Continue to authorise' }))
   fireEvent.click(await screen.findByRole('button', { name: 'Sign in with Clover' }))
-  await waitFor(() => expect(getCloverAuthorizeUrl).toHaveBeenCalledWith('clover_pos_v1'))
+  // undefined acted-for for a TENANT (the field is always passed, always undefined here) —
+  // the same call shape as the Square journey.
+  await waitFor(() =>
+    expect(getCloverAuthorizeUrl).toHaveBeenCalledWith('clover_pos_v1', undefined),
+  )
 })
 
 test('a resume from launch opens at connect and names the merchant', () => {
@@ -198,6 +228,11 @@ test('multiple stores require an explicit pick before Register enables', () => {
   expect(screen.getByRole('button', { name: 'Register source & template' })).toBeEnabled()
 })
 
+test('a TENANT caller sees no tenant picker at all', () => {
+  render()
+  expect(screen.queryByLabelText('Tenant to connect')).toBeNull()
+})
+
 test('a store with no store_code is not selectable', () => {
   // store_code IS the source's store_id; a NULL code (D55) cannot be a source key.
   vi.mocked(useStoresOnboarded).mockReturnValue({
@@ -214,4 +249,83 @@ test('no stores at all disables Register with a hint rather than failing later',
   render()
   expect(screen.getByText(/No onboarded store with a store code/i)).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Register source & template' })).toBeDisabled()
+})
+
+// -- acted-for onboarding: the PLATFORM persona this journey previously had no path for -----
+//
+// Before this, the journey had NO tenant picker and passed a hardcoded null to the cross-tenant
+// store read. react-query reports a disabled query as pending forever, so a PLATFORM caller sat
+// on "Loading stores..." with no error and no way forward, and a register would have 403'd at
+// resolve_acted_for even if they had got past it.
+
+describe('CloverJourney — PLATFORM persona', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    sessionStorage.clear()
+  })
+
+  it('shows the tenant picker and no store picker until a tenant is chosen', () => {
+    render('/connect/clover', PLATFORM)
+    expect(screen.getByLabelText('Tenant to connect')).toBeInTheDocument()
+    // The cross-tenant store read is gated on the selection, so there is nothing to show yet —
+    // and, critically, no indefinite "Loading stores...".
+    expect(screen.queryByLabelText('Store to connect')).toBeNull()
+    expect(screen.queryByText(/Loading stores/i)).toBeNull()
+    expect(screen.getByRole('button', { name: 'Register source & template' })).toBeDisabled()
+  })
+
+  it('lists a tenant with no sources yet, and a suspended one disabled', () => {
+    render('/connect/clover', PLATFORM)
+    // The onboarding case: this journey has never registered a source for ten-newco, and the
+    // list comes from the tenant mirror, so it is offered anyway.
+    expect(screen.getByRole('option', { name: 'Brand New Co' })).toBeInTheDocument()
+    const suspended = screen.getByRole('option', { name: 'Paused Partners — suspended' })
+    expect(suspended).toBeInTheDocument()
+    expect(suspended).toBeDisabled()
+  })
+
+  it('reveals the acted-for tenant stores once a tenant is chosen', () => {
+    render('/connect/clover', PLATFORM)
+    fireEvent.change(screen.getByLabelText('Tenant to connect'), { target: { value: 'ten-zabka' } })
+    expect(screen.getByLabelText('Store to connect')).toBeInTheDocument()
+    // ZAB-001 comes from the cross-tenant read, not the token-tenant one (AMB-001) — proof the
+    // PLATFORM branch is what fired.
+    expect(screen.getByRole('option', { name: /ZAB-001/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Register source & template' })).toBeEnabled()
+  })
+
+  it('threads the acted-for tenant through register, template and authorize-url', async () => {
+    render('/connect/clover', PLATFORM)
+    fireEvent.change(screen.getByLabelText('Tenant to connect'), { target: { value: 'ten-zabka' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Register source & template' }))
+    await screen.findByRole('button', { name: 'Continue to authorise' })
+    expect(createSourceIfAbsent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source_id: 'clover_pos_v1',
+        acting_for_tenant_id: 'ten-zabka',
+        store_id: 'ZAB-001',
+      }),
+    )
+    expect(createMappingTemplateIfAbsent).toHaveBeenCalledWith(
+      expect.objectContaining({ template_type: 'snapshot', acting_for_tenant_id: 'ten-zabka' }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to authorise' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign in with Clover' }))
+    await waitFor(() =>
+      expect(getCloverAuthorizeUrl).toHaveBeenCalledWith('clover_pos_v1', 'ten-zabka'),
+    )
+  })
+
+  it('seeds the picker from the resume hint after a bounce back to Connect', () => {
+    // Clover's installed-but-not-authorised branch returns at Connect; stepping BACK to Register
+    // must not find the tenant blank.
+    sessionStorage.setItem(
+      'clover.connect.pending',
+      JSON.stringify({ source_id: 'clover_pos_v1', acting_for_tenant_id: 'ten-zabka' }),
+    )
+    render('/connect/clover?step=connect&merchant_id=0RKKDBMKPAH71', PLATFORM)
+    // Step back via the rail (its accessible name is the step number + title + description).
+    fireEvent.click(screen.getByRole('button', { name: /Register/ }))
+    expect(screen.getByLabelText('Tenant to connect')).toHaveValue('ten-zabka')
+  })
 })

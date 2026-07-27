@@ -57,6 +57,10 @@ export const CLOVER_PENDING_KEY = 'clover.connect.pending'
 
 export type CloverPending = {
   source_id: string
+  // The PLATFORM acted-for tenant for this connect, or null for a TENANT connect. Seeds the
+  // tenant picker on a resume, so a PLATFORM caller returning at the Connect step (Clover's
+  // installed-but-not-authorised branch) does not find the selection blank behind them.
+  acting_for_tenant_id: string | null
 }
 
 export function writeCloverPending(pending: CloverPending): void {
@@ -69,7 +73,11 @@ export function readCloverPending(): CloverPending | null {
   try {
     const parsed = JSON.parse(raw) as Partial<CloverPending>
     if (typeof parsed.source_id !== 'string') return null
-    return { source_id: parsed.source_id }
+    return {
+      source_id: parsed.source_id,
+      acting_for_tenant_id:
+        typeof parsed.acting_for_tenant_id === 'string' ? parsed.acting_for_tenant_id : null,
+    }
   } catch {
     return null
   }
