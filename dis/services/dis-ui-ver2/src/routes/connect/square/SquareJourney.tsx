@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router'
+import { useSearchParams } from 'react-router'
 
 import { useAuth } from '../../../auth/useAuth'
 import { createMappingTemplateIfAbsent } from '../../../lib/dis-ui-server/mapping-templates'
@@ -11,8 +11,8 @@ import {
 } from '../../../lib/dis-ui-server/stores'
 import type { OnboardedStore } from '../../../lib/dis-ui-server/stores'
 import { distinctTenants, tenantName } from '../../../lib/dis-ui-server/tenant-label'
-import { StepRail } from '../StepRail'
-import type { RailStep } from '../StepRail'
+import { JourneyShell } from '../JourneyShell'
+import type { JourneyDefinition, JourneyStep } from '../journey'
 import {
   readSquarePending,
   SNAPSHOT_COLUMNS,
@@ -39,16 +39,15 @@ import {
 // register + mapping-template + authorize-url and into the resume hint. A TENANT caller never
 // sends the field (the server pins its own tenant; naming one is a 403).
 
-const STEPS: RailStep[] = [
+const STEP_META = [
   { title: 'Register', desc: 'Source & mapping template' },
   { title: 'Connect', desc: 'Authorize Square' },
   { title: 'First pull', desc: 'Verify data lands' },
-]
+] as const
 
 type Phase = 'idle' | 'running' | 'error'
 
 export function SquareJourney() {
-  const navigate = useNavigate()
   const [params] = useSearchParams()
   const { snapshot } = useAuth()
   const isPlatform = snapshot?.userType === 'PLATFORM'
@@ -216,8 +215,10 @@ export function SquareJourney() {
     )
   }
 
-  function panel() {
-    if (step === 0) {
+  // Body content only: no button, no card, no footer. The shell owns all of those, so the
+  // three journeys cannot drift on chrome (D1).
+  function body(index: number) {
+    if (index === 0) {
       return (
         <>
           <p className="sub" style={{ marginBottom: 16 }}>
@@ -226,38 +227,15 @@ export function SquareJourney() {
           </p>
           {tenantPicker()}
           {storePicker()}
-          <button
-            type="button"
-            className="btn pri"
-            onClick={() => void register()}
-            disabled={registerPhase === 'running' || platformNeedsTenant || needsStore}
-          >
-            {registerPhase === 'running' ? 'Registering...' : 'Register source & template'}
-          </button>
         </>
       )
     }
-    if (step === 1) {
+    if (index === 1) {
       return (
-        <>
-          {alreadyRegistered ? (
-            <div className="okbox" role="status" style={{ marginBottom: 12 }}>
-              Source and mapping template were already registered. Continue to authorize Square.
-            </div>
-          ) : null}
-          <p className="sub" style={{ marginBottom: 16 }}>
-            You will be sent to Square to authorize read access (locations, catalogue, inventory,
-            orders). Square returns you here to finish.
-          </p>
-          <button
-            type="button"
-            className="btn pri"
-            onClick={() => void connect()}
-            disabled={connectPhase === 'running'}
-          >
-            {connectPhase === 'running' ? 'Redirecting...' : 'Sign in with Square'}
-          </button>
-        </>
+        <p className="sub" style={{ marginBottom: 16 }}>
+          You will be sent to Square to authorize read access (locations, catalogue, inventory,
+          orders). Square returns you here to finish.
+        </p>
       )
     }
     // step 2: first pull (honest affordance)
@@ -279,50 +257,58 @@ export function SquareJourney() {
           The first pull is operator-run today (no scheduler yet). Once a run completes, review it
           here:
         </p>
-        {/* A body content row, NOT a footer. `.wizfoot` is the panel's single trailing
-            footer (its rule + spacing belong to the Back row below); reusing it here drew a
-            second horizontal rule 36px above the first. Plain flex keeps the 12px gap. */}
-        <div className="flex gap-3">
-          <Link className="btn" to="/ingestion-runs">
-            View Ingestion Runs
-          </Link>
-          <Link className="btn" to="/canonical">
-            Open Canonical Explorer
-          </Link>
-        </div>
       </>
     )
   }
 
-  return (
-    <>
-      <div className="pagehead">
-        <div>
-          <h1>Connect Square</h1>
-        </div>
-      </div>
-      <div className="wizwrap">
-        <StepRail steps={STEPS} current={step} onJump={(i) => setStep(i)} />
-        <div>
-          <h2 className="text-lg font-semibold" style={{ marginBottom: 4 }}>
-            {STEPS[step].title}
-          </h2>
-          <p className="sub" style={{ marginBottom: 16 }}>
-            {STEPS[step].desc}
-          </p>
-          {error !== null ? (
-            <p role="alert" className="text-sm text-red-600" style={{ marginBottom: 12 }}>
-              {error}
-            </p>
-          ) : null}
-          {panel()}
-          <div className="wizfoot">
-            <button type="button" className="btn" onClick={() => navigate('/connect')}>
-              Back to sources
-            </button>
-          </div>
-        </div>
-      </div>
-    </>
-  )
+  const steps: JourneyStep[] = [
+    {
+      kind: 'gate',
+      meta: STEP_META[0],
+      body: body(0),
+      action: {
+        label: 'Register source & template',
+        runningLabel: 'Registering...',
+        running: registerPhase === 'running',
+        disabled: platformNeedsTenant || needsStore,
+        onAct: () => void register(),
+      },
+    },
+    {
+      kind: 'gate',
+      meta: STEP_META[1],
+      body: body(1),
+      action: {
+        label: 'Sign in with Square',
+        runningLabel: 'Redirecting...',
+        running: connectPhase === 'running',
+        onAct: () => void connect(),
+      },
+    },
+    {
+      kind: 'terminal',
+      meta: STEP_META[2],
+      body: body(2),
+      links: [
+        { label: 'View Ingestion Runs', to: '/ingestion-runs' },
+        { label: 'Open Canonical Explorer', to: '/canonical' },
+      ],
+    },
+  ]
+
+  const journey: JourneyDefinition = {
+    vendorName: 'Square',
+    steps,
+    step,
+    onJump: (i) => setStep(i),
+    error,
+    // The re-entry note belongs to the Connect step only: it is what a second pass through
+    // Register produces, and it is read on the step after it.
+    note:
+      step === 1 && alreadyRegistered
+        ? 'Source and mapping template were already registered. Continue to authorize Square.'
+        : null,
+  }
+
+  return <JourneyShell journey={journey} />
 }
