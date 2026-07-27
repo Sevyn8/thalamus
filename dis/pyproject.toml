@@ -98,6 +98,8 @@ dev = [
   # Square OAuth + Secret Manager token vault (S2), shared by the BFF and the
   # connector runtime. SDK-free so the BFF can depend on it without the connector graph.
   "thalamus-square-oauth",
+  # Clover OAuth + Secret Manager token vault (C1), the Square analog for the Clover lane.
+  "thalamus-clover-oauth",
 
   # Import-graph contracts (slice-05): forbidden imports between the pure
   # pipeline libs and the I/O-bearing libs. Run via `make lint` (lint-imports).
@@ -137,6 +139,7 @@ known-first-party = [
   "thalamus_connector_sdk",
   "thalamus_square",
   "thalamus_square_oauth",
+  "thalamus_clover_oauth",
 ]
 
 [tool.mypy]
@@ -296,6 +299,7 @@ members = [
   "../connectors/sdk",
   "../connectors/thalamus-square",
   "../connectors/square-oauth",
+  "../connectors/clover-oauth",
 ]
 
 [tool.uv.sources]
@@ -320,3 +324,4 @@ dis-ui-server = { workspace = true }
 thalamus-connector-sdk = { workspace = true }
 thalamus-square = { workspace = true }
 thalamus-square-oauth = { workspace = true }
+thalamus-clover-oauth = { workspace = true }

@@ -1,0 +1,22 @@
+[project]
+name = "thalamus-clover-oauth"
+version = "0.0.0"
+description = "Clover OAuth + Secret Manager token vault and token store for the Clover connector lane (C1). Vendor-specific to Clover by design, mirroring thalamus-square-oauth. Deliberately SDK-free (no thalamus_connector_sdk import) so the BFF can depend on it without pulling the connector service graph. Unlike Square, Clover refresh tokens are SINGLE-USE, so this package owns the persist-before-return token store rather than deferring it to the connector."
+requires-python = ">=3.12"
+dependencies = [
+  # DisError root for the package's own (SDK-free) error family + logging.
+  "dis-core",
+  # GCP Secret Manager token vault (one secret per tenant/source), including the
+  # version-lifecycle prune the single-use rotation cadence makes necessary.
+  "google-cloud-secret-manager>=2.20",
+  # Clover OAuth endpoint calls (authorize URL build is offline; exchange/refresh/recovery
+  # are httpx). Clover's token endpoints are JSON-ONLY: form-encoded returns 415.
+  "httpx>=0.27",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/thalamus_clover_oauth"]
