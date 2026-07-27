@@ -66,6 +66,11 @@ dependencies = [
   # S2: Square OAuth client + Secret Manager token vault, shared with the connector.
   # SDK-free, so this adds no connector service graph to the BFF.
   "thalamus-square-oauth",
+  # C3: the same for Clover (handlers/connectors_clover.py). Also SDK-free.
+  # DECLARING IT IS WHAT PUTS IT IN THE IMAGE. `uv sync --package dis-ui-server` installs
+  # only this package's closure, so an import with no declaration builds green and dies at
+  # container start with ModuleNotFoundError.
+  "thalamus-clover-oauth",
 ]
 
 [build-system]

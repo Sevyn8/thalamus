@@ -838,6 +838,7 @@ dependencies = [
     { name = "pyjwt", extra = ["crypto"] },
     { name = "python-multipart" },
     { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "thalamus-clover-oauth" },
     { name = "thalamus-square-oauth" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -863,6 +864,7 @@ requires-dist = [
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.8" },
     { name = "python-multipart", specifier = ">=0.0.18" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36" },
+    { name = "thalamus-clover-oauth", editable = "../connectors/clover-oauth" },
     { name = "thalamus-square-oauth", editable = "../connectors/square-oauth" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
 ]

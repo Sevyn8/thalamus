@@ -29,10 +29,12 @@ WORKDIR /app
 
 # Connectors workspace members in dis-ui-server's closure, at /connectors so the
 # workspace's ../connectors/* sources resolve (../connectors from /app == /connectors).
-# dis-ui-server depends on thalamus-square-oauth only; it is SDK-free (deps: dis-core,
-# google-cloud-secret-manager, httpx), so connectors/sdk and connectors/thalamus-square
-# are NOT in the closure and are not copied.
+# dis-ui-server depends on thalamus-square-oauth and thalamus-clover-oauth; both are
+# SDK-free (deps: dis-core, google-cloud-secret-manager, httpx), so connectors/sdk,
+# connectors/thalamus-square and connectors/thalamus-clover are NOT in the closure and are
+# not copied.
 COPY connectors/square-oauth /connectors/square-oauth
+COPY connectors/clover-oauth /connectors/clover-oauth
 
 # The dis workspace skeleton: root project + the declared members this build reaches.
 # Explicit COPYs keep the image free of repo junk regardless of context contents.
@@ -48,6 +50,15 @@ COPY dis/services/dis-ui-server services/dis-ui-server
 RUN uv sync --frozen --no-dev --package dis-ui-server
 
 ENV PATH="/app/.venv/bin:$PATH"
+
+# IMPORT THE APP AT BUILD TIME. api.py imports every handler, so this executes the whole
+# import graph and turns an undeclared dependency, a missing COPY or a circular import into
+# a BUILD failure instead of a green image whose every container dies on startup.
+#
+# No local gate can catch that class: the uv workspace dev group installs every member, so
+# mypy and the full test suite pass against modules that are not in the image. This line is
+# the only place the image's ACTUAL closure is exercised.
+RUN python -c "import dis_ui_server.api"
 
 # Non-root (the service needs no filesystem writes at runtime).
 RUN useradd --system --no-create-home disui
