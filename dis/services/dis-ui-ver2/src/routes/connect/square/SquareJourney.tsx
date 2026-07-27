@@ -279,7 +279,10 @@ export function SquareJourney() {
           The first pull is operator-run today (no scheduler yet). Once a run completes, review it
           here:
         </p>
-        <div className="wizfoot" style={{ justifyContent: 'flex-start', gap: 12 }}>
+        {/* A body content row, NOT a footer. `.wizfoot` is the panel's single trailing
+            footer (its rule + spacing belong to the Back row below); reusing it here drew a
+            second horizontal rule 36px above the first. Plain flex keeps the 12px gap. */}
+        <div className="flex gap-3">
           <Link className="btn" to="/ingestion-runs">
             View Ingestion Runs
           </Link>
