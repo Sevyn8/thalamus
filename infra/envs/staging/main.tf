@@ -107,6 +107,32 @@ resource "google_service_account_iam_member" "cm_documents_token_creator" {
   member             = "serviceAccount:${module.cm_service.service_account_email}"
 }
 
+# --- Wave 2: CM Alembic migration Cloud Run JOB ---
+#
+# ADOPTED BY IMPORT, not created. migrate-cm was gcloud-managed, so a clean-slate
+# apply of this project produced no way to bring the CM schema up. The module was
+# written against the LIVE v2 API config and imported.
+#
+# Shares var.cm_image with module.cm_service by design (D6): one pin, so the
+# migration cannot run a different build than the service it migrates for. It also
+# means bumping cm_image bumps BOTH, which is the intended coupling.
+#
+# The job OVERRIDES the image's CMD (which starts uvicorn) with
+# `alembic upgrade head`. See the block at the top of the module before touching
+# command/args: without them the job hangs serving HTTP instead of migrating.
+#
+# Runs as cm-backend-sa, taken from the cm module's output so the SA exists first
+# and already holds secretAccessor on cm-database-url.
+module "migrate_cm_job" {
+  source = "../../modules/cloud-run-job-migrate-cm"
+
+  project_id            = var.project_id
+  region                = var.region
+  image                 = var.cm_image
+  service_account_email = module.cm_service.service_account_email
+  vpc_connector_id      = module.network.vpc_connector_id
+}
+
 # TODO(operator, Slice 3): wire the bucket name into the CM container env as
 # GCS_DOCUMENTS_BUCKET (and optionally GCS_SIGNER_SERVICE_ACCOUNT_EMAIL =
 # module.cm_service.service_account_email). The cloud-run-service-cm module
