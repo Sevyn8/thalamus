@@ -55,6 +55,13 @@ resource "google_artifact_registry_repository" "this" {
   # lands and the plan goes clean while deletions stay off, which separates "the
   # policy is attached" from "deletions have begun". Flipped to false only after
   # the would-delete set has been enumerated and read.
+  #
+  # WATCH THE FALSE. Once the flip lands this is false again - the SAME VALUE it
+  # held before any of this, meaning the OPPOSITE thing. Before: false because no
+  # policies existed, so there was nothing to suppress. After: false because the
+  # policies are LIVE and deletions are enabled. Anyone comparing repository state
+  # from before this work to after sees an unchanged boolean and could conclude
+  # nothing happened; the two cleanup_policies blocks are what actually differ.
   cleanup_policy_dry_run = var.cleanup_policy_dry_run
 
   # The guarantee. Unconditional: every tagged version, every age, forever.
