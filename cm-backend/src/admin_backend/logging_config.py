@@ -28,9 +28,14 @@ def configure_logging(level: str = "INFO") -> None:
     # JsonFormatter is exported by jsonlogger in v2.x and re-exported via
     # a compatibility shim in v3.x; the v3 shim doesn't carry the
     # __all__ marker, so mypy cannot see the attribute.
+    # `severity` is the key Cloud Logging reads to set a structured entry's log
+    # level. Any other name (`levelname`, `level`) leaves every entry at DEFAULT,
+    # so no log-based alert or `severity>=ERROR` query can ever match. Python's
+    # levelname values (DEBUG/INFO/WARNING/ERROR/CRITICAL) are all members of
+    # Cloud Logging's LogSeverity vocabulary, so the rename needs no value mapping.
     formatter = jsonlogger.JsonFormatter(  # type: ignore[attr-defined]
         "%(asctime)s %(name)s %(levelname)s %(message)s",
-        rename_fields={"asctime": "timestamp", "levelname": "level"},
+        rename_fields={"asctime": "timestamp", "levelname": "severity"},
     )
     handler.setFormatter(formatter)
 

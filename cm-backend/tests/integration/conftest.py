@@ -150,13 +150,18 @@ def valid_tenant_jwt(settings: Settings) -> tuple[str, str]:
 
 @pytest.fixture
 def json_log_buffer() -> Any:
-    """Buffer-backed JSON handler attached to admin_backend.requests."""
+    """Buffer-backed JSON handler attached to admin_backend.requests.
+
+    The formatter mirrors ``logging_config.configure_logging`` exactly, including
+    the ``levelname`` -> ``severity`` rename; a fixture that drifts from the
+    production formatter stops testing the shape that actually ships.
+    """
     buffer = io.StringIO()
     handler = logging.StreamHandler(buffer)
     handler.setFormatter(
         jsonlogger.JsonFormatter(  # type: ignore[attr-defined]
             "%(asctime)s %(name)s %(levelname)s %(message)s",
-            rename_fields={"asctime": "timestamp", "levelname": "level"},
+            rename_fields={"asctime": "timestamp", "levelname": "severity"},
         )
     )
 
@@ -175,13 +180,16 @@ def json_log_buffer() -> Any:
 
 @pytest.fixture
 def error_log_buffer() -> Any:
-    """Buffer-backed JSON handler attached to admin_backend.errors."""
+    """Buffer-backed JSON handler attached to admin_backend.errors.
+
+    Mirrors ``logging_config.configure_logging`` exactly (see ``json_log_buffer``).
+    """
     buffer = io.StringIO()
     handler = logging.StreamHandler(buffer)
     handler.setFormatter(
         jsonlogger.JsonFormatter(  # type: ignore[attr-defined]
             "%(asctime)s %(name)s %(levelname)s %(message)s",
-            rename_fields={"asctime": "timestamp", "levelname": "level"},
+            rename_fields={"asctime": "timestamp", "levelname": "severity"},
         )
     )
 
