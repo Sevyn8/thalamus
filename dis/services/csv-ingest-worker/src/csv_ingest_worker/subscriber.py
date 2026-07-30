@@ -119,7 +119,16 @@ async def process_message(pipeline: IngestPipeline, data: bytes) -> Decision:
         log.error("terminal ingest failure (acked; FAILURE audit emitted): %s", exc)
         return "ack"
     except Exception as exc:
-        log.error("transient ingest failure (nacked for redelivery; idempotency converges): %s", exc)
+        # NOT necessarily transient, and deliberately no longer claiming to be. This
+        # catch is blind: a DB blip and a TypeError land here identically. For the
+        # blip, redelivery plus the D59 idempotency path does converge; for a
+        # programming error nothing is transient and idempotency never converges.
+        # The nack is now BOUNDED rather than infinite - dis-csv-received-sub carries
+        # a dead_letter_policy (max_delivery_attempts 20) plus a 10s-600s retry
+        # backoff, so a message that cannot succeed lands in dis-csv-received-dlq
+        # instead of looping forever. Deciding ack-and-audit vs nack per failure
+        # class is still open (ledger: the poison-message decision).
+        log.error("ingest failure (nacked; bounded by the dead-letter policy): %s", exc)
         return "nack"
     log.info("processed: %s", outcome.disposition)
     return "ack"

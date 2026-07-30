@@ -190,23 +190,196 @@ resource "google_pubsub_topic" "ingress_ready" {
   name    = "dis-ingress-ready"
 }
 
+###############################################################################
+# DEAD-LETTER LANES for the two DIS pull subscriptions.
+#
+# Both consumers route every non-terminal failure to a NACK
+# (`except Exception` -> log.error -> nack, in each service's process_message).
+# Until this landed there was no dead_letter_policy on either subscription, so a
+# NON-TRANSIENT failure - a TypeError, a schema break - nacked, redelivered,
+# failed identically, and did so FOREVER. Three artefacts already asserted a
+# dead-letter backstop existed; none was ever provisioned.
+#
+# TWO lanes, not one shared topic. The failures are not interchangeable at 2am,
+# and more concretely they have DIFFERENT REPLAY PROCEDURES: a dead csv.received
+# message replays from its bronze row or a re-upload, while a dead ingress.ready
+# message replays through the `ingress.resubmit` path that does not exist yet
+# (Slice 12). One topic would force whoever drains it to demultiplex by envelope
+# shape before they could act.
+#
+# BOTH IAM GRANTS BELOW ARE LOAD-BEARING. The Pub/Sub service agent needs
+# publisher on the dead-letter TOPIC *and* subscriber on the SOURCE SUBSCRIPTION.
+# roles/pubsub.serviceAgent, which the agent already holds project-wide, contains
+# ZERO Pub/Sub permissions - verified: only iam.serviceAccounts.*,
+# resourcemanager.projects.* and serviceusage.services.use. Miss either grant and
+# the policy is a SILENT NO-OP: the config has it, `gcloud pubsub subscriptions
+# describe` reports it, and messages redeliver forever anyway - indistinguishable
+# from the bug being fixed. Note the provider's own field description mentions
+# only the publish half, so following it alone yields a policy that never fires.
+###############################################################################
+
+# The Pub/Sub service agent. Not a member of any module's SA set - it is Google's
+# own per-project agent, and it is what moves a dead message from a subscription
+# to its dead-letter topic.
+locals {
+  pubsub_service_agent = "serviceAccount:service-${data.google_project.this.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
+
+data "google_project" "this" {
+  project_id = var.project_id
+}
+
+# --- csv.received dead-letter lane ---
+
+resource "google_pubsub_topic" "csv_received_dlq" {
+  project = var.project_id
+  name    = "dis-csv-received-dlq"
+}
+
+# A dead-letter topic with NO SUBSCRIPTION silently discards everything published
+# to it, so this subscription is what makes the DLQ a queue rather than a drain.
+# Nobody consumes it today; the point is that the messages survive until somebody
+# does.
+#   expiration_policy ttl = ""  -> never expire. The DEFAULT is 31 days of
+#     INACTIVITY, and a queue nobody pulls is inactive by definition, so the
+#     default would delete this subscription and its backlog a month in.
+#   message_retention_duration  -> 31 days, the schema maximum (default is 7).
+resource "google_pubsub_subscription" "csv_received_dlq_sub" {
+  project                    = var.project_id
+  name                       = "dis-csv-received-dlq-sub"
+  topic                      = google_pubsub_topic.csv_received_dlq.id
+  ack_deadline_seconds       = 30
+  message_retention_duration = "2678400s"
+  expiration_policy {
+    ttl = ""
+  }
+}
+
+resource "google_pubsub_topic_iam_member" "csv_dlq_publisher" {
+  project = var.project_id
+  topic   = google_pubsub_topic.csv_received_dlq.name
+  role    = "roles/pubsub.publisher"
+  member  = local.pubsub_service_agent
+}
+
+resource "google_pubsub_subscription_iam_member" "csv_received_sub_subscriber" {
+  project      = var.project_id
+  subscription = google_pubsub_subscription.csv_received_sub.name
+  role         = "roles/pubsub.subscriber"
+  member       = local.pubsub_service_agent
+}
+
+# --- ingress.ready dead-letter lane ---
+
+resource "google_pubsub_topic" "ingress_ready_dlq" {
+  project = var.project_id
+  name    = "dis-ingress-ready-dlq"
+}
+
+resource "google_pubsub_subscription" "ingress_ready_dlq_sub" {
+  project                    = var.project_id
+  name                       = "dis-ingress-ready-dlq-sub"
+  topic                      = google_pubsub_topic.ingress_ready_dlq.id
+  ack_deadline_seconds       = 30
+  message_retention_duration = "2678400s"
+  expiration_policy {
+    ttl = ""
+  }
+}
+
+resource "google_pubsub_topic_iam_member" "ingress_dlq_publisher" {
+  project = var.project_id
+  topic   = google_pubsub_topic.ingress_ready_dlq.name
+  role    = "roles/pubsub.publisher"
+  member  = local.pubsub_service_agent
+}
+
+resource "google_pubsub_subscription_iam_member" "ingress_ready_sub_subscriber" {
+  project      = var.project_id
+  subscription = google_pubsub_subscription.ingress_ready_sub.name
+  role         = "roles/pubsub.subscriber"
+  member       = local.pubsub_service_agent
+}
+
+# --- the two source subscriptions ---
+
 # Pull subscription on csv.received: csv-ingest-worker consumes from here.
-# Staging plain retry (no dead_letter_policy).
+#
+# retry_policy is a PREREQUISITE for max_delivery_attempts, not a nicety. Delivery
+# attempts are counted as 1 + NACKs, and poll_once nacks by setting
+# ack_deadline_seconds = 0 (immediate redelivery) with no sleep on the loop's
+# success path. With no retry_policy, attempts therefore accumulate at LOOP SPEED
+# rather than wall-clock speed, and a 60-120s Cloud SQL restart would burn through
+# the whole budget in seconds and dead-letter perfectly healthy messages.
+#
+# It also fixes something independent of the DLQ: immediate redelivery means a
+# poison message loops HOT, burning CPU, DB connections and Pub/Sub quota as fast
+# as the consumer can pull. The backoff cools that to one attempt per 10s rising
+# to one per 600s.
+#
+# max_delivery_attempts = 20 (~2.3h to dead-letter under this backoff). Legal
+# range is 5-100. DELIBERATELY LOWER than the ingress lane below; see the
+# asymmetry note there.
 resource "google_pubsub_subscription" "csv_received_sub" {
   project              = var.project_id
   name                 = "dis-csv-received-sub"
   topic                = google_pubsub_topic.csv_received.id
   ack_deadline_seconds = 30
+
+  dead_letter_policy {
+    dead_letter_topic     = google_pubsub_topic.csv_received_dlq.id
+    max_delivery_attempts = 20
+  }
+
+  retry_policy {
+    minimum_backoff = "10s"
+    maximum_backoff = "600s"
+  }
+
+  depends_on = [
+    google_pubsub_topic_iam_member.csv_dlq_publisher,
+  ]
 }
 
 # Pull subscription on ingress.ready: streaming-consumer consumes from here
-# (completing the pipeline after csv-ingest-worker publishes). Staging plain
-# retry (no dead_letter_policy).
+# (completing the pipeline after csv-ingest-worker publishes).
+#
+# max_delivery_attempts = 100 (~16h), FIVE TIMES the csv lane's 20, and the
+# asymmetry is reasoned rather than arbitrary. This is the lane carrying the
+# documented HOT_POSITION_MISSING self-heal: per
+# services/streaming-consumer/CLAUDE.md, a D63 position miss and the store-miss
+# contract violation are DELIBERATELY excluded from the 11a quarantine allowlist
+# because "redelivery is their designed recovery" until the catalogue or position
+# onboards. That gap is a HUMAN process - sales uploads at 5pm, catalogue lands
+# the next morning - so 2.3h would dead-letter a message that was going to
+# succeed. ~16h covers same-working-day onboarding.
+#
+# WHAT THIS CHANGES, ACCEPTED DELIBERATELY: the self-heal is no longer unbounded.
+# A message whose dependency never arrives now dead-letters instead of retrying
+# forever. That is an IMPROVEMENT, not a regression: today the wait is INVISIBLE
+# and INDEFINITE - a chunk stuck four days looks like nothing at all, and if the
+# catalogue never onboards it is the same infinite loop this policy exists to
+# bound. After this, the message is VISIBLE in a DLQ, intact for 31 days, and
+# replayable. The automatic path narrows; the observable path appears.
 resource "google_pubsub_subscription" "ingress_ready_sub" {
   project              = var.project_id
   name                 = "dis-ingress-ready-sub"
   topic                = google_pubsub_topic.ingress_ready.id
   ack_deadline_seconds = 30
+
+  dead_letter_policy {
+    dead_letter_topic     = google_pubsub_topic.ingress_ready_dlq.id
+    max_delivery_attempts = 100
+  }
+
+  retry_policy {
+    minimum_backoff = "10s"
+    maximum_backoff = "600s"
+  }
+
+  depends_on = [
+    google_pubsub_topic_iam_member.ingress_dlq_publisher,
+  ]
 }
 
 module "dis_ui_server_service" {
