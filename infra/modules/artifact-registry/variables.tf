@@ -16,8 +16,8 @@ variable "repository_id" {
 
 variable "cleanup_policy_dry_run" {
   type        = bool
-  description = "Repository-wide kill switch for the cleanup policies. TRUE means the policies are attached and evaluated but NOTHING is deleted. Ships true so the config can land and be verified before any deletion happens; flip to false only after the would-delete set has been enumerated and reviewed."
-  default     = true
+  description = "Repository-wide kill switch for the cleanup policies. TRUE means the policies are attached and evaluated but NOTHING is deleted. Now FALSE: the policies are LIVE. Flipped after enumerating the would-delete set at the 90d threshold and finding it EMPTY - the oldest untagged digest in the repository was 9 days old, so no version could match. See the WATCH THE FALSE note in main.tf: this value read false before any of this work too, meaning the opposite."
+  default     = false
 }
 
 variable "untagged_grace_period" {
