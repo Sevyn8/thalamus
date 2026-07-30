@@ -170,19 +170,19 @@ variable "cm_documents_frontend_origin" {
 variable "dis_ui_server_image" {
   type        = string
   description = "dis-ui-server container image. Defaults to the v1 tag pushed this session."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-server:v6"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-server:v7"
 }
 
 variable "csv_ingest_worker_image" {
   type        = string
   description = "csv-ingest-worker container image. Defaults to the v1 tag pushed this session."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/csv-ingest-worker:v1"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/csv-ingest-worker:v2"
 }
 
 variable "streaming_consumer_image" {
   type        = string
   description = "streaming-consumer container image. Defaults to the v1 tag pushed this session."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/streaming-consumer:v1"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/streaming-consumer:v2"
 }
 
 # ONE Clover host for BOTH services, deliberately.
@@ -207,11 +207,11 @@ variable "clover_base_url" {
 variable "square_connector_image" {
   type        = string
   description = "square-connector container image (the Cloud Run JOB). Built from connectors/thalamus-square/Dockerfile with the MONOREPO ROOT as build context."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/square-connector:v2"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/square-connector:v3"
 }
 
 variable "clover_connector_image" {
   type        = string
   description = "clover-connector container image (the Cloud Run JOB). Built from connectors/thalamus-clover/Dockerfile with the MONOREPO ROOT as build context."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/clover-connector:v1"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/clover-connector:v2"
 }
