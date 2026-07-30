@@ -116,6 +116,25 @@ resource "google_service_account_iam_member" "cm_documents_token_creator" {
 # this slice; the exact diff is in the Slice-3 report. Until applied, CM boots
 # fine but the document endpoints return 503 DOCUMENT_STORAGE_UNAVAILABLE.
 
+# --- Wave 2: CM frontend (cm-frontend) Cloud Run service ---
+#
+# ADOPTED BY IMPORT, not created. cm-frontend has been serving from Cloud Run
+# since before Terraform described it, so a clean-slate apply of this project
+# used to produce no CM frontend at all. The module was written against the LIVE
+# v2 API config and imported; its acceptance test is a plan with no changes.
+#
+# Runs as the DEFAULT COMPUTE SA (not a dedicated identity like every other
+# service here) and is publicly callable via an allUsers invoker binding. Both
+# are recorded facts about the live service, declared so Terraform describes
+# reality; the SA is on the ledger to fix before production.
+module "cm_frontend_service" {
+  source = "../../modules/cloud-run-service-cm-frontend"
+
+  project_id = var.project_id
+  region     = var.region
+  image      = var.cm_frontend_image
+}
+
 # --- Wave 3: DIS (dis-ui-server) durable infra + Cloud Run service ---
 #
 # dis-ui-server needs a bronze bucket (GCS_BUCKET_BRONZE) and the csv.received

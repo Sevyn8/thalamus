@@ -151,6 +151,12 @@ variable "cm_auth0_ticket_result_url" {
   default     = ""
 }
 
+variable "cm_frontend_image" {
+  type        = string
+  description = "cm-frontend container image. The tag live on the imported service; cm-frontend is deployed by gcloud, so bump this in the same commit as any deploy."
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/cm-frontend:v17"
+}
+
 variable "cm_documents_bucket_name" {
   type        = string
   description = "Globally-unique GCS bucket name for CM tenant onboarding documents (Slice 3). Feeds CM's GCS_DOCUMENTS_BUCKET once the cm module gains that env var (see the TODO in main.tf)."
