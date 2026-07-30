@@ -1,0 +1,50 @@
+# dis/-rooted build context. Mirrors the monorepo-root /.dockerignore.
+#
+# Docker resolves .dockerignore at the CONTEXT ROOT, so this file — and only this
+# file — bounds the context for every image whose context is `dis/`:
+#
+#   dis/terraform/docker/csv-ingest-worker.Dockerfile
+#     docker build -f terraform/docker/csv-ingest-worker.Dockerfile -t csv-ingest-worker .
+#   dis/terraform/docker/streaming-consumer.Dockerfile
+#     docker build -f terraform/docker/streaming-consumer.Dockerfile -t streaming-consumer .
+#   dis/infra/local/fakes.Dockerfile
+#     docker compose build (docker-compose.yml, `context: .`) — the local
+#     customer-master and identity-service fakes
+#
+# NOT covered here, verified rather than assumed:
+#   - dis/terraform/docker/dis-ui-ver2.Dockerfile builds with `services/dis-ui-ver2`
+#     as its context (stated in its header AND passed as the final `build` arg in
+#     terraform/docker/cloudbuild-dis-ui-ver2.yaml), so its context root is that
+#     directory, not dis/. This file is never read for it.
+#   - The three monorepo-root-context images (dis-ui-server, thalamus-square,
+#     thalamus-clover) read /.dockerignore instead.
+#
+# --- weight: never a COPY source ---------------------------------------------------
+**/.venv/
+**/node_modules/
+.git/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.terraform/
+
+# --- dev-only content that WOULD otherwise land in a shipped image -----------------
+# The worker Dockerfiles copy whole package directories (`COPY libs libs`,
+# `COPY services/<name> services/<name>`), so every tests/ directory under them rode
+# along until this file existed.
+#
+# Verified safe for all three dis/-rooted builds:
+#   - All 15 hatch wheel targets under libs/ and services/ are `packages =
+#     ["src/<pkg>"]`; a wheel build never reaches outside src/. The root dis project
+#     is `[tool.uv] package = false`, so it is not built at all.
+#   - No COPY in any of the three Dockerfiles names a tests/ or scripts/ path.
+#   - No module under any src/ tree imports from tests/ or scripts/.
+#   - dis-testing is a LIB: the fakes the compose stack runs are
+#     src/dis_testing/fakes/{customer_master,identity_service}.py, under src/ and NOT
+#     under tests/, so `make run-local` is unaffected. Proven by bringing the stack up.
+**/tests/
+**/scripts/
+**/.env
+**/.env.*
