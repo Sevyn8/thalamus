@@ -38,6 +38,20 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
+from google.api_core.exceptions import (
+    DeadlineExceeded,
+    RetryError,
+    ServerError,
+    TooManyRequests,
+)
+from sqlalchemy.exc import (
+    DisconnectionError,
+    InterfaceError,
+    InternalError,
+    OperationalError,
+)
+from sqlalchemy.exc import TimeoutError as SATimeoutError
+
 from dis_core.errors import DisError, EventContractError
 from dis_core.logging import get_logger
 from streaming_consumer.config import INGRESS_READY_SUBSCRIPTION, SERVICE_NAME
@@ -51,6 +65,38 @@ if TYPE_CHECKING:
 _log = get_logger(SERVICE_NAME)
 
 Decision = Literal["ack", "nack"]
+
+# Tier 2 of run_forever's swallow: errors that are genuinely TRANSIENT, warned and
+# retried. Deliberately NARROW - anything not listed falls through to the tier-3
+# catch, which logs at ERROR under a BUG marker. Nothing propagates from any tier,
+# so a class missed here is loud, not fatal.
+#
+# api_core.ServerError is the 5xx-class transport parent (ServiceUnavailable,
+# InternalServerError, GatewayTimeout).
+#
+# IT DELIBERATELY EXCLUDES THE 4xx-CLASS ClientError BRANCH. PermissionDenied,
+# NotFound and InvalidArgument are CONFIG errors: no amount of retrying fixes a
+# missing IAM binding or a wrong subscription name. Retried in silence forever is
+# the exact shape of the prune bug — a permission failure that looks like a
+# transient blip, retries indefinitely, and never surfaces because nothing ever
+# logs it at a level anyone queries. They belong in the tier-3 BUG catch, and a
+# 403 on the subscription is covered by a test there.
+#
+# DeadlineExceeded is a ServerError subclass, so its own clause must come FIRST.
+#
+# The SQLAlchemy set is here because poll_once runs the whole consumer pipeline,
+# including the Cloud SQL dual-write - a DB blip mid-pass is a transport blip.
+_TRANSIENT_POLL_ERRORS = (
+    ServerError,  # Pub/Sub 5xx: ServiceUnavailable, InternalServerError, GatewayTimeout
+    TooManyRequests,  # 429 quota pushback
+    RetryError,  # api_core retry budget exhausted on a retryable class
+    OperationalError,  # connection lost, server restart, too many connections, deadlock
+    InterfaceError,  # connection broken out from under the driver
+    InternalError,  # server-side internal / aborted transaction
+    DisconnectionError,  # pool-level disconnect (not a DBAPIError)
+    SATimeoutError,  # pool checkout timeout (not a DBAPIError)
+    OSError,  # raw socket failure, e.g. ConnectionRefusedError
+)
 
 
 async def process_message(pipeline: ConsumerPipeline, data: bytes) -> Decision:
@@ -159,8 +205,26 @@ class Subscriber:
             self.heartbeat.beat()
             try:
                 await self.poll_once()
-            except Exception:
+            except DeadlineExceeded:
+                # An EMPTY subscription is the normal steady state. The synchronous
+                # pull holds the connection open until the 10s client deadline and
+                # then raises DeadlineExceeded, unwrapped (it is NOT in pull's
+                # api_core retry predicate, unlike streaming_pull's). Logging that at
+                # ERROR with a traceback produced ~7,800 entries per instance per day
+                # and buried real output. It is a non-event: debug, then loop.
+                log.debug("empty pull; no messages this pass")
+                await asyncio.sleep(1)
+            except _TRANSIENT_POLL_ERRORS:
                 # The loop must survive transient pull/transport errors; each
                 # message's own routing already decided ack/nack.
-                log.exception("poll pass failed; retrying")
+                log.warning("poll pass failed; retrying")
+                await asyncio.sleep(1)
+            except Exception:  # noqa: BLE001 - the loop must never die (see tier comment)
+                # Anything else is a PROGRAMMING or CONFIG error: a TypeError in the
+                # pipeline, a 403 on the subscription, a malformed request. Still
+                # swallowed, because a dead loop is worse than a noisy one, but at
+                # ERROR with a traceback under a `bug` marker so it is findable.
+                log.bind(bug=True).exception(
+                    "BUG: poll pass raised a non-transient error; retrying"
+                )
                 await asyncio.sleep(1)

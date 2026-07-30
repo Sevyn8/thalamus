@@ -24,6 +24,13 @@ from datetime import datetime
 from typing import Literal, Protocol
 from uuid import UUID
 
+from sqlalchemy.exc import (
+    DisconnectionError,
+    InterfaceError,
+    InternalError,
+    OperationalError,
+)
+from sqlalchemy.exc import TimeoutError as SATimeoutError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from csv_ingest_worker.bronze import (
@@ -73,6 +80,25 @@ API_CHANNEL = "api"
 
 _SDK_SERVICE = "thalamus-connector-sdk"
 _log = get_logger(_SDK_SERVICE)
+
+# Tier 1 of the connector-health emit swallow: the DB errors that are genuinely
+# TRANSIENT. A blip here must not kill ingest, so it is warned and swallowed
+# (D116, hard rule 11). Deliberately NARROW: SQLAlchemy's ProgrammingError (bad
+# SQL), ArgumentError and InvalidRequestError are programming defects and fall
+# through to the tier-2 catch, which logs them at ERROR under a BUG marker.
+# Nothing propagates from either tier, so a class missed here is loud, not fatal.
+#
+# All of these are raised through SQLAlchemy; psycopg is not imported (it is not a
+# declared SDK dependency, and every DB call here goes through an AsyncConnection).
+# OSError covers a raw socket refusal escaping the driver during connect.
+_TRANSIENT_DB_ERRORS = (
+    OperationalError,  # connection lost, server restart, too many connections, deadlock
+    InterfaceError,  # connection broken out from under the driver
+    InternalError,  # server-side internal / aborted transaction
+    DisconnectionError,  # pool-level disconnect (not a DBAPIError)
+    SATimeoutError,  # pool checkout timeout (not a DBAPIError)
+    OSError,  # raw socket failure, e.g. ConnectionRefusedError
+)
 
 Disposition = Literal[
     "ingested",
@@ -559,13 +585,27 @@ class ConnectorPipeline:
                     metadata=metadata,
                     rate_limit_state=rate_limit_state,
                 )
-        except Exception:  # noqa: BLE001 - telemetry never blocks ingest (D116, hard rule 11)
+        except _TRANSIENT_DB_ERRORS:
+            # Tier 1: a transient DB blip. Warn and swallow (D116, hard rule 11).
             _log.bind(
                 stage="connector_health",
                 tenant_id=str(trigger.tenant_id),
                 trace_id=str(trigger.trace_id),
                 source_id=trigger.source_id,
             ).warning("connector-health seen-emit failed; ingest unaffected (fire-and-forget)")
+        except Exception:  # noqa: BLE001 - telemetry never blocks ingest (D116, hard rule 11)
+            # Tier 2: anything else reaching here is a PROGRAMMING error (TypeError,
+            # AttributeError, KeyError, bad SQL). Still swallowed - the behaviour is
+            # right, a broken emit must not block ingest - but logged at ERROR with a
+            # traceback under a `bug` marker so it is findable. This is the tier that
+            # hid a broken duplicate-path emit behind a green test board for weeks.
+            _log.bind(
+                stage="connector_health",
+                tenant_id=str(trigger.tenant_id),
+                trace_id=str(trigger.trace_id),
+                source_id=trigger.source_id,
+                bug=True,
+            ).exception("BUG: connector-health seen-emit raised a non-transient error; swallowed")
 
     async def _emit_health_error(
         self,
@@ -589,10 +629,21 @@ class ConnectorPipeline:
                     detail=detail,
                     rate_limit_state=rate_limit_state,
                 )
-        except Exception:  # noqa: BLE001 - telemetry never blocks ingest (D116, hard rule 11)
+        except _TRANSIENT_DB_ERRORS:
+            # Tier 1: a transient DB blip. Warn and swallow (D116, hard rule 11).
             _log.bind(
                 stage="connector_health",
                 tenant_id=str(trigger.tenant_id),
                 trace_id=str(trigger.trace_id),
                 source_id=trigger.source_id,
             ).warning("connector-health error-emit failed; ingest unaffected (fire-and-forget)")
+        except Exception:  # noqa: BLE001 - telemetry never blocks ingest (D116, hard rule 11)
+            # Tier 2: a PROGRAMMING error. Swallowed, but ERROR + traceback + `bug`
+            # marker so it surfaces. See the seen-emit twin above.
+            _log.bind(
+                stage="connector_health",
+                tenant_id=str(trigger.tenant_id),
+                trace_id=str(trigger.trace_id),
+                source_id=trigger.source_id,
+                bug=True,
+            ).exception("BUG: connector-health error-emit raised a non-transient error; swallowed")
