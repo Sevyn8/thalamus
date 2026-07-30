@@ -3,7 +3,7 @@
 #
 # Defaults carry the values verified this session (image tag, DB schema, Auth0
 # issuer/audience/jwks, SendGrid from-address). The three tenant-specific Auth0
-# values that are NOT recorded anywhere in the repo (mgmt client id, mgmt DB
+# values supplied by the ENV rather than by this module (mgmt client id, mgmt DB
 # connection, ticket result_url) default to empty: they are lazy (checked when
 # the Auth0 Management client / SendGrid sender is constructed, NOT at boot), so
 # CM boots in AUTH0 mode without them. Empty optionals are OMITTED from the
