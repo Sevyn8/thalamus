@@ -123,8 +123,8 @@ variable "cloud_sql_deletion_protection" {
 
 variable "cm_image" {
   type        = string
-  description = "CM container image. Defaults to the v1 tag pushed this session."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/cm-backend:v1"
+  description = "CM container image, consumed by BOTH the cm-backend service and the migrate-cm job (D6: one pin, so a migration cannot run a different build than the app it migrates for). Bumping this bumps both."
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/cm-backend:v13"
 }
 
 variable "cm_app_region" {
@@ -133,22 +133,35 @@ variable "cm_app_region" {
   default     = "US"
 }
 
+# The three Auth0 lazy values below are TRACKED HERE ON PURPOSE, which reverses
+# this project's earlier posture of keeping them in the untracked tfvars. None
+# carries credential material: a client id is a public identifier and a connection
+# name is a label, and the first two are already plaintext env vars on the live
+# cm-backend container, so tracking them exposes nothing a Cloud Run reader cannot
+# already see. Anything genuinely secret (the paired client SECRET, the SendGrid
+# key, DATABASE_URL) goes to Secret Manager and is referenced by name - never to a
+# tracked tfvars and never to a variable default.
+#
+# They are here because a clean-slate apply that left them empty would deploy
+# cm-backend with no Auth0 Management config at all: lazy means not boot-blocking,
+# so it would come up healthy and then fail the first invite.
+
 variable "cm_auth0_mgmt_client_id" {
   type        = string
-  description = "AUTH0_MGMT_CLIENT_ID ('Cortex CM Backend M2M' client id). Not recorded in the repo; supply here. Lazy (not boot-blocking)."
-  default     = ""
+  description = "AUTH0_MGMT_CLIENT_ID ('Cortex CM Backend M2M' client id). A public identifier, not a credential; the paired client secret lives in Secret Manager as cm-auth0-mgmt-client-secret. Lazy (not boot-blocking), so an empty value fails at first use rather than at boot."
+  default     = "bnlGD4qRoNohOaJans7xZ9H1u9m2Zz9N"
 }
 
 variable "cm_auth0_mgmt_db_connection" {
   type        = string
-  description = "AUTH0_MGMT_DB_CONNECTION (Auth0 database-connection name). Not recorded in the repo; supply here. Lazy."
-  default     = ""
+  description = "AUTH0_MGMT_DB_CONNECTION - the Auth0 database-connection NAME (a label, not a secret). Lazy, so an empty value fails at first use rather than at boot."
+  default     = "Username-Password-Authentication"
 }
 
 variable "cm_auth0_ticket_result_url" {
   type        = string
-  description = "AUTH0_TICKET_RESULT_URL (invite password-set redirect). Not recorded in the repo; supply here. Lazy."
-  default     = ""
+  description = "AUTH0_TICKET_RESULT_URL - where Auth0 sends the user after an invite password-set. Points at the CM frontend's login route. Lazy, so an empty value fails at first use rather than at boot."
+  default     = "https://cm-frontend-697546531605.asia-south1.run.app/auth/login"
 }
 
 variable "cm_frontend_image" {
