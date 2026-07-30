@@ -12,9 +12,13 @@ The producer/receiver split is unchanged (D54): this module STAMPS the producer-
 identifiers (a deterministic connector_run_id and a fresh trace_id) and hands them on the
 trigger; the receiver (ConnectorPipeline) reads them and mints nothing.
 
-``mint_connector_run_id`` is REUSED from ``dev_transport``, never copied, so the offline
-and online paths cannot drift: a retry reuses the same ``--run-key`` (same id, dedup
-collapses it); a new intended pull uses a new run_key (new id, not deduped).
+``mint_connector_run_id`` is REUSED from ``thalamus_square.run_id``, never copied, so the
+offline and online paths cannot drift: a retry reuses the same ``--run-key`` (same id,
+dedup collapses it); a new intended pull uses a new run_key (new id, not deduped). It
+lives in its own module rather than in the dev-only transport so that this production
+entrypoint's import graph reaches neither that module nor its test doubles — both are
+excluded from the image by the root ``.dockerignore``, and the Dockerfile's build-time
+``import thalamus_square.real_transport`` is what proves the graph stays clean.
 
 Deployed as a Cloud Run Job (``infra/modules/cloud-run-service-square-connector``). The
 run target is supplied per execution via ``gcloud run jobs execute --args`` and is never
@@ -33,9 +37,9 @@ from thalamus_connector_sdk import ConnectorConfigError, SdkConfig
 from thalamus_connector_sdk.adapter import Domain
 from thalamus_connector_sdk.trigger import ConnectorTrigger
 from thalamus_square.config import SERVICE_NAME, SquareConfig
-from thalamus_square.dev_transport import mint_connector_run_id
 from thalamus_square.main import EXIT_CONFIG, run_trigger
 from thalamus_square.pipeline import build_engine, build_square_pipeline
+from thalamus_square.run_id import mint_connector_run_id
 
 _log = get_logger(SERVICE_NAME)
 

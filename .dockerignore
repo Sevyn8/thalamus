@@ -1,7 +1,21 @@
-# Monorepo-root build context (used by dis/services/dis-ui-server/Dockerfile, built
-# from here). The Dockerfile's explicit COPYs bound the IMAGE; this file bounds the
-# CONTEXT sent to the daemon, keeping ~1.6GB of virtualenvs / node_modules / git out
-# of it. None of these are ever a COPY source.
+# Monorepo-root build context. Used by every image that builds from HERE:
+# dis/services/dis-ui-server/Dockerfile, connectors/thalamus-square/Dockerfile and
+# connectors/thalamus-clover/Dockerfile.
+#
+# THIS IS THE ONLY .dockerignore THOSE THREE BUILDS READ. Docker resolves
+# .dockerignore at the CONTEXT ROOT (BuildKit also checks a sibling
+# `<dockerfile-path>.dockerignore`, e.g. `Dockerfile.dockerignore` — NOT a bare
+# `.dockerignore` next to the Dockerfile). The per-service files at
+# connectors/thalamus-{square,clover}/.dockerignore and
+# dis/services/dis-ui-server/.dockerignore are therefore INERT for these builds; see
+# their headers. Anything that must stay out of those images belongs here.
+#
+# NOT covered by this file: dis/terraform/docker/{csv-ingest-worker,streaming-consumer}
+# .Dockerfile build with a `dis/`-rooted context, and dis/infra/local/fakes.Dockerfile
+# builds from `dis/` via docker compose. There is no dis/.dockerignore, so those images
+# get no context filtering at all.
+#
+# --- weight: never a COPY source, ~1.6GB of it -----------------------------------
 **/.venv/
 **/node_modules/
 .git/
@@ -11,3 +25,29 @@
 **/.mypy_cache/
 **/.ruff_cache/
 **/.terraform/
+
+# --- dev-only content that WOULD otherwise land in a shipped image ---------------
+# The Dockerfiles copy whole package directories (`COPY dis/libs libs`,
+# `COPY connectors/sdk /connectors/sdk`), so every one of these rides along unless it
+# is excluded here.
+#
+# Verified against all three root-context builds: none of them needs a tests/ or
+# scripts/ directory. uv installs workspace members from `[tool.hatch.build.targets
+# .wheel] packages = ["src/<pkg>"]`, which never reaches outside src/.
+**/tests/
+**/scripts/
+**/.env
+**/.env.*
+
+# The connectors' dev-only transport and its test doubles. real_transport used to
+# import mint_connector_run_id from dev_transport, which dragged dev_transport and
+# transitively fakes into the PRODUCTION entrypoint's import graph; the mint now lives
+# in its own `run_id` module so these two can be excluded. The Dockerfiles'
+# `RUN python -c "import thalamus_<vendor>.real_transport"` is what proves the graph
+# stays clean — if either file becomes reachable again, the BUILD fails here rather
+# than the container dying on ModuleNotFoundError at start.
+#
+# Scoped by path rather than `**/dev_transport.py` so this cannot silently reach into
+# a future package that legitimately ships a module by either name.
+connectors/*/src/*/dev_transport.py
+connectors/*/src/*/fakes.py

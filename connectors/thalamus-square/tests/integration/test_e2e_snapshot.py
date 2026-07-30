@@ -49,11 +49,11 @@ from thalamus_connector_sdk import ConnectorOutcome, SdkConfig
 from thalamus_connector_sdk.adapter import Domain
 from thalamus_connector_sdk.trigger import ConnectorTrigger
 from thalamus_square.config import SquareConfig
-from thalamus_square.dev_transport import mint_connector_run_id
 from thalamus_square.fakes import FakeSquareApi, FakeTokenStore
 from thalamus_square.main import run_trigger
 from thalamus_square.pipeline import build_engine, build_square_pipeline
 from thalamus_square.provisioning import provision
+from thalamus_square.run_id import mint_connector_run_id
 
 pytestmark = pytest.mark.integration
 

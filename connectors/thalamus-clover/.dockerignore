@@ -1,8 +1,20 @@
-# The canonical build runs from the MONOREPO ROOT with explicit COPYs (see the
-# Dockerfile header), which is what actually bounds the image contents; the root
-# .dockerignore bounds the context sent to the daemon. This file exists per the
-# service-directory convention (mirrors dis/services/dis-ui-server/.dockerignore);
-# patterns mirror what must never enter an image.
+# INERT FOR THE CANONICAL BUILD. Read this before trusting it.
+#
+# Docker resolves .dockerignore at the CONTEXT ROOT. The canonical build for this image
+# is `docker build -f connectors/thalamus-clover/Dockerfile -t clover-connector .` run
+# from the MONOREPO ROOT, so the file Docker reads is /.dockerignore, not this one.
+# Nothing here has any effect on the shipped image. Verified empirically: this file
+# lists tests/, and connectors/thalamus-clover/tests was landing in the image anyway.
+#
+# (BuildKit does check one sibling location — `<dockerfile-path>.dockerignore`, i.e.
+# `Dockerfile.dockerignore` in this directory. A bare `.dockerignore` is NOT that.)
+#
+# WHAT ACTUALLY BOUNDS THE IMAGE: the Dockerfile's explicit COPYs, plus /.dockerignore
+# for anything that rides inside a copied directory (tests/, scripts/, .env*, the
+# dev-only transport and its test doubles). Add exclusions THERE, not here.
+#
+# This file is kept only for a hypothetical directory-context build
+# (`docker build connectors/thalamus-clover`), which nothing does today.
 __pycache__/
 *.pyc
 .venv/

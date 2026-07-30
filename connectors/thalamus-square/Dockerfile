@@ -15,12 +15,24 @@
 # dis/terraform/docker/*.Dockerfile pair. Reason: the uv workspace is rooted at dis/ and
 # declares members at ../connectors/* (siblings of dis/), so a dis/-rooted context can
 # never provide them. The two DIS worker images get away with a dis/-rooted context only
-# because no connectors member is in their dependency closure; thalamus-square's closure
-# is thalamus-connector-sdk -> (dis-core, dis-rls, dis-storage, dis-audit, dis-pii,
-# csv-ingest-worker) plus dis-canonical and thalamus-square-oauth, i.e. ALL THREE
-# connectors members AND a DIS service. Every COPY is therefore prefixed, and the
-# connectors land at /connectors so uv's ../connectors/* sources resolve
-# (../connectors from /app == /connectors).
+# because no connectors member is in their dependency closure.
+#
+# THE COPY SET IS DERIVED FROM THIS PACKAGE'S CLOSURE. Run
+# `uv tree --frozen --no-dev --package thalamus-square` from dis/: it resolves to TEN
+# workspace members — thalamus-square itself, thalamus-connector-sdk and
+# thalamus-square-oauth; dis-core, dis-canonical, dis-rls, dis-storage, dis-audit and
+# dis-pii; and csv-ingest-worker (the SDK reuses its bronze sink, publisher seam and
+# ingress.ready topic name). That is ALL THREE connectors members and exactly ONE dis
+# service.
+#
+# The other three dis services used to be copied here "for parity" with the dis-ui-server
+# image, which shipped dis-ui-server's entire source inside a connector image. They are
+# not reachable from thalamus-square at all and are gone. The set differs from the Clover
+# image's by exactly dis-canonical (Square declares it for a header drift-guard; Clover
+# does not), which is the check that this was derived rather than copied.
+#
+# Every COPY is therefore prefixed, and the connectors land at /connectors so uv's
+# ../connectors/* sources resolve (../connectors from /app == /connectors).
 #
 # Canonical build command (run from the monorepo root):
 #
@@ -44,23 +56,32 @@ COPY connectors/sdk /connectors/sdk
 COPY connectors/thalamus-square /connectors/thalamus-square
 COPY connectors/square-oauth /connectors/square-oauth
 
-# The dis workspace skeleton: root project + the declared members this build reaches.
-# Explicit COPYs keep the image free of repo junk regardless of context contents.
-# csv-ingest-worker is IN the closure (the SDK reuses its bronze sink, publisher seam and
-# ingress.ready topic name); the other three services are copied for parity with the
-# dis-ui-server image, which copies every declared dis service member.
+# The dis workspace skeleton: root project + the members this closure actually reaches.
+# uv does NOT require every declared workspace member to be present — only the members
+# inside the TARGET PACKAGE'S CLOSURE — so mirror-sync-consumer, streaming-consumer and
+# dis-ui-server are absent and the build still resolves. Removing a member that IS in the
+# closure (csv-ingest-worker, or any of dis/libs) fails the build, which is the proof.
 COPY dis/pyproject.toml dis/uv.lock ./
 COPY dis/libs libs
-COPY dis/services/mirror-sync-consumer services/mirror-sync-consumer
 COPY dis/services/csv-ingest-worker services/csv-ingest-worker
-COPY dis/services/streaming-consumer services/streaming-consumer
-COPY dis/services/dis-ui-server services/dis-ui-server
 
 # Install ONLY this connector's dependency closure, locked (--frozen: the lock is
 # authoritative; a drifted lock fails the build instead of resolving silently).
 RUN uv sync --frozen --no-dev --package thalamus-square
 
 ENV PATH="/app/.venv/bin:$PATH"
+
+# IMPORT THE ENTRYPOINT AT BUILD TIME. real_transport pulls in the pipeline, the adapter,
+# the puller and the token store, so this executes the whole import graph and turns an
+# undeclared dependency, a missing COPY or a circular import into a BUILD failure instead
+# of a green image whose every execution dies on startup.
+#
+# No local gate catches that class: the uv workspace dev group installs every member, so
+# mypy and the full test suite pass against modules that are not in the image. dis-ui-server
+# shipped exactly that defect once - green build, clean push, ModuleNotFoundError in the
+# container. This line is the only place the image's ACTUAL closure is exercised, and it is
+# also what proves the root .dockerignore's dev_transport/fakes exclusion is safe.
+RUN python -c "import thalamus_square.real_transport"
 
 # Non-root (the connector writes no local filesystem at runtime; the CSV it produces is
 # serialized in memory and streamed to the bronze bucket).

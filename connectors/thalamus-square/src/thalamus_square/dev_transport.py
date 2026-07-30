@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import hashlib
 from uuid import UUID
 
 from dis_core.logging import configure_logging
@@ -27,14 +26,7 @@ from thalamus_square.config import SquareConfig
 from thalamus_square.fakes import FakeSquareApi, FakeTokenStore
 from thalamus_square.main import run_trigger
 from thalamus_square.pipeline import build_engine, build_square_pipeline
-
-
-def mint_connector_run_id(
-    tenant_id: str, store_id: str, source_id: str, template_id: str, run_key: str
-) -> str:
-    """Deterministic, producer-owned dedup id. Same inputs + run_key to same id; no wall-clock."""
-    material = f"{tenant_id}|{store_id}|{source_id}|{template_id}|{run_key}"
-    return "run_" + hashlib.sha256(material.encode()).hexdigest()[:12]
+from thalamus_square.run_id import mint_connector_run_id
 
 
 async def _run(args: argparse.Namespace) -> int:

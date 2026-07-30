@@ -1,7 +1,19 @@
-# The canonical build runs from the REPO ROOT with explicit COPYs (see
-# Dockerfile header), which is what actually bounds the image contents. This
-# file exists per the service-directory convention and covers BuildKit's
-# per-Dockerfile ignore lookup; patterns mirror what must never enter an image.
+# INERT FOR THE CANONICAL BUILD. Read this before trusting it.
+#
+# Docker resolves .dockerignore at the CONTEXT ROOT. The canonical build for this image
+# is `docker build -f dis/services/dis-ui-server/Dockerfile -t dis-ui-server .` run from
+# the MONOREPO ROOT, so the file Docker reads is /.dockerignore, not this one.
+#
+# The previous header claimed this file "covers BuildKit's per-Dockerfile ignore lookup".
+# That is FALSE. BuildKit's per-Dockerfile lookup is for `<dockerfile-path>.dockerignore`
+# — here that would be `Dockerfile.dockerignore` in this directory. A bare `.dockerignore`
+# beside the Dockerfile is never consulted.
+#
+# WHAT ACTUALLY BOUNDS THE IMAGE: the Dockerfile's explicit COPYs, plus /.dockerignore
+# for anything that rides inside a copied directory (tests/, scripts/, .env*). Add
+# exclusions THERE, not here.
+#
+# This file is kept only for a hypothetical directory-context build, which nothing does.
 __pycache__/
 *.pyc
 .venv/

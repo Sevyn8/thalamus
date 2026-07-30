@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import hashlib
 from uuid import UUID
 
 from dis_core.logging import configure_logging
@@ -24,17 +23,10 @@ from thalamus_clover.config import CloverConfig
 from thalamus_clover.fakes import FakeCloverApi, FakeSessionStore
 from thalamus_clover.main import run_trigger
 from thalamus_clover.pipeline import build_clover_pipeline, build_engine
+from thalamus_clover.run_id import mint_connector_run_id
 from thalamus_connector_sdk import SdkConfig
 from thalamus_connector_sdk.adapter import Domain
 from thalamus_connector_sdk.trigger import ConnectorTrigger
-
-
-def mint_connector_run_id(
-    tenant_id: str, store_id: str, source_id: str, template_id: str, run_key: str
-) -> str:
-    """Deterministic, producer-owned dedup id. Same inputs + run_key to same id; no wall-clock."""
-    material = f"{tenant_id}|{store_id}|{source_id}|{template_id}|{run_key}"
-    return "run_" + hashlib.sha256(material.encode()).hexdigest()[:12]
 
 
 async def _run(args: argparse.Namespace) -> int:

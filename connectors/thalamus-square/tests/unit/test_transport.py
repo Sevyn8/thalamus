@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import ast
 import inspect
+import subprocess
+import sys
 
-from thalamus_square import dev_transport, real_transport
+from thalamus_square import dev_transport, real_transport, run_id
 
 _BUILDER = "build_square_pipeline"
 
@@ -53,11 +55,16 @@ def test_no_fakes_are_imported() -> None:
 
 
 def test_run_id_derivation_is_reused_not_copied() -> None:
-    # Same function OBJECT: the offline and online paths cannot drift on the dedup id.
-    # Reached through vars(): real_transport does not RE-export the name (mypy --strict
+    # Same function OBJECT in BOTH transports: the offline and online paths cannot drift
+    # on the dedup id. The shared home moved from dev_transport to run_id (a neutral
+    # module) so that real_transport's import graph no longer reaches dev_transport and,
+    # through it, fakes - both are excluded from the connector image.
+    # Reached through vars(): neither transport RE-exports the name (mypy --strict
     # forbids the attribute access, ruff B009 forbids the getattr).
-    assert vars(real_transport)["mint_connector_run_id"] is dev_transport.mint_connector_run_id
+    assert vars(real_transport)["mint_connector_run_id"] is run_id.mint_connector_run_id
+    assert vars(dev_transport)["mint_connector_run_id"] is run_id.mint_connector_run_id
     assert "def mint_connector_run_id" not in inspect.getsource(real_transport)
+    assert "def mint_connector_run_id" not in inspect.getsource(dev_transport)
 
 
 def test_cli_declares_the_job_arg_contract() -> None:
@@ -88,3 +95,34 @@ def test_cli_declares_the_job_arg_contract() -> None:
         "--run-key": True,
         "--store-code": False,
     }
+
+
+def test_real_transport_import_graph_excludes_dev_only_modules() -> None:
+    """LOAD-BEARING: the production entrypoint must not TRANSITIVELY reach the dev
+    transport or the test doubles.
+
+    ``test_real_transport_imports_no_fakes`` only reads this module's own source, so it
+    could not see the old ``from thalamus_square.dev_transport import mint_connector_run_id``
+    dragging ``dev_transport`` -> ``fakes`` into the graph. Both files are now excluded
+    from the connector image by the root ``.dockerignore``; if this regresses, the image
+    ships an entrypoint that dies on ModuleNotFoundError at container start. The
+    Dockerfile's build-time import is the other half of the proof.
+
+    A subprocess, because the rest of this test module imports ``dev_transport`` directly
+    and would otherwise pollute ``sys.modules``.
+    """
+    probe = (
+        "import sys; import thalamus_square.real_transport; "
+        "leaked = [m for m in sys.modules "
+        "if m.endswith('.dev_transport') or m.endswith('.fakes')]; "
+        "print(','.join(sorted(leaked)))"
+    )
+    result = subprocess.run(  # noqa: S603 - fixed argv, no shell, no user input
+        [sys.executable, "-c", probe],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stdout.strip() == "", (
+        f"real_transport transitively imports dev-only modules: {result.stdout.strip()}"
+    )

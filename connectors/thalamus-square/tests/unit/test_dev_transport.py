@@ -12,7 +12,7 @@ from uuid import UUID
 
 from thalamus_connector_sdk.adapter import Domain
 from thalamus_connector_sdk.trigger import ConnectorTrigger
-from thalamus_square.dev_transport import mint_connector_run_id
+from thalamus_square.run_id import mint_connector_run_id
 
 _T = "019e5e3c-b5d6-7eed-93f9-3778a7a7a160"
 _S = "019e5e3c-b633-7344-93c7-83fb205285ea"
@@ -61,3 +61,20 @@ def test_receiver_does_not_derive_the_run_id() -> None:
     src = inspect.getsource(receiver)
     assert "mint_connector_run_id" not in src
     assert "trigger.connector_run_id" in src  # it READS the trigger's value
+
+
+def test_run_id_golden_value_is_frozen() -> None:
+    """LOAD-BEARING: the DERIVED VALUE, not just its shape.
+
+    connector_run_id drives the pipeline's duplicate_noop. If the derivation ever
+    changes, a re-run with the SAME --run-key mints a DIFFERENT id, the dedup lookup
+    misses, and the pull silently RE-INGESTS instead of no-opping. Nothing else in the
+    suite would notice: the shape assertions (run_ prefix, length) and the
+    same-function-object assertion both survive a changed hash.
+
+    The literal below was computed from the unchanged pure function at the moment the
+    mint moved out of dev_transport, so it pins today's behaviour rather than blessing a
+    drift. If this fails, the question is not "update the literal" - it is whether every
+    already-ingested run is about to be re-ingested.
+    """
+    assert mint_connector_run_id(_T, _S, _SRC, _TPL, "bootstrap-001") == "run_18527fc58d3b"

@@ -11,8 +11,12 @@ silently shipping an offline image.
 The producer/receiver split is unchanged (D54): this module STAMPS the producer-owned
 identifiers and hands them on the trigger; the receiver reads them and mints nothing.
 
-``mint_connector_run_id`` is REUSED from ``dev_transport``, never copied, so the offline and
-online paths cannot drift on the dedup id.
+``mint_connector_run_id`` is REUSED from ``thalamus_clover.run_id``, never copied, so the
+offline and online paths cannot drift on the dedup id. It lives in its own module rather
+than in the dev-only transport so that this production entrypoint's import graph reaches
+neither that module nor its test doubles — both are excluded from the image by the root
+``.dockerignore``, and the Dockerfile's build-time ``import thalamus_clover.real_transport``
+is what proves the graph stays clean.
 
 Run as ``python -m thalamus_clover.real_transport`` - there is no console script, the repo
 has none.
@@ -27,9 +31,9 @@ from uuid import UUID
 from dis_core.logging import configure_logging, get_logger
 from dis_core.trace_id import new_trace_id
 from thalamus_clover.config import SERVICE_NAME, CloverConfig
-from thalamus_clover.dev_transport import mint_connector_run_id
 from thalamus_clover.main import EXIT_CONFIG, run_trigger
 from thalamus_clover.pipeline import build_clover_pipeline, build_engine
+from thalamus_clover.run_id import mint_connector_run_id
 from thalamus_connector_sdk import ConnectorConfigError, SdkConfig
 from thalamus_connector_sdk.adapter import Domain
 from thalamus_connector_sdk.trigger import ConnectorTrigger

@@ -8,11 +8,24 @@
 # services/streaming-consumer/src/streaming_consumer/main.py (module main()).
 #
 # Mirrors the proven services/dis-ui-server/Dockerfile: the service is a uv-workspace
-# member, so the build context is the REPO ROOT and EVERY declared workspace member
-# directory is copied explicitly (uv refuses a workspace whose declared members are
-# absent). Build with:
+# member, so the build context is the dis/ workspace root and the workspace member
+# directories are copied explicitly. Build with:
 #
 #   docker build -f terraform/docker/streaming-consumer.Dockerfile -t streaming-consumer .
+#
+# CORRECTION (this comment previously claimed "uv refuses a workspace whose declared
+# members are absent"). That is FALSE, and three empirical runs falsified it. uv refuses
+# only for members inside the TARGET PACKAGE'S CLOSURE — the set
+# `uv tree --frozen --no-dev --package <name>` resolves. A declared member OUTSIDE that
+# closure may be absent from the context and `uv sync --frozen --package <name>` still
+# succeeds. The connectors/thalamus-clover image has shipped on exactly that basis since
+# C2: it omits mirror-sync-consumer, streaming-consumer and dis-ui-server, all declared
+# `[tool.uv.workspace] members`, and resolves cleanly.
+#
+# So the COPY set below is a superset of what this image strictly needs, not a
+# requirement. It is left as-is deliberately: trimming it is a separate change with its
+# own negative-test obligation, and this file's job today is to stop asserting something
+# untrue.
 
 FROM python:3.12-slim
 
