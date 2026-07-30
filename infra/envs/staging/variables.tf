@@ -176,7 +176,7 @@ variable "dis_ui_server_image" {
 variable "csv_ingest_worker_image" {
   type        = string
   description = "csv-ingest-worker container image. Defaults to the v1 tag pushed this session."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/csv-ingest-worker:v2"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/csv-ingest-worker:v3"
 }
 
 variable "streaming_consumer_image" {
