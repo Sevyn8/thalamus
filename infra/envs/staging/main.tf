@@ -214,6 +214,32 @@ module "dis_ui_server_service" {
   clover_oauth_base_url = var.clover_base_url
 }
 
+# --- Wave 3: DIS UI SPA (dis-ui-ver2) Cloud Run service ---
+#
+# ADOPTED BY IMPORT, not created. dis-ui-ver2 has been serving from Cloud Run
+# since before Terraform described it, so a clean-slate apply of this project
+# used to produce no DIS UI at all. The module was written against the LIVE v2
+# API config and imported; its acceptance test is a plan with no changes.
+#
+# COUPLED TO dis-ui-server ABOVE, in a way neither module shows on its own: the
+# SPA's nginx reverse-proxies /api to dis-ui-server carrying only the browser's
+# Auth0 bearer and NO credential of its own, so it works solely because
+# dis-ui-server has an allUsers run.invoker binding. Tightening that posture
+# breaks every /api call through this service with an immediate 403. The full
+# explanation is the COUPLING block at the top of the module; read it before
+# touching IAM in 2b-iii.
+#
+# The dis-ui-server block above already depends on this service's URL from the
+# other direction (both OAuth redirect URIs point at it), so the two are wired
+# together in both directions.
+module "dis_ui_ver2_service" {
+  source = "../../modules/cloud-run-service-dis-ui-ver2"
+
+  project_id = var.project_id
+  region     = var.region
+  image      = var.dis_ui_ver2_image
+}
+
 module "csv_ingest_worker_service" {
   source = "../../modules/cloud-run-service-csv-ingest-worker"
 

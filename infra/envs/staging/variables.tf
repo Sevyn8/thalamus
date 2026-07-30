@@ -179,6 +179,12 @@ variable "dis_ui_server_image" {
   default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-server:v7"
 }
 
+variable "dis_ui_ver2_image" {
+  type        = string
+  description = "dis-ui-ver2 (SPA) container image. The tag live on the imported service. Built by dis/terraform/docker/cloudbuild-dis-ui-ver2.yaml with an explicit _TAG=vN and no floating `latest`; bump this in the same commit as any deploy."
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-ver2:v16"
+}
+
 variable "csv_ingest_worker_image" {
   type        = string
   description = "csv-ingest-worker container image. Defaults to the v1 tag pushed this session."
