@@ -48,6 +48,16 @@ class LogContext:
 
 _DEFAULT_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
 
+# Cloud Logging reads ``severity`` off a structured entry to set the entry's log
+# level. Emitting Python's own ``levelname`` key instead leaves EVERY entry at
+# DEFAULT, so no log-based alert and no ``severity>=ERROR`` query can ever match
+# a DIS error — "show me what is broken" comes back empty and reads as healthy.
+# The rename needs no value mapping: Python's level names
+# (DEBUG/INFO/WARNING/ERROR/CRITICAL) are all members of Cloud Logging's
+# LogSeverity vocabulary. Adding a custom level via ``logging.addLevelName``
+# would break that correspondence; DIS defines none.
+_RENAME_FIELDS = {"levelname": "severity"}
+
 
 class DisLoggerAdapter(logging.LoggerAdapter[logging.Logger]):
     """Logger adapter that merges bound context into each record's ``extra``."""
@@ -65,7 +75,7 @@ class DisLoggerAdapter(logging.LoggerAdapter[logging.Logger]):
 def configure_logging(level: int | str = logging.INFO) -> None:
     """Install the JSON formatter on the root logger. Idempotent; call once at startup."""
     handler = logging.StreamHandler()
-    handler.setFormatter(JsonFormatter(_DEFAULT_FORMAT))
+    handler.setFormatter(JsonFormatter(_DEFAULT_FORMAT, rename_fields=_RENAME_FIELDS))
     root = logging.getLogger()
     root.handlers = [handler]
     root.setLevel(level)
