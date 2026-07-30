@@ -77,6 +77,7 @@ function renderSeeded(ui: ReactNode, seed: (qc: QueryClient) => void, initialEnt
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   seed(qc)
   const authValue: AuthContextValue = {
+    profile: null,
     status: 'authenticated',
     snapshot: TENANT,
     login: () => Promise.resolve(),

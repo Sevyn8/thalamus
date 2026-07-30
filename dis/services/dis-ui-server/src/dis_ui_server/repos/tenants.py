@@ -4,12 +4,12 @@
 table is whatever the caller supplies. That is why every read of the model lives here.
 
 TWO POSTURES LIVE IN THIS MODULE, and the difference is deliberate — read it before adding
-a third function:
+another function. There are now THREE functions across those two postures:
 
-- ``get_tenant_display_code`` is TENANT-SCOPED. The explicit ``WHERE tenant_id = <token
-  tenant>`` is the only isolation, exactly the registered ``repos/stores.py`` posture. Its
-  predicate and its target are the same id, so no cross-tenant read is expressible through
-  it.
+- ``get_tenant_self`` and ``get_tenant_display_code`` are TENANT-SCOPED. The explicit
+  ``WHERE tenant_id = <token tenant>`` is the only isolation, exactly the registered
+  ``repos/stores.py`` posture. Their predicate and their target are the same id, so no
+  cross-tenant read is expressible through either.
 
 - ``list_actable_tenants`` is CROSS-TENANT BY DESIGN and carries NO tenant predicate — an
   all-tenants list is the entire point of it. Isolation here is not absent, it is
@@ -51,6 +51,31 @@ _LIST_LIMIT = 500
 # rides the wire instead and the picker disables the row, so the policy sits in one visible
 # place and can move without touching this endpoint.
 _END_STATE_STATUS = "TERMINATED"
+
+
+async def get_tenant_self(engine: AsyncEngine, tenant_id: UUID) -> Row[Any] | None:
+    """The token tenant's ``name`` + ``display_code``, or ``None`` when unmirrored.
+
+    TENANT-SCOPED, following ``get_tenant_display_code`` above and deliberately NOT
+    ``list_actable_tenants`` below: the explicit ``WHERE tenant_id = <token tenant>`` is the
+    only isolation this RLS-OFF table has, and here the predicate and the target are the same
+    id, so no cross-tenant read is expressible through it. ``tenant_id`` MUST come from the
+    verified token (``tenant_uuid_of`` / ``ReadScope.tenant_id``), never from a request field.
+
+    ``None`` is NOT an error: ``identity_mirror`` is eventually consistent, so a tenant
+    Customer Master knows about but the last mirror-sync run did not is simply absent. The
+    caller serves that as nulls and the UI falls back to the UUID. The fix for a persistently
+    absent row is to run mirror-sync-consumer, never to read Customer Master from here.
+
+    Separate from ``get_tenant_display_code`` rather than replacing it: that one returns a
+    bare scalar for a GCS path segment, this one returns a display row. Widening the scalar
+    would have made every caller unpack a row for one field.
+    """
+    statement = select(TenantRow.name, TenantRow.display_code).where(
+        TenantRow.tenant_id == tenant_id  # the in-query scoping (D41) — do not remove
+    )
+    async with rls_session(engine, tenant_id) as conn:
+        return (await conn.execute(statement)).one_or_none()
 
 
 async def get_tenant_display_code(engine: AsyncEngine, tenant_id: UUID) -> str | None:
@@ -104,4 +129,4 @@ async def list_actable_tenants(engine: AsyncEngine, scope: ReadScope) -> Sequenc
         return list((await conn.execute(statement)).all())
 
 
-__all__ = ["get_tenant_display_code", "list_actable_tenants"]
+__all__ = ["get_tenant_display_code", "get_tenant_self", "list_actable_tenants"]

@@ -35,6 +35,7 @@ const PLATFORM: AuthSnapshot = {
 
 function renderDashboard(snapshot: AuthSnapshot = TENANT): void {
   const authValue: AuthContextValue = {
+    profile: null,
     status: 'authenticated',
     snapshot,
     login: () => Promise.resolve(),
@@ -184,6 +185,7 @@ describe('Dashboard recent-runs — real mode (fetch spy)', () => {
     vi.stubGlobal('fetch', fetchSpy)
 
     const authValue: AuthContextValue = {
+      profile: null,
       status: 'authenticated',
       snapshot: TENANT,
       login: () => Promise.resolve(),
@@ -342,6 +344,7 @@ describe('Dashboard by-tenant breakdown (Chunk 6b)', () => {
       }),
     )
     const authValue: AuthContextValue = {
+      profile: null,
       status: 'authenticated',
       snapshot: PLATFORM,
       login: () => Promise.resolve(),
@@ -426,6 +429,7 @@ describe('Dashboard Needs-attention card — scope + empty', () => {
       }),
     )
     const authValue: AuthContextValue = {
+      profile: null,
       status: 'authenticated',
       snapshot: TENANT,
       login: () => Promise.resolve(),
@@ -488,7 +492,7 @@ describe('Dashboard tenant_name display (Chunk 9-FE, real mode PLATFORM)', () =>
         return new Response(JSON.stringify([]), { status: 200 })
       }),
     )
-    const authValue: AuthContextValue = { status: 'authenticated', snapshot: PLATFORM, login: () => Promise.resolve(), logout: () => {} }
+    const authValue: AuthContextValue = { profile: null, status: 'authenticated', snapshot: PLATFORM, login: () => Promise.resolve(), logout: () => {} }
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
       <QueryClientProvider client={qc}>
@@ -528,7 +532,7 @@ describe('Dashboard tenant_name display (Chunk 9-FE, real mode PLATFORM)', () =>
         return new Response(JSON.stringify([]), { status: 200 })
       }),
     )
-    const authValue: AuthContextValue = { status: 'authenticated', snapshot: PLATFORM, login: () => Promise.resolve(), logout: () => {} }
+    const authValue: AuthContextValue = { profile: null, status: 'authenticated', snapshot: PLATFORM, login: () => Promise.resolve(), logout: () => {} }
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
       <QueryClientProvider client={qc}>

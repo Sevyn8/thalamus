@@ -37,6 +37,7 @@ const PLATFORM: AuthSnapshot = {
 
 function renderAs(snapshot: AuthSnapshot, ui: ReactNode) {
   const authValue: AuthContextValue = {
+    profile: null,
     status: 'authenticated',
     snapshot,
     login: () => Promise.resolve(),

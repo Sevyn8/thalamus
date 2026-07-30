@@ -24,6 +24,7 @@ const TENANT: AuthSnapshot = {
 
 function renderAudit(snapshot: AuthSnapshot = TENANT): void {
   const authValue: AuthContextValue = {
+    profile: null,
     status: 'authenticated',
     snapshot,
     login: () => Promise.resolve(),

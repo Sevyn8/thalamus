@@ -18,6 +18,7 @@ export function renderWithProviders(
 ) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const authValue: AuthContextValue = {
+    profile: null,
     status: opts.snapshot === null ? 'unauthenticated' : 'authenticated',
     snapshot: opts.snapshot,
     login: () => Promise.resolve(),

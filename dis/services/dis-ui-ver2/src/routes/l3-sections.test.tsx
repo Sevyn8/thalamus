@@ -14,7 +14,7 @@ import { TemplateDetail } from './TemplateDetail'
 
 const TENANT: AuthSnapshot = { userId: 'u_acmeuser0001', tenantId: 't_acme9k2l1mn4', storeId: 's_x', userType: 'TENANT', roles: ['dis:read'] }
 function providers(snapshot: AuthSnapshot = TENANT) {
-  const authValue: AuthContextValue = { status: 'authenticated', snapshot, login: () => Promise.resolve(), logout: () => {} }
+  const authValue: AuthContextValue = { profile: null, status: 'authenticated', snapshot, login: () => Promise.resolve(), logout: () => {} }
   return { qc: new QueryClient({ defaultOptions: { queries: { retry: false } } }), authValue }
 }
 function Wrap({ qc, authValue, entries, children }: { qc: QueryClient; authValue: AuthContextValue; entries: string[]; children: ReactNode }) {

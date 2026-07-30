@@ -1,6 +1,15 @@
-"""``GET /tenants-actable`` — the tenants a PLATFORM ops caller may act for.
+"""Tenant identity reads, one per persona — and they are deliberate mirror images.
 
-WHY THIS ENDPOINT EXISTS. The connect journeys let a PLATFORM ops caller onboard a source
+- ``GET /tenants-actable`` — the tenants a PLATFORM ops caller may act for. Cross-tenant
+  list, refuses a TENANT caller.
+- ``GET /tenant-self`` — the caller's OWN tenant name, for the topbar identity chip.
+  Single tenant-scoped row, refuses a PLATFORM caller (a PLATFORM token has no own tenant).
+
+They read the same table through OPPOSITE repo postures — unpredicated-plus-platform-gate
+versus explicit-tenant-predicate — which is why ``repos/tenants.py``'s module docstring is
+worth reading before adding a third caller here.
+
+WHY /tenants-actable EXISTS. The connect journeys let a PLATFORM ops caller onboard a source
 ON BEHALF OF a tenant (``resolve_acted_for``, Slice 17b / D92), so the UI has to offer a
 tenant to act for. It used to derive that list from ``GET /sources`` — distinct tenants
 among the rows — which silently made the list "every tenant that ALREADY HAS a source".
@@ -33,8 +42,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from dis_core.errors import TenantScopeError
 from dis_ui_server.auth.scope import ReadScope, require_read_scope
-from dis_ui_server.repos.tenants import list_actable_tenants
-from dis_ui_server.schemas.tenants import ActableTenant, TenantStatus
+from dis_ui_server.repos.tenants import get_tenant_self, list_actable_tenants
+from dis_ui_server.schemas.tenants import ActableTenant, TenantSelf, TenantStatus
 
 router = APIRouter()
 
@@ -83,3 +92,41 @@ async def get_tenants_actable(
     engine: AsyncEngine = request.app.state.engine
     rows = await list_actable_tenants(engine, scope)
     return [_to_wire(row) for row in rows]
+
+
+@router.get("/tenant-self")
+async def get_tenant_self_route(
+    request: Request,
+    scope: Annotated[ReadScope, Depends(require_read_scope)],
+) -> TenantSelf:
+    """The CALLER'S OWN tenant name + display_code, for the topbar identity chip.
+
+    THE MIRROR IMAGE OF ``/tenants-actable`` ABOVE, in both senses. That endpoint is a
+    cross-tenant list that refuses a TENANT caller; this one is a single tenant-scoped row
+    that refuses a PLATFORM caller. A PLATFORM token has NO "my tenant" — it is cross-tenant
+    by construction, and its topbar correctly reads "Scope: All tenants" — so answering it
+    with an empty or invented row would be a wrong answer dressed as a successful one. 403.
+
+    A MISSING MIRROR ROW IS A 200 WITH NULLS, NEVER A 404. ``identity_mirror`` is eventually
+    consistent: a tenant onboarded in Customer Master since the last mirror-sync run has no
+    row here, which is normal operation and not a client error. 404 would push the UI into an
+    error path over ordinary lag; instead the nulls travel and the client falls back to the
+    UUID it already holds in the token.
+
+    No CM call and no CM credential: the name comes from DIS's own mirror, which
+    mirror-sync-consumer now populates.
+    """
+    if scope.tenant_id is None:
+        # PLATFORM (see-all) resolves tenant_id to None. Refused before a connection opens,
+        # the same position as /tenants-actable's gate.
+        raise TenantScopeError(
+            "tenant-self requires a TENANT caller; a PLATFORM token has no own tenant",
+            tenant_id=None,
+        )
+    engine: AsyncEngine = request.app.state.engine
+    row = await get_tenant_self(engine, scope.tenant_id)
+    return TenantSelf(
+        tenant_id=str(scope.tenant_id),  # echoed from the VERIFIED token, not from the row
+        name=row.name if row is not None else None,
+        display_code=row.display_code if row is not None else None,
+    )

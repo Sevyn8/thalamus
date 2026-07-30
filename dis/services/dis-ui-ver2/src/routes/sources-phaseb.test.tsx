@@ -20,6 +20,7 @@ const TENANT: AuthSnapshot = { userId: 'u', tenantId: 't_acme9k2l1mn4', storeId:
 
 function providers() {
   const authValue: AuthContextValue = {
+    profile: null,
     status: 'authenticated',
     snapshot: TENANT,
     login: () => Promise.resolve(),

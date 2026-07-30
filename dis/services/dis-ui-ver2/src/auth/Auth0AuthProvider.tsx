@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 
 import type { AuthSnapshot, UserType } from './AuthSnapshot'
 import { AuthContext } from './context'
-import type { AuthContextValue, AuthStatus } from './context'
+import type { AuthContextValue, AuthStatus, UserProfile } from './context'
 import { clearToken, writeToken } from './storage'
 
 // Real-mode (Auth0) auth provider. Adapts @auth0/auth0-react's useAuth0() to the
@@ -42,8 +42,15 @@ function snapshotFromToken(token: string): AuthSnapshot {
 }
 
 export function Auth0AuthProvider({ children }: { children: ReactNode }) {
-  const { isLoading, isAuthenticated, getAccessTokenSilently, loginWithRedirect, logout, error } =
-    useAuth0()
+  const {
+    isLoading,
+    isAuthenticated,
+    user,
+    getAccessTokenSilently,
+    loginWithRedirect,
+    logout,
+    error,
+  } = useAuth0()
   const [snapshot, setSnapshot] = useState<AuthSnapshot | null>(null)
   // The access token is fetched asynchronously after Auth0 reports authenticated;
   // until it is written to storage, client.ts would have no bearer, so we hold the
@@ -134,10 +141,34 @@ export function Auth0AuthProvider({ children }: { children: ReactNode }) {
           ? 'unauthenticated'
           : 'loading'
 
+  // The signed-in person, for DISPLAY only. `user` is the Auth0 SDK's decoded ID TOKEN
+  // (distinct from the access token decoded above for authz claims), populated because
+  // App.tsx requests `openid profile email`. Nothing here gates anything.
+  //
+  // EXPECT `name` TO BE ABSENT. The shared cortex-cm-claims Action stamps no name claim,
+  // so displayNameFor falls back to deriving from the email — the same derivation
+  // cm-frontend uses, mirrored deliberately so one person reads the same in both products.
+  // Also read the namespaced email claim as a fallback: that is the one the Action
+  // guarantees, whereas standard `email` depends on the profile scope surviving.
+  const profile = useMemo<UserProfile | null>(() => {
+    if (!user) return null
+    const namespacedEmail = user[`${NS}/email`]
+    const email =
+      typeof user.email === 'string' && user.email.length > 0
+        ? user.email
+        : typeof namespacedEmail === 'string' && namespacedEmail.length > 0
+          ? namespacedEmail
+          : null
+    const name = typeof user.name === 'string' && user.name.length > 0 ? user.name : null
+    if (name === null && email === null) return null
+    return { name, email }
+  }, [user])
+
   const value = useMemo<AuthContextValue>(
     () => ({
       status,
       snapshot,
+      profile,
       // Customer Master (CM) is the single login entry point. This branch is only
       // reached with NO DIS session (an existing SSO session makes isAuthenticated
       // true, so the silent-token path above handles it without ever calling login).
@@ -151,7 +182,7 @@ export function Auth0AuthProvider({ children }: { children: ReactNode }) {
         void logout({ logoutParams: { returnTo: window.location.origin } })
       },
     }),
-    [status, snapshot, logout],
+    [status, snapshot, profile, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

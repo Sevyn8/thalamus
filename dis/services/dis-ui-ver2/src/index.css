@@ -286,6 +286,23 @@
     color: var(--text-2);
     cursor: pointer;
   }
+  /* The clipboard fallback: when navigator.clipboard is unavailable the raw UUID is
+     revealed as SELECTABLE text (and selected for the user) rather than failing silently,
+     so a manual copy still works. Monospace because it is an id being read character by
+     character, often aloud on a support call. */
+  .tenantid {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    color: var(--text-2);
+    user-select: all;
+  }
+  /* The signed-in person, right of the scope pill. Muted: it answers "who am I" at a
+     glance and should not compete with the scope, which is what changes behaviour. */
+  .who {
+    font-size: 12.5px;
+    color: var(--text-2);
+    white-space: nowrap;
+  }
   .scopepill b {
     color: var(--text);
     font-weight: 600;
@@ -400,6 +417,27 @@
   .btn.sm {
     padding: 5px 10px;
     font-size: 12px;
+  }
+  /* Smaller than .sm, for the copy-ID control that sits INSIDE the scope pill: at .sm it
+     crowds the pill and pushes the tenant label off. */
+  /* Visually hidden but announced. Used for the copy-ID live region: the button's own
+     label already flips to "Copied", so this exists purely so assistive tech hears the
+     confirmation too. Without this class the status text would RENDER on the topbar. */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .btn.xs {
+    padding: 2px 7px;
+    font-size: 11px;
+    line-height: 1.4;
   }
   .btn.danger {
     color: var(--fail);

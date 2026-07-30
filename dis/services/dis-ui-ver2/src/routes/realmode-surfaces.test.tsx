@@ -35,6 +35,7 @@ const PLATFORM: AuthSnapshot = {
 
 function Wrap({ snapshot, children }: { snapshot: AuthSnapshot; children: ReactNode }) {
   const authValue: AuthContextValue = {
+    profile: null,
     status: 'authenticated',
     snapshot,
     login: () => Promise.resolve(),

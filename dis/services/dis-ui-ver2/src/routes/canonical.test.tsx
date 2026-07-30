@@ -45,6 +45,7 @@ const ROSTER_KRK = { id: '0190ac20-6b00-7000-8b00-0000000000c2', label: 'Żabka 
 // Render without forcing a mode/snapshot — the caller stubs the env + passes the snapshot.
 function renderAs(snapshot: AuthSnapshot): void {
   const authValue: AuthContextValue = {
+    profile: null,
     status: 'authenticated',
     snapshot,
     login: () => Promise.resolve(),

@@ -20,7 +20,7 @@ const TENANT: AuthSnapshot = { userId: 'u', tenantId: 't_acme9k2l1mn4', storeId:
 const PLATFORM: AuthSnapshot = { userId: 'anjali', tenantId: null, storeId: null, userType: 'PLATFORM', roles: ['dis:ops', 'dis:read'] }
 
 function renderAs(snapshot: AuthSnapshot) {
-  const authValue: AuthContextValue = { status: 'authenticated', snapshot, login: () => Promise.resolve(), logout: () => {} }
+  const authValue: AuthContextValue = { profile: null, status: 'authenticated', snapshot, login: () => Promise.resolve(), logout: () => {} }
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>

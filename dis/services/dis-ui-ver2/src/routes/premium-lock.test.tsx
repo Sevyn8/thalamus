@@ -22,6 +22,7 @@ const TENANT: AuthSnapshot = {
 function Wrap({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const authValue: AuthContextValue = {
+    profile: null,
     status: 'authenticated',
     snapshot: TENANT,
     login: () => Promise.resolve(),

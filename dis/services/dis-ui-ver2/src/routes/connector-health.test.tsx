@@ -70,6 +70,7 @@ function renderGrid(rows: ConnectorHealthRow[] = ROWS) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   qc.setQueryData(KEY, { items: rows })
   const authValue: AuthContextValue = {
+    profile: null,
     status: 'authenticated',
     snapshot: TENANT,
     login: () => Promise.resolve(),
@@ -187,6 +188,7 @@ describe('Connector Health — real mode (fetch spy)', () => {
     vi.stubGlobal('fetch', fetchSpy)
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const authValue: AuthContextValue = {
+      profile: null,
       status: 'authenticated',
       snapshot: TENANT,
       login: () => Promise.resolve(),
