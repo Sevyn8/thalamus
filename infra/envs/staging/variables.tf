@@ -192,6 +192,12 @@ variable "dis_ui_server_image" {
   default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-server:v7"
 }
 
+variable "mirror_sync_consumer_image" {
+  type        = string
+  description = "mirror-sync-consumer container image (the Cloud Run JOB). Built from dis/terraform/docker/mirror-sync-consumer.Dockerfile with the dis/ WORKSPACE ROOT as build context, via cloudbuild-mirror-sync-consumer.yaml with an explicit _TAG and no floating `latest`."
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/mirror-sync-consumer:v1"
+}
+
 variable "dis_ui_ver2_image" {
   type        = string
   description = "dis-ui-ver2 (SPA) container image. The tag live on the imported service. Built by dis/terraform/docker/cloudbuild-dis-ui-ver2.yaml with an explicit _TAG=vN and no floating `latest`; bump this in the same commit as any deploy."

@@ -1,0 +1,52 @@
+# Cloud Build: build + push the mirror-sync-consumer image.
+#
+# Run from dis/ (NOT the monorepo root - the -f path and the build context below
+# both resolve from dis/, and dis/.gcloudignore is what filters the upload):
+#   gcloud builds submit --config terraform/docker/cloudbuild-mirror-sync-consumer.yaml \
+#     --substitutions=_TAG=v1 .
+#
+# _TAG is REQUIRED and has an empty default on purpose: an omitted tag fails the
+# build loudly instead of silently re-pinning a floating tag. There is deliberately
+# no `latest` tag - the Cloud Run pin is an explicit vN. Both rules exist because a
+# floating `latest` is how thalamus-images/dis-ui-ver2:latest came to point at v7
+# while v15 was serving.
+#
+# The build context is the dis/ WORKSPACE ROOT, not the service directory: the
+# Dockerfile is a uv-workspace build and its COPYs are workspace-relative
+# (pyproject.toml, uv.lock, libs/dis-core, libs/dis-rls, services/mirror-sync-consumer).
+# That is the opposite of the dis-ui-ver2 build, whose context must be the frontend
+# package root.
+#
+# NO DOCKER_BUILDKIT=1 here, and the absence is deliberate rather than an omission:
+# the ver2 build needs BuildKit for a `# syntax=` directive and heredoc COPYs, and
+# this Dockerfile has neither. Adding it would be harmless but would imply a
+# requirement that does not exist.
+#
+# The image takes no build args. Everything this job needs is RUNTIME env supplied
+# by the Cloud Run job (CM_DB_URL, POSTGRES_URL, CM_DB_NAME, DIS_EXPECTED_DATABASE),
+# so the same image is promotable across environments unchanged.
+
+substitutions:
+  _REGION: "asia-south1"
+  _REPO: "thalamus-images"
+  # REQUIRED. Empty default = fail loud rather than mispin (see header).
+  _TAG: ""
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  # --no-cache: force a fresh dependency resolve and a fresh build-time import
+  # check every build; a cached layer can hide a drifted lock.
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - terraform/docker/mirror-sync-consumer.Dockerfile
+      - --no-cache
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/mirror-sync-consumer:${_TAG}
+      - .
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/mirror-sync-consumer:${_TAG}

@@ -413,6 +413,32 @@ module "dis_ui_server_service" {
   clover_oauth_base_url = var.clover_base_url
 }
 
+# --- Wave 3: DIS Mirror Sync Cloud Run JOB ---
+#
+# The last piece of DIS that was still hand-seeded. Without it a tenant onboarded
+# through CM gets no identity_mirror row and DIS falls back to showing a UUID; it
+# also blocks tenant names in the DIS topbar and GET /api/v1/tenants-actable
+# returning anything beyond hand-inserted rows.
+#
+# A run-to-completion JOB despite the name: one execution = one sync pass = exit,
+# with a meaningful exit code. No scheduler - executions are manual, like the two
+# connectors; the orchestration question is deferred.
+#
+# TWO ROLES, ONE DATABASE. Post-consolidation the CM read and the DIS write are the
+# same instance and the same database (thalamus), separated by schema and role: the
+# read is dis_mirror_reader on core.*, the write is ithina_dis_user on
+# identity_mirror.*. That is why the module sets CM_DB_NAME and
+# DIS_EXPECTED_DATABASE explicitly - both the service and dis-rls default to
+# pre-consolidation database names that no longer exist.
+module "mirror_sync_consumer_job" {
+  source = "../../modules/cloud-run-job-mirror-sync-consumer"
+
+  project_id       = var.project_id
+  region           = var.region
+  image            = var.mirror_sync_consumer_image
+  vpc_connector_id = module.network.vpc_connector_id
+}
+
 # --- Wave 3: DIS UI SPA (dis-ui-ver2) Cloud Run service ---
 #
 # ADOPTED BY IMPORT, not created. dis-ui-ver2 has been serving from Cloud Run
