@@ -117,6 +117,15 @@ resource "google_cloud_run_v2_service" "cm_backend" {
   # who can call it, and app-level JWT guards every data endpoint on top.
   ingress = "INGRESS_TRAFFIC_ALL"
 
+  # SERVICE-LEVEL scaling, not the per-revision block in template below (the real
+  # floor is template.scaling, untouched). Do not delete as redundant: the v2 API
+  # returns maxInstanceCount, which the provider cannot represent, so it fills its
+  # three known attributes with zeros - an undeclared block diffs 0 -> null forever.
+  scaling {
+    min_instance_count    = 0
+    manual_instance_count = 0
+  }
+
   template {
     service_account = google_service_account.cm_backend.email
 
