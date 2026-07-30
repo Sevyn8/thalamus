@@ -112,9 +112,11 @@ resource "google_cloud_run_v2_service" "cm_backend" {
   name     = var.service_name
   location = var.region
 
-  # Ingress ALL = the URL is reachable at the network layer. This does NOT make
-  # the service public: run.invoker IAM (granted per-principal out of band) gates
-  # who can call it, and app-level JWT guards every data endpoint on top.
+  # Ingress ALL = the URL is reachable at the network layer, and for THIS service
+  # that does mean publicly callable: the allUsers invoker binding at the bottom of
+  # this file is live, so nothing gates the request before the app sees it. The
+  # previous wording here said "This does NOT make the service public", which was
+  # false; app-level JWT is the only gate, not a layer "on top" of another one.
   ingress = "INGRESS_TRAFFIC_ALL"
 
   # SERVICE-LEVEL scaling, not the per-revision block in template below (the real
@@ -234,8 +236,54 @@ resource "google_cloud_run_v2_service" "cm_backend" {
   ]
 }
 
-# No invoker IAM binding here. CM is authenticated-only: run.invoker is granted
-# per-principal out of band (e.g. an operator user for testing, DIS's SA for
-# service-to-service later). allUsers is also rejected by the org's
-# iam.allowedPolicyMemberDomains (Domain Restricted Sharing) policy, and a
-# public backend is the wrong posture regardless.
+# PUBLIC invoker binding, declared because it is LIVE and imported so Terraform can
+# see it. An out-of-band grant Terraform cannot see is worse than a visible one: it
+# appears in no plan, no diff and no review, so nobody can notice it changing.
+#
+# THE POSTURE, PLAINLY: allUsers holds roles/run.invoker, so Cloud Run performs no
+# IAM check and the Auth0 JWT that CM verifies in-process is the SOLE gate on every
+# endpoint. There is no network layer beneath it to fall back on.
+#
+# This block previously read "No invoker IAM binding here. CM is authenticated-only:
+# run.invoker is granted per-principal out of band ... allUsers is also rejected by
+# the org's iam.allowedPolicyMemberDomains (Domain Restricted Sharing) policy".
+# Every clause was wrong: the binding exists, it is allUsers rather than
+# per-principal, and that policy is listPolicy allValues=ALLOW on this project,
+# directly and effectively, so it rejects nothing and never did.
+#
+# WHY THIS MATTERS MORE HERE THAN ANYWHERE ELSE. cm-backend is the platform's
+# IDENTITY SYSTEM OF RECORD: tenant records, platform and tenant user records, RBAC
+# grants and Auth0 provisioning all live behind it, and the rows are real customer
+# data - actual organisation names and actual user email addresses, not fixtures. A
+# missing auth guard on a DIS endpoint leaks catalogue data; a missing guard here
+# leaks identity. Different in kind, not just in degree.
+#
+# THE COUPLING: cm-frontend calls this service FROM THE BROWSER, cross-origin and
+# direct (cm-frontend/lib/api/client.ts; app/providers.tsx notes all fetches go
+# straight to the API base URL). It sends `Authorization: Bearer <Auth0 token>` with
+# `credentials: "omit"`, and when there is NO session the header is omitted and the
+# request goes out anyway - so unauthenticated traffic reaches CM and is turned away
+# by the application, not by Cloud Run. That is only possible because this binding
+# is public.
+#
+# CORS IS NOT A SECURITY CONTROL. The CORS_ALLOWED_ORIGINS env var above constrains
+# what a BROWSER permits a page to READ cross-origin. Any non-browser client ignores
+# it completely: curl against this service never consults it, and neither does any
+# script, scanner or SDK. It is exactly the kind of setting cited in a security
+# review as if it mitigated something. It does not gate access; it only shapes what
+# a browser does with a response it already received.
+#
+# CM IS THE HARDER OF THE TWO PUBLIC BACKENDS TO FIX. dis-ui-server has a
+# server-side hop - ver2's nginx - where a credential could be minted and attached.
+# CM has NO SUCH HOP: the browser talks to this service directly. Making it private
+# means INTRODUCING a proxy that does not exist today, not adding a token to one
+# that does. So the "do not change the live posture here" rule binds more tightly
+# than it does for DIS, and the real options are a load balancer with IAP, a
+# credential-minting proxy, or an explicit written decision to accept JWT-only.
+resource "google_cloud_run_v2_service_iam_member" "public_invoker" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.cm_backend.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
