@@ -1,0 +1,28 @@
+# LOAD-BEARING, unlike the inert per-connector .dockerignore files corrected in
+# batch 1. Those sat beside a Dockerfile whose build context was the repo root, and
+# Docker only reads .dockerignore at the CONTEXT root, so they were never consulted.
+# Here the context IS this directory (`docker build -f ../../terraform/docker/
+# dis-ui-ver2.Dockerfile ... .` from services/dis-ui-ver2), so Docker reads THIS file.
+#
+# Mirrors what dis/.gcloudignore already strips from the Cloud Build upload, so the
+# local build and the Cloud Build finally see the same tree. Without it the
+# Dockerfile's `COPY . .` overwrites the `pnpm install --frozen-lockfile` layer with
+# the host's node_modules, and the bundle is built against whatever is on the laptop
+# rather than the lockfile - which is how the serving v15 was produced and why it was
+# not reproducible by anyone else.
+#
+# .env* is the sharpest of these: `vite build` READS .env / .env.local from the
+# context and would silently override the --build-arg values with a developer's local
+# ones. It is gitignored (*.local), so it never shows up in review.
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+build/
+**/build/
+.env
+.env.*
+*.local
+.git/
+.gitignore
+.DS_Store

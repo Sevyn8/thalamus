@@ -1,49 +1,68 @@
-# Cloud Build: build + push the dis-ui-ver2 SPA image, correctly and reproducibly.
-# Mirrors terraform/docker/cloudbuild-dis-ui.yaml; only the image name (dis-ui-ver2)
-# and the build context (services/dis-ui-ver2) differ.
+# Cloud Build: build + push the dis-ui-ver2 SPA image.
 #
-# Run from the REPO ROOT:
+# This file describes the build that ACTUALLY produces the serving image. It
+# previously described one nobody performs: it pushed to a "dis-images" repo that
+# does not exist in this project, passed three dead VITE_STUB_TOKEN_* args, omitted
+# VITE_CM_LAUNCHER_URL, and tagged $SHORT_SHA + `latest` while every real push tags
+# vN - which is how thalamus-images/dis-ui-ver2:latest came to point at v7 while v15
+# was serving.
+#
+# Run from dis/ (NOT the monorepo root - the -f path and the context below both
+# resolve from dis/, and dis/.gcloudignore is what filters the upload):
 #   gcloud builds submit --config terraform/docker/cloudbuild-dis-ui-ver2.yaml \
-#     --substitutions=SHORT_SHA=<sha>,_STUB_TOKEN_TENANT=<tok>,_STUB_TOKEN_OPS=<tok>,_STUB_TOKEN_TENANT2=<tok> .
+#     --substitutions=_TAG=v16 .
+#
+# _TAG is REQUIRED and has an empty default on purpose: an omitted tag fails the
+# build loudly instead of silently re-pinning a floating tag. There is deliberately
+# no `latest` tag here - the Cloud Run pin is an explicit vN.
 #
 # The dis-ui-ver2 Dockerfile's COPYs (package.json, pnpm-lock.yaml, then `COPY . .`)
 # are CONTEXT-relative, and those files live ONLY at services/dis-ui-ver2 (not the repo
-# root). The build context MUST therefore be services/dis-ui-ver2. -f is repo-root-
-# relative, and --no-cache guarantees `vite build` recompiles the current source every
-# time (a repo-root context or a cached layer can silently bake a stale bundle).
+# root). The build context MUST therefore be services/dis-ui-ver2. -f is dis/-relative,
+# and --no-cache guarantees `vite build` recompiles the current source every time (a
+# repo-root context or a cached layer can silently bake a stale bundle).
 #
-# The Vite vars passed here are BUILD-TIME (baked into the static bundle): MODE=real makes
-# the UI call dis-ui-server; the two STUB_TOKEN vars are the staging dev-login persona
-# tokens (secrets, passed at submit time, never committed).
+# The Vite vars passed here are BUILD-TIME (baked into the static bundle by
+# `vite build`): MODE=real makes the UI call dis-ui-server. The defaults below are the
+# real staging values, so a plain submit is reproducible from the repo instead of
+# silently producing a broken-real bundle that loads and then fails auth. None is a
+# secret - the Auth0 SPA client is public PKCE with no secret, and every one of these
+# is already inlined in the served JS. Override any of them at submit time.
 #
 # The dis-ui-server BASE URL is NOT a build arg: it is a RUNTIME env on the Cloud Run
 # service (DIS_UI_SERVER_BASE_URL), so the SPA reads the base URL at runtime.
+#
+# DO NOT ADD --provenance=false --sbom=false. Those belong to the LOCAL build only,
+# where a buildx default writes a manifest LIST - which once left this project with a
+# childless manifest and three "Image not found" cycles. Cloud Build's docker builder
+# does not produce that shape, so they are a local-buildx remedy rather than part of
+# the build's semantics, and an unsupported flag here would break the build.
 
 substitutions:
   _REGION: "asia-south1"
-  _REPO: "dis-images"
+  _REPO: "thalamus-images"
+  # REQUIRED. Empty default = fail loud rather than mispin (see header).
+  _TAG: ""
   # Default to real mode (a plain build is never accidentally fixture here).
   # Override only if needed.
   _DIS_UI_SERVER_MODE: "real"
-  # Secrets: pass at submit time. Empty default just means the dev-login personas are
-  # not pre-filled; it never affects app correctness.
-  _STUB_TOKEN_TENANT: ""
-  _STUB_TOKEN_OPS: ""
-  _STUB_TOKEN_TENANT2: ""
-  # Auth0 SPA config (real mode). Public PKCE client; no secret. Pass at submit time.
-  _VITE_AUTH0_DOMAIN: ""
-  _VITE_AUTH0_CLIENT_ID: ""
-  _VITE_AUTH0_AUDIENCE: ""
+  # Auth0 SPA config (real mode). Public PKCE client; no secret.
+  _VITE_AUTH0_DOMAIN: "sevyn8.us.auth0.com"
+  _VITE_AUTH0_CLIENT_ID: "QcmqOhz24cfmrie6OUpbWiedDzo30vuT"
+  _VITE_AUTH0_AUDIENCE: "https://api.dis.sevyn8.com"
   # Single login entry point: CM login URL DIS redirects to when it has no session.
-  # Pass at submit time; empty default keeps a plain build working.
-  _VITE_CM_LOGIN_URL: ""
+  _VITE_CM_LOGIN_URL: "https://cm-frontend-697546531605.asia-south1.run.app/auth/login"
+  # Cross-app "back to My Sevyn8" launcher link in the Shell header. Distinct from
+  # the login URL above: this is the AUTHENTICATED launcher, and it is how DIS returns
+  # to CM. Read by src/components/Shell.tsx; an empty value hides the link.
+  _VITE_CM_LAUNCHER_URL: "https://cm-frontend-697546531605.asia-south1.run.app/my-ithina"
 
 options:
   logging: CLOUD_LOGGING_ONLY
 
 steps:
   # Context = services/dis-ui-ver2 (the frontend package root, where the Dockerfile's
-  # COPYs resolve). -f is relative to the uploaded source root (/workspace = repo root).
+  # COPYs resolve). -f is relative to the uploaded source root (/workspace = dis/).
   # --no-cache: force a fresh recompile every build.
   # DOCKER_BUILDKIT=1 is REQUIRED: the Dockerfile uses a `# syntax=` directive and a
   # heredoc `COPY <<NGINX` for the nginx config, which the classic builder cannot parse.
@@ -57,12 +76,6 @@ steps:
       - --build-arg
       - VITE_DIS_UI_SERVER_MODE=${_DIS_UI_SERVER_MODE}
       - --build-arg
-      - VITE_STUB_TOKEN_TENANT=${_STUB_TOKEN_TENANT}
-      - --build-arg
-      - VITE_STUB_TOKEN_OPS=${_STUB_TOKEN_OPS}
-      - --build-arg
-      - VITE_STUB_TOKEN_TENANT2=${_STUB_TOKEN_TENANT2}
-      - --build-arg
       - VITE_AUTH0_DOMAIN=${_VITE_AUTH0_DOMAIN}
       - --build-arg
       - VITE_AUTH0_CLIENT_ID=${_VITE_AUTH0_CLIENT_ID}
@@ -70,12 +83,11 @@ steps:
       - VITE_AUTH0_AUDIENCE=${_VITE_AUTH0_AUDIENCE}
       - --build-arg
       - VITE_CM_LOGIN_URL=${_VITE_CM_LOGIN_URL}
+      - --build-arg
+      - VITE_CM_LAUNCHER_URL=${_VITE_CM_LAUNCHER_URL}
       - -t
-      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/dis-ui-ver2:$SHORT_SHA
-      - -t
-      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/dis-ui-ver2:latest
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/dis-ui-ver2:${_TAG}
       - services/dis-ui-ver2
 
 images:
-  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/dis-ui-ver2:$SHORT_SHA
-  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/dis-ui-ver2:latest
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/dis-ui-ver2:${_TAG}
