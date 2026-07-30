@@ -194,6 +194,15 @@ resource "google_cloud_run_v2_service" "streaming_consumer" {
   ]
 }
 
-# No invoker IAM binding here. The consumer is authenticated-only (its real work
-# is an outbound pull loop). allUsers / allAuthenticatedUsers are rejected by the
-# org's iam.allowedPolicyMemberDomains policy and are the wrong posture anyway.
+# No invoker IAM binding here, and none is needed: the consumer's real work is an
+# outbound pull loop, so nothing calls it inbound except the Cloud Run health probe.
+# Verified live - this service has NO invoker bindings at all, so the private
+# posture the rest of this comment describes is real.
+#
+# What was struck: the previous wording credited the org's
+# iam.allowedPolicyMemberDomains policy with rejecting allUsers /
+# allAuthenticatedUsers. That is false - the policy is listPolicy allValues=ALLOW on
+# this project, directly and effectively, so it rejects nothing. This service is
+# private because no binding was ever added, NOT because anything prevents one. The
+# two HTTP services in this tree (cm-backend, dis-ui-server) are public precisely
+# because that grant was made out of band with nothing standing in the way.
