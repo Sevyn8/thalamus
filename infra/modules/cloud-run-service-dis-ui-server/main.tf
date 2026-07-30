@@ -3,10 +3,21 @@
 # (dis-ui-server) Cloud Run v2 service on the Thalamus data plane.
 #
 # Shape adapted from infra/modules/cloud-run-service-cm (the proven CM deploy):
-# dedicated SA, connector egress PRIVATE_RANGES_ONLY, ingress ALL,
-# authenticated-only (NO allUsers binding; the org's
-# iam.allowedPolicyMemberDomains policy blocks it and a public backend is the
-# wrong posture), startup probe on the health path, secret-backed DB URL.
+# dedicated SA, connector egress PRIVATE_RANGES_ONLY, ingress ALL, startup probe
+# on the health path, secret-backed DB URL.
+#
+# PUBLIC AT THE NETWORK LAYER. This service carries an `allUsers`
+# roles/run.invoker binding (declared and imported at the bottom of this file), so
+# Cloud Run performs NO IAM check on inbound requests and the Auth0 JWT that
+# dis-ui-server verifies in-process is the SOLE gate. Not defence-in-depth: there
+# is no layer beneath it. An endpoint that forgets its auth guard is
+# world-readable, not merely a bug behind a locked door.
+#
+# This header previously claimed the opposite - "authenticated-only (NO allUsers
+# binding; the org's iam.allowedPolicyMemberDomains policy blocks it)". Both
+# halves were false: the binding is live, and that policy is listPolicy
+# allValues=ALLOW on this project, directly and effectively, so it blocks nothing
+# and never did.
 #
 # Divergences from the CM module:
 #   1. DB name guard: DIS_EXPECTED_DATABASE=thalamus (the parameterized dis-rls
@@ -193,9 +204,11 @@ resource "google_cloud_run_v2_service" "dis_ui_server" {
   name     = var.service_name
   location = var.region
 
-  # Ingress ALL = the URL is reachable at the network layer. This does NOT make
-  # the service public: run.invoker IAM (granted per-principal out of band) gates
-  # who can call it, and the app's own auth guards data endpoints on top.
+  # Ingress ALL = the URL is reachable at the network layer, and for THIS service
+  # that does mean publicly callable: the allUsers invoker binding at the bottom of
+  # this file is live, so nothing gates the request before the app sees it. The
+  # previous wording here said "This does NOT make the service public", which was
+  # the third instance of the same false claim in this file.
   ingress = "INGRESS_TRAFFIC_ALL"
 
   # SERVICE-LEVEL scaling, not the per-revision block in template below (the real
@@ -323,7 +336,31 @@ resource "google_cloud_run_v2_service" "dis_ui_server" {
   ]
 }
 
-# No invoker IAM binding here. dis-ui-server is authenticated-only: run.invoker
-# is granted per-principal out of band. allUsers / allAuthenticatedUsers are
-# rejected by the org's iam.allowedPolicyMemberDomains policy and are the wrong
-# posture for a backend regardless.
+# PUBLIC invoker binding, declared because it is LIVE and imported so Terraform can
+# see it. An out-of-band grant Terraform cannot see is worse than a visible one: it
+# does not appear in a plan, a diff, or a review, so nobody can notice it changing.
+#
+# THE POSTURE, PLAINLY: allUsers holds roles/run.invoker, so Cloud Run performs no
+# IAM check and the Auth0 JWT dis-ui-server verifies in-process is the SOLE gate on
+# every endpoint. There is no network layer beneath it to fall back on.
+#
+# This block previously read "No invoker IAM binding here. dis-ui-server is
+# authenticated-only: run.invoker is granted per-principal out of band. allUsers /
+# allAuthenticatedUsers are rejected by the org's iam.allowedPolicyMemberDomains
+# policy". Every clause was wrong: the binding exists, it is allUsers rather than
+# per-principal, and the policy is allValues=ALLOW (direct and effective) so it
+# rejects nothing.
+#
+# DO NOT TIGHTEN THIS WITHOUT READING cloud-run-service-dis-ui-ver2/main.tf FIRST.
+# ver2's nginx reverse-proxies /api to this service carrying only the browser's
+# Auth0 bearer and no credential of its own, so removing this binding breaks every
+# /api call through the DIS UI with an immediate 403 while the page still loads.
+# The full explanation is the COUPLING block at the top of that module; it is not
+# repeated here so there is one copy to keep true.
+resource "google_cloud_run_v2_service_iam_member" "public_invoker" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.dis_ui_server.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
