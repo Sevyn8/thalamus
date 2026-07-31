@@ -31,6 +31,7 @@ members = [
     "thalamus-connector-sdk",
     "thalamus-square",
     "thalamus-square-oauth",
+    "thalamus-synapse",
 ]
 
 [[package]]
@@ -1753,6 +1754,7 @@ dev = [
     { name = "thalamus-connector-sdk" },
     { name = "thalamus-square" },
     { name = "thalamus-square-oauth" },
+    { name = "thalamus-synapse" },
     { name = "types-jsonschema" },
     { name = "types-pyyaml" },
 ]
@@ -1819,6 +1821,7 @@ dev = [
     { name = "thalamus-connector-sdk", editable = "../connectors/sdk" },
     { name = "thalamus-square", editable = "../connectors/thalamus-square" },
     { name = "thalamus-square-oauth", editable = "../connectors/square-oauth" },
+    { name = "thalamus-synapse", editable = "../synapse" },
     { name = "types-jsonschema" },
     { name = "types-pyyaml" },
 ]
@@ -3514,6 +3517,25 @@ requires-dist = [
     { name = "dis-core" },
     { name = "google-cloud-secret-manager", specifier = ">=2.20" },
     { name = "httpx", specifier = ">=0.27" },
+]
+
+[[package]]
+name = "thalamus-synapse"
+version = "0.0.0"
+source = { editable = "../synapse" }
+dependencies = [
+    { name = "dis-canonical" },
+    { name = "dis-rls" },
+    { name = "pydantic" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "dis-canonical" },
+    { name = "dis-rls" },
+    { name = "pydantic", specifier = ">=2.9" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36" },
 ]
 
 [[package]]

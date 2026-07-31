@@ -1,0 +1,25 @@
+{
+  "id": "current_state",
+  "version": "0.1.0",
+  "grain": ["tenant_id", "store_id", "sku_id"],
+  "tenancy": "tenant_scoped",
+  "freshness": "last_write",
+  "returns": [
+    "tenant_id",
+    "store_id",
+    "sku_id",
+    "product_name",
+    "product_category",
+    "sku_status",
+    "current_retail_price",
+    "unit_cost",
+    "promo_price",
+    "stock_qty",
+    "reorder_point",
+    "currency",
+    "expiry_date",
+    "last_source_event_at",
+    "last_updated_at"
+  ],
+  "produces_signals": []
+}

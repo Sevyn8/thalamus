@@ -90,6 +90,10 @@ dev = [
   "csv-ingest-worker",
   "streaming-consumer",
   "dis-ui-server",
+  # Synapse — the analytics + actions plane. A PEER of dis/ (separate deploy and
+  # lifecycle), joined to this workspace so it resolves dis-canonical + dis-rls as
+  # workspace members rather than vendoring either.
+  "thalamus-synapse",
 
   # Connectors (repo-root siblings) join the workspace so uv sync installs them
   # editable alongside the dis packages they reuse.
@@ -143,6 +147,7 @@ known-first-party = [
   "thalamus_square_oauth",
   "thalamus_clover_oauth",
   "thalamus_clover",
+  "synapse",
 ]
 
 [tool.mypy]
@@ -194,6 +199,7 @@ root_packages = [
   "dis_validation",
   "thalamus_connector_sdk",
   "thalamus_square",
+  "synapse",
 ]
 include_external_packages = true
 
@@ -273,6 +279,36 @@ type = "forbidden"
 source_modules = ["thalamus_square"]
 forbidden_modules = ["dis_mapping", "dis_validation", "dis_enrichment"]
 
+# --- Synapse (D6): resolvers are the ONLY layer that may reach canonical ---
+#
+# WHAT THESE TWO CONTRACTS ACTUALLY ENFORCE, stated precisely because the obvious
+# reading is wrong. They enforce that no Synapse module OUTSIDE synapse.resolvers may
+# import canonical row shapes or a database layer. They do NOT and CANNOT enforce
+# "only resolvers know a table name": a table name is a STRING LITERAL, and an import
+# graph cannot see a string. There is no importable canonical ORM to make it an
+# import either — dis-canonical is Pydantic-only ("SQL conversion is the consumer's
+# DB layer", its own words) and the single SQLAlchemy model lives inside the
+# dis-ui-server SERVICE, which a peer plane must not depend on.
+#
+# The table-NAME half is enforced by synapse/tests/unit/test_table_name_containment.py,
+# which greps for canonical table names outside synapse/resolvers/. That test is THE
+# MECHANISM for that half, not a belt.
+[[tool.importlinter.contracts]]
+name = "synapse: only resolvers may know canonical row shapes"
+type = "forbidden"
+source_modules = ["synapse.core"]
+forbidden_modules = ["dis_canonical"]
+
+[[tool.importlinter.contracts]]
+name = "synapse: only resolvers may reach a database"
+type = "forbidden"
+source_modules = ["synapse.core"]
+forbidden_modules = [
+  "dis_rls",
+  "sqlalchemy",
+  "psycopg",
+]
+
 [tool.uv]
 package = false
 
@@ -304,6 +340,9 @@ members = [
   "../connectors/square-oauth",
   "../connectors/clover-oauth",
   "../connectors/thalamus-clover",
+  # Synapse lives at the repo root, a sibling of dis/ and connectors/ (D1: a peer,
+  # not a member of dis/). Same ../-relative form the connectors use.
+  "../synapse",
 ]
 
 [tool.uv.sources]
@@ -330,3 +369,4 @@ thalamus-square = { workspace = true }
 thalamus-square-oauth = { workspace = true }
 thalamus-clover-oauth = { workspace = true }
 thalamus-clover = { workspace = true }
+thalamus-synapse = { workspace = true }

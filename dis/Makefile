@@ -46,6 +46,7 @@ check:
 test:
 	uv run pytest
 	uv run pytest -c pyproject.toml ../connectors
+	uv run pytest -c pyproject.toml ../synapse
 
 # mypy --strict gate (slice-9d): ENFORCING and growing. A package is added to
 # MYPY_PACKAGES in the SAME commit that clears it; the list only ever grows.
@@ -75,6 +76,7 @@ MYPY_PACKAGES = \
 	../connectors/square-oauth \
 	../connectors/clover-oauth \
 	../connectors/thalamus-clover \
+	../synapse \
 	tests \
 	tools
 
@@ -85,11 +87,11 @@ mypy:
 	done
 
 lint: mypy
-	uv run ruff check --config pyproject.toml . ../connectors
+	uv run ruff check --config pyproject.toml . ../connectors ../synapse
 	uv run lint-imports
 
 format:
-	uv run ruff format --config pyproject.toml . ../connectors
+	uv run ruff format --config pyproject.toml . ../connectors ../synapse
 
 db-migrate:
 	uv run alembic upgrade head

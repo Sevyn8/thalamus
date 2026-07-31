@@ -1,0 +1,9 @@
+{
+  "id": "velocity_7day",
+  "version": "0.1.0",
+  "unit": "undetermined",
+  "direction": "higher_is_better",
+  "grain": ["tenant_id", "store_id", "sku_id", "as_of_date"],
+  "producers": [],
+  "semantic_note": "Unit is UNDETERMINED on purpose. DIS's own column comment on canonical.store_sku_signal_history.velocity_7day says: 'Sales velocity over trailing 7 days. Semantic: gross sales only (returns and voids excluded). Unit-of-time (per day vs total over window) TBD at compute implementation; document in the compute job.' Declaring count_per_day or count here would invent a fact no source asserts. Direction IS known: more sales velocity is better. No producers: nothing writes this column."
+}

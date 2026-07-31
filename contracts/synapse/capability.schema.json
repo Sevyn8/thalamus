@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sevyn8.com/contracts/synapse/capability.schema.json",
+  "title": "Synapse capability descriptor",
+  "description": "What a Synapse capability declares about itself. EXTRACTED from building the current_state resolver, not designed in advance: every field here exists because synapse/resolvers/current_state.py could not be written without it. One resolver is a sample of one, so this schema is deliberately narrow — cost/latency classes, caching, substitution rules, pagination shape and capability composition are ABSENT because a single sample cannot justify them.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "version",
+    "grain",
+    "tenancy",
+    "freshness",
+    "returns",
+    "produces_signals"
+  ],
+  "properties": {
+    "id": {
+      "description": "Stable capability name. snake_case; a consumer names this to ask for it.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "version": {
+      "description": "SemVer. Matches the C6 pack contract's version discipline; the shape of an answer changes over time and a consumer must be able to pin it.",
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$"
+    },
+    "grain": {
+      "description": "The column names that together identify ONE row. Without a declared grain a consumer cannot join two capabilities or know what a row IS, and every analytics mistake downstream starts there.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+    },
+    "tenancy": {
+      "description": "tenant_scoped = the scope's tenant is required and the read cannot widen. fleet = a deliberate cross-tenant read. No capability declares fleet today; the value exists so a future one must SAY so rather than acquire the ability by omitting a field.",
+      "enum": ["tenant_scoped", "fleet"]
+    },
+    "freshness": {
+      "description": "last_write = the value as of whenever the row was last written; no date parameter is meaningful. as_of_date = stamped with the date it describes, so a series exists. The distinction is here because conflating them lets a consumer average a point-in-time reading against a time series with no layer objecting.",
+      "enum": ["last_write", "as_of_date"]
+    },
+    "returns": {
+      "description": "The projection's field names — what the caller actually receives. Deliberately NOT canonical's full row: DIS write-side provenance (mapping_version_id, trace_id, ingest_metadata, dis_channel) is DIS's concern, and passing it through would invite the analytics plane to reason about ingestion.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+    },
+    "produces_signals": {
+      "description": "Signal ids this capability PRODUCES. An EMPTY ARRAY is a first-class, verified state, not a placeholder: current_state reads canonical.store_sku_current_position, which HAS velocity_7day / stock_age_days / unit_cost_trend_30day, and produces none of them because nothing writes them. Reading a signal column does not make a capability a producer of that signal — which is exactly why signals are a separate contract.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+    }
+  }
+}

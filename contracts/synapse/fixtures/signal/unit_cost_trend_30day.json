@@ -1,0 +1,9 @@
+{
+  "id": "unit_cost_trend_30day",
+  "version": "0.1.0",
+  "unit": "undetermined",
+  "direction": "undetermined",
+  "grain": ["tenant_id", "store_id", "sku_id", "as_of_date"],
+  "producers": [],
+  "semantic_note": "Both unit AND direction are UNDETERMINED. DIS's column comment says: 'Trend in unit_cost over trailing 30 days. Semantic (average, delta vs 30 days ago, percentage change, or fitted slope) TBD at compute implementation. Negative values are valid (cost decreased); no non-negative CHECK.' Until the semantic is chosen the unit is unknowable (a delta is currency_per_unit, a percentage change is percent, a slope is neither), and direction is unknowable with it: a falling cost is good, but whether this signal MEASURES the fall or its rate is unsettled. No producers: nothing writes this column."
+}

@@ -1,0 +1,8 @@
+{
+  "id": "stock_age_days",
+  "version": "0.1.0",
+  "unit": "days",
+  "direction": "lower_is_better",
+  "grain": ["tenant_id", "store_id", "sku_id", "as_of_date"],
+  "producers": []
+}
