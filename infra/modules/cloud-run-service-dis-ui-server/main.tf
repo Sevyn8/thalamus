@@ -162,8 +162,45 @@ locals {
   # Plain env. Names are the EXACT vars dis-ui-server config.py reads. REQUIRED
   # at boot: GCS_BUCKET_BRONZE, PUBSUB_PROJECT_ID (POSTGRES_URL is secret env).
   # DIS_EXPECTED_DATABASE is required for /readyz (the dis-rls guard).
-  # CORS_ALLOWED_ORIGINS and GEMINI_* are deliberately UNSET (the app raises on
-  # CORS set-but-empty; GEMINI unset -> mechanical fallback).
+  #
+  # CORS_ALLOWED_ORIGINS is still deliberately UNSET (the app raises on
+  # set-but-empty).
+  #
+  # GEMINI IS NOW WIRED. This comment previously said "GEMINI_* are deliberately
+  # UNSET (GEMINI unset -> mechanical fallback)", which stopped being true the
+  # moment the two Vertex vars below landed. What is set, and what is not:
+  #
+  #   SET   GEMINI_VERTEX_PROJECT + GEMINI_VERTEX_LOCATION - BOTH, because either
+  #         alone is read as silently None and the suggester still falls back.
+  #         Those two are the whole switch.
+  #   UNSET GEMINI_MODEL / GEMINI_TIMEOUT_S / GEMINI_THINKING_BUDGET. Their
+  #         built-in defaults (gemini-2.5-flash, 20.0s, thinking budget 0) are
+  #         correct, and unlike the Vertex pair these three FAIL LOUDLY at startup
+  #         on a set-but-empty or unparseable value - so setting them to pass
+  #         through a variable would add a crashloop mode for no gain. The
+  #         thinking budget of 0 also matters for cost: thinking tokens bill as
+  #         output and would otherwise dominate.
+  #   UNSET GEMINI_IMPERSONATE_SA -> ambient ADC (this service's own SA). See the
+  #         auth note below.
+  #
+  # AUTH IS AMBIENT ADC, DELIBERATELY, and the alternative is not a security win.
+  # config.py names "gemini-dis" as an impersonation target, and the honest reason
+  # not to use it in staging is that impersonation does NOT reduce the blast radius
+  # of a compromised BFF: this service would hold serviceAccountTokenCreator on
+  # gemini-dis and could mint that token itself. The real arguments for a dedicated
+  # identity are audit attribution and sharing one AI identity across services if a
+  # second one ever needs suggestions - neither of which applies yet. Switching is
+  # a variable, not a code change.
+  #
+  # THE GRANT IS OUT OF BAND. This service's SA needs roles/aiplatform.user, granted
+  # outside this module like every other cross-service grant here. Without it the
+  # first suggestion call fails and the suggester degrades to the mechanical matcher
+  # - so a missing grant looks exactly like "AI unavailable", not like an error.
+  #
+  # THE FALLBACK PATH STAYS LIVE. suggest/fallback_matcher.py is not weakened by any
+  # of this: if Vertex is down, quota'd, or the region drops the model, the wizard
+  # renders "basic match" instead of failing. That degradation is the feature, not a
+  # bug to remove once the LLM works.
   plain_env = {
     DIS_EXPECTED_DATABASE = var.dis_expected_database # parameterized dis-rls guard
     GCS_BUCKET_BRONZE     = var.bronze_bucket_name    # config.py:63 required at boot
@@ -172,6 +209,11 @@ locals {
     DIS_AUTH_MODE         = var.dis_auth_mode         # AUTH0 -> RS256/JWKS verifier (real Auth0 tokens)
     JWT_ISSUER            = var.jwt_issuer            # Auth0 issuer; backend derives AUTH0_JWKS_URL from it
     JWT_AUDIENCE          = var.jwt_audience          # DIS API audience
+    # Vertex/Gemini mapping suggestions. BOTH are required to leave the fallback:
+    # either one alone is read as silently None. Auth is ambient ADC (no API key),
+    # so the SA's roles/aiplatform.user grant is the other half of the switch.
+    GEMINI_VERTEX_PROJECT  = var.gemini_vertex_project  # config.py:332
+    GEMINI_VERTEX_LOCATION = var.gemini_vertex_location # config.py:333
     # Square OAuth connect (S2). config.py reads these; unset -> the OAuth endpoints 503.
     # SQUARE_APP_SECRET + STATE_SIGNING_KEY are secret env (below), never plain.
     SQUARE_CLIENT_ID          = var.square_client_id          # Square application id (public)

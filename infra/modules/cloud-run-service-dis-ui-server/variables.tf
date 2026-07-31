@@ -92,6 +92,52 @@ variable "jwt_audience" {
   default     = "https://api.dis.sevyn8.com"
 }
 
+# --- Vertex/Gemini mapping suggestions ---
+#
+# THESE TWO ARE A PAIR AND MUST BOTH BE SET. config.py reads each with a plain
+# `os.environ.get(...) or None`, so either one alone is silently None and the
+# suggester still falls back to the mechanical matcher — with no error anywhere. The
+# symptom of getting this half-right is the wizard quietly saying "basic match",
+# which is indistinguishable from not having configured it at all.
+#
+# HOW THE REGION WAS ESTABLISHED, because the obvious routes do not work and this
+# note is meant to save the next person the same forty minutes:
+#
+#   - asia-south1 was verified by a LIVE generateContent call against
+#     sevyn8-thalamus-staging, after enabling aiplatform.googleapis.com. It returned
+#     200 with real generated content. That is the only check that actually proves
+#     serving.
+#   - The docs pages (vertex-ai/generative-ai/docs/learn/locations and the
+#     gemini-2.5-flash model card) render only navigation when fetched, so they
+#     cannot be read programmatically.
+#   - The publisher-model descriptor
+#     (GET /v1beta1/publishers/google/models/gemini-2.5-flash) is NOT an
+#     availability oracle: it returns HTTP 200 launchStage=GA for every location
+#     tried, INCLUDING "global". It describes the model's existence, not whether a
+#     region serves it. Do not use a 200 from it as evidence.
+#
+# asia-southeast1 and asia-northeast1 were also verified as working fallbacks, so
+# there is somewhere to go if asia-south1 ever drops the model.
+#
+# BUT MOVING OFF asia-south1 IS A RESIDENCY TRADE, NOT A FREE SWITCH. The prompt
+# carries sample_values — three real cell values per column from the tenant's
+# uploaded CSV (SAMPLE_VALUES = 3 in ver2's analyze-csv.ts), not just column names.
+# On asia-south1 those values stay in Mumbai, the same region as the database, the
+# bronze bucket and every service. Any other region, or the "global" endpoint, means
+# tenant cell values leaving that region. Decide that deliberately.
+
+variable "gemini_vertex_project" {
+  type        = string
+  description = "GEMINI_VERTEX_PROJECT. The Vertex AI project for mapping suggestions. Auth is ambient ADC from this service's SA (no API key), so the SA also needs roles/aiplatform.user granted out of band. Paired with gemini_vertex_location: either alone is silently ignored."
+  default     = "sevyn8-thalamus-staging"
+}
+
+variable "gemini_vertex_location" {
+  type        = string
+  description = "GEMINI_VERTEX_LOCATION. asia-south1, VERIFIED by a live generateContent call rather than from documentation (see the block above: the docs render only navigation and the publisher-model descriptor returns 200 for every location including global). asia-southeast1 / asia-northeast1 are verified fallbacks, but moving off asia-south1 sends tenant cell values out of the region."
+  default     = "asia-south1"
+}
+
 variable "csv_received_topic" {
   type        = string
   description = "CSV_RECEIVED_TOPIC. The provisioned topic short name the app publishes csv.received to. Must equal the inline topic's name."
