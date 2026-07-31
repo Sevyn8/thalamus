@@ -120,10 +120,47 @@ class ConsumerAudit:
         """One ROW-scoped duplicate event — the column representation (D42 revision).
 
         ``hit.kind`` is exactly the ``DUPLICATE_NOOP`` | ``DUPLICATE_OVERWRITTEN``
-        vocabulary, so the outcome IS the kind (both refine SUCCESS — the
-        append-only insert landed, D33). Only the queried-by fields are columns;
+        vocabulary, so the outcome IS the kind. Only the queried-by fields are columns;
         ``row_hash`` and ``dedup_key`` stay in ``event_data``.
+
+        THE TWO KINDS NOW MEAN DIFFERENT THINGS ABOUT THE WRITE (migration 0019), and
+        this docstring previously asserted the opposite — "both refine SUCCESS, the
+        append-only insert landed" — which stopped being true the moment redeliveries
+        began to be suppressed:
+
+        - ``DUPLICATE_OVERWRITTEN`` — a correction. The insert LANDED (``rows_succeeded=1``).
+        - ``DUPLICATE_NOOP`` — a byte-identical redelivery. The insert was SUPPRESSED
+          (``rows_succeeded=0``), plus an explicit ``suppressed``/``suppression_reason``
+          pair in ``event_data``.
+
+        The stage stays ``CANONICAL_WRITTEN`` deliberately, and the row count is what
+        carries the truth. A stage name is a PIPELINE LOCATION — where the event
+        occurred — not an assertion that a row was written; every other member of the
+        closed vocabulary reads the same way, and FAILURE outcomes have always been
+        emitted under it. Minting a stage would mean migrating
+        ``ck_audit_events_stage_vocab``, the BigQuery ``stage`` description and every
+        importer, to say something ``rows_succeeded=0`` already says exactly.
+
+        Emitting this event at all is the point: with the insert suppressed, this row is
+        the ONLY evidence that a retry occurred. ``prior_trace_id`` ties it to the
+        delivery that actually landed the data.
         """
+        suppressed = hit.kind == "DUPLICATE_NOOP"
+        event_data: dict[str, object] = {
+            "row_hash": hit.row_hash,
+            "dedup_key": {
+                "store_id": str(store_id),
+                "source_id": source_id,
+                "source_event_id": hit.source_event_id,
+            },
+            "suppressed": suppressed,
+        }
+        if suppressed:
+            event_data["suppression_reason"] = (
+                "redelivery: identical payload hash under an existing dedup key; insert "
+                "suppressed by the 0019 redelivery filter (uq_*_redelivery backstop). "
+                "A correction would differ in row_hash and would have been appended."
+            )
         await self.emit(
             stage=Stage.CANONICAL_WRITTEN,
             outcome=Outcome(hit.kind),
@@ -134,12 +171,6 @@ class ConsumerAudit:
             bronze_id=bronze_id,
             mapping_version_id=mapping_version_id,
             row_offset=hit.chunk_row_index,
-            event_data={
-                "row_hash": hit.row_hash,
-                "dedup_key": {
-                    "store_id": str(store_id),
-                    "source_id": source_id,
-                    "source_event_id": hit.source_event_id,
-                },
-            },
+            rows_succeeded=0 if suppressed else 1,
+            event_data=event_data,
         )

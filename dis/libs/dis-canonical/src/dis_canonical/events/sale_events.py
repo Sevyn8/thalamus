@@ -2,8 +2,13 @@
 
 Introspected facts:
 - PK ``(id)``; plain for beta (migration 0009, D77 scope revised — Slice 21
-  re-partitions by ``event_date``); **no** UNIQUE
-  (strictly append-only, D33 — corrections are separate rows, latest-wins at read).
+  re-partitions by ``event_date``). Append-only per D33 — corrections are separate
+  rows, latest-wins at read — with ONE uniqueness constraint as of migration 0019:
+  ``uq_ssse_redelivery (tenant_id, store_id, source_id, source_event_id, row_hash)``.
+  It bites only on a byte-identical REDELIVERY of the same logical row; a correction
+  carries a different payload, hence a different ``row_hash``, and still lands as its
+  own row. The prior "**no** UNIQUE" note here was the whole-table claim; it stopped
+  being true when redelivery was found to append a full duplicate set on every retry.
 - FKs: ``(tenant_id) -> tenants``; ``(tenant_id, store_id) -> stores``;
   ``(mapping_version_id) -> source_mappings``.
 - ``event_subtype`` CHECK vocab {SALE, RETURN, VOID}; ``tax_treatment`` NOT NULL.
@@ -70,6 +75,11 @@ class StoreSkuSaleEvent(CanonicalModel):
     # Source event identity (D33 dedup key; D38 resolution, migration 0003)
     source_id: Str128  # varchar(128) COLLATE "C" NOT NULL (matches config.source_mappings.source_id)
     source_event_id: Str256  # varchar(256) COLLATE "C" NOT NULL (txn_id:line_item_seq or D65 fallback)
+    # varchar(64) COLLATE "C" NOT NULL (migration 0019). sha256 hex of the
+    # mapping-produced payload; the fifth component of uq_ssse_redelivery, which is
+    # what makes a REDELIVERY idempotent while leaving a genuine correction (different
+    # payload -> different hash) free to land as its own row per D33.
+    row_hash: Str64
 
     # Provenance
     mapping_version_id: MappingVersionId  # bigint NOT NULL (D22)

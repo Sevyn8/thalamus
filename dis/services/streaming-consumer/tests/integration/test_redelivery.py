@@ -5,10 +5,22 @@ timestamps, so the hot-table assertion proves EVENT-TIME-WINS (the later-ts
 row's price holds through every replay and through a late-arriving older
 event), not merely the ``>=`` exact-tie-overwrite path.
 
-Transactional idempotency is deliberately NOT the mechanism (D30) — the same
-event processed twice appends event rows BOTH times (review-confirmed by this
-test's count assertions); correctness is the D33 read-time window + the D64
-conditional upsert.
+REVISED BY MIGRATION 0019. This docstring used to read: "the same event processed
+twice appends event rows BOTH times (review-confirmed by this test's count
+assertions); correctness is the D33 read-time window + the D64 conditional upsert."
+That was asserted here as CORRECT — ``event_rows == 4`` for two deliveries — and it is
+why the duplication survived review until a real upload reached 328 x 5 = 1640 rows
+unattended.
+
+Two things were wrong with it. The read-time window it relied on was never built for
+any consumer (the query below is hand-written in this test and nowhere else), so
+re-appended rows were simply counted twice by every reader. And a REDELIVERY is not a
+CORRECTION: D33's append-only posture exists for the second, not the first.
+
+Now: a redelivery is SUPPRESSED (identical payload hash under an existing dedup key),
+while a correction still appends. Transactional idempotency is still not the mechanism
+(D30) — ``uq_*_redelivery`` plus the in-transaction filter is. The event-time-wins
+assertions below are unchanged and still prove D64.
 """
 
 from __future__ import annotations
@@ -65,8 +77,11 @@ async def test_redelivery_appends_and_read_time_truth_holds(
     assert (await pipeline.process(chunk.event)).disposition == "written"
     second = await pipeline.process(chunk.event)
     assert second.disposition == "written"
-    # The redelivery saw every row as a prior-key hit (the D42 duplicate path).
+    # The redelivery saw every row as a prior-key hit (the D42 duplicate path) — and as
+    # of 0019 it also SUPPRESSED all of them rather than re-appending.
     assert second.report is not None and len(second.report.duplicates) == 2
+    assert second.report.event_rows_written == 0
+    assert second.report.event_rows_suppressed == 2
 
     def _hot_price() -> Decimal:
         with dis_admin.begin() as conn:
@@ -106,9 +121,11 @@ async def test_redelivery_appends_and_read_time_truth_holds(
             {"tenant": str(PRIMARY_TENANT.uuid), "sku": sku},
         ).scalar_one()
 
-    # Append-only absorption: 2 rows per delivery, 4 total — and the read-time
-    # window still answers 2 (one survivor per dedup key). No write-time dedup.
-    assert event_rows == 4
+    # 0019: the redelivery is SUPPRESSED, so 2 rows total rather than the 4 this
+    # previously asserted. The read-time window answers 2 either way — which is exactly
+    # why the old count went unnoticed: the window's answer was correct while the raw
+    # table quietly doubled, and nothing in production ran the window.
+    assert event_rows == 2
     assert survivors == 2
     # No double-count on the hot side: one row, the LATER-ts price (event-time-wins).
     assert hot_count == 1

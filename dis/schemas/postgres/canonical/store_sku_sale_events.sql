@@ -153,6 +153,8 @@ CREATE TABLE canonical.store_sku_sale_events (
         -- supplies them; otherwise the deterministic fallback
         -- bronze_ref || ':' || chunk_row_index (redelivery-stable, NOT
         -- correction-collapsing; D65). Consumer-injected.
+        -- NOTE: row_hash completes this dedup key but is declared LAST in this
+        -- table, not here beside its siblings — see its comment for why.
 
     -- ---------- DIS metadata (load-bearing) ----------
     mapping_version_id          BIGINT                              NOT NULL,
@@ -165,6 +167,36 @@ CREATE TABLE canonical.store_sku_sale_events (
         -- JSONB: source_name, source_event_timestamp,
         -- dis_received_timestamp, dis_published_timestamp, csv_row_num.
         -- (source_event_id moved to a first-class column, D38/0003.)
+
+    -- ---------- Redelivery idempotency (migration 0019) ----------
+    --
+    -- DECLARED LAST ON PURPOSE, and out of place on purpose: it belongs logically
+    -- with source_id / source_event_id above, since it completes the dedup key.
+    -- It sits here because migration 0019 adds it with ALTER TABLE ADD COLUMN,
+    -- which APPENDS — so on every already-migrated database (staging included)
+    -- row_hash is physically the LAST column. Declaring it mid-table here would
+    -- make a freshly-bootstrapped database physically DIFFERENT from staging
+    -- forever: same columns, same constraints, different ordinal_position. That
+    -- divergence is invisible to name-sorted checks (resident_fingerprint sorts by
+    -- column name) and bites silently on anything positional — COPY without a
+    -- column list, a pg_dump diff, `INSERT INTO t SELECT ...`. It cost exactly
+    -- this: the first draft of test_unique_index_refuses_a_raw_duplicate bound a
+    -- varchar hash into mapping_version_id BIGINT.
+    --
+    -- Free to fix today only because nothing has been bootstrapped since
+    -- 2026-07-20; later it is a table rewrite. The readability cost is one
+    -- cross-reference comment. Permanent fresh-vs-migrated divergence is not.
+    row_hash                    VARCHAR(64) COLLATE "C"             NOT NULL,
+        -- sha256 hex of the mapping-produced payload (orjson, sorted keys;
+        -- streaming_consumer.pipeline.normalize.canonical_row_hash). The fifth
+        -- component of uq_ssse_redelivery, and the reason that constraint can
+        -- coexist with D33: a REDELIVERY reproduces the payload byte-for-byte,
+        -- so its hash collides and the insert is suppressed; a CORRECTION has a
+        -- different payload, hence a different hash, and still lands as its own
+        -- row for read-time latest-wins to resolve. Consumer-injected (migration
+        -- 0019). Covers the mapping-produced columns ONLY — tax_treatment
+        -- (denormalized from the store) and mapping_version_id are outside it, so
+        -- a store-attribute change alone does not make a redelivery distinct.
 
     -- ---------- Primary key ----------
     CONSTRAINT pk_ssse
@@ -257,6 +289,27 @@ CREATE INDEX ix_ssse_transaction_id
 CREATE INDEX ix_ssse_dedup_key
     ON canonical.store_sku_sale_events
     (tenant_id, store_id, source_id, source_event_id, source_sale_timestamp DESC);
+
+-- REDELIVERY IDEMPOTENCY (migration 0019). The ONLY uniqueness on this table.
+--
+-- WHY IT EXISTS: without it, a nacked chunk that later succeeds appends a COMPLETE
+-- duplicate set, and the Pub/Sub retry policy repeats that up to
+-- max_delivery_attempts (100). Observed live: one 328-row upload reached 1640 rows
+-- with nobody touching it. The retry mechanism was the duplicator, not an operator.
+--
+-- WHY IT DOES NOT CONTRADICT D33: D33 keeps this table append-only so corrections
+-- arrive as separate rows and latest-wins resolves them at read. This index
+-- constrains only (dedup key + row_hash) — a byte-identical repeat. A correction
+-- differs in payload, so it differs in row_hash, so it is NOT blocked. The
+-- distinction D33 needs is preserved; only the meaningless repeat is refused.
+--
+-- The sink pairs this with ON CONFLICT DO NOTHING (D3: a sale line is immutable, a
+-- second arrival is a duplicate and never a correction) plus an in-transaction
+-- filter over the already-computed DUPLICATE_NOOP hits, so the common case never
+-- reaches conflict arbitration and the suppression is auditable rather than silent.
+CREATE UNIQUE INDEX uq_ssse_redelivery
+    ON canonical.store_sku_sale_events
+    (tenant_id, store_id, source_id, source_event_id, row_hash);
 
 -- Audit lookups.
 CREATE INDEX ix_ssse_trace_id
@@ -417,3 +470,6 @@ COMMENT ON COLUMN canonical.store_sku_sale_events.source_id IS
 
 COMMENT ON COLUMN canonical.store_sku_sale_events.source_event_id IS
 'Per-source event identifier completing the D33 dedup key. Sale events use transaction_id || '':'' || line_item_seq when the source supplies them; otherwise the deterministic fallback bronze_ref || '':'' || chunk_row_index (redelivery-stable, NOT correction-collapsing; D65). Consumer-injected (D38 resolution).';
+
+COMMENT ON COLUMN canonical.store_sku_sale_events.row_hash IS
+'sha256 hex of the mapping-produced payload (orjson, sorted keys; the consumer''s canonical_row_hash). Fifth component of uq_ssse_redelivery, which is what lets uniqueness coexist with D33: a redelivery reproduces the payload exactly so its hash collides and the insert is suppressed, while a correction differs in payload, differs in hash, and still lands as its own row. Covers the mapping-produced columns only — tax_treatment and mapping_version_id are outside it. Consumer-injected (migration 0019).';

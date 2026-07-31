@@ -6,15 +6,34 @@ tenant, so batches are chunk-sequential; beta chunks usually fit one transaction
 Each batch opens ONE ``rls_session`` transaction (``SET LOCAL app.tenant_id``
 covers both writes, hard rules 1/12) and performs, in order:
 
-1. **Duplicate detect** (a read, never a write gate — architecture 2.3.2): the
-   latest prior event row per dedup key among the batch's keys, via the D33
-   window's ``DISTINCT ON`` form over ``ix_*_dedup_key``. Deliberately
-   all-partition (a prior event may sit in any partition — correction lookback);
-   the bounded per-partition index lookup is the accepted beta posture.
-   Within-batch repeats of one dedup key are not flagged (read-time dedup still
-   collapses them) — recorded limit.
-2. **Event insert** (append-only, no UNIQUE, D33/hard rule 7): executemany of the
-   model's full column set (``last_updated_at`` left to its DB default).
+1. **Duplicate detect** (a read; as of migration 0019 it IS a write gate for one
+   verdict — see step 2): the latest prior event row per dedup key among the batch's
+   keys, via the D33 window's ``DISTINCT ON`` form over ``ix_*_dedup_key``.
+   Deliberately all-partition (a prior event may sit in any partition — correction
+   lookback); the bounded per-partition index lookup is the accepted beta posture.
+   Within-batch repeats of one dedup key are not flagged — see the limit note below.
+2. **Event insert** (append-only per D33/hard rule 7, with ONE uniqueness constraint
+   as of 0019): executemany of the model's full column set (``last_updated_at`` left
+   to its DB default), preceded by ``_partition_redeliveries`` and carrying
+   ``ON CONFLICT (dedup key, row_hash) DO NOTHING``.
+
+   WHY: without this, a nacked chunk that later succeeded appended a COMPLETE
+   duplicate set, and the retry policy repeated that up to 100 times. Observed live:
+   328 rows became 1640 unattended. The duplicate was already being DETECTED here and
+   then inserted anyway — step 1 computed the verdict and step 2 ignored it.
+
+   It does not repeal D33. Only a ``DUPLICATE_NOOP`` (identical payload hash under the
+   same dedup key) is suppressed; a ``DUPLICATE_OVERWRITTEN`` is a correction and is
+   still appended for read-time latest-wins to resolve. The filter is the primary
+   mechanism (auditable, index-independent); the unique index is the backstop that
+   holds under concurrency the read-then-write cannot cover.
+
+   TWO LIMITS, both real. (a) Within-batch repeats of one dedup key are still not
+   flagged, so a single source FILE containing the same line twice inserts twice
+   through the filter — the unique index now catches that, silently, via DO NOTHING.
+   (b) ``row_hash`` covers the mapping-produced payload only, so a change to
+   ``tax_treatment`` (denormalized from the store) or ``mapping_version_id`` alone does
+   not make a redelivery distinct.
 3. **Hot merge** (column-scoped + event-time-wins, D63/D64): per natural-key
    group of THIS batch — groups SORTED by the COALESCE'd natural-key tuple
    (the deterministic total order that removes the deadlock hazard between
@@ -40,8 +59,21 @@ covers both writes, hard rules 1/12) and performs, in order:
 
 Either-or-neither holds at the batch grain: a mid-batch failure rolls back that
 batch's hot AND event writes; the message is nacked; earlier committed batches
-stay and redelivery converges (event re-appends dedup at read, the ``>=`` upsert
-re-applies). Transactional idempotency is deliberately NOT the mechanism (D30).
+stay and redelivery converges — the event insert now SUPPRESSES the repeat (0019)
+rather than appending it, and the ``>=`` upsert re-applies.
+
+The previous sentence here read "event re-appends dedup at read", which assumed a
+read-time collapse that DOES NOT EXIST: no consumer-facing ``ROW_NUMBER``/``DISTINCT
+ON`` dedup view or query was ever built, so re-appended rows were simply counted twice
+by every reader. That is why redelivery showed up as a growing row count rather than as
+duplicates something later resolved. Transactional idempotency is still not the
+mechanism (D30) — a unique index plus an in-transaction filter is.
+
+**Consumers must still not read these tables raw.** 0019 makes a REDELIVERY
+non-duplicating; it deliberately leaves a CORRECTION as two rows, because that is what
+D33 asks for. Any aggregate over these tables — ``SUM(quantity) GROUP BY date`` being
+the first real case — needs the latest-wins collapse applied, either by a platform-owned
+view or by the reader itself.
 """
 
 from __future__ import annotations
@@ -126,6 +158,10 @@ class WriteReport:
     # Older-event no-ops on the incomplete path (D64 event-time-wins declines),
     # surfaced for the CANONICAL_WRITTEN audit detail.
     hot_noops: int = 0
+    # Byte-identical redeliveries suppressed before the insert (migration 0019).
+    # Distinct from hot_noops: that is the hot merge declining an OLDER event, this is
+    # the event insert refusing a REPEAT of one. Non-zero here means a retry happened.
+    event_rows_suppressed: int = 0
 
 
 def _event_insert_sql(model: type[BaseModel], table: str) -> tuple[str, tuple[str, ...]]:
@@ -133,12 +169,63 @@ def _event_insert_sql(model: type[BaseModel], table: str) -> tuple[str, tuple[st
 
     Columns derive from ``model_fields`` (hand-aligned to live, enforced by the
     Slice 3 reconciliation test) so a schema/model change cannot silently leave a
-    column behind here.
+    column behind here — which is how ``row_hash`` joins with no change needed here.
+
+    ON CONFLICT DO NOTHING (migration 0019) arbitrates on
+    ``uq_*_redelivery (tenant_id, store_id, source_id, source_event_id, row_hash)``.
+    DO NOTHING, never DO UPDATE (D3): a sale line is immutable, so a second arrival of
+    the identical payload is a duplicate and never a correction. This is the BACKSTOP —
+    ``_partition_redeliveries`` below filters the common case out before it gets here so
+    the suppression is auditable rather than silent. The conflict target is named
+    explicitly rather than bare, so a DIFFERENT constraint violation still raises
+    instead of being swallowed as a no-op.
+
+    Unlike the hot path, event rows can ride ON CONFLICT: PG validates NOT NULL on the
+    INSERT candidate BEFORE arbitration, and an event projection always carries the
+    model's complete column set (that is exactly why the hot INCOMPLETE path cannot).
     """
     columns = tuple(name for name in model.model_fields if name != "last_updated_at")
     placeholders = ", ".join(f"CAST(:{c} AS JSONB)" if c in _JSONB_COLUMNS else f":{c}" for c in columns)
-    sql = f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({placeholders})"
+    sql = (
+        f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({placeholders}) "
+        "ON CONFLICT (tenant_id, store_id, source_id, source_event_id, row_hash) DO NOTHING"
+    )
     return sql, columns
+
+
+def _partition_redeliveries(
+    batch: list[EventRow], hits: list[DuplicateHit]
+) -> tuple[list[EventRow], list[DuplicateHit]]:
+    """Split a batch into (rows to insert, suppressed redeliveries).
+
+    THE ACTUAL FIX for the observed bug, and it needs no new query: ``_detect_duplicates``
+    already ran in this transaction and already compared each row's payload hash against
+    the latest prior row under the same dedup key. A ``DUPLICATE_NOOP`` hit means "an
+    identical row is already committed" — which is precisely a redelivery. Until now that
+    verdict was computed, audited, and then discarded while the insert proceeded
+    unconditionally.
+
+    Suppressing here rather than relying solely on the unique index buys two things: the
+    row never reaches conflict arbitration (so ``rows_succeeded`` and the audit record can
+    state what actually happened instead of a conflict being silently absorbed), and the
+    behaviour is identical whether or not the index has been applied yet.
+
+    ``DUPLICATE_OVERWRITTEN`` hits are NOT suppressed — a different payload under the same
+    dedup key is a correction, and D33 wants it appended.
+    """
+    suppressed_keys = {hit.source_event_id: hit for hit in hits if hit.kind == "DUPLICATE_NOOP"}
+    to_insert: list[EventRow] = []
+    suppressed: list[DuplicateHit] = []
+    for row in batch:
+        hit = suppressed_keys.get(row.source_event_id)
+        # Match on the HASH too: the hit carries the incoming row's hash, and a batch can
+        # hold several rows under one dedup key. Only the row whose payload actually
+        # matched the committed one is a redelivery.
+        if hit is not None and hit.row_hash == row.row_hash:
+            suppressed.append(hit)
+        else:
+            to_insert.append(row)
+    return to_insert, suppressed
 
 
 def _batches(rows: list[EventRow], size: int) -> list[list[EventRow]]:
@@ -680,6 +767,8 @@ async def write_chunk(
     table, event_ts_column = _EVENT_TABLES[loaded.target_model]
     insert_sql, insert_columns = _event_insert_sql(loaded.target_model, table)
     duplicates: list[DuplicateHit] = []
+    suppressed: list[DuplicateHit] = []
+    events_written = 0
     hot_written = 0
     hot_noops = 0
     batches = _batches(event_rows, batch_size)
@@ -690,15 +779,23 @@ async def write_chunk(
         groups = sorted(_group_hot(batch), key=hot_sort_key)
         misses: list[_HotGroup] = []
         async with rls_session(engine, event.tenant_id) as conn:
-            duplicates.extend(
-                await _detect_duplicates(
-                    conn, event, loaded, batch, table=table, event_ts_column=event_ts_column
+            hits = await _detect_duplicates(
+                conn, event, loaded, batch, table=table, event_ts_column=event_ts_column
+            )
+            duplicates.extend(hits)
+            # Migration 0019: drop byte-identical redeliveries before the insert. The
+            # hot merge below still runs over the FULL batch — its event-time-wins
+            # predicate is already idempotent on an exact tie (`>=` rewrites identical
+            # values), so a suppressed event row must not also suppress the merge that
+            # keeps the hot row consistent.
+            to_insert, redeliveries = _partition_redeliveries(batch, hits)
+            suppressed.extend(redeliveries)
+            if to_insert:
+                await conn.execute(
+                    text(insert_sql),
+                    [{column: row.params.get(column) for column in insert_columns} for row in to_insert],
                 )
-            )
-            await conn.execute(
-                text(insert_sql),
-                [{column: row.params.get(column) for column in insert_columns} for row in batch],
-            )
+            events_written += len(to_insert)
             for group in groups:
                 outcome = await _upsert_hot(
                     conn, event, loaded, group, dis_channel=dis_channel, tax_treatment=tax_treatment
@@ -732,7 +829,12 @@ async def write_chunk(
                 miss_count=len(misses),
             )
     return WriteReport(
-        event_rows_written=len(event_rows),
+        # The COUNT OF ROWS ACTUALLY INSERTED, not len(event_rows). It used to be the
+        # input length, which was true only while the insert was unconditional; with
+        # redelivery suppression it would have overstated the write on every retry —
+        # the same class of false claim the constraint itself is here to stop.
+        event_rows_written=events_written,
+        event_rows_suppressed=len(suppressed),
         hot_rows_upserted=hot_written,
         hot_noops=hot_noops,
         batches=len(batches),

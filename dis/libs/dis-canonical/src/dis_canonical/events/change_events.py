@@ -2,7 +2,9 @@
 
 Introspected facts:
 - PK ``(id)``; plain for beta (migration 0009, D77 scope revised — Slice 21
-  re-partitions by ``event_date``); **no** UNIQUE (append-only, D33).
+  re-partitions by ``event_date``). Append-only per D33, with ONE uniqueness
+  constraint as of migration 0019: ``uq_ssce_redelivery (tenant_id, store_id,
+  source_id, source_event_id, row_hash)`` — redelivery-idempotent, correction-safe.
 - FKs: ``(tenant_id) -> tenants``; ``(tenant_id, store_id) -> stores``;
   ``(mapping_version_id) -> source_mappings``.
 - ``event_category`` CHECK vocab {INVENTORY, PRICE, COST, REGULATORY, STATUS,
@@ -63,6 +65,12 @@ class StoreSkuChangeEvent(CanonicalModel):
     # Source event identity (D33 dedup key; D38 resolution, migration 0003)
     source_id: Str128  # varchar(128) COLLATE "C" NOT NULL (matches config.source_mappings.source_id)
     source_event_id: Str256  # varchar(256) COLLATE "C" NOT NULL (no native id on change events: D65 fallback)
+    # varchar(64) COLLATE "C" NOT NULL (migration 0019). sha256 hex of the
+    # mapping-produced payload; the fifth component of uq_ssce_redelivery. Change
+    # events ALWAYS take the D65 bronze_ref:chunk_row_index fallback (no native id
+    # exists), so a correction always arrives under a new bronze_ref anyway — the hash
+    # is what makes a REDELIVERY of the same bronze chunk idempotent.
+    row_hash: Str64
 
     # Provenance
     mapping_version_id: MappingVersionId  # bigint NOT NULL (D22)

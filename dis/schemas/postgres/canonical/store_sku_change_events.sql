@@ -206,6 +206,8 @@ CREATE TABLE canonical.store_sku_change_events (
         -- fallback bronze_ref || ':' || chunk_row_index applies
         -- (redelivery-stable, NOT correction-collapsing; D65).
         -- Consumer-injected.
+        -- NOTE: row_hash completes this dedup key but is declared LAST in this
+        -- table, not here beside its siblings — see its comment for why.
 
     -- ---------- DIS metadata (load-bearing) ----------
     mapping_version_id              BIGINT                          NOT NULL,
@@ -218,6 +220,23 @@ CREATE TABLE canonical.store_sku_change_events (
         -- JSONB: source_name, source_event_timestamp,
         -- dis_received_timestamp, dis_published_timestamp, csv_row_num.
         -- (source_event_id moved to a first-class column, D38/0003.)
+
+    -- ---------- Redelivery idempotency (migration 0019) ----------
+    --
+    -- DECLARED LAST ON PURPOSE — same reason as the sale table's row_hash, see
+    -- that file for the full argument. Short form: 0019 adds this with ALTER
+    -- TABLE ADD COLUMN, which APPENDS, so on every already-migrated database it
+    -- is physically last. Declaring it mid-table would make a fresh bootstrap
+    -- permanently differ from staging in ordinal_position only — invisible to
+    -- name-sorted checks, silently wrong for anything positional.
+    row_hash                        VARCHAR(64) COLLATE "C"         NOT NULL,
+        -- sha256 hex of the mapping-produced payload (orjson, sorted keys;
+        -- streaming_consumer.pipeline.normalize.canonical_row_hash). The fifth
+        -- component of uq_ssce_redelivery — see that index for why uniqueness
+        -- here does not contradict D33. Consumer-injected (migration 0019).
+        -- Change events always take the D65 fallback, so their dedup key is
+        -- already bronze-scoped; the hash is what makes redelivery of the SAME
+        -- bronze chunk idempotent.
 
     -- ---------- Primary key ----------
     CONSTRAINT pk_ssce
@@ -288,6 +307,16 @@ CREATE INDEX ix_ssce_source_event_timestamp
 CREATE INDEX ix_ssce_dedup_key
     ON canonical.store_sku_change_events
     (tenant_id, store_id, source_id, source_event_id, source_event_timestamp DESC);
+
+-- REDELIVERY IDEMPOTENCY (migration 0019). The ONLY uniqueness on this table.
+-- Same rationale as uq_ssse_redelivery on the sale table — see that comment for
+-- the full argument. Applied here per D4: the two event tables share one sink and
+-- one failure mode, and fixing one while leaving the other is how the poll-loop
+-- swallow bled twice. Change events are MORE exposed, not less: they have no native
+-- source event id at all, so every row keys on the D65 bronze fallback.
+CREATE UNIQUE INDEX uq_ssce_redelivery
+    ON canonical.store_sku_change_events
+    (tenant_id, store_id, source_id, source_event_id, row_hash);
 
 -- Navigate from current_position row to its change history.
 CREATE INDEX ix_ssce_current_position
@@ -428,3 +457,6 @@ COMMENT ON COLUMN canonical.store_sku_change_events.source_id IS
 
 COMMENT ON COLUMN canonical.store_sku_change_events.source_event_id IS
 'Per-source event identifier completing the D33 dedup key. Change events carry no native source event-id column, so the deterministic fallback bronze_ref || '':'' || chunk_row_index applies (redelivery-stable, NOT correction-collapsing; D65). Consumer-injected (D38 resolution).';
+
+COMMENT ON COLUMN canonical.store_sku_change_events.row_hash IS
+'sha256 hex of the mapping-produced payload (orjson, sorted keys; the consumer''s canonical_row_hash). Fifth component of uq_ssce_redelivery — see the sale table''s row_hash comment for why uniqueness here does not contradict D33. Consumer-injected (migration 0019).';

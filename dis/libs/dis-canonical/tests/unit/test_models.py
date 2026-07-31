@@ -43,6 +43,7 @@ def _sale_event(**overrides: object) -> StoreSkuSaleEvent:
         currency="INR",
         source_id="manual_csv_upload",  # NOT NULL (D38, migration 0003)
         source_event_id="TXN-1:1",  # NOT NULL (D38; transaction_id:line_item_seq form)
+        row_hash="a" * 64,  # NOT NULL (migration 0019; sha256 hex is always 64 chars)
         mapping_version_id=1,
         trace_id=new_uuid7(),
         dis_channel="csv_upload",
@@ -107,6 +108,7 @@ def test_change_event_constructs() -> None:
         value_after={"price": "10.00"},
         source_id="erp_nightly",  # NOT NULL (D38, migration 0003)
         source_event_id="0197a000-0000-7000-8000-000000000000:42",  # D65 fallback form
+        row_hash="b" * 64,  # NOT NULL (migration 0019)
         mapping_version_id=2,
         trace_id=new_uuid7(),
         dis_channel="csv_erp",
@@ -158,8 +160,13 @@ def test_dedup_key_columns_required_on_event_models() -> None:
     for model in (StoreSkuSaleEvent, StoreSkuChangeEvent):
         assert model.model_fields["source_id"].is_required()
         assert model.model_fields["source_event_id"].is_required()
+        # Migration 0019: row_hash completes uq_*_redelivery and is NOT NULL. Required
+        # here (never Optional) because a None would bind as NULL, and NULLs do not
+        # collide in a unique index — every redelivery would slip straight past it.
+        assert model.model_fields["row_hash"].is_required()
     assert "source_id" not in StoreSkuCurrentPosition.model_fields
     assert "source_event_id" not in StoreSkuCurrentPosition.model_fields
+    assert "row_hash" not in StoreSkuCurrentPosition.model_fields
     assert not StoreSkuCurrentPosition.model_fields["last_source_event_at"].is_required()
 
 

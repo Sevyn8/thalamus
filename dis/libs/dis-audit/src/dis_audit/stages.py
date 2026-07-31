@@ -41,9 +41,13 @@ class EventScope(StrEnum):
 class Outcome(StrEnum):
     """A stage's result for one scope. Mirrors ``ck_audit_events_outcome_vocab`` exactly.
 
-    The DUPLICATE_* pair (Slice 30c, the D42 revision) refines SUCCESS: a dedup-key
-    hit's append-only insert genuinely landed (D33); the kind is queryable as the
-    outcome instead of an ``event_data`` key.
+    The DUPLICATE_* pair (Slice 30c, the D42 revision) refines SUCCESS and the kind is
+    queryable as the outcome instead of an ``event_data`` key. The two are NO LONGER
+    equivalent about the write (migration 0019): DUPLICATE_OVERWRITTEN is a correction
+    and its insert landed, DUPLICATE_NOOP is a byte-identical redelivery whose insert
+    was SUPPRESSED. Read ``rows_succeeded`` (1 vs 0), not the outcome, to know whether a
+    row exists. This docstring previously said the insert "genuinely landed" for both,
+    which was true only while the event insert was unconditional.
     """
 
     SUCCESS = "SUCCESS"

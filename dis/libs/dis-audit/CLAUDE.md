@@ -32,8 +32,13 @@ For interfaces, types, file structure, see `README.md`.
   `Outcome` mirror the live CHECK vocab exactly. `DUPLICATE_NOOP`/`DUPLICATE_OVERWRITTEN` are
   first-class `Outcome` members and `prior_trace_id` is a live column since Slice 30c (the D42
   REVISION: Slice 10's deliberate event_data-JSONB resolution superseded for console
-  queryability); they REFINE SUCCESS (the append-only insert landed, D33). `row_hash`/`dedup_key`
-  stay in `event_data`. `FailureCode` (Slice 30b, D79) is the closed failure vocabulary. The
+  queryability). They refine SUCCESS, but they are **no longer equivalent about the write**
+  (migration 0019): `DUPLICATE_OVERWRITTEN` is a correction whose insert LANDED
+  (`rows_succeeded=1`); `DUPLICATE_NOOP` is a byte-identical redelivery whose insert was
+  **SUPPRESSED** (`rows_succeeded=0`, plus `suppressed`/`suppression_reason` in `event_data`).
+  Read `rows_succeeded`, never the outcome, to know whether a row exists. This line previously
+  said "the append-only insert landed, D33" for both, which held only while the event insert was
+  unconditional. `row_hash`/`dedup_key` stay in `event_data`. `FailureCode` (Slice 30b, D79) is the closed failure vocabulary. The
   drift guard checks the full column shape (type/nullability/length) against
   `schema_contract.EXPECTED_COLUMNS`, not just names (Slice 30c).
 - **BigQuery seam is inert** (import-safe, no I/O, imports no `google-cloud-bigquery`), behind

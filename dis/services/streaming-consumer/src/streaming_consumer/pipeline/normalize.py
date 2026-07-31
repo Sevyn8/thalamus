@@ -141,6 +141,7 @@ def build_event_rows(
             bronze_ref=event.bronze_ref,
             chunk_row_index=chunk_row_index,
         )
+        row_hash = canonical_row_hash(payload)
         params: dict[str, Any] = dict(payload)
         params.update(
             id=new_uuid7(),
@@ -148,6 +149,11 @@ def build_event_rows(
             store_id=event.store_id,
             source_id=event.source_id,
             source_event_id=source_event_id,
+            # Persisted (migration 0019) as the fifth component of the redelivery
+            # unique index. Computed from the mapping-produced payload ONLY, before
+            # the consumer-injected columns are merged in below — so an identical
+            # redelivery hashes identically while a correction does not.
+            row_hash=row_hash,
             mapping_version_id=loaded.mapping_version_id,
             trace_id=event.trace_id,
             dis_channel=bronze.dis_channel,
@@ -174,7 +180,7 @@ def build_event_rows(
                 ),
                 hot_contributions=_hot_contributions(payload, is_sale=is_sale),
                 payload=payload,
-                row_hash=canonical_row_hash(payload),
+                row_hash=row_hash,
                 chunk_row_index=chunk_row_index,
             )
         )

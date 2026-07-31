@@ -357,10 +357,13 @@ async def _insert_change_event(
 
     The D33/D38 first-class source identity columns exist on canonical only;
     the staging mirror still carries them inside ingest_metadata (its
-    introspected live shape), so the column list branches per schema.
+    introspected live shape), so the column list branches per schema. Migration
+    0019's ``row_hash`` rides the SAME branch for the same reason — it is scoped
+    to canonical, because the staging mirrors never received the dedup-key
+    columns it completes and nothing writes them.
     """
-    source_identity_cols = ", source_id, source_event_id" if schema == "canonical" else ""
-    source_identity_vals = ", :source_id, :source_event_id" if schema == "canonical" else ""
+    source_identity_cols = ", source_id, source_event_id, row_hash" if schema == "canonical" else ""
+    source_identity_vals = ", :source_id, :source_event_id, :row_hash" if schema == "canonical" else ""
     async with engine.connect() as conn:
         async with conn.begin():
             await conn.execute(text("SELECT set_config('app.tenant_id', :t, true)"), {"t": tenant_id})
@@ -385,7 +388,13 @@ async def _insert_change_event(
                     "mapping_version_id": mapping_version_id,
                     "trace": trace_id,
                     **(
-                        {"source_id": fx.DEFAULT_SOURCE_ID, "source_event_id": f"mig0009:{trace_id}"}
+                        {
+                            "source_id": fx.DEFAULT_SOURCE_ID,
+                            "source_event_id": f"mig0009:{trace_id}",
+                            # Any 64-char value: this test asserts partition/RLS
+                            # behaviour, not dedup. A real hash would imply otherwise.
+                            "row_hash": f"{'0' * 24}{trace_id.replace('-', '')[:40]}"[:64],
+                        }
                         if schema == "canonical"
                         else {}
                     ),
@@ -466,12 +475,12 @@ async def test_any_date_lands_sale_events(
                         "INSERT INTO canonical.store_sku_sale_events "
                         "(event_date, tenant_id, store_id, sku_id, event_subtype, "
                         " source_sale_timestamp, quantity, unit_retail_price, unit_sale_price, "
-                        " tax_treatment, currency, source_id, source_event_id, "
+                        " tax_treatment, currency, source_id, source_event_id, row_hash, "
                         " mapping_version_id, trace_id, dis_channel) "
                         "VALUES ((CAST(:ts AS timestamptz) AT TIME ZONE 'UTC')::date, "
                         " CAST(:tenant AS uuid), CAST(:store AS uuid), :sku, 'SALE', "
                         " CAST(:ts AS timestamptz), 1, 9.99, 9.99, "
-                        " 'INCLUSIVE', 'INR', :source_id, :source_event_id, "
+                        " 'INCLUSIVE', 'INR', :source_id, :source_event_id, :row_hash, "
                         " :mapping_version_id, CAST(:trace AS uuid), 'csv_upload')"
                     ),
                     {
@@ -481,6 +490,9 @@ async def test_any_date_lands_sale_events(
                         "sku": "MIG0009-SKU",
                         "source_id": fx.DEFAULT_SOURCE_ID,
                         "source_event_id": f"mig0009:{trace}",
+                        # row_hash is NOT NULL from 0019. Any 64-char value: this test
+                        # asserts partition behaviour, not dedup.
+                        "row_hash": f"{'0' * 24}{trace.replace('-', '')[:40]}"[:64],
                         "mapping_version_id": mapping_version_id,
                         "trace": trace,
                     },

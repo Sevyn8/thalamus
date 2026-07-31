@@ -274,12 +274,12 @@ async def _insert_change_event(
                 text(
                     "INSERT INTO canonical.store_sku_change_events "
                     "(event_date, tenant_id, store_id, sku_id, event_category, event_subtype, "
-                    " source_event_timestamp, value_after, source_id, source_event_id, "
+                    " source_event_timestamp, value_after, source_id, source_event_id, row_hash, "
                     " mapping_version_id, trace_id, dis_channel) "
                     "VALUES ((CAST(:ts AS timestamptz) AT TIME ZONE 'UTC')::date, "
                     " CAST(:row_tenant AS uuid), CAST(:store AS uuid), :sku, 'PRICE', "
                     " 'RETAIL_PRICE_CHANGE', CAST(:ts AS timestamptz), "
-                    " CAST(:value_after AS jsonb), :source_id, :source_event_id, "
+                    " CAST(:value_after AS jsonb), :source_id, :source_event_id, :row_hash, "
                     " :mapping_version_id, CAST(:trace AS uuid), 'csv_upload')"
                 ),
                 {
@@ -290,6 +290,10 @@ async def _insert_change_event(
                     "value_after": '{"price": "9.99"}',
                     "source_id": fx.DEFAULT_SOURCE_ID,
                     "source_event_id": f"mig0011:{trace_id}",
+                    # row_hash is NOT NULL from 0019. Any 64-char value: this test
+                    # asserts two-GUC RLS, not dedup. Varies by row_tenant so the
+                    # two-tenant cases cannot collide on uq_ssce_redelivery.
+                    "row_hash": f"{row_tenant.replace('-', '')}{'0' * 32}"[:64],
                     "mapping_version_id": mapping_version_id,
                     "trace": trace_id,
                 },

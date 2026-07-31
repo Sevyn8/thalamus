@@ -185,6 +185,12 @@ PROVENANCE: dict[type[BaseModel], ColumnProvenance] = {
                 # Live comment: "Denormalized from store." (same evidence as the hot
                 # table; reclassified during the slice-05 adversarial pass).
                 "tax_treatment",
+                # Migration 0019: sha256 hex of the mapping-produced payload, computed
+                # by the consumer (canonical_row_hash) as the fifth component of
+                # uq_ssse_redelivery. Consumer-injected, NOT mapping-produced — it is
+                # derived FROM the mapping's output, so no source supplies it and it must
+                # never reach the field catalog as a mappable column.
+                "row_hash",
             }
         ),
         db_generated=_COMMON_DB_GENERATED,
@@ -243,6 +249,10 @@ PROVENANCE: dict[type[BaseModel], ColumnProvenance] = {
                 # Family inference (near-evidence): the signed delta of the two
                 # consumer-populated shortcut columns can only be consumer-computed.
                 "numeric_change",
+                # Migration 0019: see the sale model's entry. Same classification for the
+                # same reason — derived from the mapping's output, never supplied by a
+                # source. D4: both event tables get this, or the fix is half-applied.
+                "row_hash",
             }
         ),
         db_generated=_COMMON_DB_GENERATED,
