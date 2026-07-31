@@ -188,8 +188,8 @@ variable "cm_documents_frontend_origin" {
 
 variable "dis_ui_server_image" {
   type        = string
-  description = "dis-ui-server container image. Defaults to the v1 tag pushed this session."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-server:v7"
+  description = "dis-ui-server container image (the BFF). Built from dis/terraform/docker/dis-ui-server.Dockerfile with the dis/ WORKSPACE ROOT as build context; bump this in the same commit as any deploy. v8 added GET /tenant-self, which the ver2 topbar reads for the tenant name."
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-server:v8"
 }
 
 variable "mirror_sync_consumer_image" {
@@ -201,18 +201,18 @@ variable "mirror_sync_consumer_image" {
 variable "dis_ui_ver2_image" {
   type        = string
   description = "dis-ui-ver2 (SPA) container image. The tag live on the imported service. Built by dis/terraform/docker/cloudbuild-dis-ui-ver2.yaml with an explicit _TAG=vN and no floating `latest`; bump this in the same commit as any deploy."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-ver2:v16"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-ver2:v17"
 }
 
 variable "csv_ingest_worker_image" {
   type        = string
-  description = "csv-ingest-worker container image. Defaults to the v1 tag pushed this session."
+  description = "csv-ingest-worker container image (the csv.received pull consumer). Built from dis/terraform/docker/csv-ingest-worker.Dockerfile with the dis/ WORKSPACE ROOT as build context; bump this in the same commit as any deploy."
   default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/csv-ingest-worker:v3"
 }
 
 variable "streaming_consumer_image" {
   type        = string
-  description = "streaming-consumer container image. Defaults to the v1 tag pushed this session."
+  description = "streaming-consumer container image (the ingress.ready pull consumer, terminal canonical writer). Built from dis/terraform/docker/streaming-consumer.Dockerfile with the dis/ WORKSPACE ROOT as build context; bump this in the same commit as any deploy."
   default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/streaming-consumer:v2"
 }
 

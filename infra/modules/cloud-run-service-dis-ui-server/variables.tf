@@ -31,7 +31,7 @@ variable "service_account_id" {
 
 variable "image" {
   type        = string
-  description = "Full container image reference. Defaults to the v1 tag pushed this session."
+  description = "Full container image reference. The module default is a floor, not the deployed tag — the env pins the live one (var.dis_ui_server_image). Stated this way because the previous wording claimed v1 while the default had already moved to v2."
   default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-server:v2"
 }
 
