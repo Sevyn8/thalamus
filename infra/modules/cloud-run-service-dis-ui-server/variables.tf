@@ -1,7 +1,7 @@
 ###############################################################################
 # cloud-run-service-dis-ui-server variables.
 #
-# Defaults carry the values grounded this session (image tag, DB-name guard
+# Defaults carry the values grounded when this module was written (image tag, DB-name guard
 # override, csv topic short name). POSTGRES_URL is secret-backed by reference
 # (never a value here). The DB connection is private-IP TCP through the VPC
 # connector, so there is NO /cloudsql socket and NO roles/cloudsql.client.

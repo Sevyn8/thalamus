@@ -1,7 +1,7 @@
 ###############################################################################
 # cloud-run-service-cm variables.
 #
-# Defaults carry the values verified this session (image tag, DB schema, Auth0
+# Defaults carry the values verified when this module was written (image tag, DB schema, Auth0
 # issuer/audience/jwks, SendGrid from-address). The three tenant-specific Auth0
 # values supplied by the ENV rather than by this module (mgmt client id, mgmt DB
 # connection, ticket result_url) default to empty: they are lazy (checked when
@@ -35,7 +35,7 @@ variable "service_account_id" {
 
 variable "image" {
   type        = string
-  description = "Full container image reference. Defaults to the v1 tag pushed this session."
+  description = "Full container image reference. Built from cm-backend/Dockerfile with cm-backend/ ITSELF as build context (not the monorepo root — its COPYs are package-relative), unlike the DIS services which build from the dis/ workspace root. The env pin (var.cm_image) feeds BOTH this service and the migrate-cm job per D6. The module default is a FLOOR, not the deployed tag — the env pins the live one. A description naming a specific version is guaranteed to rot, so this names the build path instead."
   default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/cm-backend:v1"
 }
 
@@ -155,7 +155,7 @@ variable "auth0_ticket_result_url" {
 }
 
 # --- Secret Manager references (secret VALUES live in Secret Manager, created
-#     out-of-band this session; TF references them by name only). ---
+#     out-of-band, never by Terraform; TF references them by name only). ---
 
 variable "secret_database_url" {
   type        = string

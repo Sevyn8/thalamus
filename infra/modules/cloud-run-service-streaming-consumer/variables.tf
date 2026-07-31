@@ -35,7 +35,7 @@ variable "service_account_id" {
 
 variable "image" {
   type        = string
-  description = "Full container image reference. Defaults to the v1 tag pushed this session."
+  description = "Full container image reference. Built from dis/terraform/docker/streaming-consumer.Dockerfile with the dis/ WORKSPACE ROOT as build context (the service is a uv-workspace member). The module default is a FLOOR, not the deployed tag — the env pins the live one. A description naming a specific version is guaranteed to rot, so this names the build path instead."
   default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/streaming-consumer:v1"
 }
 

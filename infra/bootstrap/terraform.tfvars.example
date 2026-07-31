@@ -1,7 +1,7 @@
 # Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored;
 # only this .example is tracked.
 #
-# Values below are the real Thalamus staging values (verified this session).
+# Values below are the real Thalamus staging values (verified against the live project).
 
 project_id      = "sevyn8-thalamus-staging"
 project_name    = "Thalamus Staging"

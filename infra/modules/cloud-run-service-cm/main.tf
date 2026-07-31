@@ -30,7 +30,7 @@ resource "google_service_account" "cm_backend" {
   display_name = "CM backend (cm-backend) Cloud Run runtime SA"
 }
 
-# Existing secrets (created out-of-band this session). Data sources both resolve
+# Existing secrets (created out-of-band, never by Terraform). Data sources both resolve
 # the secret ids for the IAM grants below and fail the plan fast if a secret is
 # missing.
 data "google_secret_manager_secret" "database_url" {
