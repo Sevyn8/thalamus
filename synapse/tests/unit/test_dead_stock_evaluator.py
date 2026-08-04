@@ -56,12 +56,8 @@ def _sold(sku_id: str, when: date) -> LastSaleAtRow:
     return LastSaleAtRow(tenant_id=TENANT, store_id=STORE, sku_id=sku_id, last_sale_date=when)
 
 
-def _evaluate(
-    universe: list[CurrentStateRow], selling: list[LastSaleAtRow]
-) -> dict[str, DeadStockRow]:
-    rows = evaluate_dead_stock(
-        universe, selling, stale_after_days=STALE_AFTER, as_of=AS_OF
-    )
+def _evaluate(universe: list[CurrentStateRow], selling: list[LastSaleAtRow]) -> dict[str, DeadStockRow]:
+    rows = evaluate_dead_stock(universe, selling, stale_after_days=STALE_AFTER, as_of=AS_OF)
     return {row.sku_id: row for row in rows}
 
 

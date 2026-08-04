@@ -89,9 +89,7 @@ def _synapse_root() -> str:
 
 def test_a_different_salt_reshuffles() -> None:
     """The salt has to matter, or it is not doing the job the design gives it."""
-    other = Holdout(
-        unit=HOLDOUT.unit, holdout_percent=20, salt="different", fitted=False, stands_in_for="x"
-    )
+    other = Holdout(unit=HOLDOUT.unit, holdout_percent=20, salt="different", fitted=False, stands_in_for="x")
     subjects = [_subject(f"SKU-{i}") for i in range(200)]
     assert [assign(HOLDOUT, s) for s in subjects] != [assign(other, s) for s in subjects]
 
@@ -124,9 +122,7 @@ def test_the_separator_prevents_a_collision_between_different_subjects() -> None
     separator makes roughly half of them land in different arms, and a missing one makes ALL of
     them land in the same arm. One differing pair is enough to prove the separator is there.
     """
-    two_column = Holdout(
-        unit=("a", "b"), holdout_percent=50, salt="s", fitted=False, stands_in_for="x"
-    )
+    two_column = Holdout(unit=("a", "b"), holdout_percent=50, salt="s", fitted=False, stands_in_for="x")
     colliding_pairs = [((f"x{i}y", "z"), (f"x{i}", "yz")) for i in range(40)]
     differing = [
         pair for pair in colliding_pairs if assign(two_column, pair[0]) != assign(two_column, pair[1])
@@ -145,9 +141,7 @@ def test_the_separator_prevents_a_collision_between_different_subjects() -> None
 def test_a_holdout_of_zero_or_a_hundred_percent_is_refused() -> None:
     for percent in (0, 100, -1, 101):
         with pytest.raises(ValueError, match="1..99"):
-            Holdout(
-                unit=("sku_id",), holdout_percent=percent, salt="s", fitted=True, stands_in_for=None
-            )
+            Holdout(unit=("sku_id",), holdout_percent=percent, salt="s", fitted=True, stands_in_for=None)
 
 
 def test_an_unfitted_percent_must_say_what_it_stands_in_for() -> None:

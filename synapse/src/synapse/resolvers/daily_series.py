@@ -289,9 +289,7 @@ async def resolve_daily_series(
             *group_columns,
             func.sum(collapsed.c.quantity).label("net_quantity"),
             *(
-                func.count()
-                .filter(collapsed.c.event_subtype == subtype)
-                .label(field)
+                func.count().filter(collapsed.c.event_subtype == subtype).label(field)
                 for subtype, field in _SUBTYPE_COUNTS.items()
             ),
         )

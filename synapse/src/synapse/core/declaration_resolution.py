@@ -86,10 +86,7 @@ class DeclarationSatisfied:
     @property
     def fetches(self) -> Mapping[str, Fetch]:
         """The bound fetch per capability. Derived, so it cannot disagree with the resolutions."""
-        return {
-            capability_id: resolution.fetch
-            for capability_id, resolution in self.resolutions.items()
-        }
+        return {capability_id: resolution.fetch for capability_id, resolution in self.resolutions.items()}
 
     @property
     def capability_versions(self) -> Mapping[str, str]:
@@ -139,13 +136,10 @@ class DeclarationBlocked:
                 "policy this type cannot see — Satisfied is unambiguous here, so the engine's "
                 "filter can be checked rather than trusted"
             )
-        unknown = sorted(
-            set(self.blocked) - {r.capability_id for r in self.declaration.requires}
-        )
+        unknown = sorted(set(self.blocked) - {r.capability_id for r in self.declaration.requires})
         if unknown:
             raise ValueError(
-                f"DeclarationBlocked for {self.declaration.id!r} names {unknown}, which it does "
-                "not require"
+                f"DeclarationBlocked for {self.declaration.id!r} names {unknown}, which it does not require"
             )
 
 
@@ -166,9 +160,7 @@ class DeclarationUndeclared:
     analysis_id: str
 
 
-type DeclarationResolution = (
-    DeclarationSatisfied | DeclarationBlocked | DeclarationUndeclared
-)
+type DeclarationResolution = DeclarationSatisfied | DeclarationBlocked | DeclarationUndeclared
 
 __all__ = [
     "DeclarationBlocked",

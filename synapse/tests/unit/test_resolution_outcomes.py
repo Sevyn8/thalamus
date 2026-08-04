@@ -33,9 +33,7 @@ from synapse.core.resolution import (
 MEASURED_AT = datetime(2026, 8, 3, 9, 0, tzinfo=UTC)
 
 
-def _report(
-    *, qualifying: int, measured: int = 66, required: int = 60
-) -> PreconditionReport:
+def _report(*, qualifying: int, measured: int = 66, required: int = 60) -> PreconditionReport:
     return PreconditionReport(
         name=GateKind.MIN_HISTORY_DAYS,
         required=required,
@@ -115,7 +113,7 @@ def test_an_unregistered_id_carries_no_reason_by_default() -> None:
 
 
 def test_a_report_carries_the_requirement_and_the_population() -> None:
-    """"Needs 60 days" alone cannot distinguish "wait 48 days" from "never", and a single
+    """ "Needs 60 days" alone cannot distinguish "wait 48 days" from "never", and a single
     reduced number cannot distinguish "no data" from "one new SKU"."""
     report = _report(qualifying=0, measured=66)
     assert (report.required, report.pairs_measured, report.pairs_qualifying) == (60, 66, 0)

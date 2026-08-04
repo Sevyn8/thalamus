@@ -182,20 +182,28 @@ def test_a_requirement_naming_no_fields_is_refused() -> None:
 def test_an_analysis_requiring_nothing_is_refused() -> None:
     with pytest.raises(ValueError, match="requires no capability"):
         AnalysisDeclaration(
-            id="empty", version="0.1.0", grain=("tenant_id",), requires=(), emits=("x",),
-            holdout=None, thresholds=(),
+            id="empty",
+            version="0.1.0",
+            grain=("tenant_id",),
+            requires=(),
+            emits=("x",),
+            holdout=None,
+            thresholds=(),
         )
 
 
 def test_an_analysis_requiring_the_same_capability_twice_is_refused() -> None:
     """Two requirements on one capability would need merging rules nobody has written."""
-    requirement = CapabilityRequirement(
-        capability_id="current_state", fields=("tenant_id",), gates=()
-    )
+    requirement = CapabilityRequirement(capability_id="current_state", fields=("tenant_id",), gates=())
     with pytest.raises(ValueError, match="requires the same capability twice"):
         AnalysisDeclaration(
-            id="twice", version="0.1.0", grain=("tenant_id",),
-            requires=(requirement, requirement), emits=("x",), holdout=None, thresholds=(),
+            id="twice",
+            version="0.1.0",
+            grain=("tenant_id",),
+            requires=(requirement, requirement),
+            emits=("x",),
+            holdout=None,
+            thresholds=(),
         )
 
 
@@ -216,9 +224,7 @@ def test_declaration_matches_the_committed_fixture() -> None:
     assert fixture["version"] == DEAD_STOCK.version
     assert tuple(fixture["grain"]) == DEAD_STOCK.grain
     assert tuple(fixture["emits"]) == DEAD_STOCK.emits
-    assert [r["capability_id"] for r in fixture["requires"]] == [
-        r.capability_id for r in DEAD_STOCK.requires
-    ]
+    assert [r["capability_id"] for r in fixture["requires"]] == [r.capability_id for r in DEAD_STOCK.requires]
     for wire, declared in zip(fixture["requires"], DEAD_STOCK.requires, strict=True):
         assert tuple(wire["fields"]) == declared.fields
         assert [g["kind"] for g in wire["gates"]] == [g.kind.value for g in declared.gates]

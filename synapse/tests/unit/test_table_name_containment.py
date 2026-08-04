@@ -95,9 +95,7 @@ def test_the_collapse_helper_names_no_table_in_its_code() -> None:
     and silently un-reusable for change events.
     """
     text = (RESOLVERS / "_collapse.py").read_text(encoding="utf-8")
-    code = "\n".join(
-        line for line in text.splitlines() if not line.lstrip().startswith("#")
-    )
+    code = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
     body = code.split('"""', 2)[-1]  # everything after the module docstring
     for tbl in CANONICAL_TABLES:
         assert tbl not in body, f"_collapse.py must stay table-agnostic; its code names {tbl!r}"

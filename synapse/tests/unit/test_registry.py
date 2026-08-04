@@ -95,9 +95,7 @@ def _stub_registry(
         required: int,
     ) -> Observation:
         recorder.append(("probe", (store_id, sku_id, required)))
-        return Observation(
-            pairs_measured=measured, pairs_qualifying=qualifying, measured_at=MEASURED_AT
-        )
+        return Observation(pairs_measured=measured, pairs_qualifying=qualifying, measured_at=MEASURED_AT)
 
     async def resolver(engine: AsyncEngine, scope: CapabilityScope, **narrowing: object) -> list[object]:
         recorder.append(("resolve", narrowing))
@@ -260,9 +258,7 @@ async def test_the_required_value_comes_from_the_descriptor_not_the_probe(
     the number. Pinned twice: the report's `required` comes from the descriptor, and the probe
     records the value it was handed, which must be the same one."""
     calls: list[tuple[str, object]] = []
-    monkeypatch.setattr(
-        registry_module, "_REGISTRY", _stub_registry(qualifying=0, measured=5, calls=calls)
-    )
+    monkeypatch.setattr(registry_module, "_REGISTRY", _stub_registry(qualifying=0, measured=5, calls=calls))
     outcome = await resolve(NO_ENGINE, "daily_series", SCOPE, gates=(_GATE,))
     assert isinstance(outcome, PreconditionUnmet)
     assert outcome.unmet[0].required == _GATE.days
@@ -298,9 +294,7 @@ async def test_one_qualifying_series_is_enough_under_the_placeholder_policy(
     monkeypatch.setattr(registry_module, "_REGISTRY", _stub_registry(qualifying=1))
     assert isinstance(await resolve(NO_ENGINE, "daily_series", SCOPE, gates=(_GATE,)), Satisfied)
     monkeypatch.setattr(registry_module, "_REGISTRY", _stub_registry(qualifying=0))
-    assert isinstance(
-        await resolve(NO_ENGINE, "daily_series", SCOPE, gates=(_GATE,)), PreconditionUnmet
-    )
+    assert isinstance(await resolve(NO_ENGINE, "daily_series", SCOPE, gates=(_GATE,)), PreconditionUnmet)
 
 
 async def test_narrowing_reaches_the_resolver_and_store_id_reaches_both(
@@ -424,9 +418,7 @@ async def test_the_threshold_a_caller_supplies_is_the_one_probed(
     the same capability's probe as different numbers, which slice 1's descriptor constant made
     impossible."""
     calls: list[tuple[str, object]] = []
-    monkeypatch.setattr(
-        registry_module, "_REGISTRY", _stub_registry(qualifying=66, calls=calls)
-    )
+    monkeypatch.setattr(registry_module, "_REGISTRY", _stub_registry(qualifying=66, calls=calls))
     for days in (60, 90):
         await resolve(
             NO_ENGINE,
@@ -613,9 +605,7 @@ def _dead_stock_with(**changes: object) -> AnalysisDeclaration:
 def test_the_declaration_check_catches_a_key_that_does_not_match(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        registry_module, "_DECLARATIONS", MappingProxyType({"typo": DEAD_STOCK})
-    )
+    monkeypatch.setattr(registry_module, "_DECLARATIONS", MappingProxyType({"typo": DEAD_STOCK}))
     with pytest.raises(ValueError, match="does not match analysis id"):
         _check_declarations()
 
@@ -626,9 +616,7 @@ def test_the_declaration_check_catches_an_unregistered_capability(
     """A requirement on a capability that does not exist is a declaration that can never
     resolve — the artifact class this project keeps deleting."""
     broken = _dead_stock_with(
-        requires=(
-            CapabilityRequirement(capability_id="basket_set", fields=("tenant_id",), gates=()),
-        )
+        requires=(CapabilityRequirement(capability_id="basket_set", fields=("tenant_id",), gates=()),)
     )
     monkeypatch.setattr(registry_module, "_DECLARATIONS", _declaring(broken))
     with pytest.raises(ValueError, match="which is not registered"):
@@ -643,9 +631,7 @@ def test_a_requirement_on_a_declined_capability_reports_its_recorded_reason(
     from _DECLINED — instead of 'not registered', which reads as 'not built yet'."""
     broken = _dead_stock_with(
         requires=(
-            CapabilityRequirement(
-                capability_id="lead_time_distribution", fields=("tenant_id",), gates=()
-            ),
+            CapabilityRequirement(capability_id="lead_time_distribution", fields=("tenant_id",), gates=()),
         )
     )
     monkeypatch.setattr(registry_module, "_DECLARATIONS", _declaring(broken))
@@ -828,9 +814,7 @@ async def test_the_declarations_own_gates_are_what_get_bound(
         ),
     )
     monkeypatch.setattr(registry_module, "_DECLARATIONS", _declaring(gated))
-    monkeypatch.setattr(
-        registry_module, "_REGISTRY", _stub_registry(qualifying=66, calls=calls)
-    )
+    monkeypatch.setattr(registry_module, "_REGISTRY", _stub_registry(qualifying=66, calls=calls))
     outcome = await resolve_declaration(NO_ENGINE, "dead_stock", SCOPE)
     assert isinstance(outcome, DeclarationSatisfied)
     # (store_id, sku_id, required) — the 90 came from the declaration, not the descriptor.

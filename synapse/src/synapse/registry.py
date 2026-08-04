@@ -415,9 +415,7 @@ def _check_declarations() -> None:
     """
     for key, declaration in _DECLARATIONS.items():
         if key != declaration.id:
-            raise ValueError(
-                f"declaration key {key!r} does not match analysis id {declaration.id!r}"
-            )
+            raise ValueError(f"declaration key {key!r} does not match analysis id {declaration.id!r}")
         for requirement in declaration.requires:
             entry = _REGISTRY.get(requirement.capability_id)
             if entry is None:
@@ -632,7 +630,6 @@ async def resolve(
         return await resolver(engine, scope, **forwarded)
 
     return Satisfied(descriptor=entry.descriptor, fetch=fetch)
-
 
 
 async def resolve_declaration(

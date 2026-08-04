@@ -118,9 +118,7 @@ class Holdout:
                 "no stated derivation is indistinguishable from a number someone guessed"
             )
         if self.fitted and self.stands_in_for:
-            raise ValueError(
-                "a fitted holdout_percent stands in for nothing; remove stands_in_for"
-            )
+            raise ValueError("a fitted holdout_percent stands in for nothing; remove stands_in_for")
 
 
 def assign(holdout: Holdout, subject: tuple[str, ...]) -> Arm:

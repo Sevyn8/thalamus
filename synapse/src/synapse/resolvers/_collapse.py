@@ -115,13 +115,7 @@ def collapse_latest_wins(
         events.c[event_time_column].desc(),
         *(events.c[name].desc() for name in _TIEBREAK_TAIL),
     ]
-    return (
-        select(*events.c)
-        .where(where)
-        .distinct(*key_columns)
-        .order_by(*order_by)
-        .subquery("collapsed")
-    )
+    return select(*events.c).where(where).distinct(*key_columns).order_by(*order_by).subquery("collapsed")
 
 
 __all__ = ["DEDUP_KEY", "collapse_latest_wins"]

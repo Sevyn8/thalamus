@@ -295,9 +295,7 @@ def test_the_subtype_coverage_check_bites(monkeypatch: pytest.MonkeyPatch) -> No
 
 def test_the_aggregate_column_check_bites(monkeypatch: pytest.MonkeyPatch) -> None:
     """A canonical DROP of a column this resolver aggregates must fail loudly."""
-    monkeypatch.setattr(
-        resolver_module, "_COLUMNS", tuple(c for c in _COLUMNS if c != "quantity")
-    )
+    monkeypatch.setattr(resolver_module, "_COLUMNS", tuple(c for c in _COLUMNS if c != "quantity"))
     with pytest.raises(ValueError, match="quantity"):
         _check_aggregate_columns()
 

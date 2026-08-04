@@ -5,12 +5,13 @@
 # workspace root lives — Synapse is a member of it, so `uv run` there resolves
 # synapse, dis-canonical and dis-rls together.
 
-.PHONY: help test conformance lint
+.PHONY: help test conformance lint format
 
 help:
 	@echo "test         - synapse unit tests (offline; integration skips without a DSN)"
 	@echo "conformance  - the capability + signal contract conformance harness"
-	@echo "lint         - ruff + mypy --strict + import-linter over synapse"
+	@echo "lint         - ruff check + ruff format --check + mypy --strict + import-linter"
+	@echo "format       - ruff format over synapse ONLY (dis's target also spans dis + connectors)"
 
 test:
 	cd ../dis && uv run pytest -c pyproject.toml ../synapse
@@ -20,7 +21,25 @@ test:
 conformance:
 	cd ../dis && uv run python ../contracts/synapse/validate.py
 
+# FORMATTING IS PART OF THE GATE, and was not until 2026-08-04. `make lint` ran ruff
+# check and mypy, neither of which looks at formatting, so synapse drifted to 16
+# non-conforming files without anything going red. The cost is not aesthetic: the
+# formatter is repo-wide, so the next contributor to run it reformats sixteen files
+# they never edited, and their diff stops being reviewable. Same shape as the
+# import-linter finding — a gate that did not cover what everyone assumed it covered.
+#
+# --check rather than --diff so it fails without printing the whole reflow; run
+# `make format` to fix.
 lint:
 	cd ../dis && uv run ruff check --config pyproject.toml ../synapse
+	cd ../dis && uv run ruff format --check --config pyproject.toml ../synapse
 	cd ../dis && uv run mypy ../synapse
 	cd ../dis && uv run lint-imports
+
+# SYNAPSE ONLY, deliberately. dis/Makefile's `format` target spans `. ../connectors
+# ../synapse`, so running it from there also reformats dis and connectors — which
+# still carry 18 and 4 drifted files respectively, and are not this package's to
+# touch. Closing that trap for them needs its own chore commit and its own
+# `ruff format --check` in their gates.
+format:
+	cd ../dis && uv run ruff format --config pyproject.toml ../synapse

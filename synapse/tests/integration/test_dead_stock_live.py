@@ -76,9 +76,7 @@ async def test_it_resolves_and_both_fetchers_execute() -> None:
     engine = create_rls_engine(DSN)
     try:
         outcome = await resolve_declaration(engine, "dead_stock", _scope())
-        assert isinstance(outcome, DeclarationSatisfied), (
-            f"dead_stock did not resolve: {outcome}"
-        )
+        assert isinstance(outcome, DeclarationSatisfied), f"dead_stock did not resolve: {outcome}"
         assert set(outcome.fetches) == {"current_state", "last_sale_at"}
 
         universe = await outcome.fetches["current_state"]()

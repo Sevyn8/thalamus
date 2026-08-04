@@ -224,25 +224,42 @@ def _event(n: int, *, supersedes: UUID | None = None) -> ActionEvent:
 
 def _position(sku: str, stock: Decimal | None) -> CurrentStateRow:
     return CurrentStateRow(
-        tenant_id=TENANT, store_id=STORE, sku_id=sku, product_name=sku, product_category=None,
-        sku_status="ACTIVE", current_retail_price=Decimal("89.0000"), unit_cost=None,
-        promo_price=None, stock_qty=stock, reorder_point=None, currency="INR", expiry_date=None,
-        last_source_event_at=None, last_updated_at=datetime(2026, 8, 4, tzinfo=UTC),
+        tenant_id=TENANT,
+        store_id=STORE,
+        sku_id=sku,
+        product_name=sku,
+        product_category=None,
+        sku_status="ACTIVE",
+        current_retail_price=Decimal("89.0000"),
+        unit_cost=None,
+        promo_price=None,
+        stock_qty=stock,
+        reorder_point=None,
+        currency="INR",
+        expiry_date=None,
+        last_source_event_at=None,
+        last_updated_at=datetime(2026, 8, 4, tzinfo=UTC),
     )
 
 
 def _finding(sku: str, *, dead: bool) -> DeadStockRow:
     return DeadStockRow(
-        tenant_id=TENANT, store_id=STORE, sku_id=sku,
-        days_since_last_sale=214 if dead else 3, is_dead_stock=dead,
+        tenant_id=TENANT,
+        store_id=STORE,
+        sku_id=sku,
+        days_since_last_sale=214 if dead else 3,
+        is_dead_stock=dead,
     )
 
 
 def _propose(findings: list[DeadStockRow], universe: list[CurrentStateRow]) -> list[Action]:
     return list(
         propose_dead_stock_actions(
-            findings, universe, declaration=DEAD_STOCK,
-            capability_versions=VERSIONS, as_of=AS_OF,
+            findings,
+            universe,
+            declaration=DEAD_STOCK,
+            capability_versions=VERSIONS,
+            as_of=AS_OF,
         )
     )
 
@@ -308,8 +325,11 @@ def test_a_declaration_with_no_holdout_refuses_to_propose() -> None:
 
     with pytest.raises(ValueError, match="declares no holdout"):
         propose_dead_stock_actions(
-            [_finding("DEAD", dead=True)], [], declaration=replace(DEAD_STOCK, holdout=None),
-            capability_versions=VERSIONS, as_of=AS_OF,
+            [_finding("DEAD", dead=True)],
+            [],
+            declaration=replace(DEAD_STOCK, holdout=None),
+            capability_versions=VERSIONS,
+            as_of=AS_OF,
         )
 
 
@@ -320,8 +340,11 @@ def test_a_declaration_missing_a_threshold_refuses_to_propose() -> None:
     only_stale = tuple(t for t in DEAD_STOCK.thresholds if t.name == "stale_after_days")
     with pytest.raises(ValueError, match="expires_after_days"):
         propose_dead_stock_actions(
-            [_finding("DEAD", dead=True)], [], declaration=replace(DEAD_STOCK, thresholds=only_stale),
-            capability_versions=VERSIONS, as_of=AS_OF,
+            [_finding("DEAD", dead=True)],
+            [],
+            declaration=replace(DEAD_STOCK, thresholds=only_stale),
+            capability_versions=VERSIONS,
+            as_of=AS_OF,
         )
 
 
@@ -334,12 +357,23 @@ def test_the_action_fixture_matches_what_the_proposer_produces() -> None:
     fixture = json.loads(
         (
             pathlib.Path(__file__).resolve().parents[3]
-            / "contracts" / "synapse" / "fixtures" / "action" / "dead_stock_review.json"
+            / "contracts"
+            / "synapse"
+            / "fixtures"
+            / "action"
+            / "dead_stock_review.json"
         ).read_text(encoding="utf-8")
     )
     (action,) = _propose(
-        [DeadStockRow(tenant_id=TENANT, store_id=STORE, sku_id="SKU-000123",
-                      days_since_last_sale=214, is_dead_stock=True)],
+        [
+            DeadStockRow(
+                tenant_id=TENANT,
+                store_id=STORE,
+                sku_id="SKU-000123",
+                days_since_last_sale=214,
+                is_dead_stock=True,
+            )
+        ],
         [_position("SKU-000123", Decimal("40.000"))],
     )
     assert fixture["verb"] == action.verb.value

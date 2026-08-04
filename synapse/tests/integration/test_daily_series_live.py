@@ -158,9 +158,7 @@ async def test_the_collapse_is_valid_postgres_and_the_rows_project() -> None:
 
     engine = create_rls_engine(DSN)
     try:
-        rows = await resolve_daily_series(
-            engine, _scope(), date_from=NARROW_FROM, date_to=NARROW_TO
-        )
+        rows = await resolve_daily_series(engine, _scope(), date_from=NARROW_FROM, date_to=NARROW_TO)
     finally:
         await engine.dispose()
 
@@ -214,9 +212,7 @@ async def test_the_collapse_yields_exactly_one_row_per_dedup_key(
                 event_time_column=_EVENT_TIME_COLUMN,
                 where=_key_scoped_predicate(scope, None),
             )
-            survivors = (
-                await conn.execute(select(func.count()).select_from(collapsed))
-            ).scalar_one()
+            survivors = (await conn.execute(select(func.count()).select_from(collapsed))).scalar_one()
     finally:
         await engine.dispose()
 
@@ -464,9 +460,7 @@ async def test_synapse_reader_is_subject_to_rls(require_canonical_rows: RequireR
     raw = create_async_engine(str(DSN))
     try:
         async with raw.connect() as conn:
-            no_gucs = (
-                await conn.execute(_COUNT_SALE_EVENTS, {"tenant": str(scope.tenant_id)})
-            ).scalar_one()
+            no_gucs = (await conn.execute(_COUNT_SALE_EVENTS, {"tenant": str(scope.tenant_id)})).scalar_one()
     finally:
         await raw.dispose()
 

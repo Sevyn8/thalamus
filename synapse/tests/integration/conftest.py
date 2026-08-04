@@ -74,12 +74,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 # granted when that role is provisioned.
 _COUNTS: dict[str, TextClause] = {
     "sale_events": text(
-        "SELECT COUNT(*) FROM canonical.store_sku_sale_events "
-        "WHERE tenant_id = CAST(:tenant AS uuid)"
+        "SELECT COUNT(*) FROM canonical.store_sku_sale_events WHERE tenant_id = CAST(:tenant AS uuid)"
     ),
     "current_position": text(
-        "SELECT COUNT(*) FROM canonical.store_sku_current_position "
-        "WHERE tenant_id = CAST(:tenant AS uuid)"
+        "SELECT COUNT(*) FROM canonical.store_sku_current_position WHERE tenant_id = CAST(:tenant AS uuid)"
     ),
 }
 
