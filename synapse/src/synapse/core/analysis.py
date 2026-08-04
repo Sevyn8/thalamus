@@ -237,10 +237,14 @@ DEAD_STOCK = AnalysisDeclaration(
                 "version is a capability, not arithmetic here, and it is cheap over the "
                 "collapsed sale dates: PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY gap) over "
                 "gap = event_date - LAG(event_date) OVER (PARTITION BY tenant_id, store_id, "
-                "sku_id ORDER BY event_date), aggregated per tenant. It is not in this slice "
-                "because that is a fourth and fifth capability in the slice that introduces "
-                "the declaration, and one pressure at a time is how this contract survived "
-                "the last three."
+                "sku_id ORDER BY event_date), aggregated per tenant. STILL A CONSTANT, and the "
+                "original reason is now spent: it said 'not in the slice that introduces the "
+                "declaration', and that slice has landed. The current reason is narrower and "
+                "checkable — the fitted version is a CAPABILITY, so it needs a descriptor, a "
+                "resolver, a registry row, a contract fixture and a live executability test, "
+                "which is the whole shape of a capability slice rather than a threshold change. "
+                "Until then this number is wrong for most of a catalogue in both directions and "
+                "says so."
             ),
         ),
     ),

@@ -185,11 +185,20 @@ class Satisfied[RowT]:
     analysis that declared it needs every series to have 90 days can receive rows covering a
     series with one day, and nothing in this type tells it so.
 
-    THE FIX, when there is a consumer to justify it, is for ``Satisfied`` to carry the
-    QUALIFYING POPULATION — the set of series that passed — and for ``fetch`` to be narrowed to
-    exactly those, so the answer describes the population the verdict was made about. That is a
-    change to what this class holds and to every resolver's narrowing, which is a slice with a
-    consumer in it (D5 keeps one out of this slice). Recorded rather than quietly carried.
+    THE FIX is for ``Satisfied`` to carry the QUALIFYING POPULATION — the set of series that
+    passed — and for ``fetch`` to be narrowed to exactly those, so the answer describes the
+    population the verdict was made about. That is a change to what this class holds and to every
+    resolver's narrowing.
+
+    RE-DEFERRED, WITH A DIFFERENT AND SELF-TRIGGERING REASON. The old wording said it belonged in
+    "a slice with a consumer in it", and a consumer arrived (``resolve_declaration``) without the
+    window becoming reachable — because the deferral named a SLICE rather than a CONDITION. Both
+    of ``dead_stock``'s requirements declare ``gates=()``, so no population is measured for it and
+    this window does not arise at all.
+
+    THE TRIGGER IS: THE FIRST ANALYSIS THAT BINDS A GATE. That is a condition the code can be
+    checked against rather than a milestone someone has to remember, which is the whole point —
+    a deferral that names its own trigger beats one that names a slice.
     """
 
     status: ClassVar[ResolutionStatus] = ResolutionStatus.SATISFIED

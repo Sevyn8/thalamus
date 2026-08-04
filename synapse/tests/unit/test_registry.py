@@ -28,8 +28,15 @@ from synapse.core.analysis import (
 from synapse.core.capability import (
     CURRENT_STATE,
     DAILY_SERIES,
+    LAST_SALE_AT,
     CapabilityScope,
     GateKind,
+)
+from synapse.core.dead_stock import DeadStockRow
+from synapse.core.declaration_resolution import (
+    DeclarationBlocked,
+    DeclarationSatisfied,
+    DeclarationUndeclared,
 )
 from synapse.core.resolution import (
     Observation,
@@ -42,12 +49,14 @@ from synapse.registry import (
     _REGISTRY,
     ProbeBinding,
     RegisteredCapability,
+    _check_analyses,
     _check_declarations,
     _check_registry,
     declared_analysis_ids,
     declined_ids,
     registered_ids,
     resolve,
+    resolve_declaration,
 )
 from synapse.resolvers.daily_series import DATE_COLUMN, SERIES_GRAIN
 
@@ -564,6 +573,35 @@ def test_the_real_declaration_satisfies_every_cross_check() -> None:
     _check_declarations()
 
 
+async def _no_rows() -> list[object]:
+    return []
+
+
+def _gateless_registry(
+    calls: list[tuple[str, object]],
+) -> MappingProxyType[str, RegisteredCapability]:
+    """A registry for dead_stock's two GATELESS capabilities, recording resolver calls.
+
+    Gateless is the point: dead_stock needs no history coverage because ABSENCE is its signal, so
+    neither requirement binds a gate and no probe runs.
+    """
+
+    async def resolver(engine: AsyncEngine, scope: CapabilityScope, **narrowing: object) -> list[object]:
+        calls.append(("resolve", narrowing))
+        return ["row"]
+
+    return MappingProxyType(
+        {
+            CURRENT_STATE.id: RegisteredCapability(
+                descriptor=CURRENT_STATE, resolver=resolver, probes=MappingProxyType({})
+            ),
+            LAST_SALE_AT.id: RegisteredCapability(
+                descriptor=LAST_SALE_AT, resolver=resolver, probes=MappingProxyType({})
+            ),
+        }
+    )
+
+
 def _declaring(declaration: AnalysisDeclaration) -> MappingProxyType[str, AnalysisDeclaration]:
     return MappingProxyType({declaration.id: declaration})
 
@@ -648,3 +686,183 @@ def test_the_field_check_catches_reading_a_field_a_capability_does_not_return(
     monkeypatch.setattr(registry_module, "_DECLARATIONS", _declaring(broken))
     with pytest.raises(ValueError, match="which does not return them"):
         _check_declarations()
+
+
+# ---------------------------------------------------------------------------
+# resolve_declaration — the consumer that makes a declaration RUN
+# ---------------------------------------------------------------------------
+
+
+def test_every_declaration_has_an_evaluator_and_vice_versa() -> None:
+    """Non-vacuity for the check below, and the property that matters: a declaration with no
+    evaluator is an analysis that cannot run."""
+    assert set(registry_module._DECLARATIONS) == set(registry_module._ANALYSES)
+    _check_analyses()
+
+
+def test_the_evaluators_row_matches_the_declarations_emits() -> None:
+    """THE FOURTH MECHANICAL USE OF THE DECLARATION, after grain containment, fields-in-returns
+    and gate binding. `emits` stops being a parallel list the moment this exists."""
+    assert set(DeadStockRow.__dataclass_fields__) == set(DEAD_STOCK.emits)
+
+
+def test_the_emits_check_catches_a_declaration_promising_a_field_the_code_does_not_produce(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A declaration promising `days_since_last_sale` while the evaluator returns
+    `days_since_sale` would otherwise be caught by nobody until a consumer read the wrong
+    attribute — and reading a missing attribute on a frozen dataclass is an AttributeError at
+    the worst possible moment rather than at import."""
+    drifted = replace(DEAD_STOCK, emits=(*DEAD_STOCK.emits, "invented_field"))
+    monkeypatch.setattr(registry_module, "_DECLARATIONS", _declaring(drifted))
+    with pytest.raises(ValueError, match="must BE what the code produces"):
+        _check_analyses()
+
+
+def test_the_evaluator_check_catches_a_declaration_with_no_evaluator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(registry_module, "_ANALYSES", MappingProxyType({}))
+    with pytest.raises(ValueError, match="declared but have no evaluator"):
+        _check_analyses()
+
+
+async def test_an_unknown_analysis_resolves_to_undeclared() -> None:
+    outcome = await resolve_declaration(NO_ENGINE, "daed_stock", SCOPE)
+    assert isinstance(outcome, DeclarationUndeclared)
+    assert outcome.analysis_id == "daed_stock"
+
+
+async def test_a_declaration_is_satisfied_only_when_every_requirement_is(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ALL-OR-NOTHING, exercised rather than assumed.
+
+    dead_stock's two requirements both resolve against a stub registry, so it satisfies. Remove
+    one capability from the registry and it blocks — it does not return half an answer, because
+    for dead_stock half an answer is a WRONG one: without current_state there is no universe to
+    date against, so no absence is derivable at all.
+    """
+    calls: list[tuple[str, object]] = []
+    monkeypatch.setattr(registry_module, "_REGISTRY", _gateless_registry(calls))
+
+    satisfied = await resolve_declaration(NO_ENGINE, "dead_stock", SCOPE)
+    assert isinstance(satisfied, DeclarationSatisfied)
+    assert set(satisfied.fetches) == {"current_state", "last_sale_at"}
+
+    # ...and the fetches are BOUND, not called: asking "could this run" must not cost two reads.
+    assert calls == []
+    assert await satisfied.fetches["current_state"]() == ["row"]
+    assert [kind for kind, _ in calls] == ["resolve"]
+
+
+async def test_one_unregistered_requirement_blocks_the_declaration_and_says_which(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """THE FIRST OF THE TWO DISTINGUISHABLE BLOCKS. Blocked carries the per-capability outcome,
+    so 'last_sale_at does not exist' is not flattened into 'dead_stock is unavailable'."""
+    registry = dict(_gateless_registry([]))
+    del registry["last_sale_at"]
+    monkeypatch.setattr(registry_module, "_REGISTRY", MappingProxyType(registry))
+
+    outcome = await resolve_declaration(NO_ENGINE, "dead_stock", SCOPE)
+    assert isinstance(outcome, DeclarationBlocked)
+    assert set(outcome.blocked) == {"last_sale_at"}
+    assert isinstance(outcome.blocked["last_sale_at"], Unregistered)
+    # The satisfied requirement is NOT in the mapping — blocked means blocked, and a Satisfied
+    # in there would be a contradiction the type refuses.
+    assert "current_state" not in outcome.blocked
+
+
+async def test_a_precondition_unmet_requirement_blocks_and_keeps_its_counts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """THE SECOND DISTINGUISHABLE BLOCK, and the one slice 1 built the three outcomes for: the
+    capability EXISTS and this tenant is short, by a number the console can render."""
+    gated = replace(
+        DEAD_STOCK,
+        requires=(
+            CapabilityRequirement(
+                capability_id="daily_series",
+                fields=("tenant_id", "store_id", "sku_id", "event_date"),
+                gates=(MinHistoryDays(days=60, policy=SeriesPolicy.ALL_SERIES),),
+            ),
+        ),
+        grain=("tenant_id", "store_id", "sku_id"),
+    )
+    monkeypatch.setattr(registry_module, "_DECLARATIONS", _declaring(gated))
+    monkeypatch.setattr(registry_module, "_REGISTRY", _stub_registry(qualifying=3, measured=66))
+
+    outcome = await resolve_declaration(NO_ENGINE, "dead_stock", SCOPE)
+    assert isinstance(outcome, DeclarationBlocked)
+    unmet = outcome.blocked["daily_series"]
+    assert isinstance(unmet, PreconditionUnmet)
+    assert (unmet.unmet[0].pairs_qualifying, unmet.unmet[0].pairs_measured) == (3, 66)
+
+
+async def test_both_requirements_are_evaluated_even_when_the_first_blocks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """NEVER SHORT-CIRCUITED. An operator about to provision one missing capability needs to know
+    the other is also missing, or they fix one thing and re-run to discover the next."""
+    monkeypatch.setattr(registry_module, "_REGISTRY", MappingProxyType({}))
+    outcome = await resolve_declaration(NO_ENGINE, "dead_stock", SCOPE)
+    assert isinstance(outcome, DeclarationBlocked)
+    assert set(outcome.blocked) == {"current_state", "last_sale_at"}, "both, not just the first"
+
+
+async def test_the_declarations_own_gates_are_what_get_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Slice 2's inversion paying off: the threshold and policy come from the DECLARATION, so two
+    analyses requiring one capability at different thresholds each get their own answer."""
+    calls: list[tuple[str, object]] = []
+    gated = replace(
+        DEAD_STOCK,
+        requires=(
+            CapabilityRequirement(
+                capability_id="daily_series",
+                fields=("tenant_id", "store_id", "sku_id", "event_date"),
+                gates=(MinHistoryDays(days=90, policy=SeriesPolicy.ANY_SERIES),),
+            ),
+        ),
+    )
+    monkeypatch.setattr(registry_module, "_DECLARATIONS", _declaring(gated))
+    monkeypatch.setattr(
+        registry_module, "_REGISTRY", _stub_registry(qualifying=66, calls=calls)
+    )
+    outcome = await resolve_declaration(NO_ENGINE, "dead_stock", SCOPE)
+    assert isinstance(outcome, DeclarationSatisfied)
+    # (store_id, sku_id, required) — the 90 came from the declaration, not the descriptor.
+    assert calls[0][1] == (None, None, 90)
+
+
+def test_declaration_satisfied_refuses_a_missing_fetch() -> None:
+    """Satisfied means EVERY requirement; a missing fetch here would let a consumer compute over
+    one input, which for dead_stock reports the whole catalogue as dead."""
+    with pytest.raises(ValueError, match="satisfied means EVERY requirement"):
+        DeclarationSatisfied(declaration=DEAD_STOCK, fetches={"current_state": _no_rows})
+
+
+def test_declaration_blocked_refuses_an_empty_mapping() -> None:
+    with pytest.raises(ValueError, match="Satisfied in disguise"):
+        DeclarationBlocked(declaration=DEAD_STOCK, blocked={})
+
+
+def test_declaration_blocked_refuses_a_satisfied_outcome() -> None:
+    """UNLIKE the per-capability layer, this check CAN exist: 'satisfied' is unambiguous at the
+    declaration level because no policy is involved, so the engine's filter is checkable rather
+    than merely trusted."""
+    with pytest.raises(ValueError, match="carries SATISFIED outcomes"):
+        DeclarationBlocked(
+            declaration=DEAD_STOCK,
+            blocked={"current_state": Satisfied(descriptor=CURRENT_STATE, fetch=_no_rows)},
+        )
+
+
+def test_declaration_blocked_refuses_a_capability_it_does_not_require() -> None:
+    with pytest.raises(ValueError, match="which it does not require"):
+        DeclarationBlocked(
+            declaration=DEAD_STOCK,
+            blocked={"daily_series": Unregistered(capability_id="daily_series")},
+        )

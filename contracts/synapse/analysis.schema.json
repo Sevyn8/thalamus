@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sevyn8.com/contracts/synapse/analysis.schema.json",
   "title": "Synapse analysis declaration",
-  "description": "THE DEMAND SIDE. What a consumer NEEDS, as data. The capability and signal contracts describe what Synapse OFFERS; nothing described what anything REQUIRED, so an analysis's inputs could only be discovered by running it. EXTRACTED from writing dead_stock, not designed in advance: every field here exists because that declaration could not be written without it, and the two fields most likely to be wanted next (a schedule, and an output destination) are ABSENT because nothing consumes an analysis's output yet and inventing them now would be guessing.",
+  "description": "THE DEMAND SIDE. What a consumer NEEDS, as data. The capability and signal contracts describe what Synapse OFFERS; nothing described what anything REQUIRED, so an analysis's inputs could only be discovered by running it. EXTRACTED from writing dead_stock, not designed in advance: every field here exists because that declaration could not be written without it, and the two fields most likely to be wanted next (a schedule, and an output destination) are still ABSENT: an evaluator now consumes a declaration and produces rows, but nothing SCHEDULES one or DELIVERS the result anywhere, so both fields would still be guesses about shapes no caller has asked for.",
   "type": "object",
   "additionalProperties": false,
   "required": ["id", "version", "grain", "requires", "emits", "thresholds"],

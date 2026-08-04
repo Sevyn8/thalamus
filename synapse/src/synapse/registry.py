@@ -1,11 +1,27 @@
 """The capability registry, the analysis declarations, and the resolution engine. ALL DATA.
 
-Three mappings and one function. ``_REGISTRY`` binds a capability id to its descriptor, its
-resolver and its gate probes; ``_DECLINED`` records ids that will never have an entry, and why;
-``_DECLARATIONS`` holds the analysis declarations. ``resolve()`` reads them and returns one of
-the three outcomes in ``synapse.core.resolution``. There is no dispatch on capability id or
-analysis id anywhere — adding either is adding a row, and every invariant below is checked at
-import rather than trusted.
+FOUR MAPPINGS AND TWO FUNCTIONS, and which reads which matters:
+
+- ``_REGISTRY``     capability id -> descriptor + resolver + gate probes.
+- ``_DECLINED``     capability ids that will never have an entry, and the verified reason.
+- ``_DECLARATIONS`` analysis id -> its declaration.
+- ``_ANALYSES``     analysis id -> its evaluator function.
+
+``resolve()`` reads ``_REGISTRY`` and ``_DECLINED`` and returns one of the three outcomes in
+``synapse.core.resolution``. ``resolve_declaration()`` reads ``_DECLARATIONS``, calls
+``resolve()`` once per requirement, and returns one of the three in
+``synapse.core.declaration_resolution``. ``_ANALYSES`` is read by the import-time checks and by
+whoever evaluates; nothing here calls an evaluator, because resolution and arithmetic are
+separate concerns.
+
+(The previous version of this paragraph said "``resolve()`` reads them", of all three mappings.
+That was FALSE when written — resolve() never touched ``_DECLARATIONS`` — and slice 3 adding
+``resolve_declaration()`` would have made it quietly true, which is worse than leaving it wrong:
+the drift that exposes a false claim never happens, and a grep for expired claims never fires
+because by then it is accurate. Corrected by naming each reader explicitly.)
+
+There is no dispatch on capability id or analysis id anywhere — adding either is adding a row,
+and every invariant below is checked at import rather than trusted.
 
 DECLARATIONS LIVE HERE RATHER THAN IN THEIR OWN MODULE because the checks that matter are
 CROSS-checks: an analysis's fields against a capability's ``returns``, its grain against every
@@ -46,6 +62,14 @@ from synapse.core.capability import (
     CapabilityScope,
     GateKind,
 )
+from synapse.core.dead_stock import DeadStockRow, evaluate_dead_stock
+from synapse.core.declaration_resolution import (
+    DeclarationBlocked,
+    DeclarationResolution,
+    DeclarationSatisfied,
+    DeclarationUndeclared,
+    Fetch,
+)
 from synapse.core.resolution import (
     Observation,
     PreconditionReport,
@@ -70,6 +94,21 @@ from synapse.resolvers.last_sale_at import resolve_last_sale_at
 # current_state has no concept of one) and flattening them into one shape would mean
 # inventing a shared parameter object for two samples.
 Resolver = Callable[..., Awaitable[Sequence[object]]]
+
+# An analysis evaluator: pure, synchronous, rows in and rows out. NOT async and NOT engine-taking,
+# and both are deliberate — an evaluator that could reach a database would be a resolver wearing
+# the wrong name, and the whole point of the split is that arithmetic happens on rows somebody
+# else fetched.
+Evaluator = Callable[..., Sequence[object]]
+
+# The dataclass each declaration's evaluator returns, for the emits check below. A mapping rather
+# than an attribute on the evaluator, because a plain function cannot carry one without either a
+# decorator or a mutated __dict__, and both hide the binding from the reader.
+_EVALUATOR_ROWS: Final[Mapping[str, type]] = MappingProxyType(
+    {
+        DEAD_STOCK.id: DeadStockRow,
+    }
+)
 
 
 class Probe(Protocol):
@@ -182,6 +221,22 @@ _REGISTRY: Final[Mapping[str, RegisteredCapability]] = MappingProxyType(
 _DECLARATIONS: Final[Mapping[str, AnalysisDeclaration]] = MappingProxyType(
     {
         DEAD_STOCK.id: DEAD_STOCK,
+    }
+)
+
+
+# THE EVALUATORS. Data binding an id to a function, exactly as _REGISTRY binds a capability id
+# to a resolver — the plugin shape, not an engine. Adding an analysis is a _DECLARATIONS row
+# plus an _ANALYSES row plus a function, and no code here changes.
+#
+# Typed loosely for the same reason Resolver is: signatures differ by what each analysis reads,
+# and flattening them into one shape would mean inventing a shared parameter object from one
+# sample. The import-time check below is what keeps a binding honest — it compares the
+# evaluator's OUTPUT FIELDS against the declaration's `emits`, so the declaration's promise about
+# what it produces is verified against what the code produces.
+_ANALYSES: Final[Mapping[str, Evaluator]] = MappingProxyType(
+    {
+        DEAD_STOCK.id: evaluate_dead_stock,
     }
 )
 
@@ -329,9 +384,15 @@ def _check_declarations() -> None:
       catch reaching for a plausible-but-absent field — the most likely way an analysis goes
       quietly wrong.
 
-    Gate BINDING is checked at resolve() rather than here: a declaration may legitimately be
-    written before the capability grows a gate, and the binding that matters is the one on the
-    call. See ``resolve``.
+    FIVE OF THEM NOW; the last two arrived with the evaluators.
+
+    Gate BINDING is checked at resolve() rather than here, and that is still right even though
+    ``resolve_declaration()`` now supplies a declaration's gates AS the binding on the call. The
+    check belongs where the call is made because a declaration may legitimately be written
+    before the capability grows a gate — and when that happens the declaration is not wrong, it
+    is out of date, and the loud failure should come from the attempt rather than from import.
+    A declaration that binds nothing against a capability that later declares a gate fails at
+    resolve() with the exact mismatch named. See ``resolve``.
     """
     for key, declaration in _DECLARATIONS.items():
         if key != declaration.id:
@@ -365,8 +426,46 @@ def _check_declarations() -> None:
                 )
 
 
+def _check_analyses() -> None:
+    """Evaluator invariants, checked at IMPORT.
+
+    - every declaration has an evaluator, and every evaluator a declaration. A declaration with
+      no evaluator is an analysis that cannot run — the artifact class this project keeps
+      deleting — and an evaluator with no declaration is arithmetic nothing describes.
+    - THE EMITS CHECK: the evaluator's row type must match ``emits`` field-for-field. This is the
+      fourth mechanical use of the declaration (after grain containment, fields-in-returns, and
+      gate binding), and it is what stops ``emits`` being a parallel list that drifts from the
+      code. A declaration promising ``days_since_last_sale`` while the evaluator returns
+      ``days_since_sale`` would otherwise be caught by nobody until a consumer read the wrong
+      attribute.
+    """
+    missing_evaluator = sorted(set(_DECLARATIONS) - set(_ANALYSES))
+    if missing_evaluator:
+        raise ValueError(
+            f"{missing_evaluator} are declared but have no evaluator; a declaration that cannot "
+            "run is a description of nothing"
+        )
+    orphan_evaluator = sorted(set(_ANALYSES) - set(_DECLARATIONS))
+    if orphan_evaluator:
+        raise ValueError(f"{orphan_evaluator} have an evaluator but no declaration")
+
+    for analysis_id, declaration in _DECLARATIONS.items():
+        row_type = _EVALUATOR_ROWS.get(analysis_id)
+        if row_type is None:
+            raise ValueError(f"{analysis_id!r} has an evaluator but no declared row type")
+        produced = set(getattr(row_type, "__dataclass_fields__", {}))
+        promised = set(declaration.emits)
+        if produced != promised:
+            raise ValueError(
+                f"analysis {analysis_id!r} emits {sorted(promised)} but its evaluator returns "
+                f"{row_type.__name__} with fields {sorted(produced)}. The declaration's promise "
+                "about what it produces must BE what the code produces"
+            )
+
+
 _check_registry()
 _check_declarations()
+_check_analyses()
 
 
 def declared_analysis_ids() -> tuple[str, ...]:
@@ -482,7 +581,93 @@ async def resolve(
     return Satisfied(descriptor=entry.descriptor, fetch=fetch)
 
 
+
+async def resolve_declaration(
+    engine: AsyncEngine,
+    analysis_id: str,
+    scope: CapabilityScope,
+    *,
+    store_id: UUID | None = None,
+    sku_id: str | None = None,
+) -> DeclarationResolution:
+    """Answer whether an ANALYSIS can run for ``scope`` right now, and hand back its inputs.
+
+    The consumer that makes a declaration RUN rather than merely cohere. Until this existed,
+    ``_check_declarations()`` verified at import that dead_stock's grain was joinable and its
+    fields were real, and nothing had ever fetched a row for it.
+
+    ONE ``resolve()`` PER REQUIREMENT, WITH THE DECLARATION'S OWN GATES. This is where slice 2's
+    inversion pays off: the thresholds and policies come from the declaration, so two analyses
+    requiring the same capability at different thresholds each get their own answer, and neither
+    can be given a verdict nobody asked for.
+
+    EVERY REQUIREMENT IS EVALUATED, never short-circuited on the first block. An operator about
+    to provision one missing capability needs to know the other is also missing, or they will fix
+    one thing and re-run to discover the next. Costs one extra cheap probe per blocked
+    requirement.
+
+    ALL-OR-NOTHING, and see ``synapse.core.declaration_resolution`` for why it is structural: for
+    dead_stock, resolving only ``last_sale_at`` would not give half an answer, it would report the
+    entire catalogue as dead because there is no universe to date against.
+
+    NARROWING IS store_id / sku_id ONLY, and there is a real gap here worth naming rather than
+    discovering. A requirement on a capability needing MORE narrowing — ``daily_series`` requires
+    a date window with no default — has nowhere to get it: the declaration has no field for
+    per-capability call arguments, and inventing one now would be guessing at a shape no analysis
+    has asked for. No current declaration requires such a capability. The first one that does
+    forces that field, and it will be an obvious failure (``TypeError`` on the missing keyword
+    when ``fetch`` is awaited) rather than a silent one.
+
+    THE FETCHES ARE BOUND, NOT CALLED — same posture as ``Satisfied``, so asking "could this run"
+    does not cost two full reads.
+
+    THE CROSS-CAPABILITY SKEW IS ACCEPTED AND NAMED. Each requirement is probed and fetched in its
+    own ``rls_session`` transaction, so a two-capability answer joins two snapshots taken at
+    different instants. Concretely: a SKU's first sale arriving between the two fetches makes
+    ``last_sale_at`` return a position ``current_state`` did not, which looks exactly like a
+    violation of the subset claim dead_stock rests on and is pure timing.
+
+    ONE TRANSACTION WOULD NOT CLOSE IT, which is why this does not try. Postgres defaults to READ
+    COMMITTED, where each statement takes its own snapshot, so two SELECTs in one transaction
+    still see different instants; closing it needs REPEATABLE READ. ``dis_rls.rls_session`` has no
+    isolation parameter, and ``SET TRANSACTION ISOLATION LEVEL`` must precede any query in the
+    transaction while ``rls_session`` issues its posture guard and both ``set_config`` calls before
+    yielding — so it cannot be set from outside ``dis_rls`` at all. And a held transaction is the
+    wrong shape for a call whose fetches a caller may hold indefinitely: a pinned connection and a
+    long-running transaction while somebody looks at a page. The fix is an isolation parameter on
+    ``rls_session`` plus connection-accepting resolvers, which is a DIS-side change and its own
+    slice. Recorded rather than quietly carried.
+
+    Raises ``ValueError`` if a requirement's gate binding does not match what the capability
+    declares — a caller bug surfaced by ``resolve()``, not a state of the tenant's data.
+    """
+    declaration = _DECLARATIONS.get(analysis_id)
+    if declaration is None:
+        return DeclarationUndeclared(analysis_id=analysis_id)
+
+    fetches: dict[str, Fetch] = {}
+    blocked: dict[str, Resolution[object]] = {}
+    for requirement in declaration.requires:
+        outcome = await resolve(
+            engine,
+            requirement.capability_id,
+            scope,
+            gates=requirement.gates,
+            store_id=store_id,
+            sku_id=sku_id,
+        )
+        if isinstance(outcome, Satisfied):
+            fetches[requirement.capability_id] = outcome.fetch
+        else:
+            blocked[requirement.capability_id] = outcome
+
+    if blocked:
+        return DeclarationBlocked(declaration=declaration, blocked=blocked)
+    return DeclarationSatisfied(declaration=declaration, fetches=fetches)
+
+
 __all__ = [
+    "Evaluator",
     "Probe",
     "ProbeBinding",
     "RegisteredCapability",
@@ -491,4 +676,5 @@ __all__ = [
     "declined_ids",
     "registered_ids",
     "resolve",
+    "resolve_declaration",
 ]
