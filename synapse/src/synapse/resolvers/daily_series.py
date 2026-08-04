@@ -3,12 +3,15 @@
 The SECOND capability, and the one that turned resolution from "does a resolver exist"
 into "can this be satisfied FOR THIS TENANT, RIGHT NOW". Two things it forced:
 
-1. ``preconditions`` on the descriptor (see ``synapse.core.capability``). Declared there,
-   MEASURED here — ``probe_min_history_days`` names a table, so it can only live in this
-   package (D6). The declaration/measurement split is the whole reason the three
-   resolution outcomes can be told apart without running the resolver body. The measurement
-   grain is ``SERIES_GRAIN``, and the registry checks it against the descriptor's declared
-   grain at import; see that constant for the per-tenant defect the check exists to prevent.
+1. GATES. The capability declares the KIND it can be measured on
+   (``synapse.core.capability.GateKind``), a caller supplies the threshold and the policy
+   (``synapse.core.analysis``), and the MEASUREMENT is here — ``probe_min_history_days`` names
+   a table, so it can only live in this package (D6). That three-way split is the whole reason
+   the resolution outcomes can be told apart without running the resolver body. The
+   measurement grain is ``SERIES_GRAIN``, and the registry checks it against the descriptor's
+   declared grain at import; see that constant for the per-tenant defect it exists to prevent.
+   (Slice 1 had the threshold on the descriptor as ``preconditions``; two callers wanting
+   different numbers is what moved it.)
 2. The D33 collapse as a shared helper (``._collapse``). An aggregate over the raw event
    table double-counts every correction, and this is the first real aggregate in the
    codebase — ``SUM(quantity) GROUP BY date``, named in the streaming consumer's own
@@ -397,8 +400,9 @@ async def probe_min_history_days(
 
     ``sku_id`` narrows to ONE series, which is the only case where the measurement is a
     single-series answer rather than a population. Unnarrowed, the two counts describe the
-    population and the verdict over them is POLICY — see ``satisfies_placeholder_policy``,
-    which this probe deliberately knows nothing about.
+    population and the verdict over them is POLICY — see ``synapse.core.resolution.SeriesPolicy``,
+    which this probe deliberately knows nothing about: it is handed a threshold and returns
+    counts.
 
     ``measured_at`` comes from the DATABASE clock in the same transaction as the counts, so the
     timestamp on the report describes the same instant as the numbers beside it.

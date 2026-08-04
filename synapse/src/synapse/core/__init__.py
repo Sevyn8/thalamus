@@ -12,8 +12,10 @@ THE CONTRACTS COVER ``synapse.core``, NOT "everything but resolvers". This docst
 previously described the wider rule; the wider rule is now real, but as the layers
 contract rather than as these two — see dis/pyproject.toml.
 
-WHERE THE PRECONDITION SPLIT LANDS. ``core.capability`` DECLARES preconditions as pure
-data (a threshold, no SQL). The MEASUREMENT is a database read that names a canonical
-table, so it lives in ``synapse.resolvers`` — a probe placed here would fail the lint
-above, which is why the split is a mechanism rather than a convention.
+WHERE THE GATE SPLIT LANDS, and it is now THREE-WAY rather than two. ``core.capability``
+declares which gate KINDS a capability can be measured on; ``core.analysis`` carries the
+THRESHOLD and the POLICY, because those belong to whoever is asking; and the MEASUREMENT is
+a database read that names a canonical table, so it lives in ``synapse.resolvers`` — a probe
+placed here would fail the lint above, which is why that third part is a mechanism rather
+than a convention. Slice 1 had the threshold on the descriptor and no policy anywhere.
 """

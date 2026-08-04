@@ -21,24 +21,43 @@ WHAT BUILDING ONE RESOLVER ACTUALLY FORCED:
   these apart will average a point-in-time against a series.
 - ``produces_signals``: DISCOVERED, and the discovery is the interesting part. See
   the note on it below.
-- ``preconditions``: forced by the SECOND resolver. ``current_state`` answers for any
-  tenant that exists; ``daily_series`` cannot answer usefully for a tenant with twelve
-  days of history. That makes resolution "can this be satisfied FOR THIS TENANT, RIGHT
-  NOW" rather than "does a resolver exist", and a consumer must be able to learn the
-  requirement WITHOUT calling the resolver — which is only possible if it is declared
-  here. See the field comment for the declaration/measurement split.
+- ``gates``: forced by the SECOND resolver, and INVERTED by the first analysis. See below.
 
-DELIBERATELY ABSENT, because two resolvers cannot justify them: cost/latency classes,
-caching, substitution rules, pagination shape, and any notion of a capability
-composing another. Adding them from two samples would be guessing, and this project
-has a standing rule about artifacts that assert more than they know.
+WHAT COMPOSITION DID TO THIS CONTRACT, and it is the interesting result of slice 2.
+
+The contract was extracted from ONE resolver (``current_state``) and survived two more.
+Slice 2 put it under a pressure it was never designed for — an analysis composing TWO
+capabilities — and the outcome is worth stating as evidence rather than as a change log:
+
+SEVEN OF EIGHT FIELDS SURVIVED UNCHANGED. ``id``, ``version``, ``grain``, ``tenancy``,
+``freshness``, ``returns`` and ``produces_signals`` needed no edit to express a
+two-capability analysis.
+
+``grain`` WAS VINDICATED. It is what makes the join between two capabilities CHECKABLE:
+``dead_stock`` declares grain ``(tenant_id, store_id, sku_id)`` and requires two
+capabilities whose grains must contain it, which ``_check_declarations`` enforces at
+import. A field extracted because "a consumer cannot join two capabilities without it"
+turned out to be exactly right the first time two were joined.
+
+``preconditions`` DID NOT SURVIVE, and could not have. It held a VALUE —
+``MinHistoryDays(days=60)`` — on the SUPPLY side. That works while there is one caller
+and breaks the moment there are two: dead stock wants 90 days of no-sales, a forecast
+wants 60 for seasonality, and both ask the same capability for the same rows. A threshold
+is an argument OF A REQUIREMENT, so it moved to the demand side
+(``synapse.core.analysis``). What remains here is ``gates``: the KINDS this capability can
+be measured on, which is a property of the capability because it is a property of whether
+a probe exists at the right grain.
+
+DELIBERATELY STILL ABSENT: cost/latency classes, caching, substitution rules, pagination
+shape, and any notion of a capability composing another (composition lives in the ANALYSIS,
+which is the layer that has a reason to compose). Adding them from three samples would
+still be guessing.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import ClassVar
 from uuid import UUID
 
 
@@ -73,49 +92,24 @@ class Freshness(StrEnum):
     AS_OF_DATE = "as_of_date"
 
 
-@dataclass(frozen=True)
-class MinHistoryDays:
-    """A series needs at least ``days`` distinct dates of OBSERVATIONS in scope.
+class GateKind(StrEnum):
+    """A KIND of precondition a capability can be measured on. No value, on purpose.
 
-    COVERAGE, NOT SPAN. A forecaster needs observations, not calendar distance. A tenant
-    onboarded ninety days ago that has sold on twelve of them has a span of 90 and a
-    coverage of 12, and only the 12 is a count of things a model can fit to. So ``days``
-    counts DISTINCT dates CARRYING DATA. Span is the rejected alternative, named here so the
-    next reader knows it was a choice rather than an implementation accident.
+    THE INVERSION. Slice 1 had ``MinHistoryDays(days=60)`` here — a bound threshold on the
+    supply side. That is wrong the moment two callers want different numbers, which is
+    exactly what the first analysis produced. So the capability now declares only what it
+    CAN be gated on, and the caller supplies the number (``synapse.core.analysis``).
 
-    MEASURED PER SERIES, not per tenant. The measurement grain is the capability's declared
-    grain minus the date column, and that is enforced at registry import — see the grain rule
-    in synapse/registry.py. A per-tenant count would pass trivially while saying nothing
-    about whether any individual series is forecastable, which is the defect that rule exists
-    to make impossible.
+    A capability may declare a gate ONLY if a probe exists for it at the right grain: the
+    registry enforces ``set(gates) == set(probes)`` and the grain rule per probe, both at
+    import. So this is not a wish list — every value here is a measurement that exists.
 
-    A FITNESS precondition, not a computability one. A twelve-day daily series computes
-    perfectly well; it is just not the thing a consumer asking for a series means. The
-    resolution engine therefore REFUSES rather than returning a short series, because
-    handing back twelve days to a consumer that assumed sixty is the same class of
-    error the ``freshness`` enum exists to prevent — a plausible answer to a question
-    nobody asked.
-
-    ``name`` is a ClassVar, so it cannot be set per-instance and cannot drift from the
-    probe that measures it (the registry pairs the two BY this name).
+    A StrEnum rather than plain strings so the probe mapping is keyed by something typed,
+    and so ``match`` over it with ``assert_never`` forces a visible edit when a second kind
+    arrives — the same discipline the ``Precondition`` union alias carried in slice 1.
     """
 
-    name: ClassVar[str] = "min_history_days"
-
-    # STANDING IN FOR A CALLER. See the DAILY_SERIES declaration for why any value here is
-    # provisional: this is an argument OF A REQUIREMENT, not a property of the capability.
-    days: int
-
-    def __post_init__(self) -> None:
-        if self.days < 1:
-            raise ValueError(f"min_history_days must be at least 1 day, got {self.days}")
-
-
-# ONE KIND, and the alias exists so that adding a second is a VISIBLE edit here rather
-# than a new string flowing through a generic (name, operator, value) triple. Such a
-# triple invented from one sample is exactly the guessing this module's docstring rules
-# out for cost classes and caching; the union grows when a second precondition is real.
-type Precondition = MinHistoryDays
+    MIN_HISTORY_DAYS = "min_history_days"
 
 
 @dataclass(frozen=True)
@@ -174,9 +168,14 @@ class CapabilityDescriptor:
     # so a probe placed here would fail lint.
     #
     # NO DEFAULT, deliberately, for the same reason produces_signals has none: an empty
-    # tuple is a claim ("verified: this answers for any tenant that exists") and a
-    # missing argument is a silence, and the two must not be the same value.
-    preconditions: tuple[Precondition, ...]
+    # tuple is a claim ("verified: nothing about this capability is gateable") and a missing
+    # argument is a silence, and the two must not be the same value.
+    #
+    # KINDS, NOT VALUES — see GateKind for why the value moved to the demand side. A caller
+    # must bind every kind listed here: `resolve()` refuses a call whose supplied gate kinds
+    # do not equal this tuple exactly, because a declared gate nobody binds is a gate that
+    # never runs, and a gate that never runs is decorative.
+    gates: tuple[GateKind, ...]
 
 
 CURRENT_STATE = CapabilityDescriptor(
@@ -208,8 +207,8 @@ CURRENT_STATE = CapabilityDescriptor(
     # current_state reads the hot table, which either has a row for a (tenant, store,
     # sku) or does not. There is no quantity of history that makes the answer usable or
     # unusable, so there is nothing to require. An empty result is a legitimate state,
-    # not an unmet precondition.
-    preconditions=(),
+    # not an unmet gate.
+    gates=(),
 )
 
 
@@ -247,23 +246,44 @@ DAILY_SERIES = CapabilityDescriptor(
     # Same verified-empty state as current_state, same reason: nothing writes the
     # signal-history table, so no capability produces a signal today.
     produces_signals=(),
-    # NON-EMPTY, and this capability is why the field exists. See MinHistoryDays for what
-    # the threshold means (coverage, not span) and why an unmet precondition is a refusal
-    # rather than a short answer.
+    # NO NUMBER HERE ANY MORE, and its removal is the point of slice 2. This says only that
+    # daily_series CAN be gated on history coverage — a probe exists for it, at the grain the
+    # registry checks. What "enough" is, and how a per-series measurement reduces to a
+    # verdict, are the CALLER's to state: see synapse.core.analysis.MinHistoryDays, which
+    # carries both the threshold and the SeriesPolicy.
     #
-    # THE 60 IS STANDING IN FOR A CALLER, AND IS NOT A PROPERTY OF THIS CAPABILITY.
-    # min_days is an argument OF THE REQUIREMENT, not of the data source: a dead-stock rule
-    # wants 90 days of no-sales, a forecast wants 60 for seasonality, and both ask
-    # daily_series for exactly the same rows. The same capability with two callers has two
-    # thresholds, so pinning one here is a placeholder for the parameter that does not exist
-    # yet.
-    #
-    # It becomes a real parameter in SLICE 2, when the analysis declaration exists and can
-    # supply it — along with the policy for what to do with the per-series counts (see
-    # satisfies_placeholder_policy). Until then the declaration is here because the
-    # measurement and the gate have to be exercised by something, and an unexercised gate is
-    # the artifact class this project keeps deleting.
-    preconditions=(MinHistoryDays(days=60),),
+    # Slice 1 carried `MinHistoryDays(days=60)` here, commented as standing in for a caller.
+    # The caller has arrived, so the placeholder is gone rather than retuned.
+    gates=(GateKind.MIN_HISTORY_DAYS,),
+)
+
+
+LAST_SALE_AT = CapabilityDescriptor(
+    id="last_sale_at",
+    version="0.1.0",
+    # SAME GRAIN AS current_state, exactly, and that is what makes dead_stock expressible:
+    # current_state is the UNIVERSE (one row per position that exists), this is the
+    # PRESENCES (one row per position that has ever sold), and an absence is the difference.
+    # The two grains matching is checked at import, not hoped for.
+    grain=("tenant_id", "store_id", "sku_id"),
+    tenancy=Tenancy.TENANT_SCOPED,
+    # LAST_WRITE, not AS_OF_DATE, and the distinction is exactly what the enum is for: the
+    # VALUE here is a date, but no date PARAMETER is meaningful. "When did this last sell as
+    # of 3 May" is not a question this answers — it answers as of the latest data held.
+    freshness=Freshness.LAST_WRITE,
+    # FOUR FIELDS: the grain plus one fact. Deliberately not more. The timestamp behind
+    # last_sale_date, and any count of how many days a series has sold on, are both free in
+    # the same aggregate — which is not a reason to return them. A capability that accretes
+    # every cheap adjacent fact becomes the god-object this one was split out to avoid, and a
+    # consumer that needs another field gets a version bump, which is a conversation.
+    returns=("tenant_id", "store_id", "sku_id", "last_sale_date"),
+    produces_signals=(),
+    # NO GATES, verified rather than unfilled. "When did this last sell" is answerable from
+    # ONE observation — there is no quantity of history that makes the answer more or less
+    # usable, which is the same reason current_state has none. A SKU with a single sale two
+    # years ago has a perfectly good last_sale_date, and for dead stock that is the most
+    # interesting row in the table.
+    gates=(),
 )
 
 
@@ -289,10 +309,10 @@ DAILY_SERIES = CapabilityDescriptor(
 __all__ = [
     "CURRENT_STATE",
     "DAILY_SERIES",
+    "LAST_SALE_AT",
     "CapabilityDescriptor",
     "CapabilityScope",
     "Freshness",
-    "MinHistoryDays",
-    "Precondition",
+    "GateKind",
     "Tenancy",
 ]

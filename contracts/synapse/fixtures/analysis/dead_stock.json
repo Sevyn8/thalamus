@@ -1,0 +1,47 @@
+{
+  "id": "dead_stock",
+  "version": "0.1.0",
+  "grain": [
+    "tenant_id",
+    "store_id",
+    "sku_id"
+  ],
+  "requires": [
+    {
+      "capability_id": "current_state",
+      "fields": [
+        "tenant_id",
+        "store_id",
+        "sku_id",
+        "stock_qty",
+        "sku_status"
+      ],
+      "gates": []
+    },
+    {
+      "capability_id": "last_sale_at",
+      "fields": [
+        "tenant_id",
+        "store_id",
+        "sku_id",
+        "last_sale_date"
+      ],
+      "gates": []
+    }
+  ],
+  "emits": [
+    "tenant_id",
+    "store_id",
+    "sku_id",
+    "days_since_last_sale",
+    "is_dead_stock"
+  ],
+  "thresholds": [
+    {
+      "name": "stale_after_days",
+      "days": 90,
+      "fitted": false,
+      "stands_in_for": "the tenant's own p90 gap between consecutive sales of the same (store, sku). 90 days is a plausible retail number and nothing more: a fast-moving grocery SKU is dead at 14 days and a furniture SKU is healthy at 120, so one constant across a catalogue is wrong for most of it in both directions. The fitted version is a capability, not arithmetic here, and it is cheap over the collapsed sale dates: PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY gap) over gap = event_date - LAG(event_date) OVER (PARTITION BY tenant_id, store_id, sku_id ORDER BY event_date), aggregated per tenant. It is not in this slice because that is a fourth and fifth capability in the slice that introduces the declaration, and one pressure at a time is how this contract survived the last three."
+    }
+  ]
+}

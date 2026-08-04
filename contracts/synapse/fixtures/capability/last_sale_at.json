@@ -1,0 +1,19 @@
+{
+  "id": "last_sale_at",
+  "version": "0.1.0",
+  "grain": [
+    "tenant_id",
+    "store_id",
+    "sku_id"
+  ],
+  "tenancy": "tenant_scoped",
+  "freshness": "last_write",
+  "returns": [
+    "tenant_id",
+    "store_id",
+    "sku_id",
+    "last_sale_date"
+  ],
+  "produces_signals": [],
+  "gates": []
+}

@@ -1,7 +1,11 @@
 {
   "id": "current_state",
   "version": "0.1.0",
-  "grain": ["tenant_id", "store_id", "sku_id"],
+  "grain": [
+    "tenant_id",
+    "store_id",
+    "sku_id"
+  ],
   "tenancy": "tenant_scoped",
   "freshness": "last_write",
   "returns": [
@@ -22,5 +26,5 @@
     "last_updated_at"
   ],
   "produces_signals": [],
-  "preconditions": []
+  "gates": []
 }

@@ -16,8 +16,9 @@ So the fix is that the return type MUST NOT be optional:
 - ``PreconditionUnmet`` — registered, and blocked, with the measurement attached.
 
 MEASUREMENT AND POLICY ARE SEPARATE HERE. ``Observation`` is what a probe measured;
-``satisfies_placeholder_policy`` is the rule that turns it into a verdict, and it is named as
-a placeholder because slice 1 has no caller entitled to decide what "enough" means.
+``SeriesPolicy`` is the rule that turns it into a verdict, and it is now SUPPLIED BY THE
+CALLER rather than assumed. Slice 1 had ``satisfies_placeholder_policy`` because no caller
+existed that was entitled to say what "enough" meant across a population of series.
 
 ``match`` over the three plus ``typing.assert_never`` is the enforcement: mypy --strict
 fails a caller that forgets a branch. That is a mechanism, not a review convention.
@@ -33,7 +34,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import ClassVar
+from typing import ClassVar, assert_never
 
 from synapse.core.capability import CapabilityDescriptor
 
@@ -66,8 +67,8 @@ class Observation:
       "can I forecast every SKU".
 
     So the probe reports how many series it measured and how many clear the threshold, and
-    the comparison that turns those into a verdict lives outside it. See
-    ``satisfies_placeholder_policy``.
+    the comparison that turns those into a verdict lives outside it, in ``SeriesPolicy``,
+    chosen by whoever is asking.
 
     Deliberately does NOT carry the threshold. The probe is HANDED the declared value by the
     resolution engine and applies it in SQL; it never sources it. So a probe cannot report
@@ -84,9 +85,9 @@ class Observation:
 class PreconditionReport:
     """One precondition, evaluated: what was required, what was measured, when.
 
-    FACTS ONLY, NO VERDICT. Whether these numbers amount to "satisfied" is policy and lives
-    in ``satisfies_placeholder_policy``, so that the policy is a named thing to argue with
-    and delete rather than a comparison buried in a property.
+    FACTS ONLY, NO VERDICT. Whether these numbers amount to "satisfied" is policy, carried by
+    the caller's ``SeriesPolicy`` — so the report is the same object regardless of who is
+    asking, and two callers reading the same measurement can legitimately disagree.
 
     ALL THE NUMBERS, ALWAYS. "Needs 60 days" on its own tells an operator the capability is
     unavailable without telling them how far away it is. ``pairs_qualifying`` of
@@ -104,30 +105,53 @@ class PreconditionReport:
     measured_at: datetime
 
 
-def satisfies_placeholder_policy(report: PreconditionReport) -> bool:
-    """**PLACEHOLDER POLICY FOR SLICE 1.** Deliberately not a considered decision.
+class SeriesPolicy(StrEnum):
+    """What "enough" MEANS across a population of series. Supplied by the caller, never assumed.
 
-    ``pairs_qualifying > 0``. This is not the right rule; it is a rule that READS as a
-    placeholder, which ``MIN`` would not have. ``MIN`` would look like a conservative
-    engineering choice while quietly being unusable on any growing catalogue, and a wrong
-    answer that looks considered is worse than an obvious stub.
+    THIS REPLACES ``satisfies_placeholder_policy``, and the distinction matters because the two
+    obvious readings of that deletion are not the same:
 
-    THE TENSION IT DEFERS. "Forecast all SKUs" wants every series to qualify. "Forecast
-    anything" wants one. Both are legitimate readings of the same measurement, and neither
-    is derivable from the data — the current beta tenant fails under every reduction, so
-    nothing here is being tested by reality. The choice needs a CALLER, and the caller
-    arrives in slice 2 as the analysis declaration, which supplies both the threshold and
-    what to do with the counts.
+    - "the placeholder is gone" — TRUE.
+    - "ANY stops working" — FALSE. The placeholder's body was ``pairs_qualifying > 0``, which
+      IS ``ANY_SERIES``. Deleting it did not remove a behaviour; it promoted that behaviour
+      from an UNOWNED DEFAULT to a DECLARED CHOICE. What is gone is the ability to get a
+      verdict without saying what you meant.
 
-    DELETE THIS FUNCTION IN SLICE 2 rather than tuning it. It is a named, greppable thing
-    precisely so that it cannot survive as an accident.
+    Both values are legitimate and neither is derivable from data:
 
-    (Monotonicity note, which matters for the check-then-fetch gap in ``Satisfied``: THIS
-    policy is monotonic — coverage only grows, so ``pairs_qualifying`` only grows. An
-    all-series policy would NOT be, because a newly-added SKU raises ``pairs_measured``
-    without raising ``pairs_qualifying``. Whoever replaces this must revisit that note.)
+    ``ALL_SERIES`` — every series in scope must clear the threshold. What "forecast every SKU"
+    means. Note ``pairs_measured > 0`` is part of it: nought-of-nought is not "all of them
+    qualify", it is an empty population, and a policy that returned True there would satisfy a
+    tenant with no data at all.
+
+    ``ANY_SERIES`` — one qualifying series is enough. What "forecast anything" means, and what
+    a console asking "is this capability usable here at all" means.
+
+    MIN OVER SERIES IS DELIBERATELY NOT A VALUE. It reads as a considered conservative choice
+    and is unusable: any growing catalogue adds SKUs constantly, so one SKU added last week
+    drops the minimum and blocks the whole store permanently — a 5,000-SKU tenant with 4,950
+    well-covered series would never resolve. It is the same rule as ALL_SERIES with a worse
+    name, so ALL_SERIES is the honest spelling of it.
     """
-    return report.pairs_qualifying > 0
+
+    ALL_SERIES = "all_series"
+    ANY_SERIES = "any_series"
+
+
+def satisfies(policy: SeriesPolicy, report: PreconditionReport) -> bool:
+    """Apply a caller's policy to a measurement. The ONLY place the two meet.
+
+    ``match`` with ``assert_never``: a third policy value fails mypy --strict here until it is
+    handled, rather than silently falling through to a default.
+    """
+    match policy:
+        case SeriesPolicy.ALL_SERIES:
+            # pairs_measured > 0 is load-bearing, not defensive — see the class docstring.
+            return report.pairs_measured > 0 and report.pairs_qualifying == report.pairs_measured
+        case SeriesPolicy.ANY_SERIES:
+            return report.pairs_qualifying > 0
+        case _:  # pragma: no cover - unreachable while SeriesPolicy has two members
+            assert_never(policy)
 
 
 @dataclass(frozen=True)
@@ -138,12 +162,34 @@ class Satisfied[RowT]:
     series?", and answering it by pulling every row would make availability rendering
     cost a full read. ``fetch`` is the already-bound call; nothing further is decided.
 
-    THE CHECK-THEN-FETCH GAP IS SAFE FOR THIS PRECONDITION KIND AND THIS POLICY ONLY, and
-    that is a property of both rather than a general guarantee: history coverage only grows,
-    so under ``satisfies_placeholder_policy`` a capability that passed cannot fail by the
-    time ``fetch`` runs. Neither half generalises — an all-series policy loses it (a new SKU
-    raises pairs_measured without raising pairs_qualifying), and so would a precondition with
-    a freshness ceiling. Written down instead of assumed, because slice 2 replaces the policy.
+    THE CHECK-THEN-FETCH WINDOW, AND UNDER ``ALL_SERIES`` NOTHING CLOSES IT.
+
+    Slice 1 flagged that an all-series policy would not be monotonic and that this note would
+    need revisiting when such a policy became selectable. It just did, so here is what
+    actually happens rather than a warning that it might:
+
+    - Under ``ANY_SERIES`` the window is harmless. Coverage only grows and series are only
+      added, so ``pairs_qualifying`` only rises; a capability that satisfied ANY cannot stop
+      satisfying it. This is a real property, not an assumption.
+    - Under ``ALL_SERIES`` it is not. A new SKU's FIRST SALE raises ``pairs_measured`` without
+      raising ``pairs_qualifying``, so a population that satisfied ALL at probe time can fail
+      it moments later. One arriving row is enough.
+
+    THE WINDOW IS UNBOUNDED. The probe runs in its own ``rls_session`` transaction and
+    ``fetch`` opens another, so there is no shared snapshot; and ``Satisfied`` is an ordinary
+    value a caller may hold for as long as it likes before awaiting ``fetch``. So the window
+    is not "a few milliseconds", it is "until someone calls fetch".
+
+    NOTHING CLOSES IT, AND THAT IS ACCEPTED FOR NOW. The rows ``fetch`` returns are never
+    wrong — they are the same daily-series rows either way. What goes stale is the VERDICT: an
+    analysis that declared it needs every series to have 90 days can receive rows covering a
+    series with one day, and nothing in this type tells it so.
+
+    THE FIX, when there is a consumer to justify it, is for ``Satisfied`` to carry the
+    QUALIFYING POPULATION — the set of series that passed — and for ``fetch`` to be narrowed to
+    exactly those, so the answer describes the population the verdict was made about. That is a
+    change to what this class holds and to every resolver's narrowing, which is a slice with a
+    consumer in it (D5 keeps one out of this slice). Recorded rather than quietly carried.
     """
 
     status: ClassVar[ResolutionStatus] = ResolutionStatus.SATISFIED
@@ -176,9 +222,9 @@ class PreconditionUnmet:
     render what the capability WOULD give — grain, returns, freshness — next to why it
     cannot give it yet.
 
-    ``unmet`` is a tuple, not a single report: a capability may declare more than one
-    precondition, and reporting only the first would hide the second the day one
-    arrives. All declared preconditions are evaluated, and every unmet one is here.
+    ``unmet`` is a tuple, not a single report: a capability may declare more than one gate, and
+    reporting only the first would hide the second the day one arrives. Every bound gate is
+    evaluated, and every unmet one is here.
     """
 
     status: ClassVar[ResolutionStatus] = ResolutionStatus.PRECONDITION_UNMET
@@ -189,12 +235,15 @@ class PreconditionUnmet:
     def __post_init__(self) -> None:
         if not self.unmet:
             raise ValueError("PreconditionUnmet with no unmet report is a Satisfied in disguise")
-        # Checked against the SAME policy the engine used to select these reports. If the
-        # policy changes, this check changes with it — there is no second comparison here to
-        # drift out of agreement with the first.
-        satisfied = [r.name for r in self.unmet if satisfies_placeholder_policy(r)]
-        if satisfied:
-            raise ValueError(f"PreconditionUnmet carries a SATISFIED report: {satisfied}")
+        # NO POLICY CHECK HERE ANY MORE, and its absence is deliberate rather than an
+        # oversight. Slice 1 re-checked every report against the module-level placeholder, so
+        # constructing a PreconditionUnmet carrying a satisfied report raised. That check
+        # cannot exist now: whether a report is satisfied depends on the CALLER's policy, and
+        # this type does not know it — the same report is unmet under ALL_SERIES and satisfied
+        # under ANY_SERIES, so there is no policy-free notion of "carries a satisfied report"
+        # left to assert. The engine's filter is now the single place the policy is applied
+        # (registry.resolve), which is also the only place that knows which policy was asked
+        # for. Weaker than slice 1 by exactly the amount the caller gained.
 
 
 # Generic in the row type so a caller that knows which capability it asked for keeps its
@@ -211,6 +260,7 @@ __all__ = [
     "Resolution",
     "ResolutionStatus",
     "Satisfied",
+    "SeriesPolicy",
     "Unregistered",
-    "satisfies_placeholder_policy",
+    "satisfies",
 ]

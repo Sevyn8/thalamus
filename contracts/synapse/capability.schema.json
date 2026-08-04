@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sevyn8.com/contracts/synapse/capability.schema.json",
   "title": "Synapse capability descriptor",
-  "description": "What a Synapse capability declares about itself. EXTRACTED from building resolvers, not designed in advance: every field here exists because a resolver could not be written without it. Fields 1-7 came from current_state; preconditions came from daily_series, which cannot answer usefully for a tenant with twelve days of history and so turned resolution into 'can this be satisfied FOR THIS TENANT, RIGHT NOW'. Two resolvers is still a small sample, so this schema stays narrow — cost/latency classes, caching, substitution rules, pagination shape and capability composition are ABSENT because two samples cannot justify them.",
+  "description": "What a Synapse capability declares about itself. EXTRACTED from building resolvers, not designed in advance. Fields 1-7 came from current_state and survived three more capabilities and the first analysis unchanged. `gates` is the one field composition changed: it held a bound VALUE (min_history_days: 60) until an analysis needed a different number for the same capability, at which point the threshold moved to the demand side (analysis.schema.json) and only the KIND stayed here. Still ABSENT because three capabilities cannot justify them: cost/latency classes, caching, substitution rules, pagination shape, and capability-composes-capability (composition lives in the analysis, which is the layer with a reason to compose).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -13,7 +13,7 @@
     "freshness",
     "returns",
     "produces_signals",
-    "preconditions"
+    "gates"
   ],
   "properties": {
     "id": {
@@ -31,46 +31,52 @@
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
-      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$"
+      }
     },
     "tenancy": {
       "description": "tenant_scoped = the scope's tenant is required and the read cannot widen. fleet = a deliberate cross-tenant read. No capability declares fleet today; the value exists so a future one must SAY so rather than acquire the ability by omitting a field.",
-      "enum": ["tenant_scoped", "fleet"]
+      "enum": [
+        "tenant_scoped",
+        "fleet"
+      ]
     },
     "freshness": {
       "description": "last_write = the value as of whenever the row was last written; no date parameter is meaningful. as_of_date = stamped with the date it describes, so a series exists. The distinction is here because conflating them lets a consumer average a point-in-time reading against a time series with no layer objecting.",
-      "enum": ["last_write", "as_of_date"]
+      "enum": [
+        "last_write",
+        "as_of_date"
+      ]
     },
     "returns": {
-      "description": "The projection's field names — what the caller actually receives. Deliberately NOT canonical's full row: DIS write-side provenance (mapping_version_id, trace_id, ingest_metadata, dis_channel) is DIS's concern, and passing it through would invite the analytics plane to reason about ingestion.",
+      "description": "The projection's field names \u2014 what the caller actually receives. Deliberately NOT canonical's full row: DIS write-side provenance (mapping_version_id, trace_id, ingest_metadata, dis_channel) is DIS's concern, and passing it through would invite the analytics plane to reason about ingestion.",
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
-      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$"
+      }
     },
     "produces_signals": {
-      "description": "Signal ids this capability PRODUCES. An EMPTY ARRAY is a first-class, verified state, not a placeholder: current_state reads canonical.store_sku_current_position, which HAS velocity_7day / stock_age_days / unit_cost_trend_30day, and produces none of them because nothing writes them. Reading a signal column does not make a capability a producer of that signal — which is exactly why signals are a separate contract.",
-      "type": "array",
-      "uniqueItems": true,
-      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
-    },
-    "preconditions": {
-      "description": "Conditions that must hold FOR A GIVEN TENANT before this capability can be resolved. Declared here rather than on the resolver because a consumer must be able to learn the requirement WITHOUT calling: it is the only way an operator console can tell 'no such capability' apart from 'this capability exists and this tenant is 48 days short of it'. An EMPTY ARRAY is a claim, not a placeholder — current_state reads the hot table, where no quantity of history makes an answer usable or unusable, so there is genuinely nothing to require. The MEASUREMENT is not described here: it names a canonical table and so belongs to synapse.resolvers (D6).",
+      "description": "Signal ids this capability PRODUCES. An EMPTY ARRAY is a first-class, verified state, not a placeholder: current_state reads canonical.store_sku_current_position, which HAS velocity_7day / stock_age_days / unit_cost_trend_30day, and produces none of them because nothing writes them. Reading a signal column does not make a capability a producer of that signal \u2014 which is exactly why signals are a separate contract.",
       "type": "array",
       "uniqueItems": true,
       "items": {
-        "description": "ONE KIND EXISTS. A generic (name, operator, value) triple invented from one sample would be a guess, so `kind` is a const rather than an enum and `days` is required outright: adding a second kind means editing this schema into a oneOf, which is a visible change rather than a new string flowing through an open shape.",
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["kind", "days"],
-        "properties": {
-          "kind": { "const": "min_history_days" },
-          "days": {
-            "description": "Minimum number of DISTINCT dates carrying data in scope — coverage, not calendar span. A tenant onboarded 90 days ago that sold on 12 of them has coverage 12. Minimum 1: a threshold of 0 is not a precondition, it is a declaration that there is none, and that is what the empty array says.",
-            "type": "integer",
-            "minimum": 1
-          }
-        }
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$"
+      }
+    },
+    "gates": {
+      "description": "KINDS of precondition this capability can be measured on \u2014 never values. A caller supplies the threshold and the policy (analysis.schema.json). An EMPTY ARRAY is a claim, not a placeholder: current_state and last_sale_at declare none because no quantity of history makes their answer more or less usable. A capability may list a kind only if a probe exists for it at the checked grain, which the registry enforces at import.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "min_history_days"
+        ]
       }
     }
   }

@@ -74,6 +74,18 @@ def test_the_daily_series_resolver_really_does_name_its_table() -> None:
     assert "store_sku_sale_events" in text
 
 
+def test_the_last_sale_at_resolver_really_does_name_its_table() -> None:
+    """The same non-vacuity guard for the fourth capability.
+
+    It reads the SAME table as daily_series, which is why the fourth capability cost no new
+    containment surface — but the per-file assertion still matters: if this resolver stopped
+    naming its table (say it started importing daily_series's construct), the containment rule
+    would be protecting an empty set for it while looking healthy.
+    """
+    text = (RESOLVERS / "last_sale_at.py").read_text(encoding="utf-8")
+    assert "store_sku_sale_events" in text
+
+
 def test_the_collapse_helper_names_no_table_in_its_code() -> None:
     """The helper is parameterised, so its reusability is a code property worth pinning.
 

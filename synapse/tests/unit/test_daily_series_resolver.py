@@ -449,9 +449,8 @@ def test_descriptor_matches_the_committed_fixture() -> None:
     assert fixture["freshness"] == DAILY_SERIES.freshness.value
     assert set(fixture["returns"]) == set(DAILY_SERIES.returns)
     assert tuple(fixture["produces_signals"]) == DAILY_SERIES.produces_signals
-    assert fixture["preconditions"] == [
-        {"kind": "min_history_days", "days": DAILY_SERIES.preconditions[0].days}
-    ]
+    assert fixture["gates"] == ["min_history_days"]
+    assert tuple(fixture["gates"]) == DAILY_SERIES.gates
 
 
 # ---------------------------------------------------------------------------

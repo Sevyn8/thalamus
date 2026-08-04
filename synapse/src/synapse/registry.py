@@ -1,11 +1,17 @@
-"""The capability registry and the resolution engine. REGISTRY AS DATA, not if-statements.
+"""The capability registry, the analysis declarations, and the resolution engine. ALL DATA.
 
-Two mappings and one function. ``_REGISTRY`` binds a capability id to its descriptor, its
-resolver and its precondition probes; ``_DECLINED`` records ids that will never have an
-entry, and why. ``resolve()`` reads both and returns one of the three outcomes in
-``synapse.core.resolution``. There is no dispatch on capability id anywhere — adding a
-capability is adding a row, and the invariants below are checked at import rather than
-trusted.
+Three mappings and one function. ``_REGISTRY`` binds a capability id to its descriptor, its
+resolver and its gate probes; ``_DECLINED`` records ids that will never have an entry, and why;
+``_DECLARATIONS`` holds the analysis declarations. ``resolve()`` reads them and returns one of
+the three outcomes in ``synapse.core.resolution``. There is no dispatch on capability id or
+analysis id anywhere — adding either is adding a row, and every invariant below is checked at
+import rather than trusted.
+
+DECLARATIONS LIVE HERE RATHER THAN IN THEIR OWN MODULE because the checks that matter are
+CROSS-checks: an analysis's fields against a capability's ``returns``, its grain against every
+required capability's grain, its gates against what each capability declares. Those need both
+sides in scope, and a separate module would either duplicate the registry import or invert the
+layering. The name stays "registry" for both.
 
 WHERE THIS SITS IN THE LAYERING. Above the resolvers, not beside them: the registry must
 import resolvers to bind them, so ``synapse.registry`` is the top layer, ``synapse.resolvers``
@@ -31,13 +37,14 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from synapse.core.analysis import DEAD_STOCK, AnalysisDeclaration, Gate, MinHistoryDays
 from synapse.core.capability import (
     CURRENT_STATE,
     DAILY_SERIES,
+    LAST_SALE_AT,
     CapabilityDescriptor,
     CapabilityScope,
-    MinHistoryDays,
-    Precondition,
+    GateKind,
 )
 from synapse.core.resolution import (
     Observation,
@@ -45,8 +52,9 @@ from synapse.core.resolution import (
     PreconditionUnmet,
     Resolution,
     Satisfied,
+    SeriesPolicy,
     Unregistered,
-    satisfies_placeholder_policy,
+    satisfies,
 )
 from synapse.resolvers.current_state import resolve_current_state
 from synapse.resolvers.daily_series import (
@@ -55,6 +63,7 @@ from synapse.resolvers.daily_series import (
     probe_min_history_days,
     resolve_daily_series,
 )
+from synapse.resolvers.last_sale_at import resolve_last_sale_at
 
 # A resolver takes the engine and the scope, plus whatever narrowing IT declares. The
 # ellipsis is honest: signatures differ (daily_series requires a date window,
@@ -128,7 +137,7 @@ class RegisteredCapability:
 
     descriptor: CapabilityDescriptor
     resolver: Resolver
-    probes: Mapping[str, ProbeBinding]
+    probes: Mapping[GateKind, ProbeBinding]
 
 
 _REGISTRY: Final[Mapping[str, RegisteredCapability]] = MappingProxyType(
@@ -136,7 +145,7 @@ _REGISTRY: Final[Mapping[str, RegisteredCapability]] = MappingProxyType(
         CURRENT_STATE.id: RegisteredCapability(
             descriptor=CURRENT_STATE,
             resolver=resolve_current_state,
-            # No preconditions, so no probes. Verified-empty on both sides.
+            # No gates, so no probes. Verified-empty on both sides.
             probes=MappingProxyType({}),
         ),
         DAILY_SERIES.id: RegisteredCapability(
@@ -144,7 +153,7 @@ _REGISTRY: Final[Mapping[str, RegisteredCapability]] = MappingProxyType(
             resolver=resolve_daily_series,
             probes=MappingProxyType(
                 {
-                    MinHistoryDays.name: ProbeBinding(
+                    GateKind.MIN_HISTORY_DAYS: ProbeBinding(
                         measure=probe_min_history_days,
                         # Imported from the resolver, NOT retyped here. The constants are the
                         # ones the probe's own GROUP BY is built from, so this binding cannot
@@ -155,6 +164,24 @@ _REGISTRY: Final[Mapping[str, RegisteredCapability]] = MappingProxyType(
                 }
             ),
         ),
+        LAST_SALE_AT.id: RegisteredCapability(
+            descriptor=LAST_SALE_AT,
+            resolver=resolve_last_sale_at,
+            # No gates, so no probes. Verified-empty on both sides: "when did this last sell"
+            # is answerable from one observation.
+            probes=MappingProxyType({}),
+        ),
+    }
+)
+
+
+# THE ANALYSIS DECLARATIONS. Data, exactly like _REGISTRY: adding an analysis is adding a row
+# here, never editing an engine. Nothing consumes their output yet (no scorer, no action, no
+# delivery) — what exists is the declaration and the cross-checks below, which is what makes
+# the declaration a contract rather than a comment.
+_DECLARATIONS: Final[Mapping[str, AnalysisDeclaration]] = MappingProxyType(
+    {
+        DEAD_STOCK.id: DEAD_STOCK,
     }
 )
 
@@ -183,18 +210,22 @@ _DECLINED: Final[Mapping[str, str]] = MappingProxyType(
 )
 
 
-def _required_days(precondition: Precondition) -> tuple[str, int]:
-    """The declared threshold, as (name, required).
+def _bound(gate: Gate) -> tuple[GateKind, int, SeriesPolicy]:
+    """A caller's bound gate, unpacked as (kind, threshold, policy).
 
-    ``match`` over a union of one, with ``assert_never``: adding a second precondition kind
-    fails mypy --strict here until it is handled, which is the visible edit the union alias
-    in synapse.core.capability exists to force.
+    ``match`` over a union of one, with ``assert_never``: adding a second gate kind fails mypy
+    --strict here until it is handled, which is the visible edit the ``Gate`` union alias in
+    synapse.core.analysis exists to force.
+
+    ALL THREE COME FROM THE CALLER. Slice 1 read the threshold off the DESCRIPTOR and applied a
+    module-level policy; both now arrive bound together on the gate, so a capability cannot
+    dictate either and a caller cannot supply one without the other.
     """
-    match precondition:
-        case MinHistoryDays(days=days):
-            return MinHistoryDays.name, days
-        case _:  # pragma: no cover - unreachable while Precondition has one member
-            assert_never(precondition)
+    match gate:
+        case MinHistoryDays(days=days, policy=policy):
+            return MinHistoryDays.kind, days, policy
+        case _:  # pragma: no cover - unreachable while Gate has one member
+            assert_never(gate)
 
 
 def _check_registry() -> None:
@@ -204,9 +235,8 @@ def _check_registry() -> None:
 
     - key equals ``descriptor.id`` — otherwise a lookup by the descriptor's own id misses,
       and the capability reports as unregistered while sitting in the registry.
-    - probes are exactly the declared precondition names — a declared precondition with no
-      probe is a gate that always passes, and a probe with no declaration is a measurement
-      nothing consults.
+    - probes are exactly the declared gate kinds — a declared gate with no probe is a gate that
+      cannot be measured, and a probe with no declared gate is a measurement nothing consults.
     - THE GRAIN RULE: every probe measures at the capability's declared grain minus the date
       column. A probe measuring coarser answers a different question and passes trivially —
       the per-tenant defect. See ``ProbeBinding``.
@@ -220,12 +250,11 @@ def _check_registry() -> None:
     for key, entry in _REGISTRY.items():
         if key != entry.descriptor.id:
             raise ValueError(f"registry key {key!r} does not match descriptor id {entry.descriptor.id!r}")
-        declared = {_required_days(p)[0] for p in entry.descriptor.preconditions}
+        declared = set(entry.descriptor.gates)
         if declared != set(entry.probes):
             raise ValueError(
-                f"{key!r} declares preconditions {sorted(declared)} but registers probes "
-                f"{sorted(entry.probes)}; a declared precondition with no probe is a gate "
-                "that always passes"
+                f"{key!r} declares gates {sorted(declared)} but registers probes "
+                f"{sorted(entry.probes)}; a declared gate with no probe cannot be measured"
             )
         for name, binding in entry.probes.items():
             _check_probe_grain(key, name, binding, entry.descriptor)
@@ -279,7 +308,70 @@ def _check_probe_grain(
         )
 
 
+def _check_declarations() -> None:
+    """Analysis declaration invariants, checked at IMPORT alongside the registry's.
+
+    FOUR CROSS-CHECKS, each catching something a declaration cannot catch about itself:
+
+    - key equals ``declaration.id``, for the same reason as the capability registry.
+    - every required capability is REGISTERED. A requirement naming a capability that does not
+      exist is a declaration that can never resolve, and an analysis that can never resolve is
+      the artifact class this project keeps deleting. A DECLINED capability fails here too, with
+      its recorded reason attached — that is the most useful possible error message for someone
+      who has just written a requirement for something known impossible.
+    - THE COMPOSITION RULE: the analysis's grain must be CONTAINED IN every required
+      capability's grain. This is the first mechanical use of ``grain`` since it was extracted
+      from one resolver, and it is why that extraction was right: an analysis emitting one row
+      per (tenant, store, sku) can only join capabilities that identify rows at least that
+      finely. A capability at coarser grain cannot be joined without inventing rows, and no
+      amount of care in the analysis body fixes a join that was never valid.
+    - every required FIELD is in that capability's ``returns``. This is the check that would
+      catch reaching for a plausible-but-absent field — the most likely way an analysis goes
+      quietly wrong.
+
+    Gate BINDING is checked at resolve() rather than here: a declaration may legitimately be
+    written before the capability grows a gate, and the binding that matters is the one on the
+    call. See ``resolve``.
+    """
+    for key, declaration in _DECLARATIONS.items():
+        if key != declaration.id:
+            raise ValueError(
+                f"declaration key {key!r} does not match analysis id {declaration.id!r}"
+            )
+        for requirement in declaration.requires:
+            entry = _REGISTRY.get(requirement.capability_id)
+            if entry is None:
+                declined = _DECLINED.get(requirement.capability_id)
+                because = f" It is DECLINED: {declined}" if declined else ""
+                raise ValueError(
+                    f"analysis {key!r} requires capability {requirement.capability_id!r}, "
+                    f"which is not registered.{because}"
+                )
+            descriptor = entry.descriptor
+            missing_grain = sorted(set(declaration.grain) - set(descriptor.grain))
+            if missing_grain:
+                raise ValueError(
+                    f"analysis {key!r} emits at grain {sorted(declaration.grain)} but requires "
+                    f"{requirement.capability_id!r}, whose grain {sorted(descriptor.grain)} does "
+                    f"not contain {missing_grain}. A coarser capability cannot be joined at a "
+                    "finer grain without inventing rows"
+                )
+            missing_fields = sorted(set(requirement.fields) - set(descriptor.returns))
+            if missing_fields:
+                raise ValueError(
+                    f"analysis {key!r} requires fields {missing_fields} from "
+                    f"{requirement.capability_id!r}, which does not return them. Its returns "
+                    f"are {sorted(descriptor.returns)}"
+                )
+
+
 _check_registry()
+_check_declarations()
+
+
+def declared_analysis_ids() -> tuple[str, ...]:
+    """Every analysis id declared today. Sorted, for a console listing."""
+    return tuple(sorted(_DECLARATIONS))
 
 
 def registered_ids() -> tuple[str, ...]:
@@ -297,6 +389,7 @@ async def resolve(
     capability_id: str,
     scope: CapabilityScope,
     *,
+    gates: tuple[Gate, ...],
     store_id: UUID | None = None,
     sku_id: str | None = None,
     **narrowing: object,
@@ -310,14 +403,23 @@ async def resolve(
     one unmet gate would hide the second the day a capability declares two, and the probes
     are cheap counts.
 
-    ``required`` on each report is taken from the DESCRIPTOR and handed to the probe; the
-    counts come back from the probe. So the threshold a report is judged against cannot
-    differ from the threshold that was declared — there is one source for the number.
+    ``gates`` IS REQUIRED AND HAS NO DEFAULT, and that is the breaking change slice 2 makes to
+    a slice-1 signature. It is deliberate. The threshold and the policy both arrive here bound
+    together on each gate, supplied by whoever is asking — an analysis declaration, or a console
+    that must now say what it means.
 
-    THE VERDICT IS POLICY, AND THE POLICY IS A PLACEHOLDER. Reports carry facts;
-    ``satisfies_placeholder_policy`` decides whether those facts amount to satisfied, and it
-    is named as a placeholder because slice 1 has no caller entitled to say what "enough"
-    means across a population of series. See that function.
+    A DEFAULT WOULD MAKE THE GATE DECORATIVE. Defaulting ``gates=()`` would let
+    ``resolve(engine, "daily_series", scope)`` skip a declared gate entirely and answer
+    Satisfied, which is a free verdict with nobody having said what enough means. Defaulting the
+    POLICY would be worse: it would reinstate exactly the unowned default slice 2 deleted. So
+    a caller with no gates passes ``gates=()`` explicitly — an empty tuple is a claim, a missing
+    argument is a silence, and this codebase already refuses to let those be the same value.
+
+    THE SUPPLIED KINDS MUST EQUAL THE DECLARED KINDS EXACTLY. Not a subset: an unbound declared
+    gate never runs. Not a superset: a bound gate the capability does not declare has no probe
+    and no checked grain. A mismatch RAISES rather than returning an outcome, because it is a
+    caller bug like a bad keyword — not a state of the tenant's data, which is what the three
+    outcomes describe.
 
     ``store_id`` and ``sku_id`` go to BOTH the probes and the resolver — they narrow which
     series are in question, so a gate that ignored them would be answering about a different
@@ -337,25 +439,35 @@ async def resolve(
             declined_reason=_DECLINED.get(capability_id),
         )
 
-    reports: list[PreconditionReport] = []
-    for precondition in entry.descriptor.preconditions:
-        name, required = _required_days(precondition)
-        observation = await entry.probes[name].measure(
-            engine, scope, store_id=store_id, sku_id=sku_id, required=required
-        )
-        reports.append(
-            PreconditionReport(
-                name=name,
-                required=required,
-                pairs_measured=observation.pairs_measured,
-                pairs_qualifying=observation.pairs_qualifying,
-                measured_at=observation.measured_at,
-            )
+    bound = {kind: (required, policy) for kind, required, policy in map(_bound, gates)}
+    declared = set(entry.descriptor.gates)
+    if set(bound) != declared:
+        raise ValueError(
+            f"{capability_id!r} declares gates {sorted(declared)} but the call bound "
+            f"{sorted(bound)}. Every declared gate must be bound (an unbound gate never runs) "
+            "and no other may be (it has no probe and no checked grain)"
         )
 
-    unmet = tuple(report for report in reports if not satisfies_placeholder_policy(report))
+    unmet: list[PreconditionReport] = []
+    for kind, (required, policy) in bound.items():
+        observation = await entry.probes[kind].measure(
+            engine, scope, store_id=store_id, sku_id=sku_id, required=required
+        )
+        report = PreconditionReport(
+            name=kind,
+            required=required,
+            pairs_measured=observation.pairs_measured,
+            pairs_qualifying=observation.pairs_qualifying,
+            measured_at=observation.measured_at,
+        )
+        # THE ONE PLACE POLICY MEETS MEASUREMENT, and the only place that knows which policy was
+        # asked for. Every gate is evaluated, not just up to the first failure: reporting one
+        # unmet gate would hide the second the day a capability declares two.
+        if not satisfies(policy, report):
+            unmet.append(report)
+
     if unmet:
-        return PreconditionUnmet(descriptor=entry.descriptor, unmet=unmet)
+        return PreconditionUnmet(descriptor=entry.descriptor, unmet=tuple(unmet))
 
     resolver = entry.resolver
     forwarded: dict[str, object] = dict(narrowing)
@@ -375,6 +487,7 @@ __all__ = [
     "ProbeBinding",
     "RegisteredCapability",
     "Resolver",
+    "declared_analysis_ids",
     "declined_ids",
     "registered_ids",
     "resolve",

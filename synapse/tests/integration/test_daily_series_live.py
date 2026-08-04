@@ -72,13 +72,14 @@ import pytest
 from sqlalchemy import func, select, text
 
 from synapse import registry as registry_module
+from synapse.core.analysis import MinHistoryDays
 from synapse.core.capability import (
     DAILY_SERIES,
     CapabilityDescriptor,
     CapabilityScope,
-    MinHistoryDays,
+    GateKind,
 )
-from synapse.core.resolution import PreconditionUnmet, Satisfied, Unregistered
+from synapse.core.resolution import PreconditionUnmet, Satisfied, SeriesPolicy, Unregistered
 
 # Structural alias for the conftest fixture's callable. Declared rather than imported: the
 # suite runs under --import-mode=importlib with no __init__.py, so a sibling import of
@@ -334,8 +335,11 @@ async def test_an_impossible_threshold_yields_precondition_unmet_with_a_real_mea
         freshness=DAILY_SERIES.freshness,
         returns=DAILY_SERIES.returns,
         produces_signals=DAILY_SERIES.produces_signals,
-        preconditions=(MinHistoryDays(days=10_000),),
+        gates=DAILY_SERIES.gates,
     )
+    # The IMPOSSIBLE THRESHOLD is now the CALLER's, which is the slice-2 shape: the descriptor
+    # says only that this capability can be gated on history coverage.
+    impossible_gate = MinHistoryDays(days=10_000, policy=SeriesPolicy.ANY_SERIES)
     monkeypatch.setattr(
         registry_module,
         "_REGISTRY",
@@ -346,7 +350,7 @@ async def test_an_impossible_threshold_yields_precondition_unmet_with_a_real_mea
                     resolver=resolve_daily_series,
                     probes=MappingProxyType(
                         {
-                            MinHistoryDays.name: ProbeBinding(
+                            GateKind.MIN_HISTORY_DAYS: ProbeBinding(
                                 measure=probe_min_history_days,
                                 series_grain=SERIES_GRAIN,
                                 date_column=DATE_COLUMN,
@@ -360,7 +364,7 @@ async def test_an_impossible_threshold_yields_precondition_unmet_with_a_real_mea
 
     engine = create_rls_engine(DSN)
     try:
-        outcome = await resolve(engine, "daily_series", _scope())
+        outcome = await resolve(engine, "daily_series", _scope(), gates=(impossible_gate,))
     finally:
         await engine.dispose()
 
@@ -385,7 +389,15 @@ async def test_resolve_returns_one_of_exactly_three_outcomes() -> None:
     engine = create_rls_engine(DSN)
     try:
         outcome = await resolve(
-            engine, "daily_series", _scope(), date_from=WINDOW_FROM, date_to=WINDOW_TO
+            engine,
+            "daily_series",
+            _scope(),
+            # The caller states BOTH numbers: 60 days, and that every series must clear it.
+            # dead_stock would state something different for the same capability, which is the
+            # whole reason this is a parameter now.
+            gates=(MinHistoryDays(days=60, policy=SeriesPolicy.ALL_SERIES),),
+            date_from=WINDOW_FROM,
+            date_to=WINDOW_TO,
         )
     finally:
         await engine.dispose()

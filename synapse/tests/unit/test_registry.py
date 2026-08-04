@@ -9,6 +9,7 @@ own invariants, each of which fails silently if unchecked.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import cast
@@ -18,27 +19,32 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from synapse import registry as registry_module
+from synapse.core.analysis import (
+    DEAD_STOCK,
+    AnalysisDeclaration,
+    CapabilityRequirement,
+    MinHistoryDays,
+)
 from synapse.core.capability import (
     CURRENT_STATE,
     DAILY_SERIES,
-    CapabilityDescriptor,
     CapabilityScope,
-    Freshness,
-    MinHistoryDays,
-    Tenancy,
+    GateKind,
 )
 from synapse.core.resolution import (
     Observation,
     PreconditionUnmet,
     Satisfied,
+    SeriesPolicy,
     Unregistered,
 )
 from synapse.registry import (
     _REGISTRY,
     ProbeBinding,
     RegisteredCapability,
+    _check_declarations,
     _check_registry,
-    _required_days,
+    declared_analysis_ids,
     declined_ids,
     registered_ids,
     resolve,
@@ -50,6 +56,10 @@ STORE = UUID("019e5e3c-b633-7344-93c7-83fb205285ea")
 SCOPE = CapabilityScope(tenant_id=TENANT)
 NO_ENGINE = cast(AsyncEngine, None)
 MEASURED_AT = datetime(2026, 8, 3, 9, 0, tzinfo=UTC)
+
+# The gate a caller binds. ANY_SERIES because most of these tests assert plumbing rather than
+# policy; the policy itself is exercised in test_resolution_outcomes and below.
+_GATE = MinHistoryDays(days=60, policy=SeriesPolicy.ANY_SERIES)
 
 
 def _stub_registry(
@@ -91,7 +101,7 @@ def _stub_registry(
                 resolver=resolver,
                 probes=MappingProxyType(
                     {
-                        MinHistoryDays.name: ProbeBinding(
+                        GateKind.MIN_HISTORY_DAYS: ProbeBinding(
                             measure=probe, series_grain=SERIES_GRAIN, date_column=DATE_COLUMN
                         )
                     }
@@ -107,7 +117,7 @@ def _stub_registry(
 
 
 def test_the_registry_holds_exactly_the_two_built_capabilities() -> None:
-    assert registered_ids() == ("current_state", "daily_series")
+    assert registered_ids() == ("current_state", "daily_series", "last_sale_at")
 
 
 def test_lead_time_distribution_is_declined_not_registered() -> None:
@@ -131,21 +141,20 @@ def test_every_declared_precondition_has_a_probe() -> None:
     import-time check enforces.
     """
     for entry in _REGISTRY.values():
-        declared = {_required_days(p)[0] for p in entry.descriptor.preconditions}
-        assert declared == set(entry.probes)
+        assert set(entry.descriptor.gates) == set(entry.probes)
 
 
-def test_current_state_registers_no_probes_because_it_declares_no_preconditions() -> None:
+def test_current_state_registers_no_probes_because_it_declares_no_gates() -> None:
     """Verified-empty on both sides, not merely unpopulated."""
     entry = _REGISTRY["current_state"]
-    assert entry.descriptor.preconditions == ()
+    assert entry.descriptor.gates == ()
     assert dict(entry.probes) == {}
 
 
 def test_daily_series_pairs_its_declared_precondition_with_a_probe() -> None:
     entry = _REGISTRY["daily_series"]
-    assert entry.descriptor.preconditions == (MinHistoryDays(days=60),)
-    assert set(entry.probes) == {"min_history_days"}
+    assert entry.descriptor.gates == (GateKind.MIN_HISTORY_DAYS,)
+    assert set(entry.probes) == {GateKind.MIN_HISTORY_DAYS}
 
 
 def test_the_registry_check_catches_a_key_that_does_not_match(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -159,18 +168,18 @@ def test_the_registry_check_catches_a_key_that_does_not_match(monkeypatch: pytes
         _check_registry()
 
 
-def test_the_registry_check_catches_a_declared_precondition_with_no_probe(
+def test_the_registry_check_catches_a_declared_gate_with_no_probe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """THE VACUOUS-GATE GUARD. Without it, daily_series would resolve for every tenant while
-    still declaring a sixty-day requirement, and the declaration would be decoration."""
+    """THE VACUOUS-GATE GUARD. A capability may declare a gate kind only where a probe exists;
+    otherwise the declaration advertises a measurement nothing can take."""
     unprobed = RegisteredCapability(
         descriptor=DAILY_SERIES,
         resolver=_REGISTRY["daily_series"].resolver,
         probes=MappingProxyType({}),
     )
     monkeypatch.setattr(registry_module, "_REGISTRY", MappingProxyType({DAILY_SERIES.id: unprobed}))
-    with pytest.raises(ValueError, match="gate that always passes"):
+    with pytest.raises(ValueError, match="cannot be measured"):
         _check_registry()
 
 
@@ -198,7 +207,7 @@ def test_the_registry_is_immutable() -> None:
 
 
 async def test_a_typo_resolves_to_unregistered_with_no_reason() -> None:
-    outcome = await resolve(NO_ENGINE, "dialy_series", SCOPE)
+    outcome = await resolve(NO_ENGINE, "dialy_series", SCOPE, gates=())
     assert isinstance(outcome, Unregistered)
     assert outcome.capability_id == "dialy_series"
     assert outcome.declined_reason is None
@@ -207,7 +216,7 @@ async def test_a_typo_resolves_to_unregistered_with_no_reason() -> None:
 async def test_a_declined_capability_resolves_to_unregistered_with_a_reason() -> None:
     """The distinction a naive registry cannot make: this is not a typo, and the reason says
     what was actually verified rather than "not available"."""
-    outcome = await resolve(NO_ENGINE, "lead_time_distribution", SCOPE)
+    outcome = await resolve(NO_ENGINE, "lead_time_distribution", SCOPE, gates=())
     assert isinstance(outcome, Unregistered)
     assert outcome.declined_reason is not None
     assert "lead_time_days" in outcome.declined_reason
@@ -224,7 +233,7 @@ async def test_an_unmet_precondition_resolves_to_precondition_unmet(
     an operator can tell "wait 48 days" from "never".
     """
     monkeypatch.setattr(registry_module, "_REGISTRY", _stub_registry(qualifying=0, measured=66))
-    outcome = await resolve(NO_ENGINE, "daily_series", SCOPE)
+    outcome = await resolve(NO_ENGINE, "daily_series", SCOPE, gates=(_GATE,))
 
     assert isinstance(outcome, PreconditionUnmet)
     assert not isinstance(outcome, Unregistered)
@@ -245,10 +254,10 @@ async def test_the_required_value_comes_from_the_descriptor_not_the_probe(
     monkeypatch.setattr(
         registry_module, "_REGISTRY", _stub_registry(qualifying=0, measured=5, calls=calls)
     )
-    outcome = await resolve(NO_ENGINE, "daily_series", SCOPE)
+    outcome = await resolve(NO_ENGINE, "daily_series", SCOPE, gates=(_GATE,))
     assert isinstance(outcome, PreconditionUnmet)
-    assert outcome.unmet[0].required == DAILY_SERIES.preconditions[0].days
-    assert calls[0][1] == (None, None, DAILY_SERIES.preconditions[0].days)
+    assert outcome.unmet[0].required == _GATE.days
+    assert calls[0][1] == (None, None, _GATE.days)
 
 
 async def test_a_met_precondition_resolves_to_satisfied_without_fetching(
@@ -258,7 +267,7 @@ async def test_a_met_precondition_resolves_to_satisfied_without_fetching(
     calls: list[tuple[str, object]] = []
     monkeypatch.setattr(registry_module, "_REGISTRY", _stub_registry(qualifying=42, calls=calls))
 
-    outcome = await resolve(NO_ENGINE, "daily_series", SCOPE, store_id=STORE)
+    outcome = await resolve(NO_ENGINE, "daily_series", SCOPE, gates=(_GATE,), store_id=STORE)
 
     assert isinstance(outcome, Satisfied)
     assert [kind for kind, _ in calls] == ["probe"], "the resolver must not have run yet"
@@ -271,11 +280,18 @@ async def test_a_met_precondition_resolves_to_satisfied_without_fetching(
 async def test_one_qualifying_series_is_enough_under_the_placeholder_policy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The placeholder policy, end to end. Replacing it in slice 2 must break this test."""
+    """ANY_SERIES end to end: one qualifying series of 66 resolves.
+
+    This was "the placeholder policy, end to end" and the placeholder is gone. The behaviour
+    survived the deletion because ANY_SERIES *is* what the placeholder computed — it is now a
+    choice a caller states rather than a default nobody owned.
+    """
     monkeypatch.setattr(registry_module, "_REGISTRY", _stub_registry(qualifying=1))
-    assert isinstance(await resolve(NO_ENGINE, "daily_series", SCOPE), Satisfied)
+    assert isinstance(await resolve(NO_ENGINE, "daily_series", SCOPE, gates=(_GATE,)), Satisfied)
     monkeypatch.setattr(registry_module, "_REGISTRY", _stub_registry(qualifying=0))
-    assert isinstance(await resolve(NO_ENGINE, "daily_series", SCOPE), PreconditionUnmet)
+    assert isinstance(
+        await resolve(NO_ENGINE, "daily_series", SCOPE, gates=(_GATE,)), PreconditionUnmet
+    )
 
 
 async def test_narrowing_reaches_the_resolver_and_store_id_reaches_both(
@@ -285,7 +301,13 @@ async def test_narrowing_reaches_the_resolver_and_store_id_reaches_both(
     monkeypatch.setattr(registry_module, "_REGISTRY", _stub_registry(qualifying=42, calls=calls))
 
     outcome = await resolve(
-        NO_ENGINE, "daily_series", SCOPE, store_id=STORE, sku_id="SKU-000123", limit=10
+        NO_ENGINE,
+        "daily_series",
+        SCOPE,
+        gates=(_GATE,),
+        store_id=STORE,
+        sku_id="SKU-000123",
+        limit=10,
     )
     assert isinstance(outcome, Satisfied)
     await outcome.fetch()
@@ -297,11 +319,11 @@ async def test_narrowing_reaches_the_resolver_and_store_id_reaches_both(
     assert calls[0][1] == (STORE, "SKU-000123", 60)
 
 
-async def test_a_capability_with_no_preconditions_needs_no_probe_call(
+async def test_a_capability_with_no_gates_needs_no_probe_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """current_state resolves without any measurement, which is what an empty precondition
-    tuple MEANS rather than an unpopulated field."""
+    """current_state resolves without any measurement, which is what an empty gates tuple
+    MEANS rather than an unpopulated field."""
     calls: list[tuple[str, object]] = []
 
     async def resolver(engine: AsyncEngine, scope: CapabilityScope, **narrowing: object) -> list[object]:
@@ -319,74 +341,93 @@ async def test_a_capability_with_no_preconditions_needs_no_probe_call(
             }
         ),
     )
-    outcome = await resolve(NO_ENGINE, "current_state", SCOPE)
+    outcome = await resolve(NO_ENGINE, "current_state", SCOPE, gates=())
     assert isinstance(outcome, Satisfied)
     assert calls == []
 
 
-async def test_every_declared_precondition_is_evaluated_not_just_the_first(
+def test_two_gates_of_the_same_kind_cannot_be_expressed() -> None:
+    """A PROPERTY SLICE 2 REMOVED, recorded rather than quietly dropped.
+
+    Slice 1 had `test_every_declared_precondition_is_evaluated_not_just_the_first`, which built
+    a synthetic descriptor declaring `(MinHistoryDays(60), MinHistoryDays(90))` and asserted both
+    were reported. That test cannot be written now, and the reason is that the inversion made it
+    MEANINGLESS rather than merely awkward: gates are declared as KINDS, a caller binds at most
+    one threshold per kind, and two history requirements on one capability is not a thing — you
+    would take the max. `CapabilityRequirement` refuses it outright.
+
+    So the "every gate is evaluated, not just the first" property is currently UNEXERCISABLE:
+    with one GateKind, "every" is one. It becomes testable the day a second kind exists, and
+    `_bound`'s and `satisfies`'s `assert_never` are what force that day to be a visible edit.
+    Stating this is better than leaving a deleted test to be noticed as a coverage gap.
+    """
+    with pytest.raises(ValueError, match="binds a gate kind twice"):
+        CapabilityRequirement(
+            capability_id="daily_series",
+            fields=("tenant_id",),
+            gates=(
+                MinHistoryDays(days=60, policy=SeriesPolicy.ANY_SERIES),
+                MinHistoryDays(days=90, policy=SeriesPolicy.ANY_SERIES),
+            ),
+        )
+
+
+async def test_resolve_refuses_a_call_that_leaves_a_declared_gate_unbound() -> None:
+    """An unbound declared gate never runs, which makes the declaration decorative.
+
+    This is the failure a default would have caused: `gates=()` against a capability that
+    declares one would answer Satisfied without measuring anything.
+    """
+    with pytest.raises(ValueError, match="Every declared gate must be bound"):
+        await resolve(NO_ENGINE, "daily_series", SCOPE, gates=())
+
+
+async def test_resolve_refuses_a_gate_the_capability_does_not_declare() -> None:
+    """The other direction: a bound gate with no probe and no checked grain."""
+    with pytest.raises(ValueError, match="no other may be"):
+        await resolve(NO_ENGINE, "current_state", SCOPE, gates=(_GATE,))
+
+
+async def test_the_policy_a_caller_supplies_is_the_one_applied(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A capability declaring two gates must report BOTH unmet ones, or the second stays
-    invisible until the first is fixed.
+    """THE POINT OF SLICE 2, in one assertion: the SAME measurement, two verdicts.
 
-    Built with a synthetic two-precondition descriptor, since no real capability declares
-    two yet — the shape must work before one does.
+    3 of 66 series qualifying is genuinely satisfied for a caller that needs any series and
+    genuinely unmet for one that needs all of them. Slice 1 could not express the difference —
+    its module-level placeholder made everyone's answer the ANY answer.
     """
-    two_gates = CapabilityDescriptor(
-        id="two_gates",
-        version="0.1.0",
-        grain=("tenant_id", "event_date"),
-        tenancy=Tenancy.TENANT_SCOPED,
-        freshness=Freshness.AS_OF_DATE,
-        returns=("tenant_id", "event_date"),
-        produces_signals=(),
-        preconditions=(MinHistoryDays(days=60), MinHistoryDays(days=90)),
-    )
+    monkeypatch.setattr(registry_module, "_REGISTRY", _stub_registry(qualifying=3, measured=66))
 
-    probe_calls: list[int] = []
+    any_gate = MinHistoryDays(days=60, policy=SeriesPolicy.ANY_SERIES)
+    all_gate = MinHistoryDays(days=60, policy=SeriesPolicy.ALL_SERIES)
 
-    async def probe(
-        engine: AsyncEngine,
-        scope: CapabilityScope,
-        *,
-        store_id: UUID | None = None,
-        sku_id: str | None = None,
-        required: int,
-    ) -> Observation:
-        probe_calls.append(required)
-        return Observation(pairs_measured=66, pairs_qualifying=0, measured_at=MEASURED_AT)
+    assert isinstance(await resolve(NO_ENGINE, "daily_series", SCOPE, gates=(any_gate,)), Satisfied)
+    unmet = await resolve(NO_ENGINE, "daily_series", SCOPE, gates=(all_gate,))
+    assert isinstance(unmet, PreconditionUnmet)
+    assert (unmet.unmet[0].pairs_qualifying, unmet.unmet[0].pairs_measured) == (3, 66)
 
-    async def resolver(engine: AsyncEngine, scope: CapabilityScope, **narrowing: object) -> list[object]:
-        return []
 
+async def test_the_threshold_a_caller_supplies_is_the_one_probed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """min_days is a CALLER-SUPPLIED ARGUMENT now. Dead stock's 90 and a forecast's 60 reach
+    the same capability's probe as different numbers, which slice 1's descriptor constant made
+    impossible."""
+    calls: list[tuple[str, object]] = []
     monkeypatch.setattr(
-        registry_module,
-        "_REGISTRY",
-        MappingProxyType(
-            {
-                "two_gates": RegisteredCapability(
-                    descriptor=two_gates,
-                    resolver=resolver,
-                    probes=MappingProxyType(
-                        {
-                            MinHistoryDays.name: ProbeBinding(
-                                measure=probe, series_grain=("tenant_id",), date_column="event_date"
-                            )
-                        }
-                    ),
-                )
-            }
-        ),
+        registry_module, "_REGISTRY", _stub_registry(qualifying=66, calls=calls)
     )
-    outcome = await resolve(NO_ENGINE, "two_gates", SCOPE)
-    assert isinstance(outcome, PreconditionUnmet)
-    assert len(outcome.unmet) == 2, "both gates must be reported"
-    assert sorted(r.required for r in outcome.unmet) == [60, 90]
-    assert len(probe_calls) == 2
+    for days in (60, 90):
+        await resolve(
+            NO_ENGINE,
+            "daily_series",
+            SCOPE,
+            gates=(MinHistoryDays(days=days, policy=SeriesPolicy.ANY_SERIES),),
+        )
+    assert [call[1][2] for call in calls if call[0] == "probe"] == [60, 90]  # type: ignore[index]
 
 
-# ---------------------------------------------------------------------------
 # THE GRAIN RULE — a precondition is measured at the declared grain minus the date
 #
 # The only one of the per-tenant defect's findings that GENERALISES, so it is enforced at
@@ -399,7 +440,7 @@ async def test_every_declared_precondition_is_evaluated_not_just_the_first(
 
 def test_the_real_registry_satisfies_the_grain_rule() -> None:
     """The live binding, checked. Also non-vacuity: it asserts a probe EXISTS to check."""
-    binding = _REGISTRY["daily_series"].probes["min_history_days"]
+    binding = _REGISTRY["daily_series"].probes[GateKind.MIN_HISTORY_DAYS]
     assert binding.series_grain == ("tenant_id", "store_id", "sku_id")
     assert binding.date_column == "event_date"
     assert set(binding.series_grain) | {binding.date_column} == set(DAILY_SERIES.grain)
@@ -409,14 +450,14 @@ def test_the_probe_grain_comes_from_the_resolver_not_the_registry() -> None:
     """The binding imports SERIES_GRAIN / DATE_COLUMN from the module whose GROUP BY is built
     from them, so the declaration cannot describe a query it does not implement. Retyping the
     tuple here would be a second source of truth for the same fact."""
-    binding = _REGISTRY["daily_series"].probes["min_history_days"]
+    binding = _REGISTRY["daily_series"].probes[GateKind.MIN_HISTORY_DAYS]
     assert binding.series_grain is SERIES_GRAIN
     assert binding.date_column is DATE_COLUMN
 
 
 def _binding(series_grain: tuple[str, ...], date_column: str) -> ProbeBinding:
     return ProbeBinding(
-        measure=_REGISTRY["daily_series"].probes["min_history_days"].measure,
+        measure=_REGISTRY["daily_series"].probes[GateKind.MIN_HISTORY_DAYS].measure,
         series_grain=series_grain,
         date_column=date_column,
     )
@@ -428,7 +469,7 @@ def _registry_with(binding: ProbeBinding) -> MappingProxyType[str, RegisteredCap
             DAILY_SERIES.id: RegisteredCapability(
                 descriptor=DAILY_SERIES,
                 resolver=_REGISTRY["daily_series"].resolver,
-                probes=MappingProxyType({MinHistoryDays.name: binding}),
+                probes=MappingProxyType({GateKind.MIN_HISTORY_DAYS: binding}),
             )
         }
     )
@@ -499,8 +540,111 @@ def test_the_grain_rule_catches_grouping_by_the_date_column(
         _check_registry()
 
 
-def test_a_capability_with_no_preconditions_is_exempt_from_the_grain_rule() -> None:
+def test_a_capability_with_no_gates_is_exempt_from_the_grain_rule() -> None:
     """current_state has no probe to check, and that is not a gap. The rule applies to
     measurements; a capability with nothing to measure has nothing to get wrong."""
     assert dict(_REGISTRY["current_state"].probes) == {}
     _check_registry()
+
+
+# ---------------------------------------------------------------------------
+# THE DECLARATION CHECKS — composition, enforced at import
+# ---------------------------------------------------------------------------
+
+
+def test_the_declarations_are_data_and_immutable() -> None:
+    """Adding an analysis is adding a row, never editing an engine — the registry's own rule."""
+    assert declared_analysis_ids() == ("dead_stock",)
+    with pytest.raises(TypeError):
+        registry_module._DECLARATIONS["invented"] = DEAD_STOCK  # type: ignore[index]
+
+
+def test_the_real_declaration_satisfies_every_cross_check() -> None:
+    """Non-vacuity: the checks below are only worth anything if something passes them."""
+    _check_declarations()
+
+
+def _declaring(declaration: AnalysisDeclaration) -> MappingProxyType[str, AnalysisDeclaration]:
+    return MappingProxyType({declaration.id: declaration})
+
+
+def _dead_stock_with(**changes: object) -> AnalysisDeclaration:
+    return replace(DEAD_STOCK, **changes)  # type: ignore[arg-type]
+
+
+def test_the_declaration_check_catches_a_key_that_does_not_match(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        registry_module, "_DECLARATIONS", MappingProxyType({"typo": DEAD_STOCK})
+    )
+    with pytest.raises(ValueError, match="does not match analysis id"):
+        _check_declarations()
+
+
+def test_the_declaration_check_catches_an_unregistered_capability(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A requirement on a capability that does not exist is a declaration that can never
+    resolve — the artifact class this project keeps deleting."""
+    broken = _dead_stock_with(
+        requires=(
+            CapabilityRequirement(capability_id="basket_set", fields=("tenant_id",), gates=()),
+        )
+    )
+    monkeypatch.setattr(registry_module, "_DECLARATIONS", _declaring(broken))
+    with pytest.raises(ValueError, match="which is not registered"):
+        _check_declarations()
+
+
+def test_a_requirement_on_a_declined_capability_reports_its_recorded_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """THE MOST USEFUL ERROR MESSAGE THIS CHECK CAN PRODUCE. Someone who has just written a
+    requirement for lead_time_distribution gets told WHY it cannot exist — the verified reason
+    from _DECLINED — instead of 'not registered', which reads as 'not built yet'."""
+    broken = _dead_stock_with(
+        requires=(
+            CapabilityRequirement(
+                capability_id="lead_time_distribution", fields=("tenant_id",), gates=()
+            ),
+        )
+    )
+    monkeypatch.setattr(registry_module, "_DECLARATIONS", _declaring(broken))
+    with pytest.raises(ValueError, match="It is DECLINED: No observed lead times"):
+        _check_declarations()
+
+
+def test_the_grain_rule_catches_a_capability_too_coarse_to_join(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """THE COMPOSITION RULE, and the first mechanical use of the capability contract's `grain`.
+
+    An analysis emitting one row per (tenant, store, sku) cannot join a capability that
+    identifies rows only per tenant: the join would invent rows, and no care in the analysis
+    body fixes a join that was never valid. Simulated by widening the analysis's grain past what
+    its capabilities offer, which is the same inequality from the other side.
+    """
+    broken = _dead_stock_with(grain=("tenant_id", "store_id", "sku_id", "sku_variant"))
+    monkeypatch.setattr(registry_module, "_DECLARATIONS", _declaring(broken))
+    with pytest.raises(ValueError, match="does not contain"):
+        _check_declarations()
+
+
+def test_the_field_check_catches_reading_a_field_a_capability_does_not_return(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The check that would catch reaching for a plausible-but-absent field — the most likely
+    way an analysis goes quietly wrong."""
+    broken = _dead_stock_with(
+        requires=(
+            CapabilityRequirement(
+                capability_id="last_sale_at",
+                fields=("tenant_id", "days_since_last_sale"),
+                gates=(),
+            ),
+        )
+    )
+    monkeypatch.setattr(registry_module, "_DECLARATIONS", _declaring(broken))
+    with pytest.raises(ValueError, match="which does not return them"):
+        _check_declarations()

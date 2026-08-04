@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Conformance harness for the Synapse capability + signal contracts.
+"""Conformance harness for the Synapse capability, signal and analysis contracts.
 
 Deliberately the SAME SHAPE as contracts/conformance/validate.py (the C6 pack
 harness): check_schema first, a check() accumulator printing [PASS]/[FAIL], positive
@@ -48,10 +48,13 @@ def validates(validator: Draft202012Validator, instance: object) -> bool:
 def main() -> int:
     capability_schema = load(HERE / "capability.schema.json")
     signal_schema = load(HERE / "signal.schema.json")
+    analysis_schema = load(HERE / "analysis.schema.json")
     Draft202012Validator.check_schema(capability_schema)
     Draft202012Validator.check_schema(signal_schema)
+    Draft202012Validator.check_schema(analysis_schema)
     cap = Draft202012Validator(capability_schema)
     sig = Draft202012Validator(signal_schema)
+    ana = Draft202012Validator(analysis_schema)
 
     print("Capability fixtures:")
     current_state = load(HERE / "fixtures" / "capability" / "current_state.json")
@@ -62,8 +65,8 @@ def main() -> int:
         "it reads the signal columns but nothing writes them, so it is not a producer",
     )
     check(
-        "current_state declares NO preconditions",
-        current_state["preconditions"] == [],
+        "current_state declares NO gates",
+        current_state["gates"] == [],
         "the hot table either has a row or does not; no quantity of history changes that",
     )
 
@@ -76,8 +79,27 @@ def main() -> int:
         "mistake it was added to prevent",
     )
     check(
-        "daily_series declares a min_history_days precondition",
-        daily_series["preconditions"] == [{"kind": "min_history_days", "days": 60}],
+        "daily_series declares the min_history_days gate KIND and no value",
+        daily_series["gates"] == ["min_history_days"],
+        "the threshold moved to the demand side; a value here would be the slice-1 shape",
+    )
+
+    last_sale_at = load(HERE / "fixtures" / "capability" / "last_sale_at.json")
+    check("last_sale_at validates", validates(cap, last_sale_at))
+    check(
+        "last_sale_at shares current_state's grain EXACTLY",
+        last_sale_at["grain"] == current_state["grain"],
+        "the universe and the presences must join; dead_stock is the difference between them",
+    )
+    check(
+        "last_sale_at declares NO gates",
+        last_sale_at["gates"] == [],
+        "'when did this last sell' is answerable from one observation",
+    )
+    check(
+        "last_sale_at is last_write, not as_of_date",
+        last_sale_at["freshness"] == "last_write",
+        "its VALUE is a date; no date PARAMETER is meaningful, which is what the enum means",
     )
     check(
         "daily_series grain includes event_date",
@@ -102,16 +124,63 @@ def main() -> int:
         f"money needs a tax_treatment normalization decision first; found {money_fields}",
     )
 
-    check(
-        "the two capability ids are distinct",
-        current_state["id"] != daily_series["id"],
-    )
+    capability_ids = [current_state["id"], daily_series["id"], last_sale_at["id"]]
+    check("the capability ids are distinct", len(set(capability_ids)) == len(capability_ids))
     fixture_count = len(list((HERE / "fixtures" / "capability").glob("*.json")))
     check(
-        "exactly TWO capability fixtures exist",
-        fixture_count == 2,
+        "exactly THREE capability fixtures exist",
+        fixture_count == 3,
         f"found {fixture_count}; lead_time_distribution must NOT have one — its absence is "
         "the point, and the reason lives in synapse/registry.py's _DECLINED",
+    )
+
+    print("Analysis fixtures (the DEMAND side, new in slice 2):")
+    dead_stock = load(HERE / "fixtures" / "analysis" / "dead_stock.json")
+    check("dead_stock validates", validates(ana, dead_stock))
+    required_ids = [r["capability_id"] for r in dead_stock["requires"]]
+    check(
+        "dead_stock composes TWO capabilities",
+        sorted(required_ids) == ["current_state", "last_sale_at"],
+        f"found {sorted(required_ids)}",
+    )
+    check(
+        "dead_stock's grain is contained in both required capabilities' grains",
+        set(dead_stock["grain"]) <= set(current_state["grain"])
+        and set(dead_stock["grain"]) <= set(last_sale_at["grain"]),
+        "a coarser capability cannot be joined at a finer grain without inventing rows",
+    )
+    for requirement in dead_stock["requires"]:
+        fixture_for = {"current_state": current_state, "last_sale_at": last_sale_at}[
+            requirement["capability_id"]
+        ]
+        check(
+            f"every field dead_stock reads from {requirement['capability_id']} is in its returns",
+            set(requirement["fields"]) <= set(fixture_for["returns"]),
+            f"missing {sorted(set(requirement['fields']) - set(fixture_for['returns']))}",
+        )
+        check(
+            f"dead_stock binds exactly the gates {requirement['capability_id']} declares",
+            [g["kind"] for g in requirement["gates"]] == fixture_for["gates"],
+            "an unbound declared gate never runs; a bound undeclared gate has no probe",
+        )
+
+    # THE FITTED-THRESHOLD RULE, as a content check. No schema can express "this constant is
+    # honest about being one" beyond requiring the field; this asserts the field says something.
+    (stale_after,) = dead_stock["thresholds"]
+    check(
+        "stale_after_days admits it is NOT fitted",
+        stale_after["fitted"] is False,
+        "if this ever flips to true, the p90-gap capability must actually exist",
+    )
+    check(
+        "stale_after_days names what it stands in for, specifically",
+        "p90" in stale_after["stands_in_for"] and len(stale_after["stands_in_for"]) > 120,
+        "a one-word placeholder is not a derivation; it must say what the fitted version is",
+    )
+    check(
+        "dead_stock needs NO history gate anywhere",
+        all(r["gates"] == [] for r in dead_stock["requires"]),
+        "absence is the signal, so it works on sparse data — the reason it is the first one",
     )
 
     print("Signal fixtures:")
@@ -180,65 +249,41 @@ def main() -> int:
         "an empty list is a claim; a missing key is a silence, and they must not be the same",
     )
 
-    no_preconditions_key = clone(current_state)
-    del no_preconditions_key["preconditions"]
-    check(
-        "capability: OMITTING preconditions is rejected",
-        not validates(cap, no_preconditions_key),
-        "same rule as produces_signals: an empty list is a claim, a missing key is a silence",
-    )
-
-    invented_precondition = clone(daily_series)
-    invented_precondition["preconditions"] = [{"kind": "min_freshness_hours", "hours": 6}]
-    check(
-        "capability: an invented precondition kind is rejected",
-        not validates(cap, invented_precondition),
-        "a new kind means editing the schema, not passing a new string",
-    )
-
-    zero_days = clone(daily_series)
-    zero_days["preconditions"] = [{"kind": "min_history_days", "days": 0}]
-    check(
-        "capability: min_history_days of 0 is rejected",
-        not validates(cap, zero_days),
-        "zero is not a precondition; the empty array is how 'none' is declared",
-    )
-
-    negative_days = clone(daily_series)
-    negative_days["preconditions"] = [{"kind": "min_history_days", "days": -60}]
-    check("capability: a negative min_history_days is rejected", not validates(cap, negative_days))
-
-    stringly_days = clone(daily_series)
-    stringly_days["preconditions"] = [{"kind": "min_history_days", "days": "60"}]
-    check(
-        "capability: a stringly-typed days is rejected",
-        not validates(cap, stringly_days),
-        "a threshold compared against a COUNT must be an integer",
-    )
-
-    precondition_extra = clone(daily_series)
-    precondition_extra["preconditions"] = [
-        {"kind": "min_history_days", "days": 60, "measured_by": "a query"}
-    ]
-    check(
-        "capability: an extra field INSIDE a precondition is rejected",
-        not validates(cap, precondition_extra),
-        "the measurement names a table and belongs to synapse.resolvers, not the contract",
-    )
-
-    duplicate_precondition = clone(daily_series)
-    duplicate_precondition["preconditions"] = [
-        {"kind": "min_history_days", "days": 60},
-        {"kind": "min_history_days", "days": 60},
-    ]
-    check(
-        "capability: a duplicated precondition is rejected",
-        not validates(cap, duplicate_precondition),
-    )
-
+    # THE SLICE-1 PRECONDITION NEGATIVES ARE GONE, and their absence is the finding rather
+    # than a gap. They asserted things about a precondition carrying a VALUE here — an invented
+    # kind, days=0, a negative, a stringly-typed number, an extra field inside the object, a
+    # duplicate. None of those are expressible against `gates` because `gates` holds no values:
+    # the schema now admits only an enum of kind names, so "days=0 is rejected" has no shape to
+    # test. Six negative cases collapsed into three (a gate carrying a value at all, an
+    # invented kind, an omitted key), and the day-range negatives MOVED to the analysis
+    # contract, where the days actually live.
     empty_grain = clone(current_state)
     empty_grain["grain"] = []
     check("capability: an empty grain is rejected", not validates(cap, empty_grain))
+
+    gate_with_a_value = clone(daily_series)
+    gate_with_a_value["gates"] = [{"kind": "min_history_days", "days": 60}]
+    check(
+        "capability: a gate carrying a VALUE is rejected",
+        not validates(cap, gate_with_a_value),
+        "this is the slice-1 shape; the threshold belongs to the caller now",
+    )
+
+    invented_gate_kind = clone(daily_series)
+    invented_gate_kind["gates"] = ["min_freshness_hours"]
+    check(
+        "capability: an invented gate kind is rejected",
+        not validates(cap, invented_gate_kind),
+        "a kind may be declared only where a probe exists, so a new one is a schema edit",
+    )
+
+    no_gates_key = clone(current_state)
+    del no_gates_key["gates"]
+    check(
+        "capability: OMITTING gates is rejected",
+        not validates(cap, no_gates_key),
+        "an empty list is a claim, a missing key is a silence",
+    )
 
     dup_grain = clone(current_state)
     dup_grain["grain"] = ["tenant_id", "tenant_id"]
@@ -267,25 +312,105 @@ def main() -> int:
     invented_unit["unit"] = "widgets_per_fortnight"
     check("signal: an invented unit is rejected", not validates(sig, invented_unit))
 
-    print("Scope guard (the other five contracts are NOT in this slice):")
-    # D3: model, analysis, action, tool and content are later and would be guesses.
-    # If a file for one appears, this fails rather than letting it arrive unnoticed.
+    no_requires = clone(dead_stock)
+    no_requires["requires"] = []
+    check(
+        "analysis: requiring NO capability is rejected",
+        not validates(ana, no_requires),
+        "an analysis with no inputs has nothing to analyse",
+    )
+
+    empty_fields = clone(dead_stock)
+    empty_fields["requires"][0]["fields"] = []
+    check(
+        "analysis: a requirement naming NO fields is rejected",
+        not validates(ana, empty_fields),
+        "an analysis that reads nothing from a capability does not require it",
+    )
+
+    no_policy = clone(dead_stock)
+    no_policy["requires"][0]["gates"] = [{"kind": "min_history_days", "days": 90}]
+    check(
+        "analysis: a gate with a threshold but NO policy is rejected",
+        not validates(ana, no_policy),
+        "THE LOAD-BEARING NEGATIVE: a threshold with no policy is slice 1's unowned default "
+        "coming back — the number without what 'enough' means across a population",
+    )
+
+    invented_policy = clone(dead_stock)
+    invented_policy["requires"][0]["gates"] = [
+        {"kind": "min_history_days", "days": 90, "policy": "min_series"}
+    ]
+    check(
+        "analysis: an invented policy is rejected",
+        not validates(ana, invented_policy),
+        "min-over-series is all_series with a worse name and must not be spellable",
+    )
+
+    zero_day_gate = clone(dead_stock)
+    zero_day_gate["requires"][0]["gates"] = [
+        {"kind": "min_history_days", "days": 0, "policy": "any_series"}
+    ]
+    check("analysis: a zero-day gate is rejected", not validates(ana, zero_day_gate))
+
+    unfitted_unexplained = clone(dead_stock)
+    del unfitted_unexplained["thresholds"][0]["stands_in_for"]
+    check(
+        "analysis: an UNFITTED threshold with no stands_in_for is rejected",
+        not validates(ana, unfitted_unexplained),
+        "a constant with no stated derivation is indistinguishable from a guess — the same "
+        "one-way rule as a signal's undetermined/semantic_note pair",
+    )
+
+    fitted_but_substituting = clone(dead_stock)
+    fitted_but_substituting["thresholds"][0]["fitted"] = True
+    check(
+        "analysis: a FITTED threshold that still stands in for something is rejected",
+        not validates(ana, fitted_but_substituting),
+        "a fitted number substitutes for nothing; leaving the note would be a stale claim",
+    )
+
+    fitted_clean = clone(dead_stock)
+    fitted_clean["thresholds"] = [{"name": "stale_after_days", "days": 90, "fitted": True}]
+    check(
+        "analysis: a FITTED threshold with no stands_in_for is ACCEPTED",
+        validates(ana, fitted_clean),
+        "the rule is one-way, exactly like semantic_note: unfitted requires a reason, and a "
+        "reason is not what makes something unfitted",
+    )
+
+    analysis_extra = clone(dead_stock)
+    analysis_extra["schedule"] = "0 3 * * *"
+    check(
+        "analysis: an unknown field is rejected (schema is closed)",
+        not validates(ana, analysis_extra),
+        "a schedule and an output destination are the two most tempting additions and nothing "
+        "consumes an analysis's output yet",
+    )
+
+    print("Scope guard (the other four contracts are NOT in this slice):")
+    # model, action, tool and content are later and would be guesses. If a file for one
+    # appears, this fails rather than letting it arrive unnoticed.
+    #
+    # `analysis` MOVED FROM THIS LIST TO THE ONE ABOVE in slice 2. Slice 1 asserted "no
+    # analysis schema has appeared"; that guard did its job by making the arrival deliberate
+    # rather than incidental, and flipping it is the visible edit it existed to force.
     # NB: Path("capability.schema.json").stem is "capability.schema", not
     # "capability" — a double extension. Strip the suffix explicitly rather than
     # relying on .stem, which silently matched nothing and made this guard pass
     # vacuously on the first run.
-    expected = {"capability", "signal"}
+    expected = {"capability", "signal", "analysis"}
     unexpected = sorted(
         p.name
         for p in HERE.glob("*.schema.json")
         if p.name.removesuffix(".schema.json") not in expected
     )
     check(
-        "only capability + signal schemas exist",
+        "only capability + signal + analysis schemas exist",
         unexpected == [],
         f"unexpected schema files: {unexpected}",
     )
-    for absent in ("model", "analysis", "action", "tool", "content"):
+    for absent in ("model", "action", "tool", "content"):
         check(
             f"no {absent} schema has appeared",
             not (HERE / f"{absent}.schema.json").exists(),
@@ -299,6 +424,10 @@ def main() -> int:
     check(
         "signal schema is closed (additionalProperties false)",
         signal_schema.get("additionalProperties") is False,
+    )
+    check(
+        "analysis schema is closed (additionalProperties false)",
+        analysis_schema.get("additionalProperties") is False,
     )
 
     print()

@@ -6,10 +6,13 @@ DIS table.
 
 Layering, enforced rather than described:
 
-- ``synapse.core`` — pure types. No database, no SQL, no canonical row shapes.
+- ``synapse.core`` — pure types, both sides of the exchange: what a capability OFFERS
+  (``capability``) and what an analysis REQUIRES (``analysis``). No database, no SQL, no
+  canonical row shapes.
 - ``synapse.resolvers`` — the ONLY package that may reach a canonical table.
-- ``synapse.registry`` — binds capability ids to resolvers and answers "can this be
-  satisfied for THIS tenant right now". Composes resolvers; reaches no database itself.
+- ``synapse.registry`` — binds capability ids to resolvers, holds the analysis declarations,
+  and answers "can this be satisfied for THIS tenant right now, under the policy the CALLER
+  asked for". Composes resolvers; reaches no database itself.
 
 WHAT IMPORT-LINTER ACTUALLY ENFORCES, stated exactly, because the previous version of
 this paragraph overstated it. Three contracts in dis/pyproject.toml:

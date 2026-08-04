@@ -17,7 +17,7 @@ from typing import assert_never
 
 import pytest
 
-from synapse.core.capability import CURRENT_STATE, DAILY_SERIES, MinHistoryDays
+from synapse.core.capability import CURRENT_STATE, DAILY_SERIES, GateKind
 from synapse.core.resolution import (
     Observation,
     PreconditionReport,
@@ -25,8 +25,9 @@ from synapse.core.resolution import (
     Resolution,
     ResolutionStatus,
     Satisfied,
+    SeriesPolicy,
     Unregistered,
-    satisfies_placeholder_policy,
+    satisfies,
 )
 
 MEASURED_AT = datetime(2026, 8, 3, 9, 0, tzinfo=UTC)
@@ -36,7 +37,7 @@ def _report(
     *, qualifying: int, measured: int = 66, required: int = 60
 ) -> PreconditionReport:
     return PreconditionReport(
-        name=MinHistoryDays.name,
+        name=GateKind.MIN_HISTORY_DAYS,
         required=required,
         pairs_measured=measured,
         pairs_qualifying=qualifying,
@@ -129,22 +130,45 @@ def test_a_report_carries_no_verdict() -> None:
     assert not hasattr(_report(qualifying=0), "met")
 
 
-def test_the_placeholder_policy_is_any_series_qualifying() -> None:
-    """Pinned so that replacing it in slice 2 is a visible, deliberate edit.
+def test_any_series_is_one_qualifying_series() -> None:
+    """ANY_SERIES is what the slice-1 placeholder's BODY was: pairs_qualifying > 0.
 
-    NOT MIN, deliberately. MIN reads as a considered conservative choice while being
-    unusable: any growing catalogue adds a SKU with 7 days and blocks the whole store
-    permanently, so a 5,000-SKU tenant with 4,950 good series would never resolve.
+    THE DISTINCTION THAT MATTERS. "The placeholder is gone" is true; "ANY stops working" is
+    false. Deleting it promoted this rule from an unowned default to a declared choice, and
+    this test is what pins that the behaviour survived the promotion.
     """
-    assert not satisfies_placeholder_policy(_report(qualifying=0, measured=66))
-    assert satisfies_placeholder_policy(_report(qualifying=1, measured=66))
-    assert satisfies_placeholder_policy(_report(qualifying=66, measured=66))
+    assert not satisfies(SeriesPolicy.ANY_SERIES, _report(qualifying=0, measured=66))
+    assert satisfies(SeriesPolicy.ANY_SERIES, _report(qualifying=1, measured=66))
+    assert satisfies(SeriesPolicy.ANY_SERIES, _report(qualifying=66, measured=66))
 
 
-def test_the_placeholder_policy_refuses_an_empty_population() -> None:
-    """A tenant with no series at all is not satisfied. 0 of 0 must not read as "all of
-    them qualify", which is what an all-series policy would say here."""
-    assert not satisfies_placeholder_policy(_report(qualifying=0, measured=0))
+def test_all_series_needs_every_series() -> None:
+    """One short series blocks the population — which is the whole point of asking for ALL."""
+    assert satisfies(SeriesPolicy.ALL_SERIES, _report(qualifying=66, measured=66))
+    assert not satisfies(SeriesPolicy.ALL_SERIES, _report(qualifying=65, measured=66))
+    assert not satisfies(SeriesPolicy.ALL_SERIES, _report(qualifying=0, measured=66))
+
+
+def test_all_series_refuses_an_empty_population() -> None:
+    """LOAD-BEARING, and the reason `pairs_measured > 0` is in the ALL branch.
+
+    Nought-of-nought is not "all of them qualify", it is an empty population. Without that
+    clause a tenant with NO DATA AT ALL would satisfy the strictest policy available, which is
+    the most dangerous possible false positive: it reads as "fully ready" and is "empty".
+    """
+    assert not satisfies(SeriesPolicy.ALL_SERIES, _report(qualifying=0, measured=0))
+
+
+def test_any_series_also_refuses_an_empty_population() -> None:
+    """Both policies agree on nothing-at-all, by different routes."""
+    assert not satisfies(SeriesPolicy.ANY_SERIES, _report(qualifying=0, measured=0))
+
+
+def test_the_two_policies_disagree_which_is_why_a_caller_must_choose() -> None:
+    """If every measurement resolved the same way under both, the parameter would be theatre."""
+    partial = _report(qualifying=3, measured=66)
+    assert satisfies(SeriesPolicy.ANY_SERIES, partial)
+    assert not satisfies(SeriesPolicy.ALL_SERIES, partial)
 
 
 def test_precondition_unmet_refuses_an_empty_report_tuple() -> None:
@@ -154,13 +178,17 @@ def test_precondition_unmet_refuses_an_empty_report_tuple() -> None:
         PreconditionUnmet(descriptor=DAILY_SERIES, unmet=())
 
 
-def test_precondition_unmet_refuses_a_satisfied_report() -> None:
-    """LOAD-BEARING. The engine filters to unmet reports; if that filter were ever inverted
-    or dropped, this type refuses to be constructed rather than reporting a satisfied
-    capability as blocked. Checked against the SAME policy the engine used, so the two
-    cannot drift."""
-    with pytest.raises(ValueError, match="SATISFIED report"):
-        PreconditionUnmet(descriptor=DAILY_SERIES, unmet=(_report(qualifying=3),))
+def test_precondition_unmet_no_longer_second_guesses_the_verdict() -> None:
+    """DELIBERATELY WEAKER THAN SLICE 1, by exactly the amount the caller gained.
+
+    Slice 1 re-checked every report against the module-level placeholder and raised if one
+    looked satisfied. That check cannot exist now: `qualifying=3 of 66` is UNMET under
+    ALL_SERIES and SATISFIED under ANY_SERIES, so there is no policy-free notion of "carries a
+    satisfied report" left to assert. The engine's filter is the single place policy is applied,
+    and it is the only place that knows which policy was asked for.
+    """
+    unmet = PreconditionUnmet(descriptor=DAILY_SERIES, unmet=(_report(qualifying=3),))
+    assert unmet.unmet[0].pairs_qualifying == 3
 
 
 def test_precondition_unmet_carries_the_descriptor() -> None:
