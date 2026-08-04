@@ -213,7 +213,7 @@ variable "csv_ingest_worker_image" {
 variable "streaming_consumer_image" {
   type        = string
   description = "streaming-consumer container image (the ingress.ready pull consumer, terminal canonical writer). Built from dis/terraform/docker/streaming-consumer.Dockerfile with the dis/ WORKSPACE ROOT as build context; bump this in the same commit as any deploy."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/streaming-consumer:v2"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/streaming-consumer:v3"
 }
 
 # ONE Clover host for BOTH services, deliberately.
