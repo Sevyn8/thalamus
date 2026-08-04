@@ -338,10 +338,15 @@ allow_indirect_imports = true
 # and core stays pure. This is what generalises the two forbidden contracts above — it is
 # the reason a fourth Synapse package cannot quietly arrive outside the rule again.
 [[tool.importlinter.contracts]]
-name = "synapse layers: registry > resolvers > core"
+name = "synapse layers: registry > persistence > resolvers > core"
 type = "layers"
 layers = [
   "synapse.registry",
+  # synapse.persistence is the only package that WRITES. Above resolvers because a future
+  # caller composing "resolve, then record" belongs at the registry level and may reach both,
+  # while a resolver must never reach a writer — the layer order is what makes that a lint
+  # failure rather than a review comment.
+  "synapse.persistence",
   "synapse.resolvers",
   "synapse.core",
 ]
