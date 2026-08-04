@@ -134,13 +134,26 @@ def test_descriptor_matches_the_committed_fixture() -> None:
     assert fixture["freshness"] == CURRENT_STATE.freshness.value
     assert set(fixture["returns"]) == set(CURRENT_STATE.returns)
     assert tuple(fixture["produces_signals"]) == CURRENT_STATE.produces_signals
+    assert fixture["preconditions"] == [], "the fixture must carry the empty CLAIM, not omit the key"
+    assert tuple(fixture["preconditions"]) == CURRENT_STATE.preconditions
 
 
 def test_current_state_produces_no_signals() -> None:
-    """Verified, not pending: nothing writes canonical.store_sku_signal_history."""
+    """Verified, not pending: nothing writes the signal-history table."""
     assert CURRENT_STATE.produces_signals == ()
     assert CURRENT_STATE.tenancy is Tenancy.TENANT_SCOPED
     assert CURRENT_STATE.freshness is Freshness.LAST_WRITE
+
+
+def test_current_state_declares_no_preconditions() -> None:
+    """Verified-empty for a DIFFERENT reason than produces_signals.
+
+    The hot table either has a row for a (tenant, store, sku) or it does not; no quantity of
+    history makes the answer usable or unusable, so there is genuinely nothing to require.
+    An empty result here is a legitimate state, not an unmet gate — which is exactly the
+    distinction daily_series's non-empty tuple exists to draw.
+    """
+    assert CURRENT_STATE.preconditions == ()
 
 
 def test_scope_requires_a_tenant() -> None:

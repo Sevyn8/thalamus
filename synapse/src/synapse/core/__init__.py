@@ -1,12 +1,19 @@
 """Pure Synapse types. NO database, NO SQL, NO canonical row shapes.
 
 This package must stay importable with nothing installed but pydantic-free stdlib
-plus the type-only imports it declares. import-linter enforces that: ``dis_rls`` and
-``sqlalchemy`` are forbidden here, so a stray convenience import fails the lint
-rather than quietly making the pure layer database-aware.
+plus the type-only imports it declares. import-linter enforces that: ``dis_canonical``,
+``dis_rls``, ``sqlalchemy`` and ``psycopg`` are forbidden here — directly AND
+transitively — so a stray convenience import fails the lint rather than quietly making
+the pure layer database-aware. A ``layers`` contract additionally forbids this package
+from importing ``synapse.resolvers`` or ``synapse.registry``, which is the transitive
+route a "just this once" helper import would take.
 
-``core.current_state`` imports ``dis_canonical`` for the ``from_canonical``
-constructor's type only, which is why the import-linter contract names
-``dis_canonical`` separately from the database pair — see the contracts in
-dis/pyproject.toml for which is forbidden where.
+THE CONTRACTS COVER ``synapse.core``, NOT "everything but resolvers". This docstring
+previously described the wider rule; the wider rule is now real, but as the layers
+contract rather than as these two — see dis/pyproject.toml.
+
+WHERE THE PRECONDITION SPLIT LANDS. ``core.capability`` DECLARES preconditions as pure
+data (a threshold, no SQL). The MEASUREMENT is a database read that names a canonical
+table, so it lives in ``synapse.resolvers`` — a probe placed here would fail the lint
+above, which is why the split is a mechanism rather than a convention.
 """

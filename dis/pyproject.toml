@@ -281,14 +281,19 @@ forbidden_modules = ["dis_mapping", "dis_validation", "dis_enrichment"]
 
 # --- Synapse (D6): resolvers are the ONLY layer that may reach canonical ---
 #
-# WHAT THESE TWO CONTRACTS ACTUALLY ENFORCE, stated precisely because the obvious
-# reading is wrong. They enforce that no Synapse module OUTSIDE synapse.resolvers may
-# import canonical row shapes or a database layer. They do NOT and CANNOT enforce
-# "only resolvers know a table name": a table name is a STRING LITERAL, and an import
-# graph cannot see a string. There is no importable canonical ORM to make it an
-# import either — dis-canonical is Pydantic-only ("SQL conversion is the consumer's
-# DB layer", its own words) and the single SQLAlchemy model lives inside the
-# dis-ui-server SERVICE, which a peer plane must not depend on.
+# WHAT THESE CONTRACTS ACTUALLY ENFORCE, stated precisely because the obvious reading is
+# wrong. The first two constrain synapse.core ONLY. They were previously DESCRIBED, in
+# three module docstrings, as forbidding the database trio to "every synapse.* module
+# except synapse.resolvers" — which was never what they said, and stopped being harmless
+# the moment a third package (synapse.registry) arrived: it would have sat outside the
+# enforced set entirely. The docstrings now match the contracts, and the layers contract
+# below is what generalises the rule.
+#
+# They do NOT and CANNOT enforce "only resolvers know a table name": a table name is a
+# STRING LITERAL, and an import graph cannot see a string. There is no importable
+# canonical ORM to make it an import either — dis-canonical is Pydantic-only ("SQL
+# conversion is the consumer's DB layer", its own words) and the single SQLAlchemy model
+# lives inside the dis-ui-server SERVICE, which a peer plane must not depend on.
 #
 # The table-NAME half is enforced by synapse/tests/unit/test_table_name_containment.py,
 # which greps for canonical table names outside synapse/resolvers/. That test is THE
@@ -307,6 +312,38 @@ forbidden_modules = [
   "dis_rls",
   "sqlalchemy",
   "psycopg",
+]
+
+# The registry binds resolvers to capability ids, so it MUST import synapse.resolvers and
+# therefore pulls dis_canonical / dis_rls / sqlalchemy in transitively. That is inherent,
+# not a leak. What must stay true is that the registry does not reach a database ITSELF:
+# allow_indirect_imports = true checks DIRECT imports only, which is exactly that
+# distinction. sqlalchemy is deliberately NOT in this list — synapse/registry.py names
+# AsyncEngine as a parameter type, and the "no statement construction outside resolvers"
+# half is the grep test's job (it asserts `from sqlalchemy import ...`, the form that
+# brings in select/table/column/text, appears only under synapse/resolvers/).
+[[tool.importlinter.contracts]]
+name = "synapse: the registry composes resolvers, it does not reach a database itself"
+type = "forbidden"
+source_modules = ["synapse.registry"]
+forbidden_modules = [
+  "dis_canonical",
+  "dis_rls",
+  "psycopg",
+]
+allow_indirect_imports = true
+
+# The layering, as a contract rather than a paragraph. Higher may import lower, never the
+# reverse: the registry composes resolvers, resolvers read canonical and return core types,
+# and core stays pure. This is what generalises the two forbidden contracts above — it is
+# the reason a fourth Synapse package cannot quietly arrive outside the rule again.
+[[tool.importlinter.contracts]]
+name = "synapse layers: registry > resolvers > core"
+type = "layers"
+layers = [
+  "synapse.registry",
+  "synapse.resolvers",
+  "synapse.core",
 ]
 
 [tool.uv]

@@ -6,7 +6,7 @@
 # `synapse.resolvers` rather than a prefixed variant.
 name = "thalamus-synapse"
 version = "0.0.0"
-description = "Synapse — the Thalamus analytics + actions plane. A PEER of DIS, not part of it: it reads canonical read-only and (later) emits actions. This slice is scaffolding, the current_state resolver, and the first two capability/signal contracts."
+description = "Synapse — the Thalamus analytics + actions plane. A PEER of DIS, not part of it: it reads canonical read-only and (later) emits actions. Today: the current_state and daily_series resolvers, the shared D33 correction-collapse, the capability/signal contracts, and a data-driven registry that answers whether a capability can be satisfied for a given tenant right now."
 requires-python = ">=3.12"
 dependencies = [
   # Canonical ROW SHAPES (Pydantic, not an ORM — dis-canonical says so itself:

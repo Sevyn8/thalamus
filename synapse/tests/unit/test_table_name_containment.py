@@ -62,6 +62,56 @@ def test_the_resolver_really_does_name_its_table() -> None:
     assert "store_sku_current_position" in text
 
 
+def test_the_daily_series_resolver_really_does_name_its_table() -> None:
+    """The same non-vacuity guard for the second resolver.
+
+    It matters more here than for current_state: daily_series reaches the table through the
+    shared collapse helper, and the helper deliberately names NO table. If the resolver ever
+    stopped naming its own, the containment rule would be protecting an empty set again for
+    this capability while looking healthy.
+    """
+    text = (RESOLVERS / "daily_series.py").read_text(encoding="utf-8")
+    assert "store_sku_sale_events" in text
+
+
+def test_the_collapse_helper_names_no_table_in_its_code() -> None:
+    """The helper is parameterised, so its reusability is a code property worth pinning.
+
+    Prose is exempt: the module explains WHICH tables the D33 key was verified against, and
+    it sits under resolvers/ where naming them is allowed. What must not appear is a table
+    name inside a `table(...)` construct — that would make the helper sale-events-specific
+    and silently un-reusable for change events.
+    """
+    text = (RESOLVERS / "_collapse.py").read_text(encoding="utf-8")
+    code = "\n".join(
+        line for line in text.splitlines() if not line.lstrip().startswith("#")
+    )
+    body = code.split('"""', 2)[-1]  # everything after the module docstring
+    for tbl in CANONICAL_TABLES:
+        assert tbl not in body, f"_collapse.py must stay table-agnostic; its code names {tbl!r}"
+
+
+def test_statement_constructors_are_imported_only_inside_resolvers() -> None:
+    """The other half of "only resolvers may reach canonical", for the registry layer.
+
+    import-linter cannot express this one: ``synapse.registry`` MUST import sqlalchemy
+    transitively (it binds resolvers that use it), so a forbidden contract on the package
+    would either fail or have to allow the thing being guarded. What is checkable is the
+    IMPORT FORM: ``from sqlalchemy import ...`` is how select/table/column/text arrive,
+    whereas ``from sqlalchemy.ext.asyncio import AsyncEngine`` is a parameter type and
+    nothing more. Only resolvers may do the former.
+    """
+    offenders = [
+        str(p.relative_to(SYNAPSE_SRC))
+        for p in _python_files()
+        if RESOLVERS not in p.parents and "from sqlalchemy import " in p.read_text(encoding="utf-8")
+    ]
+    assert offenders == [], (
+        "statement construction must stay under synapse/resolvers/; these import "
+        f"sqlalchemy's constructors directly: {offenders}"
+    )
+
+
 def test_synapse_never_builds_a_write_statement() -> None:
     """D7: Synapse is read-only on canonical. No INSERT/UPDATE/DELETE construction."""
     forbidden = ("sqlalchemy import insert", "sqlalchemy import update", "sqlalchemy import delete")

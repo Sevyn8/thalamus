@@ -1,0 +1,19 @@
+{
+  "id": "daily_series",
+  "version": "0.1.0",
+  "grain": ["tenant_id", "store_id", "sku_id", "event_date"],
+  "tenancy": "tenant_scoped",
+  "freshness": "as_of_date",
+  "returns": [
+    "tenant_id",
+    "store_id",
+    "sku_id",
+    "event_date",
+    "net_quantity",
+    "sale_line_count",
+    "return_line_count",
+    "void_line_count"
+  ],
+  "produces_signals": [],
+  "preconditions": [{ "kind": "min_history_days", "days": 60 }]
+}

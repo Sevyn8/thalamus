@@ -61,6 +61,58 @@ def main() -> int:
         current_state["produces_signals"] == [],
         "it reads the signal columns but nothing writes them, so it is not a producer",
     )
+    check(
+        "current_state declares NO preconditions",
+        current_state["preconditions"] == [],
+        "the hot table either has a row or does not; no quantity of history changes that",
+    )
+
+    daily_series = load(HERE / "fixtures" / "capability" / "daily_series.json")
+    check("daily_series validates", validates(cap, daily_series))
+    check(
+        "daily_series is the FIRST as_of_date capability",
+        daily_series["freshness"] == "as_of_date" and current_state["freshness"] == "last_write",
+        "the enum value existed unused until a series needed it; conflating the two is the "
+        "mistake it was added to prevent",
+    )
+    check(
+        "daily_series declares a min_history_days precondition",
+        daily_series["preconditions"] == [{"kind": "min_history_days", "days": 60}],
+    )
+    check(
+        "daily_series grain includes event_date",
+        "event_date" in daily_series["grain"],
+        "an as_of_date capability whose grain has no date is a reading, not a series",
+    )
+    check(
+        "daily_series declares no produced signals",
+        daily_series["produces_signals"] == [],
+    )
+
+    # THE MONEY CHECK, and it is a content rule rather than a schema rule because no schema
+    # can express "do not add a field whose meaning is unresolved". tax_treatment is per-row
+    # INCLUSIVE/EXCLUSIVE denormalized from the store, so summing quantity * unit_sale_price
+    # across a tenant adds tax-inclusive to tax-exclusive amounts with nothing declaring a
+    # normalization. If a money field appears here, that decision was made silently.
+    money_words = ("amount", "price", "revenue", "value", "cost", "total")
+    money_fields = sorted(f for f in daily_series["returns"] if any(w in f for w in money_words))
+    check(
+        "daily_series returns QUANTITY only, no money field",
+        money_fields == [],
+        f"money needs a tax_treatment normalization decision first; found {money_fields}",
+    )
+
+    check(
+        "the two capability ids are distinct",
+        current_state["id"] != daily_series["id"],
+    )
+    fixture_count = len(list((HERE / "fixtures" / "capability").glob("*.json")))
+    check(
+        "exactly TWO capability fixtures exist",
+        fixture_count == 2,
+        f"found {fixture_count}; lead_time_distribution must NOT have one — its absence is "
+        "the point, and the reason lives in synapse/registry.py's _DECLINED",
+    )
 
     print("Signal fixtures:")
     signals = {}
@@ -126,6 +178,62 @@ def main() -> int:
         "capability: OMITTING produces_signals is rejected",
         not validates(cap, no_signals_key),
         "an empty list is a claim; a missing key is a silence, and they must not be the same",
+    )
+
+    no_preconditions_key = clone(current_state)
+    del no_preconditions_key["preconditions"]
+    check(
+        "capability: OMITTING preconditions is rejected",
+        not validates(cap, no_preconditions_key),
+        "same rule as produces_signals: an empty list is a claim, a missing key is a silence",
+    )
+
+    invented_precondition = clone(daily_series)
+    invented_precondition["preconditions"] = [{"kind": "min_freshness_hours", "hours": 6}]
+    check(
+        "capability: an invented precondition kind is rejected",
+        not validates(cap, invented_precondition),
+        "a new kind means editing the schema, not passing a new string",
+    )
+
+    zero_days = clone(daily_series)
+    zero_days["preconditions"] = [{"kind": "min_history_days", "days": 0}]
+    check(
+        "capability: min_history_days of 0 is rejected",
+        not validates(cap, zero_days),
+        "zero is not a precondition; the empty array is how 'none' is declared",
+    )
+
+    negative_days = clone(daily_series)
+    negative_days["preconditions"] = [{"kind": "min_history_days", "days": -60}]
+    check("capability: a negative min_history_days is rejected", not validates(cap, negative_days))
+
+    stringly_days = clone(daily_series)
+    stringly_days["preconditions"] = [{"kind": "min_history_days", "days": "60"}]
+    check(
+        "capability: a stringly-typed days is rejected",
+        not validates(cap, stringly_days),
+        "a threshold compared against a COUNT must be an integer",
+    )
+
+    precondition_extra = clone(daily_series)
+    precondition_extra["preconditions"] = [
+        {"kind": "min_history_days", "days": 60, "measured_by": "a query"}
+    ]
+    check(
+        "capability: an extra field INSIDE a precondition is rejected",
+        not validates(cap, precondition_extra),
+        "the measurement names a table and belongs to synapse.resolvers, not the contract",
+    )
+
+    duplicate_precondition = clone(daily_series)
+    duplicate_precondition["preconditions"] = [
+        {"kind": "min_history_days", "days": 60},
+        {"kind": "min_history_days", "days": 60},
+    ]
+    check(
+        "capability: a duplicated precondition is rejected",
+        not validates(cap, duplicate_precondition),
     )
 
     empty_grain = clone(current_state)

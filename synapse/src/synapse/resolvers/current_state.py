@@ -4,8 +4,11 @@ THIS IS THE ONLY LAYER IN SYNAPSE THAT MAY NAME A CANONICAL TABLE. Everything el
 reads its output. Enforcement is in two parts, and the second is the mechanism
 rather than a nicety:
 
-- import-linter forbids ``dis_canonical``, ``dis_rls`` and ``sqlalchemy`` to every
-  ``synapse.*`` module EXCEPT ``synapse.resolvers``.
+- import-linter forbids ``dis_canonical``, ``dis_rls``, ``sqlalchemy`` and ``psycopg``
+  to ``synapse.core``, forbids the DB layers to ``synapse.registry`` as DIRECT imports,
+  and fixes the layer order ``registry > resolvers > core``. (This list previously read
+  "every ``synapse.*`` module EXCEPT ``synapse.resolvers``", which the contracts never
+  said; the layers contract is what makes the general rule true.)
 - a grep test fails if a canonical table name appears anywhere outside
   ``synapse/resolvers/``. That test is THE MECHANISM for the table-name half, not a
   belt: a table name is a string literal, and no import graph can see a string.
