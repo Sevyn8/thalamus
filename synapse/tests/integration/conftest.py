@@ -1,6 +1,43 @@
-"""Shared vacuity guard for Synapse's live tests.
+"""Shared vacuity guard for Synapse's live tests, and how to run them at all.
 
-WHY THIS EXISTS. Several tests in this directory prove statements about ROWS. Run against a
+HOW TO RUN THESE AGAINST STAGING — the whole invocation, in one copy-pasteable place, because
+it has four requirements and three of them fail in ways that do not name themselves.
+
+    cd dis && \\
+      DIS_EXPECTED_DATABASE=thalamus \\
+      SYNAPSE_READER_URL='postgresql+psycopg://synapse_reader:<PW>@10.55.0.3:5432/thalamus?sslmode=require' \\
+      SYNAPSE_TEST_TENANT_ID='<tenant-uuid>' \\
+      uv run pytest -c pyproject.toml -p no:dis_testing ../synapse/tests/integration
+
+Each part, and what its absence looks like:
+
+- ``SYNAPSE_READER_URL`` — the synapse_reader DSN. NOT ithina_dis_user, which holds full DML on
+  canonical and would make a read-only plane's tests prove nothing about its read-only-ness.
+  The password is in Secret Manager as ``thalamus-synapse_reader-password``; the assembled DSN
+  is ``synapse-reader-database-url``, created by hand (Terraform only reads those). Driver is
+  ``postgresql+psycopg``, never asyncpg — asyncpg is not a workspace dependency and the wrong
+  scheme fails as ``ModuleNotFoundError``, which reads as a missing package rather than a bad
+  DSN.
+- ``DIS_EXPECTED_DATABASE=thalamus`` — dis-rls refuses any database except its expected one,
+  defaulting to the local ``ithina_dis_db``. Without this every test fails with
+  ``RlsContextError`` before touching a row. Not a permission error, and not obviously a
+  config one.
+- ``-p no:dis_testing`` — ``dis-testing`` registers a ``pytest11`` entry point, so it
+  auto-loads into any suite that has the package installed, which Synapse does via the shared
+  uv workspace. Its session-scoped autouse ``_dis_identity_synced`` runs an identity-mirror
+  sync that assumes the LOCAL stack. Against staging it must be off.
+- NETWORK ACCESS. The instance is ``ipv4_enabled = false`` — private IP only,
+  ``ssl_mode = ENCRYPTED_ONLY`` — so the DSN above (10.55.0.3) is only reachable from inside
+  the VPC: the Cloud SQL Auth Proxy, or a VM / Cloud Shell in it. **Whatever access is opened
+  to run this must be closed afterwards.** Opening a public-IP window out of band also drifts
+  the instance from Terraform, where ``ipv4_enabled`` is false.
+
+Locally, only the first is needed —
+``postgresql+psycopg://synapse_reader:synapse_reader_password@localhost:5433/ithina_dis_db``
+plus the tenant id. ``DIS_EXPECTED_DATABASE`` already defaults to the local database name, and
+``dis_testing``'s sync is correct there.
+
+WHY THIS FILE EXISTS. Several tests in this directory prove statements about ROWS. Run against a
 canonical schema with no rows, every one of them reduces to ``0 == 0`` and reports success
 having verified nothing. A skipped test is quiet and honest; a GREEN test that proved nothing
 gets believed, cited in reviews, and is strictly worse than a red one.

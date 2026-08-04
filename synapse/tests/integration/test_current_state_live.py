@@ -7,10 +7,14 @@ rejected on exactly those grounds. The identity is `synapse_reader`: USAGE on
 canonical, SELECT on exactly two tables, NOSUPERUSER NOBYPASSRLS — the
 dis_mirror_reader pattern, mirrored resource for resource.
 
-PROVISIONING THAT ROLE IS ITS OWN SLICE, and until it lands this skips by default — it
-is here to be ready, not to be run today. Once it exists: supply SYNAPSE_READER_URL plus
-SYNAPSE_TEST_TENANT_ID. Against staging also export DIS_EXPECTED_DATABASE=thalamus, or
-dis-rls refuses the database before any query.
+THE ROLE IS PROVISIONED. Terraform's google_sql_user in cloud,
+dis/infra/local/postgres-init.sql on a fresh local volume, grants by
+infra/db-setup/sql/03_synapse_reader_grant.sql after Alembic. The full invocation — env vars,
+-p no:dis_testing, and the private-IP access this needs and that must be closed afterwards —
+lives in conftest.py's header, in one place, rather than being restated here and drifting.
+
+VERIFIED AGAINST STAGING: 66 position rows through StoreSkuCurrentPosition.model_validate,
+so the 45-column loud-failure guarantee below is exercised rather than asserted.
 
 The env var is named SYNAPSE_READER_URL rather than POSTGRES_URL on purpose: reusing
 the DIS variable name would make it trivially easy to point this at a writer's DSN by

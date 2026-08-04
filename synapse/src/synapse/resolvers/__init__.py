@@ -14,12 +14,17 @@ TWO THINGS BESIDES RESOLVERS LIVE HERE, and both are here because they touch the
   precondition. Preconditions are declared on the descriptor in ``synapse.core``, which is
   DB-free by contract; measuring one is a query, so it belongs here.
 
-THE ROLE IS DEFERRED, AND DELIBERATELY NOT ``ithina_dis_user``. That role holds full
-DML on canonical; handing it to a read-only analytics plane is the same mistake as
-pointing mirror-sync at ``cm-database-url`` instead of ``dis_mirror_reader``, which
-this project rejected on exactly those grounds. The intended identity is a
-``synapse_reader``: USAGE on ``canonical``, SELECT on named tables only, NOSUPERUSER
-NOBYPASSRLS — the ``dis_mirror_reader`` pattern. Provisioning it is terraform and is
-the first infra item of the next slice; until then the integration test SKIPS without
-a DSN rather than borrowing a writer's credentials.
+THE ROLE IS ``synapse_reader``, AND DELIBERATELY NOT ``ithina_dis_user``. That role holds
+full DML on canonical; handing it to a read-only analytics plane is the same mistake as
+pointing mirror-sync at ``cm-database-url`` instead of ``dis_mirror_reader``, which this
+project rejected on exactly those grounds. ``synapse_reader`` holds USAGE on ``canonical``,
+SELECT on exactly two tables — ``store_sku_current_position`` and ``store_sku_sale_events``,
+the only two any resolver here names — CONNECT on the database, and nothing else. It is
+NOSUPERUSER NOBYPASSRLS, so canonical's FORCE RLS policies apply to it like any other
+consumer, and dis-rls refuses on first use any engine whose role reports otherwise.
+
+PROVISIONED AND VERIFIED AGAINST STAGING: Terraform's ``google_sql_user`` in cloud,
+``dis/infra/local/postgres-init.sql`` on a fresh local volume, grants by
+``infra/db-setup/sql/03_synapse_reader_grant.sql`` after Alembic. The integration tests run
+as this role — that is what it exists for; nothing in production runs as it yet.
 """

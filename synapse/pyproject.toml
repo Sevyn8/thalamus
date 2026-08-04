@@ -33,3 +33,21 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/synapse"]
+
+[tool.pytest.ini_options]
+# THE SUITE MUST RUN STANDALONE. Before this section existed there was no pytest config here
+# at all, so `asyncio_mode` and the `integration` marker came only from dis/pyproject.toml and
+# the Makefile's `-c` was load-bearing rather than a convenience. Measured cost of its absence:
+# `pytest tests/unit` from this directory gave 12 failed / 91 passed — every async test, because
+# the coroutines were never awaited — and the failures read as assertion errors rather than as
+# "no asyncio plugin configured", so the natural response was to distrust the tests.
+#
+# BOTH INVOCATION PATHS STILL WORK. `make test` passes `-c ../dis/pyproject.toml`, and an
+# explicit -c wins outright: pytest loads that file as THE config and never merges this one. So
+# the Makefile path is byte-identical to before, and this section governs only direct
+# invocation from synapse/.
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+  "integration: needs a live canonical (SYNAPSE_READER_URL); see tests/integration/conftest.py",
+]

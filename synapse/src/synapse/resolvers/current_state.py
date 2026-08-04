@@ -36,8 +36,8 @@ one.
 
 READ-ONLY, ALWAYS. Synapse never writes a DIS table. Nothing in this module builds
 an INSERT/UPDATE/DELETE, and the engine it is handed should belong to a read-only
-role (see the module docstring in ``synapse/resolvers/__init__.py`` on the deferred
-``synapse_reader``).
+role — ``synapse_reader``, described in the module docstring in
+``synapse/resolvers/__init__.py``.
 """
 
 from __future__ import annotations

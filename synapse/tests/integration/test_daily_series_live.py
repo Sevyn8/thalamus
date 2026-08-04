@@ -2,8 +2,8 @@
 
 SAME POSTURE AS test_current_state_live.py: the identity is ``synapse_reader`` (USAGE on
 canonical, SELECT on exactly two tables, NOSUPERUSER NOBYPASSRLS — the ``dis_mirror_reader``
-pattern). Supply SYNAPSE_READER_URL plus SYNAPSE_TEST_TENANT_ID to run it. Against staging
-also export ``DIS_EXPECTED_DATABASE=thalamus``, or dis-rls refuses the database outright.
+pattern). **The full invocation lives in conftest.py's header** — four requirements, three of
+which fail in ways that do not name themselves — rather than being restated here and drifting.
 
 READ THIS BEFORE TRUSTING A GREEN RUN.
 ======================================
@@ -16,15 +16,16 @@ fixture, it is an accident of history: arbitrary content, no guarantee it is the
 nobody maintains it. **Anyone reading a green local run as proof of correction-collapse is
 reading residue.**
 
-Which is why three of these tests REFUSE TO PASS WITHOUT DATA. They raise
+Which is why most of these tests REFUSE TO PASS WITHOUT DATA. They raise
 ``CanonicalDataRequiredError`` — not skip — following
 dis/tests/integration/test_rls_platform_session_guard.py, which refuses to skip when its
 stack is absent. A skipped test is quiet; a green test that proved nothing gets BELIEVED, and
 that is strictly worse than a red one.
 
-So a clean local stack reports **3 passed, 3 failed**, and the three failures say "no
-canonical rows — this test cannot prove anything without data". That is the honest state of
-the suite, and it is the signal to point SYNAPSE_READER_URL at staging.
+So a clean local stack reports **3 passed, 5 failed** across this file and
+test_current_state_live.py, and the five failures say "no canonical rows — this test cannot
+prove anything without data". That is the honest state of the suite, and it is the signal to
+point SYNAPSE_READER_URL at staging.
 
 WHAT EACH TEST NEEDS
 --------------------
@@ -43,6 +44,14 @@ reduces to ``0 == 0``:
 - ``test_the_collapse_yields_exactly_one_row_per_dedup_key``
 - ``test_the_probe_measures_per_series_and_not_per_tenant``
 - ``test_synapse_reader_is_subject_to_rls``
+- ``test_the_runaway_guard_refuses_rather_than_truncating``
+- ``test_resolves_current_state_against_staging`` (in test_current_state_live.py)
+
+VERIFIED AGAINST STAGING, 613 sale events / 66 position rows: per-series measurement matches
+raw per-(store, sku) counts, RLS returns rows with the GUCs and zero without, and 66 rows
+passed through StoreSkuCurrentPosition.model_validate. The runaway guard was found reachable
+by the executability test tripping it at limit=500 on ~600 groups — the resolver refusing to
+truncate. That behaviour now has a test of its own instead of being discovered by accident.
 
 WHAT NONE OF THEM COVER, because Synapse cannot write a DIS table: that a CORRECTION
 collapses to one figure, and that a D65 id-less-source correction does NOT. Both need rows
@@ -95,6 +104,12 @@ pytestmark = [
 WINDOW_FROM = date(2020, 1, 1)
 WINDOW_TO = date.today() + timedelta(days=1)
 
+# A NARROW window for the executability test, and the choice is deliberate — see that test.
+# Short enough that the runaway guard is not in play, so the test measures the one thing it
+# claims to.
+NARROW_FROM = date.today() - timedelta(days=7)
+NARROW_TO = date.today() + timedelta(days=1)
+
 # The RLS test reads this OUTSIDE rls_session, on a raw engine, which is the only way to
 # observe the no-GUC state. Spelled here rather than taken from the conftest fixture because
 # the fixture deliberately only hands back a count-and-refuse helper, never a raw statement.
@@ -118,6 +133,24 @@ async def test_the_collapse_is_valid_postgres_and_the_rows_project() -> None:
 
     The per-row assertions below are a bonus when rows happen to exist; they are not what
     this test is for, which is why their absence is not an error.
+
+    A NARROW WINDOW, AND NOT A BIGGER LIMIT. The first version asked for all history with
+    limit=500 and failed against real staging data: 613 events produce ~600 distinct
+    (store, sku, event_date) groups, so the resolver raised ResultTooLargeError — refusing to
+    truncate a series rather than silently returning 500. That was the RESOLVER WORKING and
+    the test being wrong.
+
+    Raising the limit instead was the other option and it is worse, because it fails on its
+    own terms: the resolver's own ceiling is _MAX_ROWS (20,000), the grain multiplies stores
+    by SKUs by DAYS, and the beta target is ~150K events/day. No limit is high enough
+    permanently, so "raise it until real data fits" is a test that must be retuned as data
+    grows — and a test retuned under pressure is a test eventually silenced.
+
+    So the window is small, because executability needs no volume at all. The residual is
+    stated rather than hidden: at beta-target volume even seven days could exceed the
+    ceiling for a busy tenant. If this ever trips, that is the runaway guard doing its job;
+    narrow further or paginate (D124), and do NOT raise the limit. The guard's own behaviour
+    is owned by test_the_runaway_guard_refuses_rather_than_truncating, not by this test.
     """
     from dis_rls import create_rls_engine
     from synapse.resolvers.daily_series import resolve_daily_series
@@ -125,7 +158,7 @@ async def test_the_collapse_is_valid_postgres_and_the_rows_project() -> None:
     engine = create_rls_engine(DSN)
     try:
         rows = await resolve_daily_series(
-            engine, _scope(), date_from=WINDOW_FROM, date_to=WINDOW_TO, limit=500
+            engine, _scope(), date_from=NARROW_FROM, date_to=NARROW_TO
         )
     finally:
         await engine.dispose()
@@ -430,4 +463,92 @@ async def test_synapse_reader_is_subject_to_rls(require_canonical_rows: RequireR
         f"synapse_reader read {no_gucs} rows with no app.tenant_id / app.user_type set, while "
         f"the same query under rls_session returned {with_gucs}. RLS IS NOT ENFORCED for this "
         "role - check rolbypassrls and that FORCE ROW LEVEL SECURITY is still on the table"
+    )
+
+
+async def test_the_runaway_guard_refuses_rather_than_truncating(
+    require_canonical_rows: RequireRows,
+) -> None:
+    """DATA REQUIRED. The runaway guard, at its exact boundary, on real rows.
+
+    THIS EXISTS BECAUSE REAL DATA REACHED IT AND NOTHING COVERED IT. The executability test
+    above asked for all history at limit=500, 613 events produced ~600 groups, and
+    ResultTooLargeError fired. Correct behaviour, uncovered by any test — the guard was
+    reachable in practice and proven only by having tripped over it once.
+
+    WHY REFUSING MATTERS MORE THAN CLAMPING, which is the asymmetry with current_state.
+    current_state's grain is (tenant, store, sku): a clamp returns fewer positions and a
+    caller can see it got exactly the limit. daily_series's grain multiplies by DAYS, so a
+    clamp removes DATES from a series — and a series with missing days does not look
+    truncated, it looks like days with no sales. That is a wrong answer, not a partial one.
+
+    BOTH HALVES OF THE BOUNDARY, because "a big number raises" would not be a boundary test:
+
+      limit = n - 1  ->  MUST raise. The guard fires.
+      limit = n      ->  MUST NOT raise, and returns exactly n. The guard does not fire one
+                         row early, which is what a `>=` where `>` was meant would do, and
+                         what a limit-not-limit+1 fetch would also produce.
+
+    The off-by-one direction is the one that would go unnoticed: a guard that fires a row
+    early looks like a smaller dataset, and nobody debugs a series that is quietly one day
+    short.
+    """
+    from dis_rls import create_rls_engine, rls_session
+    from synapse.core.errors import ResultTooLargeError
+    from synapse.resolvers.daily_series import _MAX_ROWS, resolve_daily_series
+
+    scope = _scope()
+    engine = create_rls_engine(DSN)
+    try:
+        async with rls_session(engine, scope.tenant_id) as conn:
+            await require_canonical_rows(
+                conn,
+                scope.tenant_id,
+                table="sale_events",
+                what="it needs a real group count to test a boundary at",
+            )
+
+        # Establish the true group count at the resolver's own ceiling. Using the resolver
+        # rather than a raw aggregate on purpose: the boundary must be tested against the
+        # number THIS code produces, collapse and all, not against a count that agrees with
+        # it by coincidence.
+        try:
+            everything = await resolve_daily_series(
+                engine, scope, date_from=WINDOW_FROM, date_to=WINDOW_TO, limit=_MAX_ROWS
+            )
+        except ResultTooLargeError:
+            pytest.fail(
+                f"this tenant exceeds the resolver's own ceiling of {_MAX_ROWS} groups, so "
+                "no exact count can be established to test the boundary at. The guard is "
+                "evidently reachable; narrow the window for this test."
+            )
+
+        total = len(everything)
+        if total < 2:
+            pytest.fail(
+                f"tenant {scope.tenant_id} yields {total} daily-series group(s); a boundary "
+                "needs at least two. Point at a tenant with more history."
+            )
+
+        with pytest.raises(ResultTooLargeError) as excinfo:
+            await resolve_daily_series(
+                engine, scope, date_from=WINDOW_FROM, date_to=WINDOW_TO, limit=total - 1
+            )
+
+        exact = await resolve_daily_series(
+            engine, scope, date_from=WINDOW_FROM, date_to=WINDOW_TO, limit=total
+        )
+    finally:
+        await engine.dispose()
+
+    # The refusal must SAY it did not truncate. An operator who sees this error needs to know
+    # the series was withheld, not shortened — otherwise the natural response is to use the
+    # rows they think they got.
+    message = str(excinfo.value)
+    assert "NOT truncated" in message, message
+    assert str(total - 1) in message, "the error must name the limit it refused against"
+
+    assert len(exact) == total, (
+        f"at limit == the exact group count ({total}) the guard must not fire and must "
+        f"return every group; got {len(exact)}"
     )
