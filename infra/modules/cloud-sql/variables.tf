@@ -78,6 +78,12 @@ variable "dis_mirror_reader_user_name" {
   default     = "dis_mirror_reader"
 }
 
+variable "synapse_reader_user_name" {
+  type        = string
+  description = "Synapse's read-only role. SELECT on exactly two canonical tables — store_sku_current_position (the current_state resolver) and store_sku_sale_events (daily_series) — plus USAGE on canonical and CONNECT on the database. Never a schema-wide grant, never any write. Grants are applied post-migration by infra/db-setup/sql/03_synapse_reader_grant.sql, not here. Nothing runs as this role in production yet; it exists so Synapse's integration tests run as the identity its resolvers are designed for rather than borrowing ithina_dis_user."
+  default     = "synapse_reader"
+}
+
 variable "secret_prefix" {
   type        = string
   description = "Prefix for the Secret Manager password containers (e.g. thalamus -> thalamus-user_admin_backend-password)."

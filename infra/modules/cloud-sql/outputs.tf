@@ -20,6 +20,7 @@ output "app_user_names" {
     cm                = google_sql_user.cm_app.name
     dis               = google_sql_user.dis_app.name
     dis_mirror_reader = google_sql_user.dis_mirror_reader.name
+    synapse_reader    = google_sql_user.synapse_reader.name
   }
 }
 

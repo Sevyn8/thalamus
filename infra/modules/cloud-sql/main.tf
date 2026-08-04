@@ -14,12 +14,20 @@
 #   - backups + PITR + maintenance window + query insights (CM, the more
 #     complete config).
 #
-# Three roles, each a google_sql_user with a generated password stored in Secret
+# Four roles, each a google_sql_user with a generated password stored in Secret
 # Manager. All rely on Cloud SQL's default posture: app users are NOT granted
 # SUPERUSER or the cloudsqlsuperuser role and are NOT BYPASSRLS, so each is
 # NOSUPERUSER NOBYPASSRLS as required by CM's D-03 / DIS's RLS contract. Per-
-# schema grants are done by each app's Alembic; the mirror-reader grant is a
-# post-migration step (infra/db-setup/02_mirror_reader_grant.sql).
+# schema grants are done by each app's Alembic; the two READ-ONLY roles' grants are
+# post-migration steps (infra/db-setup/sql/02_mirror_reader_grant.sql and
+# sql/03_synapse_reader_grant.sql).
+#
+# THE NOBYPASSRLS CLAIM ABOVE IS AN ASSERTION ABOUT CLOUD SQL'S DEFAULT, not something
+# Terraform enforces. It is independently checked at runtime: dis-rls reads rolsuper /
+# rolbypassrls from pg_roles on first use of every engine and raises RlsContextError if
+# either is true, so a bypassing role fails LOUDLY on its first query rather than silently
+# voiding tenant isolation. Both read-role grant files also carry a manual verification
+# query for it. Two mechanisms, because the failure this prevents is invisible.
 ###############################################################################
 
 # One generated password per role. override_special reserved to URL/shell-safe
@@ -38,6 +46,12 @@ resource "random_password" "dis_app" {
 }
 
 resource "random_password" "dis_mirror_reader" {
+  length           = 40
+  special          = true
+  override_special = "_-."
+}
+
+resource "random_password" "synapse_reader" {
   length           = 40
   special          = true
   override_special = "_-."
@@ -146,6 +160,26 @@ resource "google_sql_user" "dis_mirror_reader" {
   password = random_password.dis_mirror_reader.result
 }
 
+# Synapse's read-only role. Same shape as dis_mirror_reader, deliberately: that role is the
+# precedent for "a peer plane reads a schema it does not own", and a second pattern would be
+# a second thing to keep correct.
+#
+# NOTHING RUNS AS THIS ROLE IN PRODUCTION YET. No Cloud Run service or job binds it, no
+# service account holds secretAccessor on its DSN. It exists so Synapse's integration tests
+# can run against a real database as the identity the resolvers are DESIGNED for, instead of
+# borrowing ithina_dis_user — which holds full DML on canonical and would make a read-only
+# analytics plane's tests prove nothing about its read-only-ness.
+#
+# The GRANTS are NOT here: SELECT on exactly two canonical tables, applied post-migration by
+# infra/db-setup/sql/03_synapse_reader_grant.sql (canonical does not exist until DIS's Alembic
+# has run). Same split as dis_mirror_reader, same reason.
+resource "google_sql_user" "synapse_reader" {
+  name     = var.synapse_reader_user_name
+  project  = var.project_id
+  instance = google_sql_database_instance.this.name
+  password = random_password.synapse_reader.result
+}
+
 # --- Secret Manager: one container + version per role password ---------------
 
 locals {
@@ -153,6 +187,7 @@ locals {
     (var.cm_app_user_name)            = random_password.cm_app.result
     (var.dis_app_user_name)           = random_password.dis_app.result
     (var.dis_mirror_reader_user_name) = random_password.dis_mirror_reader.result
+    (var.synapse_reader_user_name)    = random_password.synapse_reader.result
   }
 }
 
