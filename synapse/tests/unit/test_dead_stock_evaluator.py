@@ -189,8 +189,7 @@ def test_the_threshold_the_declaration_carries_is_the_one_the_evaluator_takes() 
     """stale_after_days is a threshold, not a gate: no read depends on it, and it is the whole
     content of the rule. The evaluator takes it as a parameter rather than reading the
     declaration, so the arithmetic stays pure and testable at any value."""
-    (threshold,) = DEAD_STOCK.thresholds
-    assert threshold.name == "stale_after_days"
+    threshold = next(t for t in DEAD_STOCK.thresholds if t.name == "stale_after_days")
     by_sku = {
         row.sku_id: row
         for row in evaluate_dead_stock(

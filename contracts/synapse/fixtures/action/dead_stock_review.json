@@ -1,0 +1,24 @@
+{
+  "target": {
+    "tenant_id": "019e5e3c-b5d6-7eed-93f9-3778a7a7a160",
+    "store_id": "019e5e3c-b633-7344-93c7-83fb205285ea",
+    "sku_id": "SKU-000123"
+  },
+  "verb": "review",
+  "quantity_at_stake": 40.0,
+  "expires_on": "2026-09-04",
+  "arm": "holdout",
+  "provenance": {
+    "declaration_id": "dead_stock",
+    "declaration_version": "0.1.0",
+    "capability_versions": {
+      "current_state": "0.1.0",
+      "last_sale_at": "0.1.0"
+    },
+    "thresholds": {
+      "stale_after_days": 90,
+      "expires_after_days": 30
+    },
+    "as_of": "2026-08-05"
+  }
+}

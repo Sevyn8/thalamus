@@ -53,6 +53,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from synapse.core.action import Action
 from synapse.core.analysis import DEAD_STOCK, AnalysisDeclaration, Gate, MinHistoryDays
 from synapse.core.capability import (
     CURRENT_STATE,
@@ -63,12 +64,12 @@ from synapse.core.capability import (
     GateKind,
 )
 from synapse.core.dead_stock import DeadStockRow, evaluate_dead_stock
+from synapse.core.dead_stock_actions import propose_dead_stock_actions
 from synapse.core.declaration_resolution import (
     DeclarationBlocked,
     DeclarationResolution,
     DeclarationSatisfied,
     DeclarationUndeclared,
-    Fetch,
 )
 from synapse.core.resolution import (
     Observation,
@@ -100,6 +101,11 @@ Resolver = Callable[..., Awaitable[Sequence[object]]]
 # the wrong name, and the whole point of the split is that arithmetic happens on rows somebody
 # else fetched.
 Evaluator = Callable[..., Sequence[object]]
+
+# An action proposer: pure, synchronous, findings in and actions out. Same shape as an evaluator
+# and for the same reasons — a proposer that could reach a database would be a resolver wearing
+# the wrong name.
+Proposer = Callable[..., Sequence[Action]]
 
 # The dataclass each declaration's evaluator returns, for the emits check below. A mapping rather
 # than an attribute on the evaluator, because a plain function cannot carry one without either a
@@ -215,9 +221,9 @@ _REGISTRY: Final[Mapping[str, RegisteredCapability]] = MappingProxyType(
 
 
 # THE ANALYSIS DECLARATIONS. Data, exactly like _REGISTRY: adding an analysis is adding a row
-# here, never editing an engine. Nothing consumes their output yet (no scorer, no action, no
-# delivery) — what exists is the declaration and the cross-checks below, which is what makes
-# the declaration a contract rather than a comment.
+# here, never editing an engine. Their output is consumed by an evaluator and, from slice 4, by
+# an action proposer; nothing SCHEDULES a run or DELIVERS a result anywhere, which is why the
+# declaration still has no schedule and no destination.
 _DECLARATIONS: Final[Mapping[str, AnalysisDeclaration]] = MappingProxyType(
     {
         DEAD_STOCK.id: DEAD_STOCK,
@@ -237,6 +243,19 @@ _DECLARATIONS: Final[Mapping[str, AnalysisDeclaration]] = MappingProxyType(
 _ANALYSES: Final[Mapping[str, Evaluator]] = MappingProxyType(
     {
         DEAD_STOCK.id: evaluate_dead_stock,
+    }
+)
+
+
+# THE ACTION PROPOSERS. Third instance of the plugin shape: descriptor+resolver,
+# declaration+evaluator, declaration+proposer. A declaration may legitimately have no proposer —
+# an analysis whose findings nobody acts on yet — so this is a SUBSET of _DECLARATIONS rather
+# than a parallel of it, and the checks below enforce the direction that matters: a proposer with
+# no declaration is arithmetic nothing describes, and a declaration WITH a proposer must carry a
+# holdout because an action without an arm can never be analysed.
+_ACTIONS: Final[Mapping[str, Proposer]] = MappingProxyType(
+    {
+        DEAD_STOCK.id: propose_dead_stock_actions,
     }
 )
 
@@ -463,9 +482,43 @@ def _check_analyses() -> None:
             )
 
 
+def _check_actions() -> None:
+    """Action-proposer invariants, checked at IMPORT.
+
+    - every proposer has a declaration. A proposer with none is arithmetic nothing describes.
+    - EVERY DECLARATION WITH A PROPOSER HAS A HOLDOUT. This is the mechanical form of "assignment
+      exists from the first action ever recorded": a proposer with no holdout would have to
+      fabricate an arm or omit one, and an action recorded without an arm is permanently
+      unanalysable because a control group cannot be constructed retrospectively.
+    - THE HOLDOUT UNIT IS CONTAINED IN THE ANALYSIS GRAIN. Assigning over a column the analysis
+      does not identify rows by is not assignment — the proposer would have no value to hash, and
+      the failure would be a KeyError deep inside a loop rather than a statement about the design.
+    """
+    orphan = sorted(set(_ACTIONS) - set(_DECLARATIONS))
+    if orphan:
+        raise ValueError(f"{orphan} have an action proposer but no declaration")
+
+    for analysis_id in sorted(_ACTIONS):
+        declaration = _DECLARATIONS[analysis_id]
+        holdout = declaration.holdout
+        if holdout is None:
+            raise ValueError(
+                f"analysis {analysis_id!r} proposes actions but declares no holdout. Assignment "
+                "must exist from the first action ever recorded; a counterfactual cannot be "
+                "constructed retrospectively"
+            )
+        outside = sorted(set(holdout.unit) - set(declaration.grain))
+        if outside:
+            raise ValueError(
+                f"analysis {analysis_id!r} assigns holdout over {outside}, which is not in its "
+                f"grain {sorted(declaration.grain)}; there would be no value to assign on"
+            )
+
+
 _check_registry()
 _check_declarations()
 _check_analyses()
+_check_actions()
 
 
 def declared_analysis_ids() -> tuple[str, ...]:
@@ -645,7 +698,7 @@ async def resolve_declaration(
     if declaration is None:
         return DeclarationUndeclared(analysis_id=analysis_id)
 
-    fetches: dict[str, Fetch] = {}
+    resolutions: dict[str, Satisfied[object]] = {}
     blocked: dict[str, Resolution[object]] = {}
     for requirement in declaration.requires:
         outcome = await resolve(
@@ -657,19 +710,22 @@ async def resolve_declaration(
             sku_id=sku_id,
         )
         if isinstance(outcome, Satisfied):
-            fetches[requirement.capability_id] = outcome.fetch
+            # THE WHOLE Satisfied, not just its fetch: it carries the descriptor and therefore the
+            # capability VERSION, which provenance needs and which slice 3 discarded here.
+            resolutions[requirement.capability_id] = outcome
         else:
             blocked[requirement.capability_id] = outcome
 
     if blocked:
         return DeclarationBlocked(declaration=declaration, blocked=blocked)
-    return DeclarationSatisfied(declaration=declaration, fetches=fetches)
+    return DeclarationSatisfied(declaration=declaration, resolutions=resolutions)
 
 
 __all__ = [
     "Evaluator",
     "Probe",
     "ProbeBinding",
+    "Proposer",
     "RegisteredCapability",
     "Resolver",
     "declared_analysis_ids",

@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sevyn8.com/contracts/synapse/action.schema.json",
+  "title": "Synapse action",
+  "description": "One thing to do about one finding. EXTRACTED from turning dead_stock's rows into something actionable, not designed in advance. TWO FIELDS EXIST BECAUSE THEY CANNOT BE RETROFITTED AT ANY PRICE: `provenance`, without which an attribution study six months out compares different systems and concludes nothing; and `arm`, without which there is no counterfactual, because a control group cannot be constructed backwards. Everything else here could have waited. ABSENT and deliberately so: a channel, a recipient, an escalation path, a priority score — nothing delivers an action yet, and each would be a guess at a shape no consumer has asked for.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["target", "verb", "quantity_at_stake", "expires_on", "arm", "provenance"],
+  "properties": {
+    "target": {
+      "description": "What the action is about, as grain column to value. A mapping rather than a positional tuple so it reads without knowing the analysis. NON-EMPTY: an action with no target is a suggestion.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "type": "string" },
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" }
+    },
+    "verb": {
+      "description": "What is being asked. ONE value, and the restraint is the point: choosing a markdown needs price elasticity, a margin floor and supplier return terms, and none of the three exists anywhere in canonical. `transfer` would need inter-store transfer cost, equally absent. So the verb is the one the data supports — put it in front of a human. A second value arrives when the data that would justify it does.",
+      "enum": ["review"]
+    },
+    "quantity_at_stake": {
+      "description": "UNITS OF INVENTORY, NOT MONEY, and that is a finding rather than a simplification. Money would be stock_qty * unit_cost, blocked on three things: unit_cost is resolvable but not declared by dead_stock (one line); both operands are nullable in canonical; and canonical's own comment says unit_cost's tax basis is UNDETERMINED ('confirm whether this follows the row tax_treatment column or is always tax-exclusive by convention'). That third is a DIS decision, and it is the SECOND time canonical's tax treatment has blocked money in this plane — daily_series returns quantity only for the same reason. NULL means UNKNOWN, never zero: zero would sort a dead position to the bottom of any list built on this.",
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "expires_on": {
+      "description": "When this stops being worth acting on. A dead-stock finding decays — the SKU may sell tomorrow — and an action nobody bounded stays on a list forever looking current. Must not precede the as_of it was evaluated for: an action that arrives expired cannot be acted on.",
+      "type": "string",
+      "format": "date"
+    },
+    "arm": {
+      "description": "Which side of the experiment this subject is on. REQUIRED ON EVERY ACTION FROM THE FIRST ONE EVER RECORDED, with no value meaning 'not assigned' — a counterfactual cannot be constructed retrospectively, so an action recorded without an arm is permanently unanalysable. Assignment is a deterministic hash of (salt, subject), so it is stable across runs and processes without anything being stored, and re-derivable years later by whoever audits the study.",
+      "enum": ["treatment", "holdout"]
+    },
+    "provenance": {
+      "description": "WHICH SYSTEM produced this action. A rule whose threshold moved, or whose underlying capability changed shape, is a DIFFERENT system, and comparing across the change silently averages two experiments.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "declaration_id",
+        "declaration_version",
+        "capability_versions",
+        "thresholds",
+        "as_of"
+      ],
+      "properties": {
+        "declaration_id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "declaration_version": {
+          "type": "string",
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$"
+        },
+        "capability_versions": {
+          "description": "Every capability the declaration resolved, at its descriptor version. NON-EMPTY: every declaration requires at least one capability, so an empty mapping means the resolutions were dropped on the way rather than that none existed. Recording this is why DeclarationSatisfied carries the resolutions and not merely the fetches.",
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$"
+          },
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" }
+        },
+        "thresholds": {
+          "description": "The actual numbers used, not a reference to them. A threshold recorded by name would be re-read later at its NEW value, which is the subtle version of the mistake this field exists to prevent.",
+          "type": "object",
+          "additionalProperties": { "type": "integer" },
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" }
+        },
+        "as_of": {
+          "description": "The date the analysis was evaluated for. Every dead-stock answer is relative to a date, and a row without one cannot be re-derived.",
+          "type": "string",
+          "format": "date"
+        }
+      }
+    }
+  }
+}

@@ -841,7 +841,10 @@ def test_declaration_satisfied_refuses_a_missing_fetch() -> None:
     """Satisfied means EVERY requirement; a missing fetch here would let a consumer compute over
     one input, which for dead_stock reports the whole catalogue as dead."""
     with pytest.raises(ValueError, match="satisfied means EVERY requirement"):
-        DeclarationSatisfied(declaration=DEAD_STOCK, fetches={"current_state": _no_rows})
+        DeclarationSatisfied(
+            declaration=DEAD_STOCK,
+            resolutions={"current_state": Satisfied(descriptor=CURRENT_STATE, fetch=_no_rows)},
+        )
 
 
 def test_declaration_blocked_refuses_an_empty_mapping() -> None:

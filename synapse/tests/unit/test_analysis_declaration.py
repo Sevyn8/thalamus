@@ -109,8 +109,9 @@ def test_a_fitted_threshold_needs_no_reason() -> None:
 
 def test_dead_stocks_threshold_admits_it_is_a_constant_and_says_what_for() -> None:
     """D6, exercised. If this ever flips to fitted, the p90-gap capability must exist."""
-    (stale_after,) = DEAD_STOCK.thresholds
-    assert stale_after.name == "stale_after_days"
+    by_name = {threshold.name: threshold for threshold in DEAD_STOCK.thresholds}
+    assert set(by_name) == {"stale_after_days", "expires_after_days"}
+    stale_after = by_name["stale_after_days"]
     assert stale_after.fitted is False
     assert stale_after.stands_in_for is not None
     # Not a one-word placeholder: it must say what the fitted version would compute.
@@ -182,7 +183,7 @@ def test_an_analysis_requiring_nothing_is_refused() -> None:
     with pytest.raises(ValueError, match="requires no capability"):
         AnalysisDeclaration(
             id="empty", version="0.1.0", grain=("tenant_id",), requires=(), emits=("x",),
-            thresholds=(),
+            holdout=None, thresholds=(),
         )
 
 
@@ -194,7 +195,7 @@ def test_an_analysis_requiring_the_same_capability_twice_is_refused() -> None:
     with pytest.raises(ValueError, match="requires the same capability twice"):
         AnalysisDeclaration(
             id="twice", version="0.1.0", grain=("tenant_id",),
-            requires=(requirement, requirement), emits=("x",), thresholds=(),
+            requires=(requirement, requirement), emits=("x",), holdout=None, thresholds=(),
         )
 
 
@@ -221,8 +222,18 @@ def test_declaration_matches_the_committed_fixture() -> None:
     for wire, declared in zip(fixture["requires"], DEAD_STOCK.requires, strict=True):
         assert tuple(wire["fields"]) == declared.fields
         assert [g["kind"] for g in wire["gates"]] == [g.kind.value for g in declared.gates]
-    (wire_threshold,) = fixture["thresholds"]
-    (declared_threshold,) = DEAD_STOCK.thresholds
-    assert wire_threshold["days"] == declared_threshold.days
-    assert wire_threshold["fitted"] == declared_threshold.fitted
-    assert wire_threshold["stands_in_for"] == declared_threshold.stands_in_for
+    wire_thresholds = {th["name"]: th for th in fixture["thresholds"]}
+    for declared_threshold in DEAD_STOCK.thresholds:
+        wire = wire_thresholds[declared_threshold.name]
+        assert wire["days"] == declared_threshold.days
+        assert wire["fitted"] == declared_threshold.fitted
+        assert wire["stands_in_for"] == declared_threshold.stands_in_for
+
+    # The holdout, which the fixture must carry because a declaration without one produces
+    # unanalysable actions — and the fixture is what a consumer reads.
+    holdout = DEAD_STOCK.holdout
+    assert holdout is not None
+    assert tuple(fixture["holdout"]["unit"]) == holdout.unit
+    assert fixture["holdout"]["holdout_percent"] == holdout.holdout_percent
+    assert fixture["holdout"]["salt"] == holdout.salt
+    assert fixture["holdout"]["stands_in_for"] == holdout.stands_in_for

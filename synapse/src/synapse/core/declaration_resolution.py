@@ -55,24 +55,54 @@ class DeclarationSatisfied:
     asking "could dead_stock run for this tenant" must not pay for two full reads to find out.
     Nothing is fetched until a caller awaits.
 
-    ``fetches`` is keyed by capability id rather than being a tuple, so a consumer names what it
-    wants instead of relying on requirement order. Order would be a second thing to keep in
-    agreement with the declaration.
+    Keyed by capability id rather than being a tuple, so a consumer names what it wants instead
+    of relying on requirement order. Order would be a second thing to keep in agreement with the
+    declaration.
+
+    IT CARRIES THE RESOLUTIONS, NOT JUST THE FETCHES, and provenance is what forced the change.
+    Slice 3 kept only the bound fetches and discarded the per-capability ``Satisfied`` objects —
+    which hold the DESCRIPTORS, and therefore the capability VERSIONS. So "which capability
+    resolutions produced this action" was unrecordable, and a provenance record missing capability
+    versions is exactly the silent omission the provenance rule forbids.
+
+    ``fetches`` is now DERIVED rather than stored, so there is no second source of truth to drift:
+    a fetch IS ``resolutions[capability_id].fetch``.
     """
 
     status: ClassVar[DeclarationStatus] = DeclarationStatus.SATISFIED
 
     declaration: AnalysisDeclaration
-    fetches: Mapping[str, Fetch]
+    resolutions: Mapping[str, Satisfied[object]]
 
     def __post_init__(self) -> None:
         required = {requirement.capability_id for requirement in self.declaration.requires}
-        if set(self.fetches) != required:
+        if set(self.resolutions) != required:
             raise ValueError(
                 f"analysis {self.declaration.id!r} requires {sorted(required)} but carries "
-                f"fetches for {sorted(self.fetches)}; satisfied means EVERY requirement, and a "
-                "missing fetch here would let a consumer compute over one input"
+                f"resolutions for {sorted(self.resolutions)}; satisfied means EVERY requirement, "
+                "and a missing one here would let a consumer compute over one input"
             )
+
+    @property
+    def fetches(self) -> Mapping[str, Fetch]:
+        """The bound fetch per capability. Derived, so it cannot disagree with the resolutions."""
+        return {
+            capability_id: resolution.fetch
+            for capability_id, resolution in self.resolutions.items()
+        }
+
+    @property
+    def capability_versions(self) -> Mapping[str, str]:
+        """Capability id -> descriptor version, for ``Provenance``.
+
+        THE REASON THIS CLASS CARRIES RESOLUTIONS AT ALL. An attribution study comparing actions
+        across a capability version change is averaging two systems, and cannot know it without
+        this.
+        """
+        return {
+            capability_id: resolution.descriptor.version
+            for capability_id, resolution in self.resolutions.items()
+        }
 
 
 @dataclass(frozen=True)

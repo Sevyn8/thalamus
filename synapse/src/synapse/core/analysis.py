@@ -34,6 +34,7 @@ from dataclasses import dataclass
 from typing import ClassVar
 
 from synapse.core.capability import GateKind
+from synapse.core.holdout import Holdout
 from synapse.core.resolution import SeriesPolicy
 
 
@@ -173,9 +174,16 @@ class AnalysisDeclaration:
     version: str
     grain: tuple[str, ...]
     requires: tuple[CapabilityRequirement, ...]
-    # What the analysis PRODUCES. Named fields rather than a free-form result, so a consumer
-    # can be written against it before anything consumes it — and so the day a scorer arrives
-    # it is checkable against this rather than against whatever the code happened to return.
+    # THE EXPERIMENT DESIGN, or an explicit None. No default, for the same reason as every other
+    # field here: ``None`` is a CLAIM that this analysis produces no actions, and a missing
+    # argument is a silence. The registry ties the two together — a declaration with an action
+    # proposer MUST have a holdout, because an action without an arm cannot be analysed and a
+    # counterfactual cannot be built backwards (see synapse.core.holdout).
+    holdout: Holdout | None
+    # What the analysis PRODUCES. Named fields rather than a free-form result, and the payoff
+    # arrived on schedule: the evaluator's row type is checked against this at registry import,
+    # and the action proposer reads these findings rather than whatever the code happened to
+    # return. Still declared before a SCORER exists, for the same reason.
     emits: tuple[str, ...]
     thresholds: tuple[Threshold, ...]
 
@@ -223,6 +231,29 @@ DEAD_STOCK = AnalysisDeclaration(
         ),
     ),
     emits=("tenant_id", "store_id", "sku_id", "days_since_last_sale", "is_dead_stock"),
+    holdout=Holdout(
+        # THE FULL GRAIN: per (tenant, store, sku). Per-STORE would be the cleaner comparison in
+        # general and is unusable for the first tenant, which has TWO stores — two units cannot
+        # be randomised, any difference measured is a store difference rather than a treatment
+        # difference, and half the estate would get no service. The cost of per-SKU is named in
+        # Holdout's docstring: it leaks under substitution, which under-measures.
+        unit=("tenant_id", "store_id", "sku_id"),
+        holdout_percent=20,
+        # STABLE AND EXPLICIT. Changing this reshuffles every arm, so it is a deliberate act
+        # rather than a side effect of a version bump.
+        salt="dead_stock/2026-08",
+        fitted=False,
+        stands_in_for=(
+            "a power calculation, which cannot help here: 66 positions cannot support a "
+            "conclusive split at ANY fraction, so 20 is a placeholder for a design that does not "
+            "yet have enough subjects to be a design. Concretely, with ONE dead SKU in the "
+            "current data a 20% holdout has roughly a one-in-five chance of holding out the only "
+            "finding and producing ZERO treated actions. That is not a bug and will be read as "
+            "one: it is what underpowered means, and the arithmetic is doing exactly what it "
+            "should. The trigger for revisiting is a tenant with enough positions for a split to "
+            "mean something — not a calculation someone might run over these 66."
+        ),
+    ),
     thresholds=(
         Threshold(
             name="stale_after_days",
@@ -245,6 +276,21 @@ DEAD_STOCK = AnalysisDeclaration(
                 "which is the whole shape of a capability slice rather than a threshold change. "
                 "Until then this number is wrong for most of a catalogue in both directions and "
                 "says so."
+            ),
+        ),
+        Threshold(
+            name="expires_after_days",
+            days=30,
+            # AN ACTION NEEDS AN EXPIRY because a dead-stock finding decays: the SKU may sell
+            # tomorrow, and an action nobody bounded stays on a list forever looking current.
+            # Expressed as a Threshold rather than a new mechanism so it inherits the same
+            # fitted/stands_in_for constructor discipline.
+            fitted=False,
+            stands_in_for=(
+                "how long a dead-stock finding stays true, which is the same p90 inter-sale gap "
+                "that stale_after_days needs and is therefore blocked on the same missing "
+                "capability. 30 days is a review cycle, not a measurement: it says 'look at this "
+                "within a month' and nothing about when the finding stops holding."
             ),
         ),
     ),

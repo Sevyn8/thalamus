@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Conformance harness for the Synapse capability, signal and analysis contracts.
+"""Conformance harness for the Synapse capability, signal, analysis and action contracts.
 
 Deliberately the SAME SHAPE as contracts/conformance/validate.py (the C6 pack
 harness): check_schema first, a check() accumulator printing [PASS]/[FAIL], positive
@@ -49,12 +49,15 @@ def main() -> int:
     capability_schema = load(HERE / "capability.schema.json")
     signal_schema = load(HERE / "signal.schema.json")
     analysis_schema = load(HERE / "analysis.schema.json")
+    action_schema = load(HERE / "action.schema.json")
     Draft202012Validator.check_schema(capability_schema)
     Draft202012Validator.check_schema(signal_schema)
     Draft202012Validator.check_schema(analysis_schema)
+    Draft202012Validator.check_schema(action_schema)
     cap = Draft202012Validator(capability_schema)
     sig = Draft202012Validator(signal_schema)
     ana = Draft202012Validator(analysis_schema)
+    act = Draft202012Validator(action_schema)
 
     print("Capability fixtures:")
     current_state = load(HERE / "fixtures" / "capability" / "current_state.json")
@@ -166,7 +169,14 @@ def main() -> int:
 
     # THE FITTED-THRESHOLD RULE, as a content check. No schema can express "this constant is
     # honest about being one" beyond requiring the field; this asserts the field says something.
-    (stale_after,) = dead_stock["thresholds"]
+    thresholds_by_name = {th["name"]: th for th in dead_stock["thresholds"]}
+    check(
+        "dead_stock declares both a staleness and an expiry threshold",
+        set(thresholds_by_name) == {"stale_after_days", "expires_after_days"},
+        f"found {sorted(thresholds_by_name)}; an action needs an expiry or it stays on a list "
+        "forever looking current",
+    )
+    stale_after = thresholds_by_name["stale_after_days"]
     check(
         "stale_after_days admits it is NOT fitted",
         stale_after["fitted"] is False,
@@ -177,10 +187,85 @@ def main() -> int:
         "p90" in stale_after["stands_in_for"] and len(stale_after["stands_in_for"]) > 120,
         "a one-word placeholder is not a derivation; it must say what the fitted version is",
     )
+    holdout = dead_stock["holdout"]
+    check("dead_stock declares a holdout", holdout is not None,
+          "a counterfactual cannot be built retrospectively; assignment exists from action one")
+    check(
+        "the holdout unit is contained in the analysis grain",
+        set(holdout["unit"]) <= set(dead_stock["grain"]),
+        "assignment over a column the analysis does not identify rows by is not assignment",
+    )
+    check(
+        "the holdout is per-SKU, not per-store",
+        set(holdout["unit"]) == set(dead_stock["grain"]),
+        "per-store is unusable for a two-store tenant: two units cannot be randomised",
+    )
+    check(
+        "the holdout percent leaves both arms non-empty",
+        1 <= holdout["holdout_percent"] <= 99,
+    )
+    check(
+        "the holdout admits it is not fitted, and says what for",
+        holdout["fitted"] is False and "power calculation" in holdout["stands_in_for"],
+        "an unfitted fraction with no stated derivation is a number someone guessed",
+    )
+    check(
+        "the holdout reason names the underpowered consequence, not just the absence",
+        "zero treated actions" in holdout["stands_in_for"].lower()
+        or "ZERO treated actions" in holdout["stands_in_for"],
+        "someone will read an empty treated arm as a bug; the reason must say it is not",
+    )
+
     check(
         "dead_stock needs NO history gate anywhere",
         all(r["gates"] == [] for r in dead_stock["requires"]),
         "absence is the signal, so it works on sparse data — the reason it is the first one",
+    )
+
+    print("Action fixtures (the first thing that would be ACTED on):")
+    review = load(HERE / "fixtures" / "action" / "dead_stock_review.json")
+    check("dead_stock_review validates", validates(act, review))
+    check(
+        "it carries an arm",
+        review["arm"] in ("treatment", "holdout"),
+        "a counterfactual cannot be built retrospectively; assignment is on action one",
+    )
+    check(
+        "its provenance names the declaration AND its version",
+        review["provenance"]["declaration_id"] == "dead_stock"
+        and review["provenance"]["declaration_version"] == dead_stock["version"],
+        "an attribution study comparing across a version change averages two systems",
+    )
+    check(
+        "its provenance carries a version for EVERY capability the declaration requires",
+        set(review["provenance"]["capability_versions"])
+        == {r["capability_id"] for r in dead_stock["requires"]},
+        "a missing one means the resolutions were dropped on the way, not that none existed",
+    )
+    check(
+        "its provenance records threshold VALUES, not names",
+        all(isinstance(v, int) for v in review["provenance"]["thresholds"].values()),
+        "a threshold recorded by name is re-read later at its NEW value",
+    )
+    check(
+        "it does not expire before the as_of it was evaluated for",
+        review["expires_on"] >= review["provenance"]["as_of"],
+        "an action that arrives expired cannot be acted on",
+    )
+    check(
+        "the verb is one the DATA supports",
+        review["verb"] == "review",
+        "a markdown needs elasticity, a margin floor and supplier return terms; none exist",
+    )
+
+    # THE MONEY CHECK AGAIN, one layer up. Same rule as daily_series's returns, same reason: the
+    # tax basis of unit_cost is UNDETERMINED by canonical's own comment. Second time it has
+    # blocked money in this plane.
+    money_named = sorted(k for k in review if any(w in k for w in ("cost", "price", "value", "revenue")))
+    check(
+        "the action's value at stake is UNITS, no money field",
+        money_named == [],
+        f"canonical's unit_cost tax basis is TBD; found {money_named}",
     )
 
     print("Signal fixtures:")
@@ -379,6 +464,102 @@ def main() -> int:
         "reason is not what makes something unfitted",
     )
 
+    no_arm = clone(review)
+    del no_arm["arm"]
+    check(
+        "action: OMITTING the arm is rejected",
+        not validates(act, no_arm),
+        "THE LOAD-BEARING NEGATIVE: an action without an arm is permanently unanalysable, "
+        "because a control group cannot be constructed retrospectively",
+    )
+
+    unassigned_arm = clone(review)
+    unassigned_arm["arm"] = "unassigned"
+    check(
+        "action: an arm meaning 'not assigned' is rejected",
+        not validates(act, unassigned_arm),
+        "a third value would let an unanalysable action exist while looking deliberate",
+    )
+
+    for part in ("declaration_version", "capability_versions", "thresholds", "as_of"):
+        missing_provenance = clone(review)
+        del missing_provenance["provenance"][part]
+        check(
+            f"action: provenance without {part} is rejected",
+            not validates(act, missing_provenance),
+            "provenance is required whole; a partial record cannot identify the system",
+        )
+
+    empty_capability_versions = clone(review)
+    empty_capability_versions["provenance"]["capability_versions"] = {}
+    check(
+        "action: provenance with NO capability versions is rejected",
+        not validates(act, empty_capability_versions),
+        "every declaration requires at least one capability, so empty means they were dropped",
+    )
+
+    named_threshold = clone(review)
+    named_threshold["provenance"]["thresholds"] = {"stale_after_days": "the declared value"}
+    check(
+        "action: a threshold recorded by NAME rather than value is rejected",
+        not validates(act, named_threshold),
+        "a reference is re-read later at its NEW value — the subtle version of the mistake",
+    )
+
+    invented_verb = clone(review)
+    invented_verb["verb"] = "mark_down"
+    check(
+        "action: an invented verb is rejected",
+        not validates(act, invented_verb),
+        "a markdown needs elasticity, a margin floor and supplier return terms; a new verb is a "
+        "schema edit, not a string",
+    )
+
+    empty_target = clone(review)
+    empty_target["target"] = {}
+    check("action: an empty target is rejected", not validates(act, empty_target))
+
+    negative_quantity = clone(review)
+    negative_quantity["quantity_at_stake"] = -1
+    check("action: a negative quantity at stake is rejected", not validates(act, negative_quantity))
+
+    unknown_quantity = clone(review)
+    unknown_quantity["quantity_at_stake"] = None
+    check(
+        "action: a NULL quantity at stake is ACCEPTED",
+        validates(act, unknown_quantity),
+        "stock_qty is nullable, so unknown must be sayable — and it must not be said as zero",
+    )
+
+    action_extra = clone(review)
+    action_extra["channel"] = "email"
+    check(
+        "action: an unknown field is rejected (schema is closed)",
+        not validates(act, action_extra),
+        "a channel, a recipient and a priority are the three most tempting additions and "
+        "nothing delivers an action yet",
+    )
+
+    no_holdout = clone(dead_stock)
+    no_holdout["holdout"] = {"unit": ["sku_id"], "holdout_percent": 0, "salt": "x", "fitted": True}
+    check(
+        "analysis: a holdout of 0 percent is rejected",
+        not validates(ana, no_holdout),
+        "0 is not a holdout and 100 treats nobody; neither is an experiment",
+    )
+
+    saltless = clone(dead_stock)
+    saltless["holdout"]["salt"] = ""
+    check("analysis: a holdout with an empty salt is rejected", not validates(ana, saltless))
+
+    unfitted_unexplained_holdout = clone(dead_stock)
+    del unfitted_unexplained_holdout["holdout"]["stands_in_for"]
+    check(
+        "analysis: an UNFITTED holdout percent with no stands_in_for is rejected",
+        not validates(ana, unfitted_unexplained_holdout),
+        "same one-way rule as a threshold: a fraction with no derivation is a guess",
+    )
+
     analysis_extra = clone(dead_stock)
     analysis_extra["schedule"] = "0 3 * * *"
     check(
@@ -388,7 +569,7 @@ def main() -> int:
         "consumes an analysis's output yet",
     )
 
-    print("Scope guard (the other four contracts are NOT in this slice):")
+    print("Scope guard (the other three contracts are NOT in this slice):")
     # model, action, tool and content are later and would be guesses. If a file for one
     # appears, this fails rather than letting it arrive unnoticed.
     #
@@ -399,18 +580,18 @@ def main() -> int:
     # "capability" — a double extension. Strip the suffix explicitly rather than
     # relying on .stem, which silently matched nothing and made this guard pass
     # vacuously on the first run.
-    expected = {"capability", "signal", "analysis"}
+    expected = {"capability", "signal", "analysis", "action"}
     unexpected = sorted(
         p.name
         for p in HERE.glob("*.schema.json")
         if p.name.removesuffix(".schema.json") not in expected
     )
     check(
-        "only capability + signal + analysis schemas exist",
+        "only capability + signal + analysis + action schemas exist",
         unexpected == [],
         f"unexpected schema files: {unexpected}",
     )
-    for absent in ("model", "action", "tool", "content"):
+    for absent in ("model", "tool", "content"):
         check(
             f"no {absent} schema has appeared",
             not (HERE / f"{absent}.schema.json").exists(),
@@ -428,6 +609,10 @@ def main() -> int:
     check(
         "analysis schema is closed (additionalProperties false)",
         analysis_schema.get("additionalProperties") is False,
+    )
+    check(
+        "action schema is closed (additionalProperties false)",
+        action_schema.get("additionalProperties") is False,
     )
 
     print()
