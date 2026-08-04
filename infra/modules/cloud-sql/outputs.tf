@@ -21,6 +21,7 @@ output "app_user_names" {
     dis               = google_sql_user.dis_app.name
     dis_mirror_reader = google_sql_user.dis_mirror_reader.name
     synapse_reader    = google_sql_user.synapse_reader.name
+    synapse_writer    = google_sql_user.synapse_writer.name
   }
 }
 

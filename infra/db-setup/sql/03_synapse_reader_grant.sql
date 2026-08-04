@@ -2,8 +2,13 @@
 -- synapse_reader canonical grant (POST-MIGRATION).
 --
 -- Synapse is a PEER of DIS, not part of it. It reads canonical READ-ONLY and never
--- writes a DIS table. This file gives its role exactly the two tables its two
+-- writes a DIS table. This file gives its role exactly the two CANONICAL tables its
 -- resolvers name, and nothing else.
+--
+-- SINCE SLICE 5 the role also holds SELECT on synapse.actions — Synapse's OWN
+-- schema, granted by sql/04, so the action log can be read back without an admin
+-- credential. Still read-only everywhere: appending is synapse_writer's job, a
+-- separate role holding INSERT and nothing else.
 --
 -- Modelled on 02_mirror_reader_grant.sql deliberately: dis_mirror_reader is the
 -- precedent for "a consumer reads a schema it does not own", it works, and a
@@ -78,7 +83,7 @@
 --      instead of borrowing ithina_dis_user's full DML on canonical.
 --
 -- ----------------------------------------------------------------------------
--- WHY EXACTLY TWO TABLES
+-- WHY EXACTLY TWO CANONICAL TABLES
 -- ----------------------------------------------------------------------------
 -- These are every canonical table Synapse names, verified by grep over
 -- synapse/src/synapse/resolvers/ and pinned by a test
@@ -162,15 +167,22 @@ REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA canonical FROM s
 -- VERIFY (run manually — each of these has a specific wrong answer)
 -- ----------------------------------------------------------------------------
 --
--- 1. EXACTLY two grants, both SELECT. More rows means the REVOKE above did not
---    catch something; a privilege_type other than SELECT means a write path exists.
+-- 1. EXACTLY these grants, all SELECT. A privilege_type other than SELECT means a
+--    write path exists; an extra table means the REVOKE above missed something.
 --
---      SELECT table_name, privilege_type
+--      SELECT table_schema, table_name, privilege_type
 --        FROM information_schema.role_table_grants
 --       WHERE grantee = 'synapse_reader'
---       ORDER BY table_name;
---      -> exactly two rows: SELECT on store_sku_current_position
---                           and SELECT on store_sku_sale_events.
+--       ORDER BY 1, 2;
+--      -> canonical | store_sku_current_position | SELECT
+--         canonical | store_sku_sale_events      | SELECT
+--         synapse   | actions                    | SELECT
+--
+--    THE THIRD ROW ARRIVED IN SLICE 5 and this block said "exactly two" until then.
+--    synapse_reader was granted SELECT on the action log because something will read
+--    it back, and the alternative was every read-side test holding an admin
+--    credential — a worse posture than a read-only role reading a read-only thing.
+--    That grant is issued by sql/04, not here; this list is the whole picture.
 --
 -- 2. The role cannot bypass RLS. Both columns must be `f`. If either is `t`,
 --    tenant isolation is void for this role and dis-rls will refuse the engine on

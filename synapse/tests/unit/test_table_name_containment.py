@@ -21,6 +21,9 @@ import pathlib
 
 SYNAPSE_SRC = pathlib.Path(__file__).resolve().parents[2] / "src" / "synapse"
 RESOLVERS = SYNAPSE_SRC / "resolvers"
+# The second package permitted to build SQL, added in slice 5. Resolvers READ canonical;
+# persistence WRITES synapse.actions. Both construct statements; nothing else may.
+PERSISTENCE = SYNAPSE_SRC / "persistence"
 
 # Canonical tables Synapse could plausibly reach. Extend this list when a resolver
 # reaches a new one — the point is that adding a table is a visible edit here.
@@ -101,24 +104,32 @@ def test_the_collapse_helper_names_no_table_in_its_code() -> None:
         assert tbl not in body, f"_collapse.py must stay table-agnostic; its code names {tbl!r}"
 
 
-def test_statement_constructors_are_imported_only_inside_resolvers() -> None:
-    """The other half of "only resolvers may reach canonical", for the registry layer.
+def test_statement_constructors_are_imported_only_where_sql_is_built() -> None:
+    """The other half of "only resolvers may reach canonical", for every other package.
 
     import-linter cannot express this one: ``synapse.registry`` MUST import sqlalchemy
     transitively (it binds resolvers that use it), so a forbidden contract on the package
     would either fail or have to allow the thing being guarded. What is checkable is the
     IMPORT FORM: ``from sqlalchemy import ...`` is how select/table/column/text arrive,
     whereas ``from sqlalchemy.ext.asyncio import AsyncEngine`` is a parameter type and
-    nothing more. Only resolvers may do the former.
+    nothing more.
+
+    THE PERMITTED SET WIDENED IN SLICE 5, and the guard is what forced the question. It said
+    "only synapse/resolvers/" — true when written, when resolvers were the only package that
+    touched a database — and ``synapse/persistence/`` then arrived legitimately constructing an
+    INSERT. Widening the set beats deleting the guard: it still holds ``core`` pure (no SQL in
+    the action types) and still catches a FIFTH package appearing with a statement in it.
     """
+    permitted = (RESOLVERS, PERSISTENCE)
     offenders = [
         str(p.relative_to(SYNAPSE_SRC))
         for p in _python_files()
-        if RESOLVERS not in p.parents and "from sqlalchemy import " in p.read_text(encoding="utf-8")
+        if not any(directory in p.parents for directory in permitted)
+        and "from sqlalchemy import " in p.read_text(encoding="utf-8")
     ]
     assert offenders == [], (
-        "statement construction must stay under synapse/resolvers/; these import "
-        f"sqlalchemy's constructors directly: {offenders}"
+        "statement construction must stay under synapse/resolvers/ or synapse/persistence/; "
+        f"these import sqlalchemy's constructors directly: {offenders}"
     )
 
 

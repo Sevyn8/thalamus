@@ -9,7 +9,9 @@ Both are constructor-level rather than review-level, because both are unfixable 
 An action recorded today without an arm is permanently outside any study, and no migration
 recovers it.
 
-Plus the append-only property, proved by what the log DOES NOT OFFER rather than asserted.
+The append-only log's own properties moved to test_action_log.py when the protocol split into
+an appender and a reader — they are parameterised over every implementation now, so they no
+longer belong to a file about the action TYPES.
 """
 
 from __future__ import annotations
@@ -21,8 +23,7 @@ from uuid import UUID
 
 import pytest
 
-from synapse.core.action import Action, ActionEvent, Provenance, Verb
-from synapse.core.action_log import ActionLog, InMemoryActionLog
+from synapse.core.action import Action, Provenance, Verb
 from synapse.core.analysis import DEAD_STOCK
 from synapse.core.current_state import CurrentStateRow
 from synapse.core.dead_stock import DeadStockRow
@@ -149,72 +150,6 @@ def test_an_action_with_no_target_is_refused() -> None:
 def test_the_action_is_frozen() -> None:
     with pytest.raises(FrozenInstanceError):
         _action().arm = Arm.HOLDOUT  # type: ignore[misc]
-
-
-# ---------------------------------------------------------------------------
-# Append-only
-# ---------------------------------------------------------------------------
-
-
-def test_the_log_offers_no_way_to_edit_or_remove() -> None:
-    """APPEND-ONLY PROVED BY ABSENCE, which is the strongest form available without a database.
-
-    A table with a comment saying "do not update" is what canonical's event tables had before
-    migration 0019, and it cost one 328-row upload becoming 1640. A type that offers no edit
-    cannot be edited by someone in a hurry.
-    """
-    forbidden = {"update", "delete", "remove", "replace", "clear", "pop", "insert", "extend"}
-    for surface in (ActionLog, InMemoryActionLog):
-        offered = {name for name in dir(surface) if not name.startswith("_")}
-        assert offered & forbidden == set(), f"{surface.__name__} offers {offered & forbidden}"
-    assert {name for name in dir(InMemoryActionLog) if not name.startswith("_")} == {
-        "append",
-        "events",
-    }
-
-
-def test_events_returns_a_copy_so_the_log_cannot_be_appended_through_it() -> None:
-    """Returning the live list would make append() advisory and append-only a convention."""
-    log = InMemoryActionLog()
-    log.append(_event(1))
-    snapshot = log.events()
-    assert isinstance(snapshot, tuple)
-    assert len(log.events()) == 1
-
-
-def test_a_correction_is_a_new_event_naming_what_it_supersedes() -> None:
-    """D33's shape one layer up: an append-only log can be replayed to any point in time, and an
-    edited row destroys the history that makes a study possible."""
-    log = InMemoryActionLog()
-    original = _event(1)
-    log.append(original)
-    log.append(_event(2, supersedes=original.event_id))
-
-    assert len(log.events()) == 2, "a correction ADDS; it does not replace"
-    assert log.events()[1].supersedes == original.event_id
-
-
-def test_an_event_cannot_supersede_itself() -> None:
-    with pytest.raises(ValueError, match="supersedes itself"):
-        _event(1, supersedes=UUID(int=1))
-
-
-def test_the_log_preserves_append_order() -> None:
-    """Order is part of the contract: a log whose order is unspecified cannot be replayed, and
-    replay is most of the reason to keep one."""
-    log = InMemoryActionLog()
-    for i in range(1, 6):
-        log.append(_event(i))
-    assert [event.event_id.int for event in log.events()] == [1, 2, 3, 4, 5]
-
-
-def _event(n: int, *, supersedes: UUID | None = None) -> ActionEvent:
-    return ActionEvent(
-        event_id=UUID(int=n),
-        recorded_at=datetime(2026, 8, 5, 9, n, tzinfo=UTC),
-        action=_action(),
-        supersedes=supersedes,
-    )
 
 
 # ---------------------------------------------------------------------------

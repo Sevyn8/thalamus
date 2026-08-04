@@ -18,9 +18,13 @@ THE ROLE IS ``synapse_reader``, AND DELIBERATELY NOT ``ithina_dis_user``. That r
 full DML on canonical; handing it to a read-only analytics plane is the same mistake as
 pointing mirror-sync at ``cm-database-url`` instead of ``dis_mirror_reader``, which this
 project rejected on exactly those grounds. ``synapse_reader`` holds USAGE on ``canonical``,
-SELECT on exactly two tables — ``store_sku_current_position`` and ``store_sku_sale_events``,
-the only two any resolver here names — CONNECT on the database, and nothing else. It is
-NOSUPERUSER NOBYPASSRLS, so canonical's FORCE RLS policies apply to it like any other
+SELECT on exactly two CANONICAL tables — ``store_sku_current_position`` and
+``store_sku_sale_events``, the only two any resolver here names — CONNECT on the database, and
+SELECT on ``synapse.actions`` (slice 5, so the action log can be read back without an admin
+credential). No write anywhere: appending is ``synapse_writer``'s, a separate role holding
+INSERT and nothing else.
+
+It is NOSUPERUSER NOBYPASSRLS, so canonical's FORCE RLS policies apply to it like any other
 consumer, and dis-rls refuses on first use any engine whose role reports otherwise.
 
 PROVISIONED AND VERIFIED AGAINST STAGING: Terraform's ``google_sql_user`` in cloud,

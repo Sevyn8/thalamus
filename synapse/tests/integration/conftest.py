@@ -53,6 +53,16 @@ in a local devbox are RESIDUE from having run the streaming consumer's integrati
 against the same volume — arbitrary content, no guarantee of presence, nobody maintaining it.
 Reading a green local run as proof of correction-collapse is reading residue.
 
+A REFUSAL TEST PASSES WHEN EVERYTHING IS BROKEN. That is the SECOND vacuity class, and the
+reason ``require_appendable`` exists alongside ``require_canonical_rows``. A test asserting only
+that something is DENIED — a cross-tenant append refused, a write by a read-only role refused —
+cannot distinguish "correctly denied" from "nothing works at all". Three of the five action-log
+tests were exactly that shape, and all three passed during a staging run in which the
+append-only trigger test failed; they would have passed just as green against an empty table, a
+revoked grant, or an appender that raised on every call. The fix is STRUCTURAL rather than a
+matter of care: prove the SUCCESS path in the same session, so a refusal is contrasted against a
+working baseline instead of against a vacuum.
+
 A FIXTURE RATHER THAN AN IMPORTABLE HELPER, deliberately: the suite runs under
 ``--import-mode=importlib`` with no ``__init__.py``, so a sibling-module import is fragile in
 a way a fixture is not. Shared rather than copied per file because two byte-identical guards
@@ -62,8 +72,12 @@ ledger item.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Coroutine
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from typing import Any, Literal
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import TextClause, text
@@ -123,5 +137,155 @@ def require_canonical_rows() -> RequireRows:
                 "integration suite first."
             )
         return rows
+
+    return _require
+
+
+# ---------------------------------------------------------------------------
+# The action log: the write side, and the vacuity guard for refusal tests
+# ---------------------------------------------------------------------------
+
+# THE TENANT THE WRITE-SIDE TESTS APPEND UNDER, and deliberately NOT the tenant with real data.
+#
+# synapse.actions is append-only, enforced by a trigger that binds even the table owner, so
+# every row a test writes is PERMANENT — there is no cleanup, by construction. What isolation
+# remains is the isolation the table already has: RLS. Writing probes under a synthetic tenant
+# puts them behind the same FORCE-RLS boundary that separates real tenants from each other, so
+# no real tenant's session can ever see them. That reuses a mechanism already proven here rather
+# than inventing a marker column every future reader must remember to filter on.
+#
+# Nothing constrains this value: the action log has no foreign key into any DIS schema (an
+# append-only log must outlive what it references), so a synthetic tenant id is insertable and
+# owns no canonical rows. Override with SYNAPSE_PROBE_TENANT_ID if that decision changes.
+PROBE_TENANT_ID = UUID(os.environ.get("SYNAPSE_PROBE_TENANT_ID", "decafbad-0000-4000-8000-000000000001"))
+
+# One probe per SESSION, not per test. The probe row is permanent, so five tests taking this
+# fixture must not mean five rows: the first call appends and verifies, the rest reuse the
+# verdict. Keyed by nothing — the session is the scope.
+_PROBE_VERDICT: list[UUID] = []
+
+RequireAppendable = Callable[..., Coroutine[Any, Any, UUID]]
+
+# THE LAST PARAGRAPH IS THE ONE THAT COST A WHOLE INVESTIGATION, so it is in the failure message
+# rather than in a runbook: a bare count against this table reads zero whatever the truth.
+_DIAGNOSIS = (
+    "Check, in order: that synapse/alembic.ini has been upgraded against THIS database, that "
+    "sql/04 has granted synapse_writer INSERT and synapse_reader SELECT on synapse.actions, and "
+    "that neither role reports rolbypassrls. When you go and look, SET THE GUCs: synapse.actions "
+    "is FORCE ROW LEVEL SECURITY, so a psql session with no app.tenant_id matches zero rows even "
+    "as the table owner, and even on Cloud SQL as `postgres`. A bare `SELECT count(*)` there "
+    "reports 0 for a healthy log and for an empty one alike."
+)
+
+
+@pytest.fixture
+def probe_tenant() -> UUID:
+    """The synthetic tenant the write-side tests append under.
+
+    A FIXTURE RATHER THAN AN IMPORT for the reason in the module docstring: this suite runs under
+    ``--import-mode=importlib`` with no ``__init__.py``, so a test module importing ``conftest``
+    directly is fragile in a way that taking a fixture is not.
+    """
+    return PROBE_TENANT_ID
+
+
+class ActionLogNotWritableError(RuntimeError):
+    """An append did not land, and the tests that follow would prove nothing.
+
+    Raised, never skipped — the same posture as :class:`CanonicalDataRequiredError` and for a
+    sharper reason. Every refusal test in the action-log suite is green when the whole write
+    path is broken; this is the one check that can tell the difference.
+    """
+
+
+@pytest.fixture
+def require_appendable() -> RequireAppendable:
+    """Append a probe event and read it back. Raise if it is not there.
+
+    THE ONE THING THE REFUSAL TESTS CANNOT ESTABLISH FOR THEMSELVES. It exercises the entire
+    write path end to end and through both roles: synapse_writer's INSERT, the RLS ``WITH CHECK``
+    against the GENERATED tenant_id, the generated columns, and synapse_reader's SELECT. If any
+    link is broken this raises, and every test that took the fixture fails loudly instead of
+    passing on a refusal it never earned.
+
+    The probe is UNIQUE per session rather than a fixed row, because a constant natural key would
+    be suppressed by ``ON CONFLICT DO NOTHING`` on every run after the first — proving only that
+    an old row is still readable, not that a write lands TODAY. One permanent row per run is the
+    price of that distinction, and it is why the probe is session-scoped and synthetic-tenanted.
+    """
+
+    async def _require(what: str) -> UUID:
+        if _PROBE_VERDICT:
+            return _PROBE_VERDICT[0]
+
+        from dis_rls import create_rls_engine
+        from synapse.core.action import Action, ActionEvent, Provenance, Verb
+        from synapse.core.holdout import Arm
+        from synapse.persistence.action_log_postgres import (
+            PostgresActionAppender,
+            PostgresActionReader,
+        )
+
+        writer_dsn = os.environ.get("SYNAPSE_WRITER_URL")
+        reader_dsn = os.environ.get("SYNAPSE_READER_URL")
+        if not writer_dsn or not reader_dsn:  # pragma: no cover - the skipif catches this first
+            raise ActionLogNotWritableError(
+                "SYNAPSE_WRITER_URL and SYNAPSE_READER_URL are both required to prove the "
+                "write path; the module-level skipif should have caught this"
+            )
+
+        as_of = date.today()
+        probe = ActionEvent(
+            event_id=uuid4(),
+            recorded_at=datetime.now(UTC),
+            action=Action(
+                target={
+                    "tenant_id": str(PROBE_TENANT_ID),
+                    "sku_id": f"PROBE-{uuid4().hex[:12]}",
+                },
+                verb=Verb.REVIEW,
+                quantity_at_stake=Decimal("1.000"),
+                expires_on=as_of + timedelta(days=1),
+                arm=Arm.TREATMENT,
+                provenance=Provenance(
+                    declaration_id="dead_stock",
+                    declaration_version="0.1.0",
+                    capability_versions={"current_state": "0.1.0", "last_sale_at": "0.1.0"},
+                    thresholds={"stale_after_days": 90, "expires_after_days": 30},
+                    as_of=as_of,
+                ),
+            ),
+        )
+
+        writer = create_rls_engine(writer_dsn)
+        reader = create_rls_engine(reader_dsn)
+        try:
+            # BOTH FAILURE SHAPES REPORT THE SAME WAY. A broken write path either RAISES (no
+            # grant, no schema, unreachable) or lands nothing quietly (RLS refusing under a
+            # policy that matches no row). The diagnostic below is worth having in either case,
+            # so the raising kind is re-raised as this error rather than surfacing as a bare
+            # ProgrammingError from inside a fixture.
+            try:
+                await PostgresActionAppender(writer, PROBE_TENANT_ID).append(probe)
+                events = await PostgresActionReader(reader, PROBE_TENANT_ID).events()
+            except Exception as exc:
+                raise ActionLogNotWritableError(
+                    f"the action-log write path RAISED while appending probe {probe.event_id} "
+                    f"under tenant {PROBE_TENANT_ID}, so this test cannot prove anything "
+                    f"({what}). {_DIAGNOSIS}"
+                ) from exc
+        finally:
+            await writer.dispose()
+            await reader.dispose()
+
+        if not any(event.event_id == probe.event_id for event in events):
+            raise ActionLogNotWritableError(
+                f"appended probe {probe.event_id} to synapse.actions under tenant "
+                f"{PROBE_TENANT_ID} and synapse_reader cannot see it among {len(events)} rows - "
+                f"the write path is SILENTLY dropping rows, so this test cannot prove anything "
+                f"({what}). {_DIAGNOSIS}"
+            )
+        _PROBE_VERDICT.append(probe.event_id)
+        return probe.event_id
 
     return _require

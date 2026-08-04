@@ -84,6 +84,12 @@ variable "synapse_reader_user_name" {
   default     = "synapse_reader"
 }
 
+variable "synapse_writer_user_name" {
+  type        = string
+  description = "Synapse's WRITE role. INSERT on synapse.actions and nothing else — no UPDATE, no DELETE, no TRUNCATE, and deliberately no SELECT (ON CONFLICT DO NOTHING needs none; RETURNING would). Holds NOTHING on canonical: a second role rather than a widened synapse_reader, so that 'resolvers never write' is enforced by the database rather than by a grep test. Grants come from Synapse's alembic chain and infra/db-setup/sql/04_synapse_writer_grant.sql."
+  default     = "synapse_writer"
+}
+
 variable "secret_prefix" {
   type        = string
   description = "Prefix for the Secret Manager password containers (e.g. thalamus -> thalamus-user_admin_backend-password)."

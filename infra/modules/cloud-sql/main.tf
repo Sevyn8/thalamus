@@ -14,7 +14,7 @@
 #   - backups + PITR + maintenance window + query insights (CM, the more
 #     complete config).
 #
-# Four roles, each a google_sql_user with a generated password stored in Secret
+# Five roles, each a google_sql_user with a generated password stored in Secret
 # Manager. All rely on Cloud SQL's default posture: app users are NOT granted
 # SUPERUSER or the cloudsqlsuperuser role and are NOT BYPASSRLS, so each is
 # NOSUPERUSER NOBYPASSRLS as required by CM's D-03 / DIS's RLS contract. Per-
@@ -52,6 +52,12 @@ resource "random_password" "dis_mirror_reader" {
 }
 
 resource "random_password" "synapse_reader" {
+  length           = 40
+  special          = true
+  override_special = "_-."
+}
+
+resource "random_password" "synapse_writer" {
   length           = 40
   special          = true
   override_special = "_-."
@@ -180,6 +186,26 @@ resource "google_sql_user" "synapse_reader" {
   password = random_password.synapse_reader.result
 }
 
+# Synapse's WRITE role, and a SECOND role rather than a widened reader.
+#
+# synapse_reader holds SELECT on canonical. Giving it INSERT anywhere would mean the engine the
+# RESOLVERS hold could write, and "resolvers never write" is currently only a code property
+# (a grep test for INSERT/UPDATE/DELETE imports). Two roles make it a RUNTIME property: one
+# process holds two engines, and an INSERT added to a resolver by mistake fails at the database.
+# The converse matters as much — this role holds NOTHING on canonical, so the action log cannot
+# read tenant data even by accident.
+#
+# INSERT AND NOTHING ELSE, including no SELECT: appending needs none (ON CONFLICT DO NOTHING
+# requires no SELECT privilege; RETURNING would, so the log does not use it). Grants are applied
+# by Synapse's own alembic chain and re-asserted by
+# infra/db-setup/sql/04_synapse_writer_grant.sql, not here.
+resource "google_sql_user" "synapse_writer" {
+  name     = var.synapse_writer_user_name
+  project  = var.project_id
+  instance = google_sql_database_instance.this.name
+  password = random_password.synapse_writer.result
+}
+
 # --- Secret Manager: one container + version per role password ---------------
 
 locals {
@@ -188,6 +214,7 @@ locals {
     (var.dis_app_user_name)           = random_password.dis_app.result
     (var.dis_mirror_reader_user_name) = random_password.dis_mirror_reader.result
     (var.synapse_reader_user_name)    = random_password.synapse_reader.result
+    (var.synapse_writer_user_name)    = random_password.synapse_writer.result
   }
 }
 

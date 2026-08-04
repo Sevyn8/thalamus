@@ -15,12 +15,15 @@ before anything that consumes it:
 Everything else here can be added later. These two cannot, so they are required fields with no
 defaults and the constructors refuse anything less.
 
-APPEND-ONLY IS A PROPERTY OF THE SHAPE, NOT OF A TABLE, and that is why this slice has no
-migration. ``ActionEvent`` is frozen, there is no update or delete anywhere in this module or in
-``synapse.core.action_log``, and a CORRECTION IS A NEW EVENT that names the one it supersedes —
-the D33 lesson applied one layer up. A table can be added later against a shape that has already
-been exercised, which is the opposite of canonical's signal-history table: a DDL written ahead of
-its writer, still holding zero rows in both schemas.
+APPEND-ONLY IS A PROPERTY OF THE SHAPE AND OF THE TABLE. ``ActionEvent`` is frozen, there is no
+update or delete anywhere in this module or in ``synapse.core.action_log``, and a CORRECTION IS
+A NEW EVENT naming the one it supersedes — the D33 lesson applied one layer up. Since slice 5
+the database says the same thing twice more: ``synapse_writer`` holds INSERT and nothing else,
+and a BEFORE UPDATE OR DELETE trigger raises for every role including the table owner.
+
+THE SHAPE CAME FIRST, DELIBERATELY. The table was written a slice later, against types that had
+already run — the opposite of canonical's signal-history table, a DDL written ahead of its
+writer and still holding zero rows in both schemas.
 """
 
 from __future__ import annotations

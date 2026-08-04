@@ -72,7 +72,11 @@ async def test_it_resolves_and_both_fetchers_execute() -> None:
     from synapse.core.last_sale_at import LastSaleAtRow
     from synapse.registry import resolve_declaration
 
-    (stale_after,) = DEAD_STOCK.thresholds
+    # BY NAME, NOT BY POSITION. This was a one-element unpack until slice 4 added
+    # expires_after_days, and it broke here silently: the integration suite only runs
+    # inside a staging window, so the three unit-test call sites were fixed the same day
+    # and these two went unnoticed until the next window.
+    stale_after = next(t for t in DEAD_STOCK.thresholds if t.name == "stale_after_days")
     engine = create_rls_engine(DSN)
     try:
         outcome = await resolve_declaration(engine, "dead_stock", _scope())
@@ -120,7 +124,7 @@ async def test_it_evaluates_against_real_rows(require_canonical_rows: RequireRow
     from synapse.core.dead_stock import evaluate_dead_stock
     from synapse.registry import resolve_declaration
 
-    (stale_after,) = DEAD_STOCK.thresholds
+    stale_after = next(t for t in DEAD_STOCK.thresholds if t.name == "stale_after_days")
     as_of = date.today()
     scope = _scope()
     engine = create_rls_engine(DSN)
