@@ -76,31 +76,56 @@ RUN uv sync --frozen --no-dev --package synapse-ui-server
 
 ENV PATH="/app/.venv/bin:$PATH"
 
-# BUILD THE APP OBJECT AT BUILD TIME, which is strictly stronger than importing
-# the module.
+# THE ASGI TARGET, DECLARED ONCE. The build-time check below and the CMD at the
+# bottom both read this variable, so the string uvicorn resolves at startup is
+# literally the string the build verified.
 #
-# An import proves the graph resolves. CALLING create_app() additionally executes
-# every @app.get decorator, so a route that fails to register — a bad path, a
-# dependency that cannot be constructed, a duplicated operation id — becomes a
-# BUILD failure rather than a revision that starts, passes its health check and
-# 404s the console. dis-ui-server shipped precisely that once: green build, clean
-# push, ModuleNotFoundError in the container.
+# IT WAS WRITTEN TWICE AND THAT SHIPPED A BROKEN IMAGE. The CMD said
+# `synapse_ui_server.main:app` while the check imported `create_app` — two
+# different attributes of the same module. The check passed (create_app exists,
+# builds, registers seven routes) and the container then died on
+# `Attribute "app" not found in module "synapse_ui_server.main"`. One copy was
+# checked and the other shipped, which is the duplication class this project
+# keeps paying for.
 #
-# It also runs synapse.registry's import-time invariants (_check_registry,
-# _check_declarations, _check_analyses, _check_actions, _check_plans, _check_windows),
-# so a declaration whose evaluator no longer matches its `emits` fails here too.
+# `:create_app` with `--factory`, not `:app`: a module-level app would have to
+# call load_config() at IMPORT time, which needs the runtime env and so cannot be
+# built here. The factory defers that to startup, where the env exists.
+ENV ASGI_TARGET="synapse_ui_server.main:create_app"
+
+# RESOLVE $ASGI_TARGET EXACTLY AS UVICORN WILL, THEN CALL IT EXACTLY AS --factory
+# WILL, AND ASSERT THE ROUTES.
 #
-# The Config is a throwaway with a syntactically valid DSN: create_app() must not
-# touch a database, and this line is also what proves it doesn't.
-RUN python -c "\
-from synapse_ui_server.config import Config; \
-from synapse_ui_server.main import create_app; \
-app = create_app(Config(reader_url='postgresql+psycopg://u@h/d', jwt_issuer='https://x/', jwt_audience='a', expected_database='thalamus')); \
+# `uvicorn.importer.import_from_string` is uvicorn's OWN resolver, not a
+# reimplementation of it — the previous check hand-rolled an import of a
+# different attribute and that is precisely how the mismatch survived. Using the
+# real function against the real string means the only way this passes and
+# startup fails is a uvicorn bug.
+#
+# The dummy env exists because --factory calls create_app() with NO arguments, so
+# it goes through load_config(); these values are build-time only, are never
+# persisted into the image, and are syntactically valid rather than reachable.
+# Cloud Run supplies the real ones.
+#
+# Calling the factory also executes every @app.get decorator, so a route that
+# fails to register is a BUILD failure rather than a revision that starts, passes
+# its health check and 404s the console — and it runs synapse.registry's
+# import-time invariants, so a declaration whose evaluator no longer matches its
+# `emits` fails here too.
+RUN SYNAPSE_READER_URL="postgresql+psycopg://u@h/d" \
+    SYNAPSE_JWT_ISSUER="https://build.invalid/" \
+    SYNAPSE_JWT_AUDIENCE="build-check" \
+    python -c "\
+import os; \
+from uvicorn.importer import import_from_string; \
+target = os.environ['ASGI_TARGET']; \
+factory = import_from_string(target); \
+app = factory(); \
 paths = {r.path for r in app.routes if hasattr(r, 'path')}; \
 required = {'/healthz', '/readyz', '/fleet', '/tenants/{tenant_id}', '/runs', '/capabilities', '/analyses'}; \
 missing = required - paths; \
 assert not missing, f'routes did not register: {sorted(missing)}'; \
-print(f'all {len(required)} routes registered')"
+print(f'{target} resolves and builds {len(required)} routes')"
 
 # Non-root. The service writes no local filesystem: it reads Postgres and returns JSON.
 RUN useradd --system --no-create-home synapseui
@@ -122,4 +147,4 @@ EXPOSE 8080
 #
 # CMD rather than ENTRYPOINT because a service takes no per-execution arguments;
 # the orchestrator uses ENTRYPOINT precisely so `--args` can vary a run.
-CMD exec uvicorn synapse_ui_server.main:app --host 0.0.0.0 --port ${PORT:-8080}
+CMD exec uvicorn "$ASGI_TARGET" --factory --host 0.0.0.0 --port ${PORT:-8080}

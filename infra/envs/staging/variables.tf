@@ -195,7 +195,7 @@ variable "dis_ui_server_image" {
 variable "synapse_ui_server_image" {
   type        = string
   description = "synapse-ui-server container image (the read-only BFF behind the Synapse superadmin console). Built from synapse/services/synapse-ui-server with the MONOREPO ROOT as build context — the BFF is a workspace member alongside thalamus-synapse, so a dis/-rooted context cannot reach it. Explicit _TAG, never a floating `latest`. NOT YET BUILT OR PUSHED as of slice 8a; the tag below is the one the first build must produce."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/synapse-ui-server:v1"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/synapse-ui-server:v2"
 }
 
 variable "synapse_orchestrator_image" {
