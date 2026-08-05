@@ -201,7 +201,7 @@ variable "synapse_ui_server_image" {
 variable "synapse_orchestrator_image" {
   type        = string
   description = "synapse-orchestrator container image (the Cloud Run JOB). Built from synapse/Dockerfile with the MONOREPO ROOT as build context — Synapse is a workspace sibling of dis/, so a dis/-rooted context cannot reach it — via synapse/cloudbuild.yaml with an explicit _TAG and no floating `latest`. NOT YET BUILT OR PUSHED as of slice 6b; the tag below is the one the first build must produce."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/synapse-orchestrator:v1"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/synapse-orchestrator:v2"
 }
 
 variable "mirror_sync_consumer_image" {
@@ -260,12 +260,34 @@ variable "clover_connector_image" {
 }
 
 variable "alert_email" {
-  type        = string
-  description = "Where every alert goes. A LIST, not a person: a personal address breaks when one of three people is away and needs changing when the team grows."
-  # CONFIRMED BY THE OPERATOR, 2026-08-05, which is why this has a default and the MODULE's own
-  # variable deliberately does not. The env states the address; the module refuses to be reused
-  # anywhere without one being stated. Cloud Identity API is off on this project, so group
-  # membership could not be verified from the CLI — the first alert to fire is the confirmation
-  # that this list actually delivers.
-  default = "alerts@sevyn8.com"
+  type = string
+
+  description = <<-EOT
+    Where every alert goes.
+
+    THIS IS A PERSONAL ADDRESS AND THAT IS THE WRONG SHAPE. The module's own documentation argues
+    against it, so the contradiction has to carry its reason rather than sit in a comment nobody
+    reads: a personal address stops being read the moment that person is away, and it silently
+    becomes the wrong destination as soon as the team grows. Alerting that depends on one
+    individual's inbox has a single point of failure that is a human being.
+
+    IT IS SET ANYWAY, DELIBERATELY: alerts@sevyn8.com does not exist as a mailbox, and creating a
+    Workspace group mid-slice is a worse trade than shipping observability that works today.
+    An alert reaching one founder beats an alert reaching a non-existent address.
+
+    WHAT REPLACES IT: a Workspace group containing all three founders.
+
+    THE TRIGGER FOR REPLACING IT — both checkable conditions, not "soon":
+      1. the first alert that fires while the addressee is unavailable, or
+      2. a fourth person joining.
+
+    Tracked as its own item in the outstanding list, not as a footnote to this one.
+
+    AND IT STILL NEEDS ITS VERIFICATION EMAIL CLICKED. Cloud Monitoring emails a confirmation to
+    a new email channel and the channel delivers NOTHING until that link is followed. This is true
+    of a personal address exactly as it is of a group, and an unverified channel is inert whoever
+    it points at — which would make all six policies fire into nowhere while looking configured.
+  EOT
+
+  default = "amit@sevyn8.com"
 }

@@ -41,6 +41,34 @@
 #     alert replaces two that were originally asked for.
 #
 # =============================================================================
+# TERRAFORM VALIDATES SCHEMA, NOT SEMANTICS
+# =============================================================================
+# `terraform validate` passed. `terraform plan` passed. THE API THEN REJECTED FIVE OF THE SIX
+# POLICIES. Every field was the correct type in the correct block; the COMBINATIONS were ones the
+# Monitoring API refuses. A schema check cannot see that, and neither can a plan — a plan asks
+# "is this well-formed and what would change", never "will the service accept it".
+#
+# The three rejections, kept because each is a rule nothing in the provider states:
+#
+#   1. notification_rate_limit is legal ONLY on a log-MATCH policy (condition_matched_log). A
+#      condition_threshold reading a logging.googleapis.com/user/ metric is NOT one — it is an
+#      ordinary metric policy over a log-derived metric. Cost us three policies.
+#   2. evaluation_missing_data cannot be paired with duration = "0s". A missing-data policy needs
+#      a non-zero window in which to decide data is absent rather than late.
+#   3. condition_absent duration maxes at 23h30m — SHORTER than the daily cadence it was written
+#      to monitor, which makes it structurally unusable here rather than merely capped. See #4.
+#
+# THE ONLY CHECK FOR THIS CLASS IS AN APPLY. Nothing static reaches it, so an alerting module is
+# not "done" when it validates; it is done when the API has accepted it.
+#
+# AND THE FIRST APPLY WAS PARTIAL, WHICH CHANGES WHAT A RE-APPLY IS. Four resources were created
+# before the failures — the notification channel, both log-based metrics, and messages_stuck. The
+# other five policies do not exist. So a re-apply is a RECONCILE, not a fresh start: expect
+# creates for five policies and no-ops for the four that already exist. If a create fails again,
+# the successful ones stay; this module is safe to re-apply repeatedly and that is deliberate,
+# because getting the semantics right took more than one round trip.
+#
+# =============================================================================
 # THE TWO SETTINGS THAT MAKE A POLICY SILENTLY NEVER FIRE
 # =============================================================================
 # Both are called out at their use sites, because this is the failure mode of the whole session:
@@ -171,13 +199,28 @@ resource "google_logging_metric" "synapse_sale_age_days" {
     ever_sold = "EXTRACT(jsonPayload.ever_sold)"
   }
 
-  # Days, not milliseconds. 1,2,4,...~1024 days covers "yesterday" through "over two years",
-  # which is the whole useful range for a staleness measure.
+  # LINEAR, WIDTH 1 DAY — and the exact boundaries are load-bearing for the alert.
+  #
+  # This was exponential (scale 1, growth 2 → boundaries 1,2,4,8,16,32,64…1024) and that
+  # QUANTISES THE THRESHOLD PRECISELY WHERE IT MUST BE SHARP: the policy compares against 3 days,
+  # and 3 sits inside the bucket [2,4). A percentile read back out of that bucket cannot tell 3.0
+  # from 3.9, so the alert would fire or not on an interpolation artefact rather than on the data.
+  # 17 days landed in [16,32) for the same reason.
+  #
+  # `sale_age_days` is an INTEGER NUMBER OF DAYS, so width-1 buckets are LOSSLESS for the values
+  # that actually exist — there is no sub-day information to preserve. 60 finite buckets give
+  # exact resolution from 0 to 60 days; beyond that everything lands in the overflow bucket, which
+  # is correct because past two months "more stale" is not an actionable distinction.
+  #
+  # Cloud Logging's own reference is the source: bucket configuration determines precision, and
+  # narrower buckets give finer granularity. Changing this is an in-place update (verified by
+  # plan: "will be updated in-place", 0 to destroy) and it is FREE NOW because the metric holds no
+  # data. It stops being free the moment it does.
   bucket_options {
-    exponential_buckets {
-      num_finite_buckets = 11
-      growth_factor      = 2
-      scale              = 1
+    linear_buckets {
+      num_finite_buckets = 60
+      width              = 1
+      offset             = 0
     }
   }
 }
@@ -260,13 +303,15 @@ resource "google_monitoring_alert_policy" "dlq_not_empty" {
 
   notification_channels = [google_monitoring_notification_channel.email.id]
 
-  # A dead-lettered message persists until someone acts. Without a rate limit this re-notifies
-  # every evaluation for up to 31 days, which is how an alert becomes wallpaper.
-  alert_strategy {
-    notification_rate_limit {
-      period = "86400s"
-    }
-  }
+  # NO notification_rate_limit. The API refuses it on anything but a log-MATCH policy
+  # (condition_matched_log): "only log-based alert policies may specify a notification rate
+  # limit". A condition_threshold over a logging.googleapis.com/user/ metric is NOT that — it is
+  # an ordinary metric-threshold policy that happens to read a log-derived metric. None of the six
+  # here can use it. See the header on schema-vs-semantics.
+  #
+  # Nothing is lost for THIS policy: Monitoring notifies when an incident opens and when it
+  # closes, not repeatedly while it stays open, so a DLQ message sitting for days produces one
+  # notification rather than a stream.
 }
 
 # --- 2. The orchestrator's execution FAILED ---------------------------------
@@ -314,7 +359,12 @@ resource "google_monitoring_alert_policy" "orchestrator_execution_failed" {
 
       comparison      = "COMPARISON_GT"
       threshold_value = 0
-      duration        = "0s"
+      # 60s, NOT 0s. The API refuses duration="0s" together with evaluation_missing_data: a
+      # missing-data policy needs a non-zero window to decide data is actually absent rather
+      # than merely late. It does NOT change when this fires — ALIGN_DELTA over a 600s alignment
+      # holds the aligned value for the whole period, so the breach is already persistent by the
+      # time 60s has passed.
+      duration = "60s"
 
       aggregations {
         alignment_period   = "600s"
@@ -378,7 +428,12 @@ resource "google_monitoring_alert_policy" "synapse_slot_failed" {
 
       comparison      = "COMPARISON_GT"
       threshold_value = 0
-      duration        = "0s"
+      # 60s, NOT 0s. The API refuses duration="0s" together with evaluation_missing_data: a
+      # missing-data policy needs a non-zero window to decide data is actually absent rather
+      # than merely late. It does NOT change when this fires — ALIGN_DELTA over a 600s alignment
+      # holds the aligned value for the whole period, so the breach is already persistent by the
+      # time 60s has passed.
+      duration = "60s"
 
       aggregations {
         alignment_period     = "600s"
@@ -397,22 +452,52 @@ resource "google_monitoring_alert_policy" "synapse_slot_failed" {
 
 # --- 4. The orchestrator did not run ---------------------------------------
 #
-# THE ABSENCE PRIMITIVE. condition_absent is the only one of the six that alerts on nothing
-# happening, and it is native — no code, no exporter, no custom metric.
+# THE ABSENCE CASE, AND condition_absent CANNOT DO IT. This was written as condition_absent and
+# the API rejected it: DURATION MAXES AT 23h30m (84600s). That is not a syntax problem, it is a
+# design one — the cap is SHORTER THAN THE CADENCE BEING MONITORED. A 23h30m absence window on a
+# daily job goes "absent" thirty minutes before every scheduled run, so it would fire once a day,
+# for ever, on a perfectly healthy system. condition_absent cannot monitor a daily cadence at all.
+#
+# THE REPLACEMENT: condition_threshold, COMPARISON_LT 1, over a 24h ALIGN_DELTA window, with
+# evaluation_missing_data ACTIVE.
+#
+# AND THE COMPARISON IS NOT WHAT FIRES IT. This is the non-obvious part and it was MEASURED rather
+# than assumed. `completed_execution_count` is a sparse DELTA counter: it emits NOTHING on a day
+# with no executions, it does not emit a zero. Verified against the live metric — 7 days of
+# history aligned to 86400s returned ONE point (value 2, both of the orchestrator's runs in a
+# single bucket), not seven points with five zeros.
+#
+# So `< 1` can never match on data, because there is no zero to be below. THE ENTIRE MECHANISM IS
+# evaluation_missing_data = ACTIVE: no point in the window is a breach. The LT comparison exists
+# to give the condition a well-formed shape and to catch the case where a zero IS somehow emitted;
+# it is not the trigger.
+#
+# WHY THIS DOES NOT INHERIT condition_absent's FALSE POSITIVE. The alignment window SLIDES. At
+# 21:29 UTC — one minute before the next scheduled run — the trailing 24 hours still contains
+# yesterday's 21:30 execution, so there IS a point and the condition is satisfied. condition_absent
+# failed precisely because its window could not reach back a full day; a 24h delta window can.
+# `duration` then absorbs a late run: the missing state must persist an hour before it fires.
+#
+# ONE UNVERIFIED SEMANTIC, stated rather than discovered. The monitoring READ api accepts
+# alignment periods well past 24h (86400s, 90000s and 172800s all returned data), but the ALERT
+# POLICY validator is a different code path and its ceiling could not be tested without an apply —
+# which is the header's whole point. 86400s is used because it is the documented maximum for
+# alerting and is sufficient here. If the apply rejects it, the error will name alignmentPeriod and
+# the fallback is 43200s (12h) with `duration` raised to cover the rest of the day.
 resource "google_monitoring_alert_policy" "orchestrator_did_not_run" {
   project      = var.project_id
-  display_name = "Synapse orchestrator: no execution in 26 hours"
+  display_name = "Synapse orchestrator: no execution in over 24 hours"
   combiner     = "OR"
 
   documentation {
     mime_type = "text/markdown"
     content   = <<-EOT
-      **The orchestrator has not completed an execution in ${var.orchestrator_silence_seconds / 3600}
-      hours. It runs daily. Nothing analysed anything yesterday, and no failure was reported
-      because nothing ran to fail.**
+      **The orchestrator has not completed an execution in over 24 hours. It runs daily. Nothing
+      analysed anything yesterday, and no failure was reported because nothing ran to fail.**
 
       This is the failure that has no error message. Everything is green because everything is
-      absent.
+      absent. Note what this alert is actually detecting: the execution-count metric stopped
+      producing points. It does not emit a zero when idle, so "no data" IS the signal.
 
       WHAT TO DO — check in this order, outermost first:
 
@@ -432,31 +517,39 @@ resource "google_monitoring_alert_policy" "orchestrator_did_not_run" {
   }
 
   conditions {
-    display_name = "no completed execution"
+    display_name = "fewer than one completed execution in the trailing 24h"
 
-    condition_absent {
+    condition_threshold {
       filter = join(" AND ", [
         "metric.type=\"run.googleapis.com/job/completed_execution_count\"",
         "resource.type=\"cloud_run_job\"",
         "resource.label.job_name=\"${var.orchestrator_job_name}\"",
       ])
 
-      duration = "${var.orchestrator_silence_seconds}s"
+      comparison      = "COMPARISON_LT"
+      threshold_value = 1
+
+      # An hour of tolerance for a late run, so a scheduler retry or a slow start does not page.
+      # Well inside the 84600s ceiling that killed condition_absent.
+      duration = "3600s"
 
       aggregations {
-        alignment_period   = "3600s"
+        # 24h, matching the cadence. A SLIDING window this wide always contains the previous run
+        # until a full day has passed without one — which is the property condition_absent could
+        # not have, since its duration was capped below the cadence.
+        alignment_period   = "86400s"
         per_series_aligner = "ALIGN_DELTA"
       }
+
+      # THIS IS THE ACTUAL TRIGGER, not the LT comparison above. The metric is sparse: no
+      # executions means no points, verified against live data. A missing series is the failure.
+      evaluation_missing_data = "EVALUATION_MISSING_DATA_ACTIVE"
     }
   }
 
   notification_channels = [google_monitoring_notification_channel.email.id]
 
-  alert_strategy {
-    notification_rate_limit {
-      period = "86400s"
-    }
-  }
+  # NO notification_rate_limit — the API rejects it outside log-MATCH policies. See the header.
 }
 
 # --- 5. Messages are stuck on a main subscription ---------------------------
@@ -581,13 +674,69 @@ resource "google_monitoring_alert_policy" "tenant_data_stale" {
 
       comparison      = "COMPARISON_GT"
       threshold_value = var.stale_after_days
-      duration        = "0s"
+      # 60s, NOT 0s. The API refuses duration="0s" together with evaluation_missing_data: a
+      # missing-data policy needs a non-zero window to decide data is actually absent rather
+      # than merely late. It does NOT change when this fires — ALIGN_DELTA over a 600s alignment
+      # holds the aligned value for the whole period, so the breach is already persistent by the
+      # time 60s has passed.
+      duration = "60s"
 
       aggregations {
-        # 26 hours: the emission is DAILY, so a shorter window has no points most of the time and
-        # the condition would flap between "breach" and "no data" every hour.
-        alignment_period     = "93600s"
-        per_series_aligner   = "ALIGN_MAX"
+        # 25 HOURS, WHICH IS THE MAXIMUM. The alert-policy alignment ceiling is 90000s; this
+        # carried 93600s (26h) from the original design and the API rejected it. It was the only
+        # one of the six above the ceiling — every other window here is 600s or less.
+        #
+        # THE INTERACTION THAT MAKES THE EXACT NUMBER MATTER, and it is between two settings that
+        # look independent:
+        #
+        #   evaluation_missing_data = ACTIVE  +  an emission that happens ONCE PER DAY
+        #
+        # The freshness metric is written by the daily sweep. With a 24h window, a sweep ten
+        # minutes late leaves a moment where the window holds ZERO points — and ACTIVE means no
+        # data IS a breach. So a LATE SWEEP WOULD FIRE THE STALE-DATA ALERT: lateness would be
+        # reported as staleness, on a tenant whose data is fine. That is a false positive of
+        # precisely the kind that turns an alert into wallpaper, which is the thing this policy's
+        # own documentation warns about.
+        #
+        # THE RULE: with ACTIVE and a periodic emission, the window must exceed the emission
+        # cadence by enough to absorb a late producer, or lateness reads as absence. 25h gives an
+        # hour of slack against a daily sweep and is as much as the API allows.
+        #
+        # orchestrator_did_not_run has the same ACTIVE + daily pairing and a 24h window, and is
+        # safe by a DIFFERENT mechanism — its duration is 3600s, so a brief empty window has to
+        # persist an hour before firing. Do not "make them consistent": each absorbs lateness in
+        # one place, and this one absorbs it in the window because its duration is only 60s.
+        alignment_period = "90000s"
+
+        # ALIGN_PERCENTILE_99, AND IT IS THE ONLY VIABLE CHOICE — not a preference.
+        #
+        # This metric is DELTA + DISTRIBUTION, and that shape is FORCED: a Cloud Logging COUNTER
+        # metric (DELTA/INT64) only counts entries and cannot extract a value from a field, so any
+        # metric carrying a number out of a log line must be a distribution.
+        #
+        # The Aligner reference decides the rest. The rows, quoted:
+        #   ALIGN_MAX   "valid for GAUGE and DELTA metrics with NUMERIC values"    -> illegal here
+        #   ALIGN_MEAN  "…with NUMERIC values"                                     -> illegal here
+        #   ALIGN_SUM   "…numeric AND DISTRIBUTION values … result is the same
+        #                valueType as the input"                -> legal, but yields a DISTRIBUTION
+        #   ALIGN_DELTA "valid for CUMULATIVE and DELTA … same valueType as input" -> same problem
+        #   ALIGN_PERCENTILE_99 "valid for GAUGE and DELTA metrics with DISTRIBUTION values.
+        #                The output is a GAUGE metric with valueType DOUBLE."      -> legal AND scalar
+        #
+        # A condition_threshold needs a NUMBER to compare against 3. The percentile aligners are
+        # the only ones that are both legal for DELTA+DISTRIBUTION and produce one. ALIGN_MAX was
+        # written here first and the API rejected it — see the deploy sequence in the header for
+        # the read-only check that catches this class before an apply.
+        per_series_aligner = "ALIGN_PERCENTILE_99"
+
+        # A PERCENTILE IS NOT ADDITIVE, which is the property this alert depends on. A tenant that
+        # emits twice in the window — a scheduler retry, an operator re-run — must not read as
+        # double its age. p99 of {17, 17} is 17; a summing aligner would have been wrong for an
+        # age even if its output could be thresholded.
+        #
+        # REDUCE_MAX is legal because it is applied to the ALIGNED output, which is DOUBLE:
+        # "REDUCE_MAX: DELTA/GAUGE with numeric values". It would be illegal directly on the
+        # distribution — which is exactly the error ALIGN_SUM produced.
         cross_series_reducer = "REDUCE_MAX"
         group_by_fields      = ["metric.label.tenant_id", "metric.label.ever_sold"]
       }
@@ -607,9 +756,21 @@ resource "google_monitoring_alert_policy" "tenant_data_stale" {
 
   # Known-red. Without this it re-notifies every evaluation for as long as ingestion is broken,
   # which is precisely how the team learns to filter these to a folder.
+  # NO notification_rate_limit (the API rejects it outside log-MATCH policies) — BUT THE INTENT
+  # THIS PROTECTED IS REAL AND THIS POLICY IS THE ONE THAT NEEDS IT, so it is preserved by a
+  # different mechanism.
+  #
+  # THE PROBLEM: this condition is TRUE FROM CREATION and stays true until sales data arrives.
+  # Monitoring notifies on incident OPEN and CLOSE, not while an incident stays open — so one
+  # long-lived incident is quiet. The risk is CHURN: if the incident keeps closing and re-opening,
+  # each re-open notifies, and a daily close/re-open cycle is exactly how this becomes wallpaper.
+  #
+  # WHY IT WOULD CHURN HERE: the freshness metric is written ONCE PER DAY, so the series is sparse
+  # by construction. With evaluation_missing_data ACTIVE, the gap between daily emissions can look
+  # like a resolution followed by a fresh breach. auto_close is the timer Monitoring waits before
+  # closing an incident whose data has stopped arriving — so setting it LONG (7 days, the maximum)
+  # keeps one open incident across those gaps instead of minting a new one every day.
   alert_strategy {
-    notification_rate_limit {
-      period = "86400s"
-    }
+    auto_close = "604800s"
   }
 }
