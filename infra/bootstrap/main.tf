@@ -71,6 +71,25 @@ resource "google_project_service" "baseline" {
     "iam.googleapis.com",
     "iamcredentials.googleapis.com",
     "vpcaccess.googleapis.com",
+    # Slice 6b. The Synapse orchestrator is the FIRST scheduled anything in this project —
+    # nothing had ever needed Cloud Scheduler, which is why this was absent rather than
+    # overlooked. Enabling it is a prerequisite for infra/envs/staging's
+    # google_cloud_scheduler_job; without it the apply fails with a
+    # SERVICE_DISABLED / accessNotConfigured error naming the API.
+    #
+    # AN APP ENGINE APPLICATION MAY OR MAY NOT BE REQUIRED, and it is worth knowing which
+    # BEFORE the apply, because the remedy is a one-way door. Cloud Scheduler historically
+    # ran on App Engine's cron infrastructure and required an app in the project; that
+    # requirement was lifted for HTTP-target jobs, which is what this project uses. Check
+    # rather than assume:
+    #
+    #   gcloud app describe --project=<PROJECT>            # NOT_FOUND => no app exists
+    #   gcloud scheduler locations list --project=<PROJECT> # after this API is enabled
+    #
+    # If job creation then demands an App Engine application, note that `gcloud app create`
+    # fixes the App Engine region for the project PERMANENTLY — it cannot be changed or
+    # removed. Choose the region deliberately; do not run it to clear an error.
+    "cloudscheduler.googleapis.com",
   ])
 
   project            = google_project.thalamus.project_id

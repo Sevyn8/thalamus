@@ -1,10 +1,12 @@
-"""``python -m synapse.orchestrator`` — the hand-run entrypoint.
+"""``python -m synapse.orchestrator`` — the entrypoint, hand-run and scheduled alike.
 
-D3: A COMPONENT WHOSE ONLY EXECUTION PATH IS A CRON NOBODY CAN INVOKE IS UNTESTABLE. This exists
-before any schedule does, and it is the same code path a scheduled execution takes — the
-container's ENTRYPOINT will be this module, so a scheduler adds a caller and changes nothing
-about what runs. The connectors set that precedent: their images carry no default args and every
-execution supplies them, so the hand-run and the real run cannot drift.
+D3: A COMPONENT WHOSE ONLY EXECUTION PATH IS A CRON NOBODY CAN INVOKE IS UNTESTABLE. This
+existed before any schedule did, and the schedule when it arrived changed nothing about what
+runs: the container's ENTRYPOINT *is* this module, so Cloud Scheduler is simply a second caller.
+A scheduled execution supplies no arguments and gets the full sweep; an operator supplies
+`--dry-run` or `--tenant` through `gcloud run jobs execute --args`. The connectors set that
+precedent: their images carry no default args and every execution supplies them, so the
+hand-run and the real run cannot drift.
 
     # against the local devbox, writing nothing
     python -m synapse.orchestrator --dry-run
@@ -34,13 +36,30 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
-import sys
 from datetime import UTC, datetime
 from uuid import UUID
 
+from dis_core.logging import configure_logging, get_logger
 from dis_rls import create_rls_engine
 from synapse.core.errors import SynapseError
 from synapse.orchestrator.runner import SlotResult, run_due, summarise
+
+# STRUCTURED, BECAUSE NOTHING HERE SELF-HEALS. `print()` reaches Cloud Logging with no
+# `severity`, so every line files at DEFAULT and no log-based alert can match one — the failure
+# is legible to a human reading logs and invisible to a matcher.
+#
+# That would be a nuisance for a component that recovers on its own. This one does not: a run
+# recorded `failed` is TERMINAL, `claim()` skips it, and tomorrow is a different slot — so a
+# failed slot stays failed forever and only a human clears it. A system with no self-healing
+# needs its failures matchable rather than merely readable.
+#
+# dis_core.logging renames `levelname` to `severity` for exactly this reason (see its module
+# comment), so this is the project's existing convention rather than a new one.
+#
+# ONE OUTPUT PATH, not two. A human-readable report alongside the structured one would be two
+# representations of the same events, free to drift; a hand-run reads the JSON, which carries
+# the same content it used to print.
+_log = get_logger("synapse-orchestrator")
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -100,23 +119,51 @@ def _instant(raw: str | None) -> datetime:
 
 
 def _report(results: tuple[SlotResult, ...], *, dry_run: bool) -> None:
-    prefix = "DRY RUN, nothing written — " if dry_run else ""
+    """One structured entry per pair, plus a summary. Severity is the point.
+
+    ERROR for a failed run, WARNING for a takeover (the only visible evidence a previous
+    execution died), INFO for everything else. An alert matches on severity; a human reads the
+    same lines.
+    """
     if not results:
-        print(f"{prefix}no provisioned pair was due. synapse.provision may be empty.")
-        return
-    for result in sorted(results, key=lambda r: (r.analysis_id, str(r.tenant_id))):
-        state = "skipped" if result.skipped else str(result.outcome)
-        marks = " [took over a crashed attempt]" if result.taken_over else ""
-        print(
-            f"{result.analysis_id} {result.tenant_id} slot={result.slot} {state}"
-            f" proposed={result.actions_proposed} appended={result.actions_appended}{marks}"
+        _log.info(
+            "no provisioned pair was due",
+            extra={"dry_run": dry_run, "due": 0, "hint": "synapse.provision may be empty"},
         )
-        if result.detail:
-            print(f"    {result.detail}")
-    print(f"{prefix}{dict(sorted(summarise(results).items()))}")
+        return
+
+    for result in sorted(results, key=lambda r: (r.analysis_id, str(r.tenant_id))):
+        fields = {
+            "dry_run": dry_run,
+            "analysis_id": result.analysis_id,
+            "tenant_id": str(result.tenant_id),
+            "slot": result.slot.isoformat(),
+            "outcome": result.outcome,
+            "skipped": result.skipped,
+            "taken_over": result.taken_over,
+            "actions_proposed": result.actions_proposed,
+            "actions_appended": result.actions_appended,
+            "detail": result.detail,
+        }
+        state = "skipped" if result.skipped else str(result.outcome)
+        message = f"{result.analysis_id} {result.tenant_id} slot={result.slot} {state}"
+        if result.failed:
+            _log.error(message, extra=fields)
+        elif result.taken_over:
+            _log.warning(f"{message} (took over a crashed attempt)", extra=fields)
+        else:
+            _log.info(message, extra=fields)
+
+    counts = dict(sorted(summarise(results).items()))
+    _log.info("sweep complete", extra={"dry_run": dry_run, "counts": counts})
 
 
 async def _main(argv: list[str] | None = None) -> int:
+    # Installs the JSON handler that renames levelname -> severity. WITHOUT THIS the logger
+    # falls back to the root logger's default: plain text, WARNING threshold, so every INFO line
+    # vanishes and nothing carries a severity Cloud Logging can read. Same call, same place, as
+    # streaming-consumer's and dis-ui-server's main().
+    configure_logging()
     args = _parser().parse_args(argv)
     if not args.reader_dsn:
         raise SystemExit("no reader DSN: pass --reader-dsn or set SYNAPSE_READER_URL")
@@ -147,7 +194,10 @@ async def _main(argv: list[str] | None = None) -> int:
             )
         )
     except SynapseError as exc:
-        print(f"the sweep could not start: {type(exc).__name__}: {exc}", file=sys.stderr)
+        _log.error(
+            f"the sweep could not start: {type(exc).__name__}: {exc}",
+            extra={"error_type": type(exc).__name__},
+        )
         return 2
     finally:
         await reader.dispose()

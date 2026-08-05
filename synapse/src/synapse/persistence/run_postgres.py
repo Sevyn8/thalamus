@@ -43,7 +43,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from dis_rls import rls_session
 from synapse.core.provision import Provision
 
-__all__ = ["Claim", "PostgresRunRecorder", "RunOutcome"]
+__all__ = ["Claim", "Finished", "PostgresRunRecorder", "RunOutcome"]
 
 
 # The terminal vocabulary, mirroring ck_run_outcome. Not a StrEnum in synapse.core because it
@@ -110,6 +110,22 @@ class Claim:
     taken_over: bool
 
 
+@dataclass(frozen=True)
+class Finished:
+    """This slot is already terminal. Nothing to do — but WHICH terminal matters.
+
+    IT CARRIES THE PRIOR OUTCOME, and that is not bookkeeping. With ``max_retries = 1`` on the
+    job, a run that exits non-zero because a tenant's analysis failed is retried; the retry finds
+    this slot terminal and skips it, and if "skipped" were undifferentiated the retry would exit
+    ZERO and Cloud Run would mark the execution GREEN — turning a real failure into a success at
+    exactly the layer an alert watches. The prior outcome is what lets the caller keep the
+    execution red.
+    """
+
+    run_id: UUID
+    outcome: RunOutcome
+
+
 class PostgresRunRecorder:
     """Claims and completes rows in ``synapse.run`` for ONE tenant.
 
@@ -130,8 +146,8 @@ class PostgresRunRecorder:
         provision: Provision,
         slot: date,
         started_at: datetime,
-    ) -> Claim | None:
-        """Claim ``slot``. ``None`` means it is already finished and there is nothing to do.
+    ) -> Claim | Finished:
+        """Claim ``slot``, or report that it is already terminal.
 
         ``run_id`` is supplied rather than minted here for the same reason ``ActionEvent``'s is:
         ``uuid4`` is banned project-wide and ``dis_core``'s UUIDv7 belongs to the layer that is
@@ -164,14 +180,12 @@ class PostgresRunRecorder:
 
             existing = (await conn.execute(_EXISTING, lookup)).mappings().one()
 
-        if existing["outcome"] is not None:
-            return None
-        return Claim(
-            run_id=existing["run_id"]
-            if isinstance(existing["run_id"], UUID)
-            else UUID(str(existing["run_id"])),
-            taken_over=True,
+        existing_id = (
+            existing["run_id"] if isinstance(existing["run_id"], UUID) else UUID(str(existing["run_id"]))
         )
+        if existing["outcome"] is not None:
+            return Finished(run_id=existing_id, outcome=str(existing["outcome"]))
+        return Claim(run_id=existing_id, taken_over=True)
 
     async def complete(
         self,

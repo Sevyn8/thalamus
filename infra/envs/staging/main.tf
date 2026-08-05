@@ -439,6 +439,27 @@ module "mirror_sync_consumer_job" {
   vpc_connector_id = module.network.vpc_connector_id
 }
 
+# --- Synapse: the orchestrator job and its daily schedule (slice 6b) ---
+#
+# THE FIRST SCHEDULED ANYTHING IN THIS PROJECT. Everything else here is invoked by a request, a
+# Pub/Sub push, or an operator running `gcloud run jobs execute`. This module adds the Cloud
+# Scheduler job that makes the Synapse shadow sweep happen without a human, plus the Cloud Run
+# job it fires and the two identities involved.
+#
+# REQUIRES cloudscheduler.googleapis.com, added to infra/bootstrap's baseline in the same
+# slice. Apply bootstrap first or this fails with SERVICE_DISABLED.
+#
+# STILL SHADOW ONLY: the sweep computes, appends to synapse.actions and synapse.run, and
+# delivers nothing to anyone.
+module "synapse_orchestrator" {
+  source = "../../modules/cloud-run-job-synapse-orchestrator"
+
+  project_id       = var.project_id
+  region           = var.region
+  image            = var.synapse_orchestrator_image
+  vpc_connector_id = module.network.vpc_connector_id
+}
+
 # --- Wave 3: DIS UI SPA (dis-ui-ver2) Cloud Run service ---
 #
 # ADOPTED BY IMPORT, not created. dis-ui-ver2 has been serving from Cloud Run

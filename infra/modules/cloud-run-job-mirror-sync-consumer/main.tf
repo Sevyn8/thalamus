@@ -58,7 +58,13 @@
 #     TCP layer through the VPC connector, not via the Auth Proxy.
 #   - No invoker binding. A job has no IAM policy in this project; executions are
 #     operator-run via `gcloud run jobs execute` under the caller's own credentials.
-#     No scheduler exists (deliberate: the orchestration question is deferred).
+#     No scheduler fires THIS job. That was once true project-wide and stopped being
+#     true in slice 6b, when the Synapse orchestrator got a Cloud Scheduler job — so
+#     the deferral now applies to mirror-sync specifically rather than to the
+#     project. It is still deliberate here: what cadence an identity mirror should
+#     sync at is an open question, and Synapse's answer does not transfer (that is a
+#     WORKER doing analysis inline; this would be a sync with its own freshness
+#     requirement).
 #   - Artifact Registry reader: image pulls use the Cloud Run service agent
 #     (service-<num>@serverless-robot-prod...), not the runtime identity.
 ###############################################################################

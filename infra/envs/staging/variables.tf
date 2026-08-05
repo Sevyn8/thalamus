@@ -192,6 +192,12 @@ variable "dis_ui_server_image" {
   default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-server:v8"
 }
 
+variable "synapse_orchestrator_image" {
+  type        = string
+  description = "synapse-orchestrator container image (the Cloud Run JOB). Built from synapse/Dockerfile with the MONOREPO ROOT as build context — Synapse is a workspace sibling of dis/, so a dis/-rooted context cannot reach it — via synapse/cloudbuild.yaml with an explicit _TAG and no floating `latest`. NOT YET BUILT OR PUSHED as of slice 6b; the tag below is the one the first build must produce."
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/synapse-orchestrator:v1"
+}
+
 variable "mirror_sync_consumer_image" {
   type        = string
   description = "mirror-sync-consumer container image (the Cloud Run JOB). Built from dis/terraform/docker/mirror-sync-consumer.Dockerfile with the dis/ WORKSPACE ROOT as build context, via cloudbuild-mirror-sync-consumer.yaml with an explicit _TAG and no floating `latest`."

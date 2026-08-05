@@ -33,6 +33,7 @@ PROVISIONED AND VERIFIED AGAINST STAGING: Terraform's ``google_sql_user`` in clo
 as this role — that is what it exists for. SINCE SLICE 6a THE ORCHESTRATOR ALSO RUNS AS IT: it
 is the identity that enumerates synapse.provision under PLATFORM scope and reads every canonical
 row an analysis needs. So the sentence that stood here until now — "nothing in production runs as
-it yet" — is retired. Nothing SCHEDULES the orchestrator yet, which is a different and smaller
-claim; a hand-run is still a run.
+it yet" — is retired. SINCE SLICE 6b IT ALSO RUNS ON A SCHEDULE: a Cloud Scheduler job fires the
+orchestrator's Cloud Run job daily, so this role is exercised unattended rather than only when
+someone runs it. The hand-run remains — scheduling was an addition, not a replacement.
 """

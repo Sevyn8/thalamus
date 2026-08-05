@@ -1,0 +1,51 @@
+# Cloud Build: build + push the synapse-orchestrator image.
+#
+# Run from the MONOREPO ROOT, not from synapse/ — the -f path and the build context below both
+# resolve from the root, and the root .dockerignore is what filters the upload:
+#   gcloud builds submit --config synapse/cloudbuild.yaml --substitutions=_TAG=v1 .
+#
+# THE CONTEXT IS THE ROOT AND THIS IS NOT NEGOTIABLE. Synapse is declared in the uv workspace as
+# "../synapse", a sibling of dis/, so the image needs BOTH synapse/ and dis/libs/* in one
+# context. This is the connectors' arrangement. It is the opposite of
+# cloudbuild-mirror-sync-consumer.yaml, whose context is dis/ because that service is a member
+# of dis/ — this file copies that file's SHAPE, not its context.
+#
+# _TAG IS REQUIRED and has an empty default on purpose: an omitted tag fails the build loudly
+# instead of silently re-pinning a floating tag. There is deliberately no `latest` — the Cloud
+# Run pin is an explicit vN. Both rules exist because a floating thalamus-images/dis-ui-ver2
+# :latest came to point at v7 while v15 was serving.
+#
+# NO BUILD ARGS. Everything the job needs is RUNTIME env supplied by the Cloud Run job
+# (SYNAPSE_READER_URL, SYNAPSE_WRITER_URL, DIS_EXPECTED_DATABASE), so one image is promotable
+# across environments unchanged. Nothing about a tenant or a database is baked in.
+#
+# NO DOCKER_BUILDKIT=1, and the absence is deliberate rather than an omission: the ver2 build
+# needs BuildKit for a `# syntax=` directive and heredoc COPYs, and this Dockerfile has neither.
+# Adding it would imply a requirement that does not exist.
+
+substitutions:
+  _REGION: "asia-south1"
+  _REPO: "thalamus-images"
+  # REQUIRED. Empty default = fail loud rather than mispin (see header).
+  _TAG: ""
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  # --no-cache: force a fresh dependency resolve and a fresh build-time import check every
+  # build. A cached layer can hide a drifted lock — and here it would also hide a registry
+  # invariant that has started failing, since `RUN python -c "import
+  # synapse.orchestrator.__main__"` is what executes every _check_* at build time.
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - synapse/Dockerfile
+      - --no-cache
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/synapse-orchestrator:${_TAG}
+      - .
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/synapse-orchestrator:${_TAG}

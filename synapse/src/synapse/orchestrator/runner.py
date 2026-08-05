@@ -53,7 +53,7 @@ from synapse.core.provision import Provision, Rung
 from synapse.core.slot import slot_for
 from synapse.persistence.action_log_postgres import PostgresActionAppender
 from synapse.persistence.provision_postgres import PostgresProvisionReader
-from synapse.persistence.run_postgres import PostgresRunRecorder
+from synapse.persistence.run_postgres import Claim, Finished, PostgresRunRecorder
 from synapse.registry import max_rungs, plan_for, resolve_declaration
 
 __all__ = ["SlotResult", "run_due"]
@@ -165,25 +165,40 @@ async def _run_one(
         )
 
     recorder = PostgresRunRecorder(writer_engine, provision.tenant_id)
-    claim = None
+    claim: Claim | None = None
     if not dry_run:
-        claim = await recorder.claim(
+        claimed = await recorder.claim(
             run_id=new_uuid7(),
             provision=provision,
             slot=slot,
             started_at=now,
         )
-        if claim is None:
+        if isinstance(claimed, Finished):
+            # THE PRIOR OUTCOME IS CARRIED THROUGH, NOT FLATTENED TO "skipped".
+            #
+            # `max_retries = 1` means a run that exits non-zero is retried, and the retry finds
+            # this slot terminal. If a skip reported no outcome, the retry would exit ZERO and
+            # Cloud Run would mark the execution GREEN — converting a real failure into a
+            # success at exactly the layer an alert watches. Reporting the prior outcome keeps
+            # `SlotResult.failed` true, so the retry stays red for the same reason the first
+            # attempt was.
+            #
+            # The retry is still a genuine no-op against the database: nothing is claimed,
+            # nothing is appended, nothing is completed. Only the reporting differs.
             return SlotResult(
                 tenant_id=provision.tenant_id,
                 analysis_id=provision.analysis_id,
                 slot=slot,
-                outcome=None,
+                outcome=claimed.outcome,
                 actions_proposed=0,
                 actions_appended=0,
                 skipped=True,
-                detail="slot already finished by an earlier dispatch",
+                detail=(
+                    f"slot already finished by an earlier dispatch, outcome "
+                    f"{claimed.outcome!r} (run {claimed.run_id})"
+                ),
             )
+        claim = claimed
 
     # ELAPSED IS MEASURED, THE ANCHOR IS INJECTED. finished_at used to be datetime.now(UTC)
     # while started_at came from `now`, which violates ck_run_finished_after_started the moment
