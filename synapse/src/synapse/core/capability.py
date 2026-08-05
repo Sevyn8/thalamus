@@ -145,9 +145,15 @@ class CapabilityDescriptor:
     #
     # `current_state` reads the canonical hot table, which HAS the three signal
     # columns — velocity_7day, stock_age_days, unit_cost_trend_30day. It produces
-    # none of them, because NOTHING WRITES THEM: there is no daily-compute
-    # job, no Cloud Run job, and Cloud Scheduler has never been enabled on the
-    # project. The columns are real and always NULL.
+    # none of them, because NOTHING WRITES THEM. Verified by grep across services, libs,
+    # connectors and migrations: no writer of any kind exists for these three columns. The
+    # columns are real and always NULL.
+    #
+    # THE SUPPORTING EVIDENCE USED TO BE "there is no daily-compute job, no Cloud Run job, and
+    # Cloud Scheduler has never been enabled on the project", and slice 6b retired all three:
+    # Synapse's orchestrator IS a scheduled Cloud Run job. The substantive claim is unchanged —
+    # that job writes synapse.actions and synapse.run, and touches no canonical column — but it
+    # now rests on the absence of a writer rather than on the absence of a scheduler.
     #
     # So a capability that reads a signal column is not a producer of that signal,
     # and the descriptor has to be able to say so. An empty tuple here is a

@@ -1,0 +1,86 @@
+{
+  "id": "stockout_risk",
+  "version": "0.1.0",
+  "grain": [
+    "tenant_id",
+    "store_id",
+    "sku_id"
+  ],
+  "requires": [
+    {
+      "capability_id": "current_state",
+      "fields": [
+        "tenant_id",
+        "store_id",
+        "sku_id",
+        "stock_qty",
+        "sku_status"
+      ],
+      "gates": []
+    },
+    {
+      "capability_id": "daily_series",
+      "fields": [
+        "tenant_id",
+        "store_id",
+        "sku_id",
+        "event_date",
+        "net_quantity"
+      ],
+      "gates": [
+        {
+          "kind": "min_history_days",
+          "days": 7,
+          "policy": "any_series"
+        }
+      ],
+      "window_from_threshold": "window_days"
+    }
+  ],
+  "emits": [
+    "tenant_id",
+    "store_id",
+    "sku_id",
+    "days_of_cover",
+    "is_at_risk",
+    "refused_because"
+  ],
+  "thresholds": [
+    {
+      "name": "window_days",
+      "days": 28,
+      "fitted": false,
+      "stands_in_for": "the window length at which this tenant's demand rate is most predictive, which would be fitted by backtesting rate-from-window-N against realised demand — infrastructure that does not exist. 28 is defensible beyond convention though: it is FOUR COMPLETE WEEKLY CYCLES, so day-of-week effects average out instead of dominating. Seven or fourteen days is one or two cycles and carries the week's shape as if it were the trend; sixty or more describes a period that has ended. The fitted version needs realised-demand comparison, not arithmetic."
+    },
+    {
+      "name": "at_risk_below_days",
+      "days": 14,
+      "fitted": false,
+      "stands_in_for": "the replenishment LEAD TIME, and this one is pure convention — fourteen days is a common retail reorder horizon and nothing more. Three verified facts make the correct number unknowable here. (1) lead_time_distribution is in the registry's _DECLINED with a written reason: no observed lead times exist anywhere in canonical, because a distribution needs paired order-issue and receipt events and nothing produces either. (2) the canonical hot table DOES carry lead_time_days SMALLINT NULL, but dis_validation.provenance classifies it MAPPING-PRODUCED — whatever a source asserted, not a measurement — so it could not stand in for an observed lead time even if populated. (3) It is not in current_state's `returns` and the resolver does not project it, so Synapse cannot read it at all today; using it would mean widening the capability. UNVERIFIED, because staging is private-IP only and was not reachable when this was written: whether the column actually holds values for this tenant. If it does, this threshold becomes derivable per SKU and stops being a constant. Check it by counting rows where lead_time_days IS NOT NULL on the canonical hot table — the one synapse/resolvers/current_state.py names — under the PLATFORM GUC, since that table is FORCE RLS and a bare count reads zero for everyone."
+    },
+    {
+      "name": "stale_after_days",
+      "days": 3,
+      "fitted": false,
+      "stands_in_for": "this tenant's actual ingestion cadence — how often data really arrives — which telemetry.connector_health was built to answer and cannot: its missed_intervals column is NULL in Phase A because config.sources.schedule is a free-text human label rather than a machine cadence. Three days says a rate should not be more than a few days behind the stock it is divided into, when the decision horizon is fourteen. NOTE that on today's data every series is seventeen days stale, so EVERY position is refused and the analysis produces nothing. That is the guard working, the same way '0 of 65 have 60 days' was the correct answer; it is not a reason to loosen this."
+    },
+    {
+      "name": "expires_after_days",
+      "days": 7,
+      "fitted": false,
+      "stands_in_for": "how long a cover estimate stays true, which decays with the same unknown lead time as at_risk_below_days. Seven is half the decision horizon: advice that something may run out within fourteen days is not worth acting on when it is already a fortnight old. Shorter than dead_stock's thirty because a stockout estimate decays faster than an absence does."
+    }
+  ],
+  "holdout": {
+    "unit": [
+      "tenant_id",
+      "store_id",
+      "sku_id"
+    ],
+    "holdout_percent": 20,
+    "salt": "stockout_risk/2026-08",
+    "fitted": false,
+    "stands_in_for": "a power calculation, exactly as dead_stock's does and for the same reason: 65 series cannot support a conclusive split at any fraction. 20 matches dead_stock so the two are comparable, which is worth more than either number being right."
+  },
+  "max_rung": "shadow"
+}

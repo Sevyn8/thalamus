@@ -2,17 +2,27 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sevyn8.com/contracts/synapse/signal.schema.json",
   "title": "Synapse signal declaration",
-  "description": "A named, comparable measure. DECLARATION ONLY in this slice — no producers are wired, and the three DIS signals below have none because nothing writes canonical.store_sku_signal_history (no daily-compute job exists, no Cloud Run job, and Cloud Scheduler has never been enabled on the project).\n\nWHY SIGNALS ARE A SEPARATE CONTRACT FROM CAPABILITIES: substitutability lives at the signal layer. A camera detection and a POS series are DIFFERENT capabilities that can produce the SAME signal. If signals were a field on a capability, two producers of one measure could not be expressed at all.\n\nTHE UNDETERMINED STATE IS THE POINT OF THIS SCHEMA. DIS's own column comments say velocity_7day's unit-of-time is 'TBD at compute implementation' and unit_cost_trend_30day's semantic is 'TBD (average, delta vs 30 days ago, percentage change, or fitted slope)'. A schema that forced a unit and a direction onto those two would be inventing facts that no source asserts — so unit and direction are REQUIRED but may be the literal 'undetermined', and the two TBD signals use it. Encoding the honesty is why these contracts are schemas rather than prose.",
+  "description": "A named, comparable measure. DECLARATION ONLY in this slice — no producers are wired, and the three DIS signals below have none because nothing writes canonical.store_sku_signal_history — verified by grep across services, libs, connectors and migrations, with no writer of any kind. (The supporting clause here used to be 'no Cloud Run job exists and Cloud Scheduler has never been enabled'; slice 6b retired that, since Synapse's orchestrator is a scheduled Cloud Run job. It writes synapse.actions and synapse.run and touches no canonical column, so the claim stands on the absence of a writer rather than the absence of a scheduler.)\n\nWHY SIGNALS ARE A SEPARATE CONTRACT FROM CAPABILITIES: substitutability lives at the signal layer. A camera detection and a POS series are DIFFERENT capabilities that can produce the SAME signal. If signals were a field on a capability, two producers of one measure could not be expressed at all.\n\nTHE UNDETERMINED STATE IS THE POINT OF THIS SCHEMA. DIS's own column comments say velocity_7day's unit-of-time is 'TBD at compute implementation' and unit_cost_trend_30day's semantic is 'TBD (average, delta vs 30 days ago, percentage change, or fitted slope)'. A schema that forced a unit and a direction onto those two would be inventing facts that no source asserts — so unit and direction are REQUIRED but may be the literal 'undetermined', and the two TBD signals use it. Encoding the honesty is why these contracts are schemas rather than prose.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "version", "unit", "direction", "grain", "producers"],
+  "required": [
+    "id",
+    "version",
+    "unit",
+    "direction",
+    "grain",
+    "producers"
+  ],
   "properties": {
     "id": {
       "description": "Stable signal name. Matches the canonical column name where the signal already exists in DIS.",
       "type": "string",
       "pattern": "^[a-z][a-z0-9_]*$"
     },
-    "version": { "type": "string", "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$" },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$"
+    },
     "unit": {
       "description": "The measure's unit. 'undetermined' is a LEGITIMATE value, not a gap to fill later: it means no source has yet asserted the unit, and asserting one here would be an invention. A consumer seeing 'undetermined' must not compare or aggregate the signal across producers.",
       "oneOf": [
@@ -26,14 +36,24 @@
             "percent"
           ]
         },
-        { "const": "undetermined" }
+        {
+          "const": "undetermined"
+        }
       ]
     },
     "direction": {
       "description": "Which way is 'better', for ranking and alerting. 'undetermined' is legitimate for the same reason as unit: unit_cost_trend_30day's semantic is unsettled, so whether a negative value is good (cost fell) or merely different cannot be declared yet. 'none' means the signal is descriptive and has no better/worse at all — distinct from undetermined, which means unknown.",
       "oneOf": [
-        { "enum": ["higher_is_better", "lower_is_better", "none"] },
-        { "const": "undetermined" }
+        {
+          "enum": [
+            "higher_is_better",
+            "lower_is_better",
+            "none"
+          ]
+        },
+        {
+          "const": "undetermined"
+        }
       ]
     },
     "normalisation": {
@@ -45,13 +65,19 @@
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
-      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$"
+      }
     },
     "producers": {
       "description": "Capability ids that produce this signal. An EMPTY ARRAY is the verified current state for all three DIS signals: the columns exist in canonical and are always NULL because there is no writer. An unproduced signal is a real, declarable thing — that is what makes this a declaration contract rather than a registry of live measures.",
       "type": "array",
       "uniqueItems": true,
-      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$"
+      }
     },
     "semantic_note": {
       "description": "Free text recording what is NOT yet settled, quoted from the source of truth where one exists. Present specifically so an 'undetermined' unit or direction carries its reason instead of looking like carelessness.",
@@ -63,11 +89,33 @@
       "description": "An undetermined unit or direction MUST carry a semantic_note explaining why. Undetermined-without-explanation is indistinguishable from an unfinished declaration, and this is the rule that keeps the honest state from becoming a dumping ground.",
       "if": {
         "anyOf": [
-          { "properties": { "unit": { "const": "undetermined" } }, "required": ["unit"] },
-          { "properties": { "direction": { "const": "undetermined" } }, "required": ["direction"] }
+          {
+            "properties": {
+              "unit": {
+                "const": "undetermined"
+              }
+            },
+            "required": [
+              "unit"
+            ]
+          },
+          {
+            "properties": {
+              "direction": {
+                "const": "undetermined"
+              }
+            },
+            "required": [
+              "direction"
+            ]
+          }
         ]
       },
-      "then": { "required": ["semantic_note"] }
+      "then": {
+        "required": [
+          "semantic_note"
+        ]
+      }
     }
   ]
 }

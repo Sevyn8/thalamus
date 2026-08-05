@@ -138,6 +138,13 @@ def main() -> int:
     )
 
     print("Analysis fixtures (the DEMAND side, new in slice 2):")
+    # EVERY fixture in the directory, discovered rather than listed. Until slice 7 this file
+    # named dead_stock and nothing else, so a second fixture would have sat in the tree
+    # unvalidated — a contract example nobody checks is decoration. The specific assertions
+    # below stay; this is the floor under them.
+    for path in sorted((HERE / "fixtures" / "analysis").glob("*.json")):
+        check(f"{path.stem} validates against the analysis schema", validates(ana, load(path)))
+
     dead_stock = load(HERE / "fixtures" / "analysis" / "dead_stock.json")
     check("dead_stock validates", validates(ana, dead_stock))
     required_ids = [r["capability_id"] for r in dead_stock["requires"]]
@@ -223,6 +230,9 @@ def main() -> int:
     )
 
     print("Action fixtures (the first thing that would be ACTED on):")
+    for path in sorted((HERE / "fixtures" / "action").glob("*.json")):
+        check(f"{path.stem} validates against the action schema", validates(act, load(path)))
+
     review = load(HERE / "fixtures" / "action" / "dead_stock_review.json")
     check("dead_stock_review validates", validates(act, review))
     check(

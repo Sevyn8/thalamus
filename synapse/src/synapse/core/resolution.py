@@ -79,6 +79,23 @@ class Observation:
     pairs_measured: int
     pairs_qualifying: int
     measured_at: datetime
+    # WHICH subjects cleared, not just how many — added in slice 7 to discharge the deferral
+    # on ``Satisfied``. Identities at the capability's grain minus its date column, measured in
+    # the SAME transaction as the counts above, so the two cannot describe different instants.
+    #
+    # None = this probe does not report identities. No probe is in that state today; the field
+    # is Optional so that a future probe measuring something with no enumerable subject (a
+    # tenant-level fact, say) is not forced to invent one.
+    qualifying: tuple[tuple[str, ...], ...] | None = None
+
+    def __post_init__(self) -> None:
+        if self.qualifying is not None and len(self.qualifying) != self.pairs_qualifying:
+            raise ValueError(
+                f"probe reported {self.pairs_qualifying} qualifying series but returned "
+                f"{len(self.qualifying)} identities. The count and the identities come from one "
+                "transaction and must agree; a mismatch means the narrowing would not describe "
+                "the population the verdict was made about"
+            )
 
 
 @dataclass(frozen=True)
@@ -185,26 +202,59 @@ class Satisfied[RowT]:
     analysis that declared it needs every series to have 90 days can receive rows covering a
     series with one day, and nothing in this type tells it so.
 
-    THE FIX is for ``Satisfied`` to carry the QUALIFYING POPULATION — the set of series that
-    passed — and for ``fetch`` to be narrowed to exactly those, so the answer describes the
-    population the verdict was made about. That is a change to what this class holds and to every
-    resolver's narrowing.
+    THE FIX LANDED IN SLICE 7, AND THE DEFERRAL IS DISCHARGED. The note that stood here named
+    its own trigger — "the first analysis that binds a gate" — and ``stockout_risk`` is that
+    analysis. What it does:
 
-    RE-DEFERRED, WITH A DIFFERENT AND SELF-TRIGGERING REASON. The old wording said it belonged in
-    "a slice with a consumer in it", and a consumer arrived (``resolve_declaration``) without the
-    window becoming reachable — because the deferral named a SLICE rather than a CONDITION. Both
-    of ``dead_stock``'s requirements declare ``gates=()``, so no population is measured for it and
-    this window does not arise at all.
+    ``Satisfied`` now carries ``qualifying``, the SUBJECTS that cleared every gate, and
+    ``resolve()`` binds the narrowing INTO ``fetch`` before handing this value back. So the rows
+    a caller receives describe exactly the population the verdict was made about.
 
-    THE TRIGGER IS: THE FIRST ANALYSIS THAT BINDS A GATE. That is a condition the code can be
-    checked against rather than a milestone someone has to remember, which is the whole point —
-    a deferral that names its own trigger beats one that names a slice.
+    THE NARROWING IS BAKED IN RATHER THAN LEFT TO THE CALLER, and that is the load-bearing part.
+    If ``qualifying`` were merely advisory, a consumer that forgot to apply it would silently get
+    rows for series the gate had just refused — which is precisely the bug being fixed, moved one
+    layer up and made harder to see. A caller that never reads ``qualifying`` still gets narrowed
+    rows.
+
+    ``None`` MEANS UNMEASURED, AND IT IS NOT THE SAME AS EMPTY. A capability with ``gates=()``
+    runs no probe, so no population is measured and there is nothing to narrow to — ``None``.
+    Both of ``dead_stock``'s requirements are in that state, and if ``None`` and ``()`` were
+    conflated its fetches would return ZERO rows while still reporting Satisfied: an analysis
+    that silently produces nothing, for ever. That is the single most dangerous confusion in this
+    change, which is why the empty tuple is refused in ``__post_init__`` below rather than merely
+    documented.
+
+    AN EMPTY QUALIFYING SET CANNOT REACH HERE ANYWAY, today. Under ``ANY_SERIES``, ``satisfies``
+    requires ``pairs_qualifying > 0``; under ``ALL_SERIES`` it requires ``pairs_measured > 0``
+    and equality. Neither admits zero. The constructor check is therefore not defending against
+    a case that exists — it is defending against a THIRD POLICY arriving later that does admit
+    it, at which point the failure would otherwise be silent and total.
+
+    THE CHECK-THEN-FETCH WINDOW IS NARROWED BUT NOT CLOSED. The probe and the fetch still run in
+    separate transactions, so the qualifying set is measured at one instant and applied at
+    another. What changed is the DIRECTION of the residual error: the fetch can now only return
+    rows for series that qualified WHEN MEASURED, so a series that has since gained coverage is
+    excluded (conservative) rather than one that never qualified being included (wrong). Under
+    ``ANY_SERIES`` that is the safe direction; under ``ALL_SERIES`` the verdict can still go
+    stale, and no policy in existence today selects that combination.
     """
 
     status: ClassVar[ResolutionStatus] = ResolutionStatus.SATISFIED
 
     descriptor: CapabilityDescriptor
     fetch: Callable[[], Awaitable[Sequence[RowT]]]
+    # The subjects that cleared every gate, at the capability's own grain minus its date column.
+    # None = UNMEASURED (no gates, so no narrowing). Never empty — see the docstring.
+    qualifying: tuple[tuple[str, ...], ...] | None = None
+
+    def __post_init__(self) -> None:
+        if self.qualifying is not None and not self.qualifying:
+            raise ValueError(
+                f"{self.descriptor.id!r} resolved Satisfied with an EMPTY qualifying population. "
+                "That would narrow every fetch to nothing while reporting success. If a policy "
+                "can now be satisfied by zero qualifying series, it must return PreconditionUnmet "
+                "instead; if nothing was measured, pass None rather than ()"
+            )
 
 
 @dataclass(frozen=True)

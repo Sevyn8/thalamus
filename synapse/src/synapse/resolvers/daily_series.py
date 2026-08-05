@@ -51,7 +51,7 @@ from decimal import Decimal
 from typing import Final, get_args
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, Select, and_, column, func, select, table
+from sqlalchemy import ColumnElement, Select, and_, column, func, select, table, tuple_
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from dis_canonical import StoreSkuSaleEvent
@@ -134,6 +134,13 @@ _AGGREGATE_COLUMNS: Final[tuple[str, ...]] = (
 # answer when a real consumer needs more is keyset pagination (DIS's D124 pattern), not a
 # bigger number.
 _MAX_ROWS = 20_000
+
+# The most qualifying series a fetch will narrow BY IDENTITY. The narrowing renders as a tuple
+# IN-list, so it is linear in the population; 5,000 keys is already a large statement and a
+# tenant past it needs the predicate pushed into SQL as a coverage HAVING clause instead of a
+# key list. Raising rather than truncating: a silently shortened IN-list would exclude series
+# that DID qualify, which is the same class of wrongness the narrowing exists to prevent.
+_MAX_SERIES = 5_000
 
 
 def _check_subtype_coverage() -> None:
@@ -232,6 +239,7 @@ async def resolve_daily_series(
     date_to: date,
     store_id: UUID | None = None,
     sku_id: str | None = None,
+    only_series: tuple[tuple[str, ...], ...] | None = None,
     limit: int = _MAX_ROWS,
 ) -> Sequence[DailySeriesRow]:
     """Net daily movement per SKU per store, corrections collapsed per D33.
@@ -277,6 +285,31 @@ async def resolve_daily_series(
     ]
     if sku_id is not None:
         survivor_filters.append(collapsed.c.sku_id == sku_id)
+
+    # THE QUALIFYING-POPULATION NARROWING (slice 7). ``resolve()`` supplies this from the
+    # probe's identities so the rows returned describe exactly the series the gate passed.
+    #
+    # None means UNMEASURED — no gate ran — and returns everything in scope. An EMPTY tuple is
+    # refused rather than treated as "narrow to nothing": a caller that computed an empty
+    # population and passed it here would otherwise get zero rows and no error, which is the
+    # silent-nothing failure the whole change exists to prevent. Satisfied refuses to hold one
+    # for the same reason; this is the second place it cannot happen.
+    if only_series is not None:
+        if not only_series:
+            raise ValueError(
+                "only_series is empty. Pass None for 'no narrowing'; an empty population would "
+                "silently return zero rows while looking like a successful fetch"
+            )
+        if len(only_series) > _MAX_SERIES:
+            raise ResultTooLargeError(
+                f"only_series carries {len(only_series)} keys, more than the {_MAX_SERIES} this "
+                "resolver will render as an IN-list"
+            )
+        # OUTSIDE the collapse, on surviving rows: sku_id is not a dedup-key component, so a
+        # correction may move it — the same reason the sku_id filter above sits here.
+        survivor_filters.append(
+            tuple_(*(collapsed.c[name] for name in SERIES_GRAIN)).in_([tuple(key) for key in only_series])
+        )
 
     group_columns = (
         collapsed.c.tenant_id,
@@ -371,6 +404,52 @@ def probe_statement(
     ).select_from(per_series_subquery)
 
 
+def qualifying_statement(
+    scope: CapabilityScope,
+    *,
+    store_id: UUID | None = None,
+    sku_id: str | None = None,
+    required: int,
+) -> Select[tuple[str, str, str]]:
+    """WHICH series clear ``required``, at SERIES_GRAIN. The identities behind the counts.
+
+    Slice 7 added this to discharge the qualifying-population deferral on ``Satisfied``: the
+    counts alone cannot narrow a fetch, so an analysis under ANY_SERIES would receive rows for
+    series the gate had just refused.
+
+    DELIBERATELY A SEPARATE STATEMENT rather than a widened ``probe_statement``. The counts are
+    an aggregate over the per-series subquery and the identities are the subquery's rows; one
+    statement returning both would either repeat the subquery or return the counts on every row.
+    Two statements in ONE transaction (see ``probe_min_history_days``) keeps them describing the
+    same instant, which is the only property that matters.
+
+    The predicate is IDENTICAL to probe_statement's, built the same way from the same helpers,
+    so the two cannot drift into measuring different populations.
+    """
+    collapsed = collapse_latest_wins(
+        _sale_events,
+        event_time_column=_EVENT_TIME_COLUMN,
+        where=_key_scoped_predicate(scope, store_id),
+    )
+    per_series_columns = [collapsed.c[name] for name in SERIES_GRAIN]
+    per_series = select(
+        *per_series_columns,
+        func.count(func.distinct(collapsed.c[DATE_COLUMN])).label("coverage"),
+    )
+    if sku_id is not None:
+        per_series = per_series.where(collapsed.c.sku_id == sku_id)
+    per_series_subquery = per_series.group_by(*per_series_columns).subquery("per_series")
+
+    return (
+        select(*(per_series_subquery.c[name] for name in SERIES_GRAIN))
+        .where(per_series_subquery.c.coverage >= required)
+        .order_by(*(per_series_subquery.c[name] for name in SERIES_GRAIN))
+        # One over the cap, so exceeding it is DETECTED rather than silently truncated into a
+        # narrowing that would exclude qualifying series without saying so.
+        .limit(_MAX_SERIES + 1)
+    )
+
+
 async def probe_min_history_days(
     engine: AsyncEngine,
     scope: CapabilityScope,
@@ -407,15 +486,29 @@ async def probe_min_history_days(
 
     Returns an ``Observation`` — measurement only, no verdict.
     """
-    statement = probe_statement(scope, store_id=store_id, sku_id=sku_id, required=required)
+    counts = probe_statement(scope, store_id=store_id, sku_id=sku_id, required=required)
+    identities = qualifying_statement(scope, store_id=store_id, sku_id=sku_id, required=required)
 
+    # ONE TRANSACTION for both, so the counts and the identities describe the same instant. That
+    # is what lets Observation assert they agree; across two transactions a healthy race would
+    # trip the assertion.
     async with rls_session(engine, scope.tenant_id) as conn:
-        pairs_measured, pairs_qualifying, measured_at = (await conn.execute(statement)).one()
+        pairs_measured, pairs_qualifying, measured_at = (await conn.execute(counts)).one()
+        qualifying_rows = (await conn.execute(identities)).all()
+
+    if len(qualifying_rows) > _MAX_SERIES:
+        raise ResultTooLargeError(
+            f"{len(qualifying_rows)} series clear {required} days for tenant "
+            f"{scope.tenant_id}, more than the {_MAX_SERIES} a fetch will narrow by identity. "
+            "Truncating would exclude series that qualified; the fix is to push the coverage "
+            "predicate into the fetch as a HAVING clause instead of an IN-list"
+        )
 
     return Observation(
         pairs_measured=int(pairs_measured),
         pairs_qualifying=int(pairs_qualifying),
         measured_at=measured_at,
+        qualifying=tuple(tuple(str(value) for value in row) for row in qualifying_rows),
     )
 
 
@@ -424,5 +517,6 @@ __all__ = [
     "SERIES_GRAIN",
     "probe_min_history_days",
     "probe_statement",
+    "qualifying_statement",
     "resolve_daily_series",
 ]

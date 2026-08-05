@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sevyn8.com/contracts/synapse/capability.schema.json",
   "title": "Synapse capability descriptor",
-  "description": "What a Synapse capability declares about itself. EXTRACTED from building resolvers, not designed in advance. Fields 1-7 came from current_state and survived three more capabilities and the first analysis unchanged. `gates` is the one field composition changed: it held a bound VALUE (min_history_days: 60) until an analysis needed a different number for the same capability, at which point the threshold moved to the demand side (analysis.schema.json) and only the KIND stayed here. Still ABSENT because three capabilities cannot justify them: cost/latency classes, caching, substitution rules, pagination shape, and capability-composes-capability (composition lives in the analysis, which is the layer with a reason to compose).",
+  "description": "What a Synapse capability declares about itself. EXTRACTED from building resolvers, not designed in advance. Fields 1-7 came from current_state and survived three more capabilities and TWO analyses unchanged — including stockout_risk, the first to bind a gate and the first to need a date window, neither of which changed anything here: the gate threshold moved to the demand side in slice 2 and the window is declared by the REQUIREMENT, as the operational counterpart of `freshness`. `gates` is the one field composition changed: it held a bound VALUE (min_history_days: 60) until an analysis needed a different number for the same capability, at which point the threshold moved to the demand side (analysis.schema.json) and only the KIND stayed here. Still ABSENT because three capabilities cannot justify them: cost/latency classes, caching, substitution rules, pagination shape, and capability-composes-capability (composition lives in the analysis, which is the layer with a reason to compose).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -51,7 +51,7 @@
       ]
     },
     "returns": {
-      "description": "The projection's field names \u2014 what the caller actually receives. Deliberately NOT canonical's full row: DIS write-side provenance (mapping_version_id, trace_id, ingest_metadata, dis_channel) is DIS's concern, and passing it through would invite the analytics plane to reason about ingestion.",
+      "description": "The projection's field names — what the caller actually receives. Deliberately NOT canonical's full row: DIS write-side provenance (mapping_version_id, trace_id, ingest_metadata, dis_channel) is DIS's concern, and passing it through would invite the analytics plane to reason about ingestion.",
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
@@ -61,7 +61,7 @@
       }
     },
     "produces_signals": {
-      "description": "Signal ids this capability PRODUCES. An EMPTY ARRAY is a first-class, verified state, not a placeholder: current_state reads canonical.store_sku_current_position, which HAS velocity_7day / stock_age_days / unit_cost_trend_30day, and produces none of them because nothing writes them. Reading a signal column does not make a capability a producer of that signal \u2014 which is exactly why signals are a separate contract.",
+      "description": "Signal ids this capability PRODUCES. An EMPTY ARRAY is a first-class, verified state, not a placeholder: current_state reads canonical.store_sku_current_position, which HAS velocity_7day / stock_age_days / unit_cost_trend_30day, and produces none of them because nothing writes them. Reading a signal column does not make a capability a producer of that signal — which is exactly why signals are a separate contract.",
       "type": "array",
       "uniqueItems": true,
       "items": {
@@ -70,7 +70,7 @@
       }
     },
     "gates": {
-      "description": "KINDS of precondition this capability can be measured on \u2014 never values. A caller supplies the threshold and the policy (analysis.schema.json). An EMPTY ARRAY is a claim, not a placeholder: current_state and last_sale_at declare none because no quantity of history makes their answer more or less usable. A capability may list a kind only if a probe exists for it at the checked grain, which the registry enforces at import.",
+      "description": "KINDS of precondition this capability can be measured on — never values. A caller supplies the threshold and the policy (analysis.schema.json). An EMPTY ARRAY is a claim, not a placeholder: current_state and last_sale_at declare none because no quantity of history makes their answer more or less usable. A capability may list a kind only if a probe exists for it at the checked grain, which the registry enforces at import.",
       "type": "array",
       "uniqueItems": true,
       "items": {

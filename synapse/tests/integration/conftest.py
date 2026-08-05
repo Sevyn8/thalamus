@@ -73,7 +73,8 @@ ledger item.
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, Coroutine
+from collections.abc import AsyncIterator, Callable, Coroutine
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Literal
@@ -81,7 +82,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import TextClause, text
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 # Keyed by the SHORT name a test asks for, so a test never spells a canonical table itself —
 # these two are the only ones Synapse reads at all, and the only two its read-only role is
@@ -176,6 +177,72 @@ _DIAGNOSIS = (
     "as the table owner, and even on Cloud SQL as `postgres`. A bare `SELECT count(*)` there "
     "reports 0 for a healthy log and for an empty one alike."
 )
+
+
+# ---------------------------------------------------------------------------
+# Writing to a FORCE RLS table from a TEST, which is its own surface
+# ---------------------------------------------------------------------------
+
+
+@asynccontextmanager
+async def _platform_write(dsn: str, tenant_id: UUID) -> AsyncIterator[AsyncConnection]:
+    """An admin transaction that can BOTH read across tenants AND write one tenant's rows.
+
+    **PLATFORM ALONE IS NOT ENOUGH TO WRITE, AND THAT IS THE WHOLE POINT OF THIS HELPER.**
+    Every policy in this project reads
+
+        USING       (tenant_id = <app.tenant_id> OR app.user_type = 'PLATFORM')
+        WITH CHECK  (tenant_id = <app.tenant_id>)
+
+    so ``app.user_type='PLATFORM'`` widens READS ONLY. An INSERT under PLATFORM with no
+    ``app.tenant_id`` fails with ``new row violates row-level security policy``. Both GUCs are
+    required, and the tenant one is what satisfies WITH CHECK.
+
+    THE NEXT PERSON WILL REACH FOR PLATFORM FIRST, because that is what the read path uses and
+    because both of us did. It has now cost six separate incidents: a trigger test whose UPDATE
+    matched no visible row, migration 0002's DELETE, the provisioning pre-flight, a verification
+    snippet in sql/04, provision_analysis.sql's own INSERT, and eight orchestrator live tests
+    that inserted provision rows.
+
+    THOSE EIGHT ARE THE INSTRUCTIVE ONE. They passed for two slices — locally, where
+    ``ithina_dis_admin`` is a SUPERUSER and bypasses RLS entirely — and failed the first time
+    they met staging, whose ``postgres`` is ``rolsuper=f rolbypassrls=f`` like every other role.
+    A live test that has only ever run locally proves nothing about staging if it needs any
+    privilege at all.
+
+    infra/db-setup/README.md carries the same convention for hand-run SQL files. THIS IS A
+    DIFFERENT SURFACE writing to the same tables: test setup is code, not a .sql file, so that
+    convention could never have covered it. One helper rather than a rule per call site, because
+    a rule per call site is what produced eight of them.
+
+    Transaction-local (``true``), so nothing leaks into whatever the caller does next.
+    """
+    engine = create_async_engine(dsn)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("SELECT set_config('app.user_type', 'PLATFORM', true)"))
+            await conn.execute(
+                text("SELECT set_config('app.tenant_id', :tenant, true)"),
+                {"tenant": str(tenant_id)},
+            )
+            yield conn
+    finally:
+        await engine.dispose()
+
+
+PlatformWrite = Callable[[str, UUID], AbstractAsyncContextManager[AsyncConnection]]
+
+
+@pytest.fixture
+def platform_write() -> PlatformWrite:
+    """``_platform_write``, handed over as a fixture rather than imported.
+
+    A SIBLING IMPORT DOES NOT WORK HERE and this is not a style preference: the suite runs under
+    ``--import-mode=importlib`` with no ``__init__.py``, so ``from conftest import ...`` raises
+    ModuleNotFoundError. Tried it; seven tests failed on the import alone. The module docstring
+    said so and is now demonstrated.
+    """
+    return _platform_write
 
 
 @pytest.fixture

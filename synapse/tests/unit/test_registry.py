@@ -555,7 +555,7 @@ def test_a_capability_with_no_gates_is_exempt_from_the_grain_rule() -> None:
 
 def test_the_declarations_are_data_and_immutable() -> None:
     """Adding an analysis is adding a row, never editing an engine — the registry's own rule."""
-    assert declared_analysis_ids() == ("dead_stock",)
+    assert declared_analysis_ids() == ("dead_stock", "stockout_risk")
     with pytest.raises(TypeError):
         registry_module._DECLARATIONS["invented"] = DEAD_STOCK  # type: ignore[index]
 
@@ -595,7 +595,14 @@ def _gateless_registry(
 
 
 def _declaring(declaration: AnalysisDeclaration) -> MappingProxyType[str, AnalysisDeclaration]:
-    return MappingProxyType({declaration.id: declaration})
+    """The real declarations with ONE replaced, not a map containing only it.
+
+    Returning a single-entry map made every OTHER registered analysis an orphan, so the check
+    under test tripped over the wrong invariant first and passed for the wrong reason. That was
+    invisible while dead_stock was the only declaration and broke the moment a second arrived —
+    a test whose scope silently depended on there being one of something.
+    """
+    return MappingProxyType({**registry_module._DECLARATIONS, declaration.id: declaration})
 
 
 def _dead_stock_with(**changes: object) -> AnalysisDeclaration:

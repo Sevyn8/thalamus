@@ -216,6 +216,11 @@ async def _run_one(
             reader_engine,
             provision.analysis_id,
             CapabilityScope(tenant_id=provision.tenant_id),
+            # THE SLOT, not a clock read — the same value that becomes every action's as_of.
+            # An analysis whose requirement declares a date window has it computed relative to
+            # this, so a redelivered dispatch fetches the same window and produces byte-identical
+            # actions for the idempotency index to suppress.
+            as_of=slot,
         )
         match resolution:
             case DeclarationSatisfied():

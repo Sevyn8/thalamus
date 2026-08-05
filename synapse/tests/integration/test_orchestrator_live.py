@@ -18,11 +18,13 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Coroutine
+from contextlib import AbstractAsyncContextManager
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 from synapse.core.provision import Cadence, Provision, Rung
 
@@ -39,6 +41,7 @@ pytestmark = [
 ]
 
 RequireAppendable = Callable[..., Coroutine[Any, Any, UUID]]
+PlatformWrite = Callable[[str, UUID], AbstractAsyncContextManager[AsyncConnection]]
 
 
 def _require_admin() -> str:
@@ -56,52 +59,47 @@ def _require_admin() -> str:
     return ADMIN_DSN
 
 
-async def _provision_rows(tenant: UUID, rows: list[Provision]) -> None:
-    """Replace this tenant's provisions. Admin credential, PLATFORM scope for the delete."""
+async def _provision_rows(tenant: UUID, rows: list[Provision], write: PlatformWrite) -> None:
+    """Replace this tenant's provisions.
+
+    THROUGH ``platform_write``, which sets BOTH GUCs. PLATFORM alone widens reads only, so the
+    INSERT below fails under it with "new row violates row-level security policy" — as these
+    tests did the first time they ran against staging, having passed locally for two slices
+    where the admin role is a superuser. See the helper for the full story.
+    """
     from sqlalchemy import text
-    from sqlalchemy.ext.asyncio import create_async_engine
 
-    engine = create_async_engine(_require_admin())
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(text("SELECT set_config('app.user_type','PLATFORM',true)"))
+    async with write(_require_admin(), tenant) as conn:
+        await conn.execute(
+            text("DELETE FROM synapse.provision WHERE tenant_id = CAST(:t AS uuid)"),
+            {"t": str(tenant)},
+        )
+        for row in rows:
             await conn.execute(
-                text("DELETE FROM synapse.provision WHERE tenant_id = CAST(:t AS uuid)"),
-                {"t": str(tenant)},
+                text(
+                    "INSERT INTO synapse.provision (tenant_id, analysis_id, cadence, rung, "
+                    "timezone, enabled_at) VALUES (CAST(:t AS uuid), :a, :c, :r, :z, :e)"
+                ),
+                {
+                    "t": str(row.tenant_id),
+                    "a": row.analysis_id,
+                    "c": row.cadence.value,
+                    "r": row.rung.value,
+                    "z": row.timezone,
+                    "e": row.enabled_at,
+                },
             )
-            for row in rows:
-                await conn.execute(
-                    text(
-                        "INSERT INTO synapse.provision (tenant_id, analysis_id, cadence, rung, "
-                        "timezone, enabled_at) VALUES (CAST(:t AS uuid), :a, :c, :r, :z, :e)"
-                    ),
-                    {
-                        "t": str(row.tenant_id),
-                        "a": row.analysis_id,
-                        "c": row.cadence.value,
-                        "r": row.rung.value,
-                        "z": row.timezone,
-                        "e": row.enabled_at,
-                    },
-                )
-    finally:
-        await engine.dispose()
 
 
-async def _clear_runs(tenant: UUID) -> None:
+async def _clear_runs(tenant: UUID, write: PlatformWrite) -> None:
+    """Both GUCs, same reason as _provision_rows: a DELETE is a write."""
     from sqlalchemy import text
-    from sqlalchemy.ext.asyncio import create_async_engine
 
-    engine = create_async_engine(_require_admin())
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(text("SELECT set_config('app.user_type','PLATFORM',true)"))
-            await conn.execute(
-                text("DELETE FROM synapse.run WHERE tenant_id = CAST(:t AS uuid)"),
-                {"t": str(tenant)},
-            )
-    finally:
-        await engine.dispose()
+    async with write(_require_admin(), tenant) as conn:
+        await conn.execute(
+            text("DELETE FROM synapse.run WHERE tenant_id = CAST(:t AS uuid)"),
+            {"t": str(tenant)},
+        )
 
 
 def _shadow(tenant: UUID) -> Provision:
@@ -121,7 +119,9 @@ def _shadow(tenant: UUID) -> Provision:
 
 
 async def test_the_database_refuses_an_unresolvable_timezone(
-    require_appendable: RequireAppendable, probe_tenant: UUID
+    require_appendable: RequireAppendable,
+    probe_tenant: UUID,
+    platform_write: PlatformWrite,
 ) -> None:
     """THE TRIGGER, FIRING. A bad zone does not fail a run — it shifts every slot and mis-stamps
     every as_of, permanently, inside an append-only index. So the row must be impossible.
@@ -130,40 +130,37 @@ async def test_the_database_refuses_an_unresolvable_timezone(
     satisfied by a broken connection or a missing grant.
     """
     from sqlalchemy import text
-    from sqlalchemy.ext.asyncio import create_async_engine
 
     await require_appendable("a refused insert proves nothing if every insert is refused")
+    write = platform_write
 
-    engine = create_async_engine(_require_admin())
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(text("SELECT set_config('app.user_type','PLATFORM',true)"))
-            await conn.execute(
-                text("DELETE FROM synapse.provision WHERE tenant_id = CAST(:t AS uuid)"),
-                {"t": str(probe_tenant)},
-            )
-            # BASELINE: a good zone is accepted.
+    async with write(_require_admin(), probe_tenant) as conn:
+        await conn.execute(
+            text("DELETE FROM synapse.provision WHERE tenant_id = CAST(:t AS uuid)"),
+            {"t": str(probe_tenant)},
+        )
+        # BASELINE: a good zone is accepted. Without it, "the insert raised" would also be
+        # satisfied by a broken connection, a missing grant, or the RLS policy refusing every
+        # write — which is exactly what happened before this helper set both GUCs.
+        await conn.execute(
+            text(
+                "INSERT INTO synapse.provision (tenant_id, analysis_id, cadence, rung, "
+                "timezone, enabled_at) VALUES (CAST(:t AS uuid), 'dead_stock', 'daily', "
+                "'shadow', 'Asia/Kolkata', now())"
+            ),
+            {"t": str(probe_tenant)},
+        )
+
+    with pytest.raises(Exception, match="does not resolve"):
+        async with write(_require_admin(), probe_tenant) as conn:
             await conn.execute(
                 text(
                     "INSERT INTO synapse.provision (tenant_id, analysis_id, cadence, rung, "
-                    "timezone, enabled_at) VALUES (CAST(:t AS uuid), 'dead_stock', 'daily', "
-                    "'shadow', 'Asia/Kolkata', now())"
+                    "timezone, enabled_at) VALUES (CAST(:t AS uuid), 'other', 'daily', "
+                    "'shadow', 'Mars/Olympus_Mons', now())"
                 ),
                 {"t": str(probe_tenant)},
             )
-        async with engine.begin() as conn:
-            await conn.execute(text("SELECT set_config('app.user_type','PLATFORM',true)"))
-            with pytest.raises(Exception, match="does not resolve"):
-                await conn.execute(
-                    text(
-                        "INSERT INTO synapse.provision (tenant_id, analysis_id, cadence, rung, "
-                        "timezone, enabled_at) VALUES (CAST(:t AS uuid), 'other', 'daily', "
-                        "'shadow', 'Mars/Olympus_Mons', now())"
-                    ),
-                    {"t": str(probe_tenant)},
-                )
-    finally:
-        await engine.dispose()
 
 
 async def test_the_writer_cannot_read_or_write_provision(
@@ -191,7 +188,9 @@ async def test_the_writer_cannot_read_or_write_provision(
 
 
 async def test_enumeration_reads_across_tenants_and_writes_nothing(
-    require_appendable: RequireAppendable, probe_tenant: UUID
+    require_appendable: RequireAppendable,
+    probe_tenant: UUID,
+    platform_write: PlatformWrite,
 ) -> None:
     """THE FIRST THING IN SYNAPSE THAT NEEDS PLATFORM SCOPE.
 
@@ -203,7 +202,7 @@ async def test_enumeration_reads_across_tenants_and_writes_nothing(
     from synapse.registry import max_rungs
 
     await require_appendable("an empty enumeration is indistinguishable from a broken one")
-    await _provision_rows(probe_tenant, [_shadow(probe_tenant)])
+    await _provision_rows(probe_tenant, [_shadow(probe_tenant)], platform_write)
 
     engine = create_rls_engine(READER_DSN)
     try:
@@ -218,7 +217,9 @@ async def test_enumeration_reads_across_tenants_and_writes_nothing(
 
 
 async def test_a_rung_above_the_ceiling_in_the_real_table_refuses_the_enumeration(
-    require_appendable: RequireAppendable, probe_tenant: UUID
+    require_appendable: RequireAppendable,
+    probe_tenant: UUID,
+    platform_write: PlatformWrite,
 ) -> None:
     """THE ENVELOPE, AGAINST A REAL ROW. The unit suite proves the function refuses; this proves
     a row an operator could actually type reaches it.
@@ -244,6 +245,7 @@ async def test_a_rung_above_the_ceiling_in_the_real_table_refuses_the_enumeratio
                 enabled_at=datetime(2026, 8, 1, tzinfo=UTC),
             )
         ],
+        platform_write,
     )
 
     engine = create_rls_engine(READER_DSN)
@@ -252,7 +254,7 @@ async def test_a_rung_above_the_ceiling_in_the_real_table_refuses_the_enumeratio
             await PostgresProvisionReader(engine).active(max_rungs=max_rungs())
     finally:
         await engine.dispose()
-        await _provision_rows(probe_tenant, [_shadow(probe_tenant)])
+        await _provision_rows(probe_tenant, [_shadow(probe_tenant)], platform_write)
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +263,9 @@ async def test_a_rung_above_the_ceiling_in_the_real_table_refuses_the_enumeratio
 
 
 async def test_a_second_dispatch_of_the_same_slot_is_skipped_not_rerun(
-    require_appendable: RequireAppendable, probe_tenant: UUID
+    require_appendable: RequireAppendable,
+    probe_tenant: UUID,
+    platform_write: PlatformWrite,
 ) -> None:
     """THE SLOT KEY DOING ITS JOB. Cloud Scheduler retries its own API call, so this is the
     normal case rather than an edge one.
@@ -273,8 +277,8 @@ async def test_a_second_dispatch_of_the_same_slot_is_skipped_not_rerun(
     from synapse.orchestrator import run_due
 
     await require_appendable("a skip proves nothing if the first run never happened")
-    await _provision_rows(probe_tenant, [_shadow(probe_tenant)])
-    await _clear_runs(probe_tenant)
+    await _provision_rows(probe_tenant, [_shadow(probe_tenant)], platform_write)
+    await _clear_runs(probe_tenant, platform_write)
 
     now = datetime(2026, 8, 5, 3, 30, tzinfo=UTC)
     reader = create_rls_engine(READER_DSN)
@@ -293,15 +297,19 @@ async def test_a_second_dispatch_of_the_same_slot_is_skipped_not_rerun(
     assert second[0].actions_appended == 0
 
 
-async def test_a_later_slot_is_a_new_run(require_appendable: RequireAppendable, probe_tenant: UUID) -> None:
+async def test_a_later_slot_is_a_new_run(
+    require_appendable: RequireAppendable,
+    probe_tenant: UUID,
+    platform_write: PlatformWrite,
+) -> None:
     """The converse, and it is what stops the test above passing against something that skips
     everything. A genuinely new day must produce a new run."""
     from dis_rls import create_rls_engine
     from synapse.orchestrator import run_due
 
     await require_appendable("a new run proves nothing if nothing can run")
-    await _provision_rows(probe_tenant, [_shadow(probe_tenant)])
-    await _clear_runs(probe_tenant)
+    await _provision_rows(probe_tenant, [_shadow(probe_tenant)], platform_write)
+    await _clear_runs(probe_tenant, platform_write)
 
     reader = create_rls_engine(READER_DSN)
     writer = create_rls_engine(WRITER_DSN)
@@ -327,7 +335,9 @@ async def test_a_later_slot_is_a_new_run(require_appendable: RequireAppendable, 
 
 
 async def test_the_run_row_records_the_slot_and_what_was_in_force(
-    require_appendable: RequireAppendable, probe_tenant: UUID
+    require_appendable: RequireAppendable,
+    probe_tenant: UUID,
+    platform_write: PlatformWrite,
 ) -> None:
     """THE DENOMINATOR, AND THE SNAPSHOT. A zero-action run must still leave a row, or a tenant
     with no findings is indistinguishable from a tenant nobody analysed.
@@ -342,8 +352,8 @@ async def test_the_run_row_records_the_slot_and_what_was_in_force(
     from synapse.orchestrator import run_due
 
     await require_appendable("an absent run row and a broken sweep look identical")
-    await _provision_rows(probe_tenant, [_shadow(probe_tenant)])
-    await _clear_runs(probe_tenant)
+    await _provision_rows(probe_tenant, [_shadow(probe_tenant)], platform_write)
+    await _clear_runs(probe_tenant, platform_write)
 
     now = datetime(2026, 8, 5, 3, 30, tzinfo=UTC)
     reader = create_rls_engine(READER_DSN)
@@ -387,7 +397,9 @@ async def test_the_run_row_records_the_slot_and_what_was_in_force(
 
 
 async def test_a_dry_run_writes_nothing_at_all(
-    require_appendable: RequireAppendable, probe_tenant: UUID
+    require_appendable: RequireAppendable,
+    probe_tenant: UUID,
+    platform_write: PlatformWrite,
 ) -> None:
     """D3's first hand-run. It must claim no run and append no action — proved by counting rows
     before and after rather than by trusting the flag."""
@@ -398,8 +410,8 @@ async def test_a_dry_run_writes_nothing_at_all(
     from synapse.orchestrator import run_due
 
     await require_appendable("a dry run writing nothing is trivially true if nothing works")
-    await _provision_rows(probe_tenant, [_shadow(probe_tenant)])
-    await _clear_runs(probe_tenant)
+    await _provision_rows(probe_tenant, [_shadow(probe_tenant)], platform_write)
+    await _clear_runs(probe_tenant, platform_write)
 
     admin = create_async_engine(_require_admin())
 
@@ -440,7 +452,9 @@ async def test_a_dry_run_writes_nothing_at_all(
 
 
 async def test_a_backdated_sweep_completes_rather_than_violating_the_time_check(
-    require_appendable: RequireAppendable, probe_tenant: UUID
+    require_appendable: RequireAppendable,
+    probe_tenant: UUID,
+    platform_write: PlatformWrite,
 ) -> None:
     """REGRESSION. ``started_at`` comes from the injected ``now``; ``finished_at`` used to come
     from ``datetime.now(UTC)``. Those are different clock domains, and ``now`` is a parameter
@@ -460,8 +474,8 @@ async def test_a_backdated_sweep_completes_rather_than_violating_the_time_check(
     from synapse.orchestrator import run_due
 
     await require_appendable("a completed run proves nothing if nothing can run")
-    await _provision_rows(probe_tenant, [_shadow(probe_tenant)])
-    await _clear_runs(probe_tenant)
+    await _provision_rows(probe_tenant, [_shadow(probe_tenant)], platform_write)
+    await _clear_runs(probe_tenant, platform_write)
 
     reader = create_rls_engine(READER_DSN)
     writer = create_rls_engine(WRITER_DSN)

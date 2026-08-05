@@ -47,7 +47,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from types import MappingProxyType
 from typing import Final, Protocol, assert_never
 from uuid import UUID
@@ -55,13 +55,20 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from synapse.core.action import Action
-from synapse.core.analysis import DEAD_STOCK, AnalysisDeclaration, Gate, MinHistoryDays
+from synapse.core.analysis import (
+    DEAD_STOCK,
+    STOCKOUT_RISK,
+    AnalysisDeclaration,
+    Gate,
+    MinHistoryDays,
+)
 from synapse.core.capability import (
     CURRENT_STATE,
     DAILY_SERIES,
     LAST_SALE_AT,
     CapabilityDescriptor,
     CapabilityScope,
+    Freshness,
     GateKind,
 )
 from synapse.core.dead_stock import DeadStockRow, evaluate_dead_stock
@@ -83,6 +90,8 @@ from synapse.core.resolution import (
     Unregistered,
     satisfies,
 )
+from synapse.core.stockout_actions import propose_stockout_actions
+from synapse.core.stockout_risk import StockoutRiskRow, evaluate_stockout_risk
 from synapse.resolvers.current_state import resolve_current_state
 from synapse.resolvers.daily_series import (
     DATE_COLUMN,
@@ -130,6 +139,7 @@ Plan = Callable[[DeclarationSatisfied, date], Awaitable[Sequence[Action]]]
 _EVALUATOR_ROWS: Final[Mapping[str, type]] = MappingProxyType(
     {
         DEAD_STOCK.id: DeadStockRow,
+        STOCKOUT_RISK.id: StockoutRiskRow,
     }
 )
 
@@ -244,6 +254,7 @@ _REGISTRY: Final[Mapping[str, RegisteredCapability]] = MappingProxyType(
 _DECLARATIONS: Final[Mapping[str, AnalysisDeclaration]] = MappingProxyType(
     {
         DEAD_STOCK.id: DEAD_STOCK,
+        STOCKOUT_RISK.id: STOCKOUT_RISK,
     }
 )
 
@@ -260,6 +271,7 @@ _DECLARATIONS: Final[Mapping[str, AnalysisDeclaration]] = MappingProxyType(
 _ANALYSES: Final[Mapping[str, Evaluator]] = MappingProxyType(
     {
         DEAD_STOCK.id: evaluate_dead_stock,
+        STOCKOUT_RISK.id: evaluate_stockout_risk,
     }
 )
 
@@ -273,6 +285,7 @@ _ANALYSES: Final[Mapping[str, Evaluator]] = MappingProxyType(
 _ACTIONS: Final[Mapping[str, Proposer]] = MappingProxyType(
     {
         DEAD_STOCK.id: propose_dead_stock_actions,
+        STOCKOUT_RISK.id: propose_stockout_actions,
     }
 )
 
@@ -286,7 +299,7 @@ _ACTIONS: Final[Mapping[str, Proposer]] = MappingProxyType(
 # in here decides anything analytical — every threshold and every version comes from the
 # declaration and the resolution.
 async def _plan_dead_stock(satisfied: DeclarationSatisfied, as_of: date) -> Sequence[Action]:
-    """Fetch, evaluate and propose for dead_stock. The one analysis that has a plan."""
+    """Fetch, evaluate and propose for dead_stock. The gateless one: no window, no narrowing."""
     universe = await satisfied.fetches["current_state"]()
     selling = await satisfied.fetches["last_sale_at"]()
     stale_after = next(
@@ -307,9 +320,42 @@ async def _plan_dead_stock(satisfied: DeclarationSatisfied, as_of: date) -> Sequ
     )
 
 
+async def _plan_stockout_risk(satisfied: DeclarationSatisfied, as_of: date) -> Sequence[Action]:
+    """Fetch, evaluate and propose for stockout_risk.
+
+    ``min_observations`` IS READ OFF THE GATE, not restated. The evaluator's in-window
+    sufficiency check must use the same number the gate used, or the two would drift into
+    disagreeing about what "enough history" means — the gate over all history, the evaluator
+    over the window, but the same bar.
+    """
+    universe = await satisfied.fetches["current_state"]()
+    series = await satisfied.fetches["daily_series"]()
+    thresholds = {threshold.name: threshold.days for threshold in satisfied.declaration.thresholds}
+    requirement = next(r for r in satisfied.declaration.requires if r.capability_id == "daily_series")
+    (gate,) = requirement.gates
+
+    findings = evaluate_stockout_risk(
+        universe,  # type: ignore[arg-type]
+        series,  # type: ignore[arg-type]
+        window_days=thresholds["window_days"],
+        at_risk_below_days=thresholds["at_risk_below_days"],
+        stale_after_days=thresholds["stale_after_days"],
+        min_observations=gate.days,
+        as_of=as_of,
+    )
+    return propose_stockout_actions(
+        findings,
+        universe,  # type: ignore[arg-type]
+        declaration=satisfied.declaration,
+        capability_versions=satisfied.capability_versions,
+        as_of=as_of,
+    )
+
+
 _PLANS: Final[Mapping[str, Plan]] = MappingProxyType(
     {
         DEAD_STOCK.id: _plan_dead_stock,
+        STOCKOUT_RISK.id: _plan_stockout_risk,
     }
 )
 
@@ -497,6 +543,60 @@ def _check_declarations() -> None:
                 )
 
 
+def check_window_declarations(
+    declarations: Mapping[str, AnalysisDeclaration],
+    registry: Mapping[str, RegisteredCapability],
+) -> None:
+    """Window declarations, as a PURE function so the offline suite can prove it bites.
+
+    Taking the maps as arguments rather than closing over the module's is what makes the
+    violation constructible in a test: ``_DECLARATIONS`` is ``Final``, so reassigning it is a
+    type error and mutating it would corrupt every test that ran afterwards. Same shape as
+    ``check_plan_bindings`` and ``check_envelope``, and for the same reason.
+
+    TWO INVARIANTS, and the second is the one that makes this field the operational half of an
+    existing contract field rather than a parameter bolted on:
+
+    1. A named threshold must EXIST on the declaration. Otherwise the KeyError surfaces inside
+       resolve_declaration, at the first fetch, for one tenant.
+
+    2. A WINDOW AGAINST A ``LAST_WRITE`` CAPABILITY IS A CONTRADICTION. ``Freshness`` has said
+       since slice 1 which capabilities a date parameter is meaningful for: AS_OF_DATE means a
+       value stamped with the date it describes, LAST_WRITE means "whatever the row says now,
+       asking for yesterday is not answerable". Declaring a window against the latter asks a
+       question the capability's own contract says has no answer, and it would silently pass a
+       ``date_from``/``date_to`` the resolver does not accept.
+    """
+    for analysis_id, declaration in declarations.items():
+        names = {threshold.name for threshold in declaration.thresholds}
+        for requirement in declaration.requires:
+            wanted = requirement.window_from_threshold
+            if wanted is None:
+                continue
+            if wanted not in names:
+                raise ValueError(
+                    f"analysis {analysis_id!r} requires {requirement.capability_id!r} over a "
+                    f"{wanted!r} window, but declares no threshold by that name; it has "
+                    f"{sorted(names)}"
+                )
+            entry = registry.get(requirement.capability_id)
+            if entry is None:  # pragma: no cover - _check_declarations rejects this first
+                continue
+            if entry.descriptor.freshness is not Freshness.AS_OF_DATE:
+                raise ValueError(
+                    f"analysis {analysis_id!r} declares a {wanted!r} window against "
+                    f"{requirement.capability_id!r}, whose freshness is "
+                    f"{entry.descriptor.freshness.value!r}. A date window is only meaningful for "
+                    "AS_OF_DATE: LAST_WRITE says asking for a past date is not answerable, so "
+                    "the window would be a question the capability cannot answer"
+                )
+
+
+def _check_windows() -> None:
+    """The import-time call. See ``check_window_declarations`` for the invariants."""
+    check_window_declarations(_DECLARATIONS, _REGISTRY)
+
+
 def _check_analyses() -> None:
     """Evaluator invariants, checked at IMPORT.
 
@@ -609,6 +709,7 @@ def _check_plans() -> None:
 _check_registry()
 _check_declarations()
 _check_analyses()
+_check_windows()
 _check_actions()
 _check_plans()
 
@@ -725,10 +826,18 @@ async def resolve(
         )
 
     unmet: list[PreconditionReport] = []
+    # The subjects that cleared EVERY gate. None until a probe reports identities; thereafter
+    # the INTERSECTION across gates, because a series must clear all of them to be fetched.
+    # With one gate kind in existence this is just that gate's set, but the intersection is the
+    # correct semantics and costs nothing to write now rather than discovering it with a second.
+    qualifying: set[tuple[str, ...]] | None = None
     for kind, (required, policy) in bound.items():
         observation = await entry.probes[kind].measure(
             engine, scope, store_id=store_id, sku_id=sku_id, required=required
         )
+        if observation.qualifying is not None:
+            found = set(observation.qualifying)
+            qualifying = found if qualifying is None else (qualifying & found)
         report = PreconditionReport(
             name=kind,
             required=required,
@@ -752,10 +861,21 @@ async def resolve(
     if sku_id is not None:
         forwarded["sku_id"] = sku_id
 
+    # THE NARROWING IS BAKED INTO THE CLOSURE, not handed to the caller as advice.
+    #
+    # Satisfied also carries `qualifying`, but only so a consumer can INSPECT the population a
+    # verdict was made about. The fetch is already narrowed by the time anyone sees it, so a
+    # caller that never reads the field still gets rows for exactly the qualifying series. If
+    # applying it were the caller's job, forgetting would silently reproduce the bug this
+    # discharges — rows for series the gate refused — one layer further from where it is visible.
+    ordered = tuple(sorted(qualifying)) if qualifying is not None else None
+    if ordered is not None:
+        forwarded["only_series"] = ordered
+
     async def fetch() -> Sequence[object]:
         return await resolver(engine, scope, **forwarded)
 
-    return Satisfied(descriptor=entry.descriptor, fetch=fetch)
+    return Satisfied(descriptor=entry.descriptor, fetch=fetch, qualifying=ordered)
 
 
 async def resolve_declaration(
@@ -763,6 +883,7 @@ async def resolve_declaration(
     analysis_id: str,
     scope: CapabilityScope,
     *,
+    as_of: date | None = None,
     store_id: UUID | None = None,
     sku_id: str | None = None,
 ) -> DeclarationResolution:
@@ -786,13 +907,18 @@ async def resolve_declaration(
     dead_stock, resolving only ``last_sale_at`` would not give half an answer, it would report the
     entire catalogue as dead because there is no universe to date against.
 
-    NARROWING IS store_id / sku_id ONLY, and there is a real gap here worth naming rather than
-    discovering. A requirement on a capability needing MORE narrowing — ``daily_series`` requires
-    a date window with no default — has nowhere to get it: the declaration has no field for
-    per-capability call arguments, and inventing one now would be guessing at a shape no analysis
-    has asked for. No current declaration requires such a capability. The first one that does
-    forces that field, and it will be an obvious failure (``TypeError`` on the missing keyword
-    when ``fetch`` is awaited) rather than a silent one.
+    NARROWING IS store_id / sku_id PLUS A DECLARED DATE WINDOW. The note that stood here said
+    the declaration had no field for per-capability call arguments, that inventing one would be
+    guessing at a shape no analysis had asked for, and that the first analysis needing one would
+    force the field. ``stockout_risk`` is that analysis and the field is
+    ``CapabilityRequirement.window_from_threshold``.
+
+    ``as_of`` IS REQUIRED WHEN ANY REQUIREMENT DECLARES A WINDOW, and optional otherwise. A
+    window is relative to the moment of asking — ``date_from = as_of - (days - 1)``,
+    ``date_to = as_of`` — so it cannot be a literal in a declaration, and the threshold it is
+    computed from is one the declaration already carries. Omitting ``as_of`` for an analysis that
+    needs one raises here rather than surfacing as a ``TypeError`` on a missing keyword the first
+    time somebody awaits a fetch.
 
     THE FETCHES ARE BOUND, NOT CALLED — same posture as ``Satisfied``, so asking "could this run"
     does not cost two full reads.
@@ -821,9 +947,24 @@ async def resolve_declaration(
     if declaration is None:
         return DeclarationUndeclared(analysis_id=analysis_id)
 
+    thresholds = {threshold.name: threshold.days for threshold in declaration.thresholds}
     resolutions: dict[str, Satisfied[object]] = {}
     blocked: dict[str, Resolution[object]] = {}
     for requirement in declaration.requires:
+        # THE DECLARED DATE WINDOW, computed here because it is relative to the moment of asking
+        # and therefore cannot be a literal in a declaration. The threshold it comes from is one
+        # the declaration already carries, so there is no second source for the number.
+        window: dict[str, object] = {}
+        if requirement.window_from_threshold is not None:
+            if as_of is None:
+                raise ValueError(
+                    f"analysis {analysis_id!r} requires {requirement.capability_id!r} over a "
+                    f"{requirement.window_from_threshold!r} window, so resolve_declaration needs "
+                    "as_of. A window is relative to the moment of asking"
+                )
+            days = thresholds[requirement.window_from_threshold]
+            window = {"date_from": as_of - timedelta(days=days - 1), "date_to": as_of}
+
         outcome = await resolve(
             engine,
             requirement.capability_id,
@@ -831,6 +972,7 @@ async def resolve_declaration(
             gates=requirement.gates,
             store_id=store_id,
             sku_id=sku_id,
+            **window,
         )
         if isinstance(outcome, Satisfied):
             # THE WHOLE Satisfied, not just its fetch: it carries the descriptor and therefore the
@@ -853,6 +995,7 @@ __all__ = [
     "RegisteredCapability",
     "Resolver",
     "check_plan_bindings",
+    "check_window_declarations",
     "declaration_for",
     "declared_analysis_ids",
     "declined_ids",

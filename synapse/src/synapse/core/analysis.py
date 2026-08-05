@@ -143,6 +143,21 @@ class CapabilityRequirement:
     capability_id: str
     fields: tuple[str, ...]
     gates: tuple[Gate, ...]
+    # THE DATE WINDOW THIS REQUIREMENT NEEDS, named as one of the declaration's own thresholds.
+    #
+    # THE OPERATIONAL HALF OF ``Freshness.AS_OF_DATE``, which has existed since slice 1 to mark
+    # capabilities for which a date parameter is meaningful. That was the structural claim; this
+    # is what it costs to actually call one. ``resolve_declaration`` reads the named threshold
+    # and computes ``date_from``/``date_to`` from the ``as_of`` it is given, because a window is
+    # relative to the moment of asking and therefore cannot be a literal in a declaration.
+    #
+    # DECLARING ONE AGAINST A ``LAST_WRITE`` CAPABILITY IS A CONTRADICTION, and the registry
+    # refuses it at import. That refusal is what shows this is the counterpart of an existing
+    # contract field rather than a parameter bolted on for one analysis: the freshness enum
+    # already says which capabilities a window can mean anything for, and this must agree.
+    #
+    # None for a capability that takes no window. Both of dead_stock's requirements are.
+    window_from_threshold: str | None = None
 
     def __post_init__(self) -> None:
         if not self.fields:
@@ -323,3 +338,162 @@ __all__ = [
     "MinHistoryDays",
     "Threshold",
 ]
+
+
+STOCKOUT_RISK = AnalysisDeclaration(
+    id="stockout_risk",
+    version="0.1.0",
+    grain=("tenant_id", "store_id", "sku_id"),
+    # THE COMPLEMENT OF dead_stock, and chosen for that rather than for being impressive. A SKU
+    # cannot be both dead and about to run out, so the two analyses partition the catalogue and
+    # neither needs a precedence rule against the other. Overstock would have been dead_stock's
+    # claim at a different severity, with both proposing REVIEW on the same targets and nothing
+    # in the action contract to adjudicate.
+    requires=(
+        CapabilityRequirement(
+            capability_id="current_state",
+            # stock_qty is the numerator. sku_status because a delisted SKU running out is the
+            # intended end of its life, not a problem.
+            fields=("tenant_id", "store_id", "sku_id", "stock_qty", "sku_status"),
+            gates=(),
+        ),
+        CapabilityRequirement(
+            capability_id="daily_series",
+            fields=("tenant_id", "store_id", "sku_id", "event_date", "net_quantity"),
+            # The rate is computed over a TRAILING window, not the tenant's whole history: a
+            # rate over eighty days containing a promotion describes a period that has ended,
+            # and cover is a forward-looking statement. Named rather than inlined so the
+            # declaration stays the single source of the number.
+            window_from_threshold="window_days",
+            # THE FIRST GATE ANY ANALYSIS HAS EVER BOUND. daily_series has declared
+            # MIN_HISTORY_DAYS since slice 1 and nothing bound it, because dead_stock composes
+            # two gateless capabilities — so the entire precondition path was unexercised by a
+            # real analysis until now.
+            #
+            # SEVEN, FROM THE MEASURED LADDER, not from taste. Against staging's 613 events:
+            # 1 day -> 65/65, 3 -> 61, 5 -> 55, 7 -> 46, 10 -> 25, 14 -> 9, 20 -> 0, 60 -> 0.
+            # Seven passes 46 of 65 and refuses 19, so both directions of the precondition path
+            # are exercised by real data rather than only by tests. It is also the point at which
+            # a daily rate stops being one week of noise.
+            #
+            # DO NOT MOVE THIS TO MAKE ANYTHING PASS. If it stops splitting, that is a finding
+            # about the data, not a reason to lower the bar.
+            #
+            # ANY_SERIES, AND THAT CHOICE IS WHAT DISCHARGED SLICE 2's DEFERRAL. ALL_SERIES with
+            # 46/65 gives PreconditionUnmet and the analysis never runs at all. ANY_SERIES is
+            # satisfied — and before slice 7, fetch would then have returned rows for all 65
+            # INCLUDING the 19 that failed, so the analysis would have computed cover for series
+            # it had just declared unfit. Satisfied now carries the qualifying population and the
+            # narrowing is bound into fetch.
+            gates=(MinHistoryDays(days=7, policy=SeriesPolicy.ANY_SERIES),),
+        ),
+    ),
+    emits=(
+        "tenant_id",
+        "store_id",
+        "sku_id",
+        "days_of_cover",
+        "is_at_risk",
+        # DECLARED OUTPUT, not a log line. Four conditions make a position unassessable, and a
+        # consumer must be able to tell "no risk" from "not assessed" — an absence cannot say
+        # which. The registry checks this against StockoutRiskRow's fields at import.
+        "refused_because",
+    ),
+    holdout=Holdout(
+        unit=("tenant_id", "store_id", "sku_id"),
+        holdout_percent=20,
+        # INDEPENDENT OF dead_stock's SALT, deliberately. Correlated arms across concurrent
+        # experiments reduce power for both, so each analysis randomises separately.
+        #
+        # THE CONSEQUENCE, RECORDED HERE BECAUSE THE PERSON IT AFFECTS IS DOING AN ATTRIBUTION
+        # STUDY AND WILL READ THIS FIRST. Independent assignment means one SKU can be dead_stock
+        # HOLDOUT and stockout_risk TREATMENT at the same time. In shadow that is harmless:
+        # nothing is delivered, so a "holdout" SKU receives nothing and contaminates nothing.
+        #
+        # The moment ANY analysis leaves shadow, it stops being harmless. A dead_stock holdout
+        # SKU that receives a stockout_risk action is no longer a clean control, and dead_stock's
+        # attribution degrades in a way ITS OWN NUMBERS CANNOT SHOW — the contamination lives in
+        # a different analysis's log. Nothing here detects it.
+        #
+        # THE TRIGGER IS: THE FIRST ANALYSIS TO LEAVE SHADOW. Not this slice. The options at that
+        # point are a shared salt (correlated arms, one experiment), a global per-SKU suppression
+        # when any analysis holds it out, or accepting the contamination and bounding it — and
+        # picking between them needs a real delivery mechanism to reason about.
+        salt="stockout_risk/2026-08",
+        fitted=False,
+        stands_in_for=(
+            "a power calculation, exactly as dead_stock's does and for the same reason: 65 "
+            "series cannot support a conclusive split at any fraction. 20 matches dead_stock so "
+            "the two are comparable, which is worth more than either number being right."
+        ),
+    ),
+    max_rung=Rung.SHADOW,
+    thresholds=(
+        Threshold(
+            name="window_days",
+            days=28,
+            fitted=False,
+            stands_in_for=(
+                "the window length at which this tenant's demand rate is most predictive, which "
+                "would be fitted by backtesting rate-from-window-N against realised demand — "
+                "infrastructure that does not exist. 28 is defensible beyond convention though: "
+                "it is FOUR COMPLETE WEEKLY CYCLES, so day-of-week effects average out instead "
+                "of dominating. Seven or fourteen days is one or two cycles and carries the "
+                "week's shape as if it were the trend; sixty or more describes a period that has "
+                "ended. The fitted version needs realised-demand comparison, not arithmetic."
+            ),
+        ),
+        Threshold(
+            name="at_risk_below_days",
+            days=14,
+            fitted=False,
+            stands_in_for=(
+                "the replenishment LEAD TIME, and this one is pure convention — fourteen days is "
+                "a common retail reorder horizon and nothing more. Three verified facts make the "
+                "correct number unknowable here. (1) lead_time_distribution is in the registry's "
+                "_DECLINED with a written reason: no observed lead times exist anywhere in "
+                "canonical, because a distribution needs paired order-issue and receipt events "
+                "and nothing produces either. (2) the canonical hot table DOES "
+                "carry lead_time_days SMALLINT NULL, but dis_validation.provenance classifies it "
+                "MAPPING-PRODUCED — whatever a source asserted, not a measurement — so it could "
+                "not stand in for an observed lead time even if populated. (3) It is not in "
+                "current_state's `returns` and the resolver does not project it, so Synapse "
+                "cannot read it at all today; using it would mean widening the capability. "
+                "UNVERIFIED, because staging is private-IP only and was not reachable when this "
+                "was written: whether the column actually holds values for this tenant. If it "
+                "does, this threshold becomes derivable per SKU and stops being a constant. "
+                "Check it by counting rows where lead_time_days IS NOT NULL on the canonical hot "
+                "table — the one synapse/resolvers/current_state.py names — under the PLATFORM "
+                "GUC, since that table is FORCE RLS and a bare count reads zero for everyone."
+            ),
+        ),
+        Threshold(
+            name="stale_after_days",
+            days=3,
+            fitted=False,
+            stands_in_for=(
+                "this tenant's actual ingestion cadence — how often data really arrives — which "
+                "telemetry.connector_health was built to answer and cannot: its missed_intervals "
+                "column is NULL in Phase A because config.sources.schedule is a free-text human "
+                "label rather than a machine cadence. Three days says a rate should not be more "
+                "than a few days behind the stock it is divided into, when the decision horizon "
+                "is fourteen. NOTE that on today's data every series is seventeen days stale, so "
+                "EVERY position is refused and the analysis produces nothing. That is the guard "
+                "working, the same way '0 of 65 have 60 days' was the correct answer; it is not "
+                "a reason to loosen this."
+            ),
+        ),
+        Threshold(
+            name="expires_after_days",
+            days=7,
+            fitted=False,
+            stands_in_for=(
+                "how long a cover estimate stays true, which decays with the same unknown lead "
+                "time as at_risk_below_days. Seven is half the decision horizon: advice that "
+                "something may run out within fourteen days is not worth acting on when it is "
+                "already a fortnight old. Shorter than dead_stock's thirty because a stockout "
+                "estimate decays faster than an absence does."
+            ),
+        ),
+    ),
+)

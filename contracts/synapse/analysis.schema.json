@@ -95,6 +95,11 @@
                 }
               }
             }
+          },
+          "window_from_threshold": {
+            "description": "The DATE WINDOW this requirement needs, named as one of the declaration's own thresholds. The operational half of the capability contract's `freshness`: AS_OF_DATE has said since slice 1 which capabilities a date parameter is meaningful for, and this is what it costs to call one. Resolved against the caller's `as_of` (date_from = as_of - (days - 1)), because a window is relative to the moment of asking and cannot be a literal here. Declaring one against a LAST_WRITE capability is a contradiction the registry refuses at import. Absent for a capability that takes no window.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
           }
         }
       }

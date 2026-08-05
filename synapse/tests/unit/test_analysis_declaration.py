@@ -243,3 +243,70 @@ def test_declaration_matches_the_committed_fixture() -> None:
     assert fixture["holdout"]["holdout_percent"] == holdout.holdout_percent
     assert fixture["holdout"]["salt"] == holdout.salt
     assert fixture["holdout"]["stands_in_for"] == holdout.stands_in_for
+
+
+# ---------------------------------------------------------------------------
+# Registry and contract must agree about which analyses exist
+# ---------------------------------------------------------------------------
+
+
+def test_every_declared_analysis_has_a_contract_fixture() -> None:
+    """A DECLARATION WITH NO FIXTURE IS A CONTRACT NOBODY CHECKS.
+
+    The conformance harness validates every fixture in the directory, so an analysis without one
+    is simply absent from it — silently, because a harness that iterates cannot notice what is
+    not there. This is the other direction, and it lives here rather than in validate.py because
+    the registry is importable from Python and validate.py is deliberately JSON-only.
+    """
+    from pathlib import Path
+
+    from synapse.registry import declared_analysis_ids
+
+    fixtures = Path(__file__).resolve().parents[3] / "contracts" / "synapse" / "fixtures"
+    on_disk = {path.stem for path in (fixtures / "analysis").glob("*.json")}
+    assert set(declared_analysis_ids()) == on_disk, (
+        "every declared analysis needs a fixture and vice versa; the harness validates what is "
+        "on disk and cannot notice a declaration that never got one"
+    )
+
+
+def test_the_stockout_fixture_matches_the_declaration() -> None:
+    """The same drift check dead_stock has, for the second analysis — including the two fields
+    that are new in slice 7 and therefore have never been checked against a fixture before."""
+    import json
+    from pathlib import Path
+
+    from synapse.core.analysis import STOCKOUT_RISK
+
+    fixtures = Path(__file__).resolve().parents[3] / "contracts" / "synapse" / "fixtures"
+    wire = json.loads((fixtures / "analysis" / "stockout_risk.json").read_text(encoding="utf-8"))
+
+    assert wire["id"] == STOCKOUT_RISK.id
+    assert wire["version"] == STOCKOUT_RISK.version
+    assert tuple(wire["emits"]) == STOCKOUT_RISK.emits
+    assert wire["max_rung"] == STOCKOUT_RISK.max_rung.value
+    holdout = STOCKOUT_RISK.holdout
+    assert holdout is not None
+    assert wire["holdout"]["salt"] == holdout.salt
+
+    by_id = {r["capability_id"]: r for r in wire["requires"]}
+    for requirement in STOCKOUT_RISK.requires:
+        on_wire = by_id[requirement.capability_id]
+        assert tuple(on_wire["fields"]) == requirement.fields
+        assert on_wire.get("window_from_threshold") == requirement.window_from_threshold
+        assert [g["kind"] for g in on_wire["gates"]] == [g.kind.value for g in requirement.gates]
+        assert [g["days"] for g in on_wire["gates"]] == [g.days for g in requirement.gates]
+        assert [g["policy"] for g in on_wire["gates"]] == [g.policy.value for g in requirement.gates]
+
+
+def test_the_two_analyses_use_independent_holdout_salts() -> None:
+    """Concurrent experiments must randomise separately or they lose power together.
+
+    The CONSEQUENCE — a SKU can be holdout for one and treatment for the other — is recorded in
+    Holdout's docstring and in the declaration, with the trigger "the first analysis to leave
+    shadow". It is harmless while nothing is delivered and is not this slice's to solve.
+    """
+    from synapse.core.analysis import DEAD_STOCK, STOCKOUT_RISK
+
+    assert DEAD_STOCK.holdout is not None and STOCKOUT_RISK.holdout is not None
+    assert DEAD_STOCK.holdout.salt != STOCKOUT_RISK.holdout.salt

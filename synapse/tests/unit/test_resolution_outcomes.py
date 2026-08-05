@@ -205,11 +205,17 @@ def test_an_observation_carries_no_requirement_and_no_reduced_scalar() -> None:
     NO REDUCED SCALAR: a per-series capability has one coverage per series, and reducing
     them is policy. An `observed: int` here would have forced that policy into the probe,
     which is where it is least visible and hardest to replace.
+
+    ``qualifying`` ARRIVED IN SLICE 7 AND BREACHES NEITHER RULE. It is identities, not a
+    threshold and not a reduction — the same measurement the counts describe, itemised. The
+    field set is asserted exactly rather than by ``issubset`` so that a future ``required`` or
+    ``observed`` still fails here, which is the whole point of the test.
     """
     assert set(Observation.__dataclass_fields__) == {
         "pairs_measured",
         "pairs_qualifying",
         "measured_at",
+        "qualifying",
     }
 
 

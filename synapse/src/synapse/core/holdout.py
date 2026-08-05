@@ -87,6 +87,29 @@ class Holdout:
     force a reshuffle on every version bump, including bumps that have nothing to do with the
     experiment (a new emitted field, a corrected docstring). Explicit means a version bump
     CHOOSES whether to reshuffle, which is a decision someone should make deliberately.
+
+    ARMS ARE ASSIGNED PER ANALYSIS, AND THAT LEAKS ACROSS ANALYSES. Each declaration carries its
+    own ``salt``, so assignment is independent between them — which is correct for concurrent
+    experiments, because correlated arms reduce power for both. The consequence is that ONE SKU
+    CAN BE HOLDOUT FOR ONE ANALYSIS AND TREATMENT FOR ANOTHER at the same time. With dead_stock
+    and stockout_risk both live, that is not a corner case; it is roughly a fifth of the overlap.
+
+    IN SHADOW IT IS HARMLESS, and that is the only reason it is documented rather than solved:
+    nothing is delivered, so a holdout SKU receives nothing and no control is contaminated.
+
+    THE MOMENT ANY ANALYSIS LEAVES SHADOW IT STOPS BEING HARMLESS. A dead_stock HOLDOUT position
+    that receives a stockout_risk action is no longer a clean control — it got an intervention,
+    just from a different rule. And the damage is invisible from where it matters: dead_stock's
+    own log contains no record of it, so its attribution degrades in a way ITS OWN NUMBERS CANNOT
+    SHOW. Nothing in this module or in synapse.actions detects the overlap.
+
+    THE TRIGGER IS: THE FIRST ANALYSIS TO LEAVE SHADOW. A trigger the code can be checked against
+    — any provision whose rung exceeds SHADOW — rather than a milestone somebody must remember.
+    Three options exist and choosing between them needs a real delivery mechanism to reason
+    about: a SHARED salt (correlated arms, one experiment, less power), a GLOBAL suppression
+    where a SKU held out by any analysis is held out by all (clean, and costs treated volume),
+    or accepting the contamination and BOUNDING it (measure the overlap, report it alongside any
+    effect size). Nothing here prefers one.
     """
 
     unit: tuple[str, ...]
