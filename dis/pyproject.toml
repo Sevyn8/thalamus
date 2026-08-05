@@ -94,6 +94,9 @@ dev = [
   # lifecycle), joined to this workspace so it resolves dis-canonical + dis-rls as
   # workspace members rather than vendoring either.
   "thalamus-synapse",
+  # Synapse's read-only BFF (slice 8a). Installed editable here so the offline
+  # suite, mypy and import-linter see it; it is deployed as its own image.
+  "synapse-ui-server",
 
   # Connectors (repo-root siblings) join the workspace so uv sync installs them
   # editable alongside the dis packages they reuse.
@@ -389,6 +392,15 @@ members = [
   # Synapse lives at the repo root, a sibling of dis/ and connectors/ (D1: a peer,
   # not a member of dis/). Same ../-relative form the connectors use.
   "../synapse",
+  # Synapse's BFF (slice 8a). A SEPARATE MEMBER rather than a subpackage of
+  # thalamus-synapse, so FastAPI and uvicorn stay out of the ORCHESTRATOR's
+  # dependency closure — that image's COPY set was derived from the closure and
+  # would otherwise grow by a web framework it never imports.
+  #
+  # This is the one dis/ edit slice 8a makes, and it is the same unavoidable
+  # workspace registration that adding synapse itself required: uv resolves
+  # members from this list, so an unregistered member cannot be built at all.
+  "../synapse/services/synapse-ui-server",
 ]
 
 [tool.uv.sources]
@@ -416,3 +428,7 @@ thalamus-square-oauth = { workspace = true }
 thalamus-clover-oauth = { workspace = true }
 thalamus-clover = { workspace = true }
 thalamus-synapse = { workspace = true }
+# Synapse's BFF (slice 8a). Registered as a member above; mapped here so its
+# thalamus-synapse / dis-rls / dis-core dependencies resolve from the workspace
+# rather than being sought on PyPI.
+synapse-ui-server = { workspace = true }

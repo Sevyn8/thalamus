@@ -1,8 +1,10 @@
 import {
+  Activity,
   Boxes,
   Building2,
   FileText,
   LayoutDashboard,
+  Map,
   Network,
   Shield,
   Store,
@@ -82,6 +84,41 @@ export const ithinaSidebarNavItems: NavGroup[] = [
         label: "Module Access",
         icon: Boxes,
         requires: { module: "ADMIN", resource: "TENANTS", action: "OVERRIDE", scope: "GLOBAL" },
+      },
+    ],
+  },
+  {
+    // MODULES — added in Synapse slice 8a. Placed between Access Control and
+    // Compliance because these are PRODUCTS rather than platform governance.
+    //
+    // DIS IS DELIBERATELY NOT IN THIS GROUP. The build spec assumed DIS would
+    // "move into MODULES from wherever it is linked today"; it is linked
+    // nowhere in this sidebar. DIS is a LAUNCHER TILE pointing at a separate
+    // Cloud Run app (lib/launcher/tiles.ts), because it is a large tenant-facing
+    // product with its own shell. Synapse 8a is nine read-only SUPERADMIN
+    // screens belonging beside Tenants and Stores, so it lives in-shell. Moving
+    // DIS in here would mean giving it in-shell routes it does not have.
+    heading: "Modules",
+    items: [
+      {
+        href: "/superadmin/synapse",
+        label: "Synapse",
+        icon: Activity,
+        // Same tuple as the cross-tenant Tenants list: Synapse's superadmin
+        // screens read every tenant's provisioning and runs, so anything that
+        // should not see the tenant list should not see the fleet either.
+        requires: { module: "ADMIN", resource: "TENANTS", action: "VIEW", scope: "GLOBAL" },
+      },
+      {
+        // Atlas is PRESENT AND DISABLED on purpose (D3/N4): the navigation shape
+        // is settled now so nobody wonders whether it was forgotten. It routes to
+        // a static page and fetches NOTHING — an endpoint returning empty is
+        // indistinguishable from one that is broken, and this project has removed
+        // several artifacts of exactly that kind.
+        href: "/superadmin/atlas",
+        label: "Atlas",
+        icon: Map,
+        requires: { module: "ADMIN", resource: "TENANTS", action: "VIEW", scope: "GLOBAL" },
       },
     ],
   },

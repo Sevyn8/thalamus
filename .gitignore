@@ -32,3 +32,10 @@ target/
 infra/_import/
 *.tfplan
 tfplan
+
+# Working notes, specs and throwaway harnesses. Not build output — DESIGN INPUT
+# that has already been acted on, so committing it would leave a second,
+# unmaintained copy of decisions whose real home is the code and the docstrings.
+# The UI build spec that produced slice 8a lived here; three of its capability
+# rows were wrong, and a committed copy would outlive the correction.
+scratchpad/

@@ -117,6 +117,12 @@ variable "api_base_url" {
   default     = "https://cm-backend-mjiqp4br4a-el.a.run.app"
 }
 
+variable "synapse_bff_url" {
+  type        = string
+  description = "SYNAPSE_BFF_URL - the Synapse read-only BFF's origin, called SERVER-SIDE by the /superadmin/synapse pages. Unlike API_BASE_URL this is never reached from a browser: the BFF is internal-ingress with an IAM invoker binding, and the frontend authenticates with a Google ID token minted from the metadata server. THIS STRING DOUBLES AS THE ID-TOKEN AUDIENCE, so it must be the service's exact URI - which is why staging passes module.synapse_ui_server.service_url by reference rather than a copied literal. Empty disables the console cleanly: the pages render a named 'not reachable' notice rather than throwing."
+  default     = ""
+}
+
 variable "app_base_url" {
   type        = string
   description = "APP_BASE_URL - the frontend's own origin, used to build Auth0 callback URLs."

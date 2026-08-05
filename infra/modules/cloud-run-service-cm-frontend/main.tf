@@ -134,6 +134,14 @@ resource "google_cloud_run_v2_service" "cm_frontend" {
         name  = "API_BASE_URL"
         value = var.api_base_url
       }
+      # Read only by Next.js SERVER components (lib/synapse/server-client.ts).
+      # Non-prefixed and therefore never inlined into the client bundle, which is
+      # the point: the browser must not learn this origin, because the browser is
+      # not permitted to call it.
+      env {
+        name  = "SYNAPSE_BFF_URL"
+        value = var.synapse_bff_url
+      }
       env {
         name  = "APP_BASE_URL"
         value = var.app_base_url

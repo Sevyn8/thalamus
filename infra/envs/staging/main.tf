@@ -153,12 +153,60 @@ module "migrate_cm_job" {
 # service here) and is publicly callable via an allUsers invoker binding. Both
 # are recorded facts about the live service, declared so Terraform describes
 # reality; the SA is on the ledger to fix before production.
+# --- Synapse: the read-only BFF behind the superadmin console (slice 8a) ---
+#
+# INTERNAL INGRESS + AN IAM INVOKER BINDING, so this is the FIRST service in this
+# project that is not anonymously reachable. Every other one carries an
+# `allUsers` binding with the JWT as the sole gate — the standing HIGH finding.
+# A new service is the cheapest moment not to inherit it.
+#
+# READ THE MODULE HEADER on what the invoker binding is actually worth: it names
+# the DEFAULT COMPUTE identity, because that is what cm-frontend runs as, so it
+# admits every default-compute workload in the project rather than cm-frontend
+# alone. That is anonymous-access removed, not caller-restricted. The real fix is
+# a dedicated SA for cm-frontend, which is its own slice with a window.
+module "synapse_ui_server" {
+  source = "../../modules/cloud-run-service-synapse-ui-server"
+
+  project_id       = var.project_id
+  region           = var.region
+  image            = var.synapse_ui_server_image
+  vpc_connector_id = module.network.vpc_connector_id
+
+  # The identity permitted to invoke. Deliberately the SAME literal the frontend
+  # module defaults its runtime identity to, so the two cannot drift into naming
+  # different accounts — if cm-frontend ever gains a dedicated SA, both change
+  # together or the binding stops matching the caller and the console 403s.
+  caller_service_account_email = "697546531605-compute@developer.gserviceaccount.com"
+
+  # The BFF verifies the SAME Auth0 tokens cm-frontend issues, so issuer and
+  # audience are the frontend's values. A BFF pointed at a different directory
+  # would reject every token the console can obtain.
+  jwt_issuer   = "https://sevyn8.us.auth0.com/"
+  jwt_audience = "https://api.sevyn8.com"
+}
+
 module "cm_frontend_service" {
   source = "../../modules/cloud-run-service-cm-frontend"
 
   project_id = var.project_id
   region     = var.region
   image      = var.cm_frontend_image
+
+  # A RESOURCE REFERENCE, NOT A COPIED STRING. This value doubles as the
+  # ID-token audience the frontend mints against, so a hand-copied URL that
+  # drifted from the service would fail token validation at Cloud Run with a 403
+  # that looks like a permissions problem rather than a stale constant.
+  #
+  # It also gives Terraform the dependency edge: the BFF is created before the
+  # frontend revision that references it.
+  synapse_bff_url = module.synapse_ui_server.service_url
+
+  # AND THE IAM BINDING TOO, which the string reference alone does NOT order.
+  # `service_url` only depends on the Cloud Run service; the invoker binding is a
+  # sibling resource. Without this the frontend could roll a revision holding a
+  # valid URL before the grant exists, and every first page load would 403.
+  depends_on = [module.synapse_ui_server]
 }
 
 # --- Wave 3: DIS (dis-ui-server) durable infra + Cloud Run service ---

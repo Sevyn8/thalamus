@@ -1,0 +1,36 @@
+[project]
+name = "synapse-ui-server"
+version = "0.0.0"
+description = "Synapse's read-only backend-for-frontend (slice 8a). Serves the SUPERADMIN console in cm-frontend: fleet, one tenant, runs, capabilities and analyses. PLATFORM-only, reader credential only, no write path of any kind."
+requires-python = ">=3.12"
+dependencies = [
+  # The registry, the declarations and the resolvers. THE REASON THIS SERVICE
+  # EXISTS AT ALL: E1 and E2 read registered_ids(), declared_analysis_ids() and
+  # Threshold.stands_in_for, which are Python object state rather than rows. No
+  # TypeScript route handler can reach them, and reimplementing them in TS would
+  # be a second source of truth for what Synapse can do.
+  "thalamus-synapse",
+  # The two-GUC session discipline plus the wrong-database / bypassing-role
+  # guard. The fleet read is the one query in Synapse that crosses tenants and it
+  # runs under rls_platform_session(None) — see-all reads, writes NOTHING.
+  "dis-rls",
+  # Structured logging that emits `severity` (dis_core renames levelname), so a
+  # log-based alert can match. Same convention as the orchestrator since 6b.
+  "dis-core",
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  # RS256/JWKS verification of real Auth0 tokens. There is no dev-stub mode here:
+  # dis-ui-server carries one for historical reasons and it is a second code path
+  # through the only thing standing between a caller and every tenant's data.
+  "pyjwt[crypto]>=2.8",
+  "sqlalchemy[asyncio]>=2.0.36",
+  "psycopg[binary]>=3.2",
+  "pydantic>=2.9",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/synapse_ui_server"]

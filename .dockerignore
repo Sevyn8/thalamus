@@ -1,6 +1,10 @@
 # Monorepo-root build context. Used by every image that builds from HERE:
-# dis/services/dis-ui-server/Dockerfile, connectors/thalamus-square/Dockerfile and
-# connectors/thalamus-clover/Dockerfile.
+# dis/services/dis-ui-server/Dockerfile, connectors/thalamus-square/Dockerfile,
+# connectors/thalamus-clover/Dockerfile and synapse/Dockerfile.
+#
+# synapse/Dockerfile joined the list in slice 6b, for the same structural reason the
+# connectors are on it: synapse/ is a SIBLING of dis/ in the uv workspace
+# ("../synapse"), so a dis/-rooted context cannot reach it.
 #
 # THIS IS THE ONLY .dockerignore THOSE THREE BUILDS READ. Docker resolves
 # .dockerignore at the CONTEXT ROOT (BuildKit also checks a sibling
@@ -31,8 +35,10 @@
 # `COPY connectors/sdk /connectors/sdk`), so every one of these rides along unless it
 # is excluded here.
 #
-# Verified against all three root-context builds: none of them needs a tests/ or
-# scripts/ directory. uv installs workspace members from `[tool.hatch.build.targets
+# Verified against all FOUR root-context builds: none of them needs a tests/ or
+# scripts/ directory. Re-verified for synapse in slice 6b — `uv sync --frozen --no-dev
+# --package thalamus-synapse` resolves with synapse/tests/ absent, because the wheel
+# target is src/synapse and never reaches outside it. uv installs workspace members from `[tool.hatch.build.targets
 # .wheel] packages = ["src/<pkg>"]`, which never reaches outside src/.
 **/tests/
 **/scripts/

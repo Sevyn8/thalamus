@@ -26,6 +26,7 @@ members = [
     "ithina-dis",
     "mirror-sync-consumer",
     "streaming-consumer",
+    "synapse-ui-server",
     "thalamus-clover",
     "thalamus-clover-oauth",
     "thalamus-connector-sdk",
@@ -1749,6 +1750,7 @@ dev = [
     { name = "pyyaml" },
     { name = "ruff" },
     { name = "streaming-consumer" },
+    { name = "synapse-ui-server" },
     { name = "thalamus-clover" },
     { name = "thalamus-clover-oauth" },
     { name = "thalamus-connector-sdk" },
@@ -1816,6 +1818,7 @@ dev = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", specifier = "==0.15.15" },
     { name = "streaming-consumer", editable = "services/streaming-consumer" },
+    { name = "synapse-ui-server", editable = "../synapse/services/synapse-ui-server" },
     { name = "thalamus-clover", editable = "../connectors/thalamus-clover" },
     { name = "thalamus-clover-oauth", editable = "../connectors/clover-oauth" },
     { name = "thalamus-connector-sdk", editable = "../connectors/sdk" },
@@ -3394,6 +3397,35 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.9" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36" },
     { name = "uvicorn", specifier = ">=0.32" },
+]
+
+[[package]]
+name = "synapse-ui-server"
+version = "0.0.0"
+source = { editable = "../synapse/services/synapse-ui-server" }
+dependencies = [
+    { name = "dis-core" },
+    { name = "dis-rls" },
+    { name = "fastapi" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "pydantic" },
+    { name = "pyjwt", extra = ["crypto"] },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "thalamus-synapse" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "dis-core" },
+    { name = "dis-rls" },
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
+    { name = "pydantic", specifier = ">=2.9" },
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.8" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36" },
+    { name = "thalamus-synapse" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
 ]
 
 [[package]]
