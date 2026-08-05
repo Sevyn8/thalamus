@@ -1,5 +1,16 @@
 import { PageHeader } from "@/components/shared/PageHeader";
-import { SectionHead, SynapseDown, Tag, Tile, daysSince } from "@/components/synapse/primitives";
+import {
+  Attention,
+  Column,
+  Footnote,
+  Row,
+  SectionHead,
+  Stat,
+  StatStrip,
+  SynapseDown,
+  Tag,
+  daysSince,
+} from "@/components/synapse/primitives";
 import { SynapseUnavailable, synapseGet } from "@/lib/synapse/server-client";
 
 // NEVER PRERENDER THIS PAGE. It reads SYNAPSE_BFF_URL and the caller's session at
@@ -47,9 +58,11 @@ export default async function SynapseFleetPage() {
       // SAYS WHICH THING IS DOWN. "Something went wrong" would send an operator
       // to the wrong system; this names the BFF so the next step is obvious.
       return (
-        <div className="space-y-6">
+        <div>
           <PageHeader title="Synapse" subtitle="Watching, and telling nobody yet." />
-          <SynapseDown message={error.message} />
+          <Column>
+            <SynapseDown message={error.message} />
+          </Column>
         </div>
       );
     }
@@ -64,79 +77,87 @@ export default async function SynapseFleetPage() {
   const actions = tenants.reduce((sum, t) => sum + t.actions_recorded, 0);
 
   return (
-    <div className="space-y-6">
+    <div>
       <PageHeader
         title="Synapse"
         subtitle="Watching, and telling nobody yet. Everything is at the shadow rung."
       />
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Tile n={live.length} label="tenants live" />
-        <Tile n={live.reduce((s, t) => s + t.analyses_running, 0)} label="analyses running" />
-        <Tile n={actions} label="actions ever" />
-        <Tile n={stale.length} label="needs a person" warn={stale.length > 0} />
-      </div>
+      <Column>
+        {/* THE THING NEEDING A PERSON IS A BANNER, NOT A ROW THAT LOOKS LIKE THE
+            OTHERS. It also comes before the stats: a count of problems is less
+            useful than the problem, and "needs a person: 1" as a tile was the
+            same information styled as trivia. */}
+        {stale.map((t) => {
+          const age = daysSince(t.latest_sale);
+          return (
+            <Attention
+              key={t.tenant_id}
+              title={
+                age === null
+                  ? `${t.name} has never sent a sale`
+                  : `${t.name}'s sales data is ${age} days old`
+              }
+              detail={
+                age === null
+                  ? "Every rate-based analysis will refuse until something ingests."
+                  : `Last sale ${t.latest_sale}. Every rate-based analysis is refusing, correctly, and will until something ingests.`
+              }
+            />
+          );
+        })}
 
-      {stale.length > 0 && (
+        <StatStrip>
+          <Stat n={live.length} label="tenants live" />
+          <Stat n={live.reduce((s, t) => s + t.analyses_running, 0)} label="analyses running" />
+          <Stat n={actions} label="actions ever" />
+        </StatStrip>
+
         <section>
-          <SectionHead>Needs you</SectionHead>
-          {stale.map((t) => {
-            const age = daysSince(t.latest_sale);
-            return (
-              <div key={t.tenant_id} className="border-b border-border py-3 last:border-b-0">
-                <p className="text-body-strong">
-                  {age === null
-                    ? `${t.name} has never sent a sale`
-                    : `${t.name}'s sales data is ${age} days old`}
-                </p>
-                <p className="mt-0.5 text-body text-foreground-muted">
-                  {age === null
-                    ? "Every rate-based analysis will refuse until something ingests."
-                    : `Last sale ${t.latest_sale}. Every rate-based analysis is refusing, correctly, and will until something ingests.`}
-                </p>
-              </div>
-            );
-          })}
+          <SectionHead>Tenants</SectionHead>
+          {tenants.length === 0 ? (
+            // A REAL STATE, rendered as itself. D6: no placeholder content to make
+            // the screen look finished.
+            <p className="text-body text-foreground-muted">
+              No tenants are mirrored yet, so there is nothing for Synapse to watch.
+            </p>
+          ) : (
+            tenants.map((t) => (
+              <Row
+                key={t.tenant_id}
+                title={
+                  <a
+                    className="underline-offset-2 hover:underline"
+                    href={`/superadmin/synapse/tenants/${t.tenant_id}`}
+                  >
+                    {t.name}
+                  </a>
+                }
+                meta={
+                  <>
+                    {t.stores} {t.stores === 1 ? "store" : "stores"}
+                    {t.products > 0 ? ` · ${t.products} products` : " · no data has ever arrived"}
+                    {t.last_run_slot ? ` · last ran ${t.last_run_slot}` : ""}
+                  </>
+                }
+                right={
+                  <Tag tone={t.analyses_running > 0 ? "good" : "mute"}>
+                    {t.analyses_running > 0
+                      ? `${t.analyses_running} analyses · watching`
+                      : "nothing on"}
+                  </Tag>
+                }
+              />
+            ))
+          )}
+          <div className="mt-3">
+            <Footnote>
+              &quot;Watching&quot; is what the shadow rung is called here. The client is not told
+              and nothing reaches them.
+            </Footnote>
+          </div>
         </section>
-      )}
-
-      <section>
-        <SectionHead>Tenants</SectionHead>
-        {tenants.length === 0 ? (
-          // A REAL STATE, rendered as itself. D6: no placeholder content to make
-          // the screen look finished.
-          <p className="text-body text-foreground-muted">
-            No tenants are mirrored yet, so there is nothing for Synapse to watch.
-          </p>
-        ) : (
-          tenants.map((t) => (
-            <div key={t.tenant_id} className="flex items-center gap-3 border-b border-border py-3 last:border-b-0">
-              <div>
-                <a
-                  className="text-body-strong underline-offset-2 hover:underline"
-                  href={`/superadmin/synapse/tenants/${t.tenant_id}`}
-                >
-                  {t.name}
-                </a>
-                <p className="text-body text-foreground-muted">
-                  {t.stores} stores · {t.products} products
-                  {t.last_run_slot ? ` · last ran ${t.last_run_slot}` : ""}
-                </p>
-              </div>
-              <span className="ml-auto">
-                <Tag tone={t.analyses_running > 0 ? "good" : "mute"}>
-                  {t.analyses_running > 0 ? `${t.analyses_running} · watching` : "nothing on"}
-                </Tag>
-              </span>
-            </div>
-          ))
-        )}
-      </section>
-
-      <p className="font-mono text-caption text-foreground-muted">
-        &quot;watching&quot; is what the shadow rung is called here · the client is not told and
-        nothing reaches them
-      </p>
+      </Column>
     </div>
   );
 }

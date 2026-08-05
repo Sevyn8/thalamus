@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/shared/PageHeader";
+import { Column, SectionHead } from "@/components/synapse/primitives";
 
 // Atlas — PRESENT, DISABLED, HONEST (D3 / N4).
 //
@@ -19,38 +20,43 @@ const OWNS_EVENTUALLY: ReadonlyArray<{ concern: string; today: string }> = [
 
 export default function AtlasPage() {
   return (
-    <div className="space-y-6">
+    <div>
       <PageHeader
         title="Atlas"
         subtitle="The vocabulary plane. Named in the architecture, not yet started."
       />
 
-      <div className="rounded-md border border-dashed border-border p-8 text-center">
-        <p className="text-heading">Atlas is not built</p>
-        <p className="mx-auto mt-2 max-w-prose text-body text-foreground-muted">
-          Canonical field meanings, synonyms, and the mapping between a tenant&apos;s
-          language and ours. This page has no data behind it because Atlas has no
-          data yet.
-        </p>
-      </div>
+      <Column>
+        {/* THE PAGE IS BOUNDED; THE PLACEHOLDER STAYS CENTRED INSIDE IT. PATTERNS.md
+            specifies the FeaturePending shape as "a minimal centered text + ETA", so
+            left-aligning this to match the other five screens would break a
+            documented convention to satisfy an undocumented one. Bounding the column
+            gives the table below the same proximity as everywhere else without
+            touching the empty state's own alignment. */}
+        <div className="rounded-md border border-dashed border-border p-8 text-center">
+          <p className="text-heading">Atlas is not built</p>
+          <p className="text-body mx-auto mt-2 max-w-prose text-foreground-muted">
+            Canonical field meanings, synonyms, and the mapping between a tenant&apos;s language and
+            ours. This page has no data behind it because Atlas has no data yet.
+          </p>
+        </div>
 
-      <section>
-        <h2 className="text-label mb-3 text-foreground-subtle">
-          What it will own
-        </h2>
-        <table className="w-full text-body">
-          <tbody>
-            {OWNS_EVENTUALLY.map((row) => (
-              <tr key={row.concern} className="border-b border-border last:border-b-0">
-                <td className="py-3">{row.concern}</td>
-                <td className="py-3 text-right font-mono text-caption text-foreground-muted">
-                  today: {row.today}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+        <section>
+          <SectionHead>What it will own</SectionHead>
+          <table className="w-full">
+            <tbody>
+              {OWNS_EVENTUALLY.map((row) => (
+                <tr key={row.concern} className="border-b border-border last:border-b-0">
+                  <td className="text-body py-3 pr-4">{row.concern}</td>
+                  <td className="text-caption py-3 text-right font-mono text-foreground-muted">
+                    today: {row.today}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      </Column>
     </div>
   );
 }

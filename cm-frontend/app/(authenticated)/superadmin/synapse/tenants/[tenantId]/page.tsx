@@ -2,11 +2,17 @@ import { notFound } from "next/navigation";
 
 import { PageHeader } from "@/components/shared/PageHeader";
 import {
-  NameWithId,
+  Breadcrumb,
+  Column,
+  Fact,
+  Facts,
+  Footnote,
+  Row,
   SectionHead,
+  Stat,
+  StatStrip,
   SynapseDown,
   Tag,
-  Tile,
   Unavailable,
   daysSince,
   type Tone,
@@ -82,9 +88,11 @@ export default async function TenantPage({
       // to blur them by returning an empty shell.
       if (error.message.includes("404")) notFound();
       return (
-        <div className="space-y-6">
+        <div>
           <PageHeader title="Synapse" subtitle="One tenant" />
-          <SynapseDown message={error.message} />
+          <Column>
+            <SynapseDown message={error.message} />
+          </Column>
         </div>
       );
     }
@@ -94,99 +102,118 @@ export default async function TenantPage({
   const staleDays = daysSince(detail.latest_sale);
 
   return (
-    <div className="space-y-6">
+    <div>
       <PageHeader
         title={detail.name}
         subtitle="Watching. Nothing here reaches the client — every analysis is at the shadow rung."
       />
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Tile n={detail.products} label="products watched" />
-        <Tile n={detail.sales_seen} label="sales seen" />
-        <Tile n={detail.actions_recorded} label="actions recorded" />
-        <Tile
-          n={staleDays === null ? "—" : `${staleDays}d`}
-          label={staleDays === null ? "no sale ever seen" : "since the last sale"}
-          warn={staleDays === null || staleDays > 3}
-        />
-      </div>
+      <Column>
+        <Breadcrumb tenant={detail.name} />
 
-      <SectionHead>Running</SectionHead>
-      {detail.analyses.length === 0 ? (
-        // A granted-but-unprovisioned tenant is a real state (D6). Rendered as
-        // itself rather than padded to look finished.
-        <p className="text-body text-foreground-muted">
-          Nothing is provisioned for this tenant, so Synapse is not watching it. Provisioning is
-          done by hand until the write path exists.
-        </p>
-      ) : (
-        detail.analyses.map((state) => {
-          const verdict = found(state);
-          return (
-            <div key={state.analysis_id} className="flex items-start gap-3 border-b border-border py-3">
-              <NameWithId
-                name={ANALYSIS_NAMES[state.analysis_id] ?? state.analysis_id}
-                id={state.analysis_id}
-              />
-              <div className="ml-auto flex flex-col items-end gap-1">
-                <Tag tone={verdict.tone}>{verdict.label}</Tag>
-                <span className="font-mono text-caption text-foreground-muted">
-                  {state.cadence} · {state.timezone} · {state.rung}
-                </span>
-              </div>
-            </div>
-          );
-        })
-      )}
-
-      <SectionHead>What the last run could and could not tell us</SectionHead>
-      <table className="w-full text-body">
-        <tbody>
-          {/* REAL: read straight off canonical by the BFF. */}
-          <tr className="border-b">
-            <td className="py-3 text-foreground-muted">Most recent sale</td>
-            <td className="py-3 text-right text-micro font-mono">
-              {detail.latest_sale ?? "none has ever arrived"}
-              {staleDays !== null ? ` · ${staleDays} days ago` : ""}
-            </td>
-            <td className="max-w-prose py-3 pl-4 text-caption text-foreground-muted">
-              Every rate-based analysis refuses a series older than its freshness threshold,
-              because dividing today&apos;s stock by a rate that stopped weeks ago mixes two
-              instants.
-            </td>
-          </tr>
-
-          {/* REAL: synapse.run's own counts. proposed vs appended differ when the
-              idempotency index suppresses a repeat, which is worth seeing. */}
-          {detail.analyses.map((state) => (
-            <tr key={state.analysis_id} className="border-b">
-              <td className="py-3 text-foreground-muted">
-                Last run · {ANALYSIS_NAMES[state.analysis_id] ?? state.analysis_id}
-              </td>
-              <td className="py-3 text-right text-micro font-mono">
-                {state.last_slot
-                  ? `${state.last_slot} · ${state.last_outcome} · proposed ${state.actions_proposed ?? 0}, appended ${state.actions_appended ?? 0}`
-                  : "never"}
-              </td>
-              <td className="max-w-prose py-3 pl-4 text-caption text-foreground-muted">
-                Appended can be lower than proposed: a repeat of the same slot is suppressed by
-                the idempotency index rather than duplicated.
-              </td>
-            </tr>
-          ))}
-
-          {/* NOT REAL, AND SAID SO. Naming the column is the point — the gap is
-              legible rather than mysterious. */}
-          <Unavailable
-            what="Why each product was refused"
-            because="synapse.run.detail exists and is empty. counts_by_reason() already computes the breakdown in code; threading it into the run row is a Plan-signature change (outstanding item 4). Until then a run that proposed 0 cannot be told apart from one that found nothing."
+        {/* ONLY THE STALENESS IS COLOURED. Four emphasised figures emphasise
+            nothing; this is the one an operator can act on. */}
+        <StatStrip>
+          <Stat n={detail.products} label="products watched" />
+          <Stat n={detail.sales_seen} label="sales seen" />
+          <Stat n={detail.actions_recorded} label="actions recorded" />
+          <Stat
+            n={staleDays === null ? "—" : `${staleDays}d`}
+            label={staleDays === null ? "no sale ever seen" : "since the last sale"}
+            warn={staleDays === null || staleDays > 3}
           />
-        </tbody>
-      </table>
+        </StatStrip>
 
-      <p className="font-mono text-caption text-foreground-muted">
-        no product is named on this screen · the tenant-facing view is 8b and is counts-only
-      </p>
+        <section>
+          <SectionHead>Running</SectionHead>
+          {detail.analyses.length === 0 ? (
+            // A granted-but-unprovisioned tenant is a real state (D6). Rendered as
+            // itself rather than padded to look finished.
+            <p className="text-body text-foreground-muted">
+              Nothing is provisioned for this tenant, so Synapse is not watching it. Provisioning
+              is done by hand until the write path exists.
+            </p>
+          ) : (
+            detail.analyses.map((state) => {
+              const verdict = found(state);
+              const hasNeverRun = state.last_outcome === null;
+              return (
+                <Row
+                  key={state.analysis_id}
+                  attention={hasNeverRun}
+                  title={ANALYSIS_NAMES[state.analysis_id] ?? state.analysis_id}
+                  // METADATA WITH ITS SUBJECT, and the internal id belongs here
+                  // too: it is what appears in logs and in synapse.run, so a
+                  // screen without it makes a log line unsearchable from the UI
+                  // that produced it. That is D4, and it survives the layout
+                  // change even though the component that used to carry it does not.
+                  meta={
+                    <span className="font-mono">
+                      {state.analysis_id} · {state.cadence} · {state.timezone} · {state.rung}
+                    </span>
+                  }
+                  right={<Tag tone={verdict.tone}>{verdict.label}</Tag>}
+                  // NO CLOCK TIME HERE, deliberately. The mockup reads "First run
+                  // tomorrow 03:00", but the schedule (30 21 * * * UTC) lives in
+                  // terraform and is NOT in the BFF's response — cadence and
+                  // timezone are. Rendering an hour would be inventing a figure on
+                  // a screen whose whole premise is that every number is real.
+                  note={hasNeverRun ? `first run at the next ${state.cadence} slot` : undefined}
+                />
+              );
+            })
+          )}
+        </section>
+
+        <section>
+          <SectionHead>What the last run could and could not tell us</SectionHead>
+          <Facts>
+            {/* REAL: read straight off canonical by the BFF. */}
+            <Fact
+              label="Most recent sale"
+              value={detail.latest_sale ?? "none has ever arrived"}
+              note={staleDays !== null ? `${staleDays} days ago` : undefined}
+            />
+
+            {/* REAL: synapse.run's own counts. The explanation that used to be
+                repeated on every one of these rows is now the footnote below. */}
+            {detail.analyses.map((state) => (
+              <Fact
+                key={state.analysis_id}
+                label={`${ANALYSIS_NAMES[state.analysis_id] ?? state.analysis_id} · last run`}
+                value={state.last_slot ?? "never"}
+                note={
+                  state.last_slot
+                    ? `${state.last_outcome} · ${state.actions_proposed ?? 0} proposed, ${state.actions_appended ?? 0} appended`
+                    : undefined
+                }
+              />
+            ))}
+
+            {/* NOT REAL, AND SAID SO. Naming the column is the point — the gap is
+                legible rather than mysterious. */}
+            <Unavailable
+              what="Why each product was refused"
+              because="synapse.run.detail exists and is empty. counts_by_reason() already computes the breakdown in code; threading it into the run row is a Plan-signature change (outstanding item 4). Until then a run that proposed 0 cannot be told apart from one that found nothing."
+            />
+          </Facts>
+
+          {/* ONE FOOTNOTE, COVERING BOTH FACTS. It was two rows of prose saying
+              one of these things twice. */}
+          <div className="mt-3">
+            <Footnote>
+              Every rate-based analysis refuses a series older than its freshness threshold, because
+              dividing today&apos;s stock by a rate that stopped weeks ago mixes two instants. Where
+              appended is lower than proposed, a repeat of the same slot was suppressed by the
+              idempotency index rather than duplicated.
+            </Footnote>
+          </div>
+        </section>
+
+        <Footnote>
+          No product is named on this screen. The tenant-facing view is 8b and is counts-only.
+        </Footnote>
+      </Column>
     </div>
   );
 }
