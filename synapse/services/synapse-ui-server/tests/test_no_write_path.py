@@ -94,3 +94,32 @@ def test_the_only_session_helper_used_is_the_platform_one() -> None:
     assert "rls_session(" not in body, (
         "reads.py opened a tenant-scoped session; that one can write, and this service must not"
     )
+
+
+def test_the_service_exposes_no_schema_endpoints() -> None:
+    """/docs, /redoc and /openapi.json are the only routes FastAPI mounts WITHOUT a
+    dependency, so any caller able to invoke could enumerate the API without being PLATFORM.
+
+    Asserted rather than merely configured, because the reason for removing them is that this
+    service is the precedent for fixing the other four — and a precedent that can be undone by
+    a default in a later FastAPI version is not one. Today's risk is low; the point is that
+    "safe behind two layers" is how a public schema happens when one layer changes.
+    """
+    from synapse_ui_server.config import Config
+    from synapse_ui_server.main import create_app
+
+    app = create_app(
+        Config(
+            reader_url="postgresql+psycopg://u@h/d",
+            jwt_issuer="https://x/",
+            jwt_audience="a",
+            expected_database="thalamus",
+        )
+    )
+    paths = {route.path for route in app.routes if hasattr(route, "path")}
+    assert not paths & {"/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"}, (
+        f"a schema endpoint is mounted: {sorted(paths & {'/docs', '/redoc', '/openapi.json'})}"
+    )
+    # The baseline: the real routes are still there, so this cannot pass against an app that
+    # failed to build at all.
+    assert {"/healthz", "/fleet", "/analyses"} <= paths

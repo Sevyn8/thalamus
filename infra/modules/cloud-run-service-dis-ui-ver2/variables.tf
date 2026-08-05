@@ -26,6 +26,27 @@ variable "service_name" {
   default     = "dis-ui-ver2"
 }
 
+# ============================================================================
+# THE SAME TWO-URL AUTH0 TRAP APPLIES HERE, UNVERIFIED BUT LIKELY
+# ============================================================================
+# This service has two Cloud Run URLs like every other (a legacy
+# <name>-<hash>-<regioncode>.a.run.app and the newer
+# <name>-<projectnumber>.<region>.run.app), and it DOES do Auth0: the image bakes
+# VITE_AUTH0_DOMAIN / _CLIENT_ID / _AUDIENCE at build time
+# (dis/terraform/docker/dis-ui-ver2.Dockerfile).
+#
+# There is NO VITE_AUTH0_REDIRECT_URI build arg, which means the SPA almost
+# certainly uses window.location.origin as its redirect_uri - so whichever host a
+# user loads becomes the callback, and only the host registered in Auth0 works.
+# cm-frontend hit exactly this and it presents as "The state parameter is
+# invalid", naming the state rather than the hostname.
+#
+# NOT VERIFIED: the ver2 source is not in this repo (only dist/), so the
+# redirect_uri could not be read. Check Auth0's Allowed Callback URLs for this
+# client and confirm which of the two hosts is registered before sending anyone
+# a link. lib/launcher/tiles.ts uses the 697546531605 form.
+# ============================================================================
+
 variable "image" {
   type        = string
   description = "Full container image reference. Defaults to the tag live on the service at import time. Built by dis/terraform/docker/cloudbuild-dis-ui-ver2.yaml, which pins an explicit vN and no floating `latest`."

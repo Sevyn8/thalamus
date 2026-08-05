@@ -46,7 +46,31 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app(config: Config | None = None) -> FastAPI:
-    app = FastAPI(title="synapse-ui-server", lifespan=_lifespan)
+    # NO SCHEMA ENDPOINTS. /docs, /redoc and /openapi.json are the only routes
+    # FastAPI mounts without a dependency, so any caller able to invoke this
+    # service could enumerate its API without being PLATFORM.
+    #
+    # NOT BECAUSE OF TODAY'S RISK, which behind internal ingress plus an IAM
+    # invoker binding is genuinely low. Because this service is the PRECEDENT for
+    # fixing the other four, and "safe behind two layers" is exactly how a public
+    # schema happens on the day one layer changes — an ingress setting relaxed for
+    # a debugging session, a binding widened to unblock something.
+    #
+    # There is no consumer to lose: cm-frontend is the only caller and it is
+    # server-side, with its request shapes typed in lib/synapse/*.
+    app = FastAPI(
+        title="synapse-ui-server",
+        lifespan=_lifespan,
+        # openapi_url=None IS THE LOAD-BEARING ONE: FastAPI only mounts /docs and
+        # /redoc when a schema URL exists, so this alone removes all three. The other
+        # two are declared anyway — they state the intent at the call site, and a
+        # future FastAPI that decoupled them would otherwise reintroduce the UIs
+        # silently. (Verified: deleting docs_url alone changes nothing; deleting
+        # openapi_url fails the test below.)
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
     app.state.config = config or load_config()
 
     @app.exception_handler(AuthError)

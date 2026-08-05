@@ -128,7 +128,14 @@ variable "sendgrid_from_email" {
 variable "cors_allowed_origins" {
   type        = string
   description = "CORS_ALLOWED_ORIGINS. Comma-separated exact origins (scheme+host, no trailing slash) for the FastAPI CORSMiddleware."
-  default     = "https://cm-frontend-697546531605.asia-south1.run.app,https://cm-frontend-mjiqp4br4a-el.a.run.app,http://localhost:3000"
+  # BOTH cm-frontend URLs are allowed, and that is what makes the legacy one a
+  # trap rather than an obvious dead end: CORS permits it, so the app loads and
+  # behaves normally until the Auth0 round trip, which then fails with "The state
+  # parameter is invalid". Only the 697546531605 form is registered as an Auth0
+  # callback - see APP_BASE_URL in cloud-run-service-cm-frontend/variables.tf.
+  # Removing the legacy origin here would surface the problem earlier, as a CORS
+  # error naming the host; it is left because something may still call it.
+  default = "https://cm-frontend-697546531605.asia-south1.run.app,https://cm-frontend-mjiqp4br4a-el.a.run.app,http://localhost:3000"
 }
 
 # --- Lazy Auth0 values: NOT recorded in the repo; operator must supply. ---

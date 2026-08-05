@@ -1,0 +1,62 @@
+# Cloud Build: build + push the synapse-ui-server image.
+#
+# Run from the MONOREPO ROOT, not from the service directory — the -f path and the
+# build context both resolve from the root, and the root .dockerignore is what
+# filters the upload:
+#
+#   gcloud builds submit \
+#     --config synapse/services/synapse-ui-server/cloudbuild.yaml \
+#     --substitutions=_TAG=v1 .
+#
+# THE CONTEXT IS THE ROOT AND THIS IS NOT NEGOTIABLE. The uv workspace is rooted
+# at dis/ and declares both `../synapse` and `../synapse/services/synapse-ui-server`
+# as members, so the image needs synapse/, the service, AND dis/libs/* in one
+# context. Same arrangement as the orchestrator and the connectors; the opposite of
+# cloudbuild-mirror-sync-consumer.yaml, whose context is dis/ because that service
+# is a member of dis/. This file copies that file's SHAPE, not its context.
+#
+# _TAG IS REQUIRED with an empty default, so an omitted tag fails the build loudly
+# instead of silently re-pinning a floating one. There is deliberately no `latest`
+# — the Cloud Run pin is an explicit vN, because a floating
+# thalamus-images/dis-ui-ver2:latest once came to point at v7 while v15 was serving.
+#
+# THE TAG MUST MATCH infra/envs/staging/variables.tf's `synapse_ui_server_image`.
+# Terraform pins the tag; nothing reconciles the two automatically, so a build that
+# produces v2 while the variable still pins v1 deploys the old image with no error
+# anywhere. Grep the pinned string before building:
+#
+#   grep -rn "synapse-ui-server:" infra/envs/
+#
+# NO BUILD ARGS. Everything the service needs is RUNTIME env supplied by Cloud Run
+# (SYNAPSE_READER_URL, SYNAPSE_JWT_ISSUER, SYNAPSE_JWT_AUDIENCE,
+# DIS_EXPECTED_DATABASE), so one image is promotable across environments unchanged
+# and no credential is ever baked in.
+#
+# NO DOCKER_BUILDKIT=1: this Dockerfile uses neither a `# syntax=` directive nor
+# heredoc COPYs, so enabling it would imply a requirement that does not exist.
+
+substitutions:
+  _REGION: "asia-south1"
+  _REPO: "thalamus-images"
+  # REQUIRED. Empty default = fail loud rather than mispin (see header).
+  _TAG: ""
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  # --no-cache: a cached layer can hide a drifted lock, and here it would also hide
+  # a route that has stopped registering — the build-time create_app() check is
+  # only worth having if it actually runs every build.
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - synapse/services/synapse-ui-server/Dockerfile
+      - --no-cache
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/synapse-ui-server:${_TAG}
+      - .
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/synapse-ui-server:${_TAG}

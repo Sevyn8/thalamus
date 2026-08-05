@@ -125,7 +125,7 @@ variable "synapse_bff_url" {
 
 variable "app_base_url" {
   type        = string
-  description = "APP_BASE_URL - the frontend's own origin, used to build Auth0 callback URLs."
+  description = "APP_BASE_URL - the frontend's own origin, used to build Auth0 callback URLs. THIS IS THE CANONICAL URL AND THE SERVICE HAS TWO. Cloud Run gives every service both a legacy https://<name>-<hash>-<regioncode>.a.run.app and a newer https://<name>-<projectnumber>.<region>.run.app; only the value below is registered in Auth0's Allowed Callback URLs. STARTING A LOGIN AT THE OTHER ONE FAILS WITH 'The state parameter is invalid' - the state cookie is set on one host and the callback lands on the other - and that error names the state parameter rather than the hostname, so it reads as an Auth0 misconfiguration and costs a debugging session. cm-backend's CORS allows BOTH forms, so the legacy URL loads and behaves normally right up until the Auth0 round trip. Send people to this one."
   default     = "https://cm-frontend-697546531605.asia-south1.run.app"
 }
 
