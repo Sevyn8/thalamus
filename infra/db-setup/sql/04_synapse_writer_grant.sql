@@ -121,16 +121,41 @@ REVOKE USAGE ON SCHEMA canonical FROM synapse_writer;
 -- VERIFY (run manually — each has a specific wrong answer)
 -- ----------------------------------------------------------------------------
 --
--- 1. EXACTLY the intended grants, and no more. Two rows.
+-- 1. EXACTLY the intended grants, and no more. SEVEN rows since slice 6a; this
+--    block said "Two rows" and named synapse_writer | UPDATE as a fault until
+--    migration 0003 added synapse.provision and synapse.run.
 --
---      SELECT grantee, privilege_type
+--      SELECT grantee, table_name, privilege_type
 --        FROM information_schema.role_table_grants
 --       WHERE table_schema = 'synapse' AND grantee IN ('synapse_writer','synapse_reader')
---       ORDER BY 1, 2;
---      -> synapse_reader | SELECT
---         synapse_writer | INSERT
---      Anything else — especially synapse_writer | UPDATE — means the REVOKE
---      above did not catch something.
+--       ORDER BY 1, 2, 3;
+--      -> synapse_reader | actions   | SELECT
+--         synapse_reader | provision | SELECT
+--         synapse_reader | run       | SELECT
+--         synapse_writer | actions   | INSERT
+--         synapse_writer | run       | INSERT
+--         synapse_writer | run       | SELECT
+--         synapse_writer | run       | UPDATE
+--
+--    THE WRITER NOW READS AND UPDATES, AND ONLY ON `run`. That table is a state
+--    machine — claim a slot, discover whether the claim won, complete it — and a
+--    write-only role cannot operate one. The property that mattered is intact and
+--    is worth checking separately:
+--
+--      -- the writer must hold NOTHING on the action log except INSERT
+--      SELECT privilege_type FROM information_schema.role_table_grants
+--       WHERE grantee = 'synapse_writer' AND table_name = 'actions';
+--      -> INSERT, and nothing else. A SELECT here would mean the append
+--         credential can read the log back, which is the posture slice 5 built.
+--
+--      -- and nothing whatsoever on provision: enablement is an operator act
+--      SELECT count(*) FROM information_schema.role_table_grants
+--       WHERE grantee = 'synapse_writer' AND table_name = 'provision';
+--      -> 0
+--
+--    NOTHING HOLDS INSERT ON synapse.provision, by design. Provisioning is done by
+--    hand against the owner until a console exists, so a table no runtime role can
+--    write cannot be widened by a bug.
 --
 -- 2. The writer holds NOTHING on canonical.
 --
@@ -176,8 +201,18 @@ REVOKE USAGE ON SCHEMA canonical FROM synapse_writer;
 --      DELETE FROM synapse.actions;                  -- permission denied
 --      SELECT count(*) FROM synapse.actions;         -- permission denied
 --
--- 7. The reader CAN read it back, which is why it was granted.
+-- 7. The reader CAN read it back, which is why it was granted. SET THE GUCs, AND
+--    EXPECT A NUMBER YOU CAN CHECK. `>= 0, no error` was the expectation here
+--    until 2026-08-04 and it is satisfied by a query that returns nothing because
+--    RLS hid every row — the silent-zero this table's own header warns about.
 --
---      -- as synapse_reader, with the two GUCs set for a tenant that has rows:
---      SELECT count(*) FROM synapse.actions;   -- >= 0, no error
+--      -- as synapse_reader:
+--      BEGIN;
+--        SELECT set_config('app.user_type', 'TENANT', true);
+--        SELECT set_config('app.tenant_id', '<TENANT_UUID>', true);
+--        SELECT count(*) FROM synapse.actions;
+--      ROLLBACK;
+--      -> the number of actions you know that tenant has. If it is 0 and you
+--         expected rows, you have measured RLS, not the grant. Re-check with
+--         app.user_type='PLATFORM' before concluding the log is empty.
 -- ============================================================================

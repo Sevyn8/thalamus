@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sevyn8.com/contracts/synapse/analysis.schema.json",
   "title": "Synapse analysis declaration",
-  "description": "THE DEMAND SIDE. What a consumer NEEDS, as data. The capability and signal contracts describe what Synapse OFFERS; nothing described what anything REQUIRED, so an analysis's inputs could only be discovered by running it. EXTRACTED from writing dead_stock, not designed in advance: every field here exists because that declaration could not be written without it, and the two fields most likely to be wanted next (a schedule, and an output destination) are still ABSENT: an evaluator now consumes a declaration and produces rows, but nothing SCHEDULES one or DELIVERS the result anywhere, so both fields would still be guesses about shapes no caller has asked for.",
+  "description": "THE DEMAND SIDE. What a consumer NEEDS, as data. The capability and signal contracts describe what Synapse OFFERS; nothing described what anything REQUIRED, so an analysis's inputs could only be discovered by running it. EXTRACTED from writing dead_stock, not designed in advance: every field here exists because that declaration could not be written without it. ON THE TWO FIELDS THIS DESCRIPTION USED TO CALL ABSENT: a SCHEDULE is still not here and deliberately never will be — cadence is a per-tenant SELECTION and lives in synapse.provision, because when a customer is analysed is an operational fact that changes without a release. An OUTPUT DESTINATION is still absent for the original reason, that nothing delivers anything. What did arrive is `max_rung`, which is the ENVELOPE rather than either of those: how far an action from this analysis is PERMITTED to travel, for any tenant. It is here and not in the table because it is a property of the analysis's maturity, and raising it should be a reviewed diff.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -12,7 +12,8 @@
     "requires",
     "emits",
     "thresholds",
-    "holdout"
+    "holdout",
+    "max_rung"
   ],
   "properties": {
     "id": {
@@ -26,7 +27,7 @@
       "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$"
     },
     "grain": {
-      "description": "The columns that together identify ONE emitted row. MUST BE CONTAINED IN EVERY REQUIRED CAPABILITY'S GRAIN, checked at registry import \u2014 an analysis emitting one row per (tenant, store, sku) can only join capabilities that identify rows at least that finely, and a coarser capability cannot be joined without inventing rows. This is the first mechanical use of the capability contract's `grain`, and the reason that field was worth extracting from one resolver.",
+      "description": "The columns that together identify ONE emitted row. MUST BE CONTAINED IN EVERY REQUIRED CAPABILITY'S GRAIN, checked at registry import — an analysis emitting one row per (tenant, store, sku) can only join capabilities that identify rows at least that finely, and a coarser capability cannot be joined without inventing rows. This is the first mechanical use of the capability contract's `grain`, and the reason that field was worth extracting from one resolver.",
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
@@ -55,7 +56,7 @@
             "pattern": "^[a-z][a-z0-9_]*$"
           },
           "fields": {
-            "description": "The subset of that capability's `returns` this analysis reads. Checked against `returns` at import, which is what would catch reaching for a plausible-but-absent field \u2014 the most likely way an analysis goes quietly wrong. NON-EMPTY: an analysis that reads nothing from a capability does not require it.",
+            "description": "The subset of that capability's `returns` this analysis reads. Checked against `returns` at import, which is what would catch reaching for a plausible-but-absent field — the most likely way an analysis goes quietly wrong. NON-EMPTY: an analysis that reads nothing from a capability does not require it.",
             "type": "array",
             "minItems": 1,
             "uniqueItems": true,
@@ -65,7 +66,7 @@
             }
           },
           "gates": {
-            "description": "Thresholds this analysis binds on that capability's declared gate KINDS, each with the policy for reducing a per-series measurement to a verdict. THIS IS THE FIELD THE CAPABILITY CONTRACT GAVE UP: it held `min_history_days: 60` on the supply side, which works for one caller and breaks for two \u2014 dead stock wants 90 days of no-sales, a forecast wants 60 for seasonality, and both read the same rows. An EMPTY ARRAY is a claim that the capability declares no gates, and the binding must match its declared kinds exactly: an unbound declared gate never runs, and a bound undeclared gate has no probe.",
+            "description": "Thresholds this analysis binds on that capability's declared gate KINDS, each with the policy for reducing a per-series measurement to a verdict. THIS IS THE FIELD THE CAPABILITY CONTRACT GAVE UP: it held `min_history_days: 60` on the supply side, which works for one caller and breaks for two — dead stock wants 90 days of no-sales, a forecast wants 60 for seasonality, and both read the same rows. An EMPTY ARRAY is a claim that the capability declares no gates, and the binding must match its declared kinds exactly: an unbound declared gate never runs, and a bound undeclared gate has no probe.",
             "type": "array",
             "uniqueItems": true,
             "items": {
@@ -81,7 +82,7 @@
                   "const": "min_history_days"
                 },
                 "days": {
-                  "description": "Minimum DISTINCT dates carrying data, per series \u2014 coverage, not calendar span. A forecaster needs observations, not distance. Minimum 1: zero is not a requirement, it is the absence of one, and the empty array says that.",
+                  "description": "Minimum DISTINCT dates carrying data, per series — coverage, not calendar span. A forecaster needs observations, not distance. Minimum 1: zero is not a requirement, it is the absence of one, and the empty array says that.",
                   "type": "integer",
                   "minimum": 1
                 },
@@ -130,7 +131,7 @@
             "minimum": 1
           },
           "fitted": {
-            "description": "TRUE when the number is derived from the tenant's own data. FALSE when it is a constant, in which case `stands_in_for` is REQUIRED \u2014 a number with no stated derivation is indistinguishable from a number someone guessed, and the standing rule is that thresholds are fitted where possible and honest about it where not.",
+            "description": "TRUE when the number is derived from the tenant's own data. FALSE when it is a constant, in which case `stands_in_for` is REQUIRED — a number with no stated derivation is indistinguishable from a number someone guessed, and the standing rule is that thresholds are fitted where possible and honest about it where not.",
             "type": "boolean"
           },
           "stands_in_for": {
@@ -180,7 +181,7 @@
       }
     },
     "holdout": {
-      "description": "THE EXPERIMENT DESIGN, or null when the analysis produces no actions. NOT OPTIONAL AND NOT DEFAULTED: null is a claim that nothing is acted on, and a missing key is a silence. An analysis with an action proposer MUST have one, checked at registry import, because an action without an arm cannot be analysed and a counterfactual cannot be built retrospectively \u2014 assignment has to exist from the first action ever recorded. Declared here rather than supplied per call, unlike a gate threshold: changing the unit, the fraction or the salt INVALIDATES the comparison, so it belongs on the versioned thing.",
+      "description": "THE EXPERIMENT DESIGN, or null when the analysis produces no actions. NOT OPTIONAL AND NOT DEFAULTED: null is a claim that nothing is acted on, and a missing key is a silence. An analysis with an action proposer MUST have one, checked at registry import, because an action without an arm cannot be analysed and a counterfactual cannot be built retrospectively — assignment has to exist from the first action ever recorded. Declared here rather than supplied per call, unlike a gate threshold: changing the unit, the fraction or the salt INVALIDATES the comparison, so it belongs on the versioned thing.",
       "oneOf": [
         {
           "type": "null"
@@ -217,7 +218,7 @@
               "minLength": 1
             },
             "fitted": {
-              "description": "TRUE when the fraction comes from a power calculation. FALSE requires stands_in_for \u2014 same one-way rule as a threshold.",
+              "description": "TRUE when the fraction comes from a power calculation. FALSE requires stands_in_for — same one-way rule as a threshold.",
               "type": "boolean"
             },
             "stands_in_for": {
@@ -264,6 +265,14 @@
             }
           ]
         }
+      ]
+    },
+    "max_rung": {
+      "description": "THE ENVELOPE: the furthest a produced action may travel, for ANY tenant. A provision binds a rung; a provision naming a rung above this is refused when it is LOADED, so an over-privileged provision never reaches an orchestrator. `shadow` means compute, record, show nobody — the only rung anything implements. `suggest` means an action reaches a human and NOTHING IMPLEMENTS IT; it is named so the envelope check is testable rather than vacuous, and so that enabling delivery is the deletion of an explicit refusal rather than the addition of an enum member.",
+      "type": "string",
+      "enum": [
+        "shadow",
+        "suggest"
       ]
     }
   }

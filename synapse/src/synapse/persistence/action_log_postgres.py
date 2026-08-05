@@ -228,16 +228,27 @@ class PostgresActionAppender:
         self._engine = engine
         self._tenant_id = tenant_id
 
-    async def append(self, event: ActionEvent) -> None:
-        """Record one event. Cannot report suppression — see ``ActionAppender``.
+    async def append(self, event: ActionEvent) -> bool:
+        """Record one event. Returns whether it LANDED — ``False`` means it was suppressed.
 
         Inside ``rls_session`` so both GUCs are set: the policy's WITH CHECK compares the session
         tenant against the GENERATED ``tenant_id``, derived from ``target``. An event whose
         target names a different tenant is refused BY THE DATABASE rather than by a check here,
         which is the stronger place for it.
+
+        THE RETURN VALUE ARRIVED IN SLICE 6 and this docstring used to say the opposite —
+        "cannot report suppression". That was true of a caller who only wanted the row written,
+        and false as soon as ``synapse.run`` needed to record how many actions a run actually
+        added. ``rowcount`` after ``ON CONFLICT DO NOTHING`` is 1 for an insert and 0 for a
+        suppression, so the information was always there and simply thrown away.
+
+        It is a real distinction rather than bookkeeping: a second attempt at one slot proposing
+        four actions and appending ZERO is the idempotency working exactly as designed, and
+        without this a run row could only claim it had appended four.
         """
         async with rls_session(self._engine, self._tenant_id) as conn:
-            await conn.execute(_INSERT, parameters(event))
+            result = await conn.execute(_INSERT, parameters(event))
+        return bool(result.rowcount)
 
 
 class PostgresActionReader:

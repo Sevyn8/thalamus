@@ -16,6 +16,20 @@ class SynapseError(Exception):
     """Base for every domain error Synapse raises."""
 
 
+class ProvisionRefusedError(SynapseError):
+    """A provision row was rejected when it was LOADED, before anything could act on it.
+
+    Two causes, both of which are an operator's hand-edit meeting a rule it cannot see from
+    inside psql: a rung above the analysis's declared ``max_rung`` (the envelope), or an
+    ``analysis_id`` no declaration claims (a typo, which would otherwise enable nothing at all
+    and look enabled).
+
+    Raised rather than skipped, and raised for the WHOLE enumeration rather than dropping the
+    offending row. A silently-dropped provision is a tenant that quietly stops being analysed,
+    which is the failure this table exists to make visible.
+    """
+
+
 class ResultTooLargeError(SynapseError):
     """A capability's result exceeded its runaway guard, and was NOT truncated.
 

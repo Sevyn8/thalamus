@@ -47,6 +47,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from types import MappingProxyType
 from typing import Final, Protocol, assert_never
 from uuid import UUID
@@ -71,6 +72,7 @@ from synapse.core.declaration_resolution import (
     DeclarationSatisfied,
     DeclarationUndeclared,
 )
+from synapse.core.provision import Rung
 from synapse.core.resolution import (
     Observation,
     PreconditionReport,
@@ -106,6 +108,21 @@ Evaluator = Callable[..., Sequence[object]]
 # and for the same reasons — a proposer that could reach a database would be a resolver wearing
 # the wrong name.
 Proposer = Callable[..., Sequence[Action]]
+
+# A PLAN: the adapter that knows ONE analysis's call signatures. Given a resolved declaration
+# and a slot date, it awaits whatever fetches that analysis needs, calls its evaluator and its
+# proposer with their own arguments, and returns actions.
+#
+# WHY THIS EXISTS RATHER THAN THE ORCHESTRATOR CALLING evaluate/propose DIRECTLY. Evaluator and
+# Proposer are deliberately typed with an ellipsis because their signatures DIFFER — dead_stock's
+# evaluator takes (universe, selling, stale_after_days, as_of) and nothing says the next one
+# will. An orchestrator that called them directly would have to know each analysis's arguments,
+# which is analysis-specific knowledge in a component whose whole point is to be generic. So the
+# knowledge stays with the analysis and the orchestrator sees ONE uniform shape.
+#
+# FOURTH INSTANCE OF THE PLUGIN PATTERN, not a new mechanism: descriptor+resolver,
+# declaration+evaluator, declaration+proposer, and now declaration+plan.
+Plan = Callable[[DeclarationSatisfied, date], Awaitable[Sequence[Action]]]
 
 # The dataclass each declaration's evaluator returns, for the emits check below. A mapping rather
 # than an attribute on the evaluator, because a plain function cannot carry one without either a
@@ -256,6 +273,43 @@ _ANALYSES: Final[Mapping[str, Evaluator]] = MappingProxyType(
 _ACTIONS: Final[Mapping[str, Proposer]] = MappingProxyType(
     {
         DEAD_STOCK.id: propose_dead_stock_actions,
+    }
+)
+
+
+# THE PLANS. One per analysis that proposes actions, binding an id to the adapter that knows
+# that analysis's own call signatures. See the Plan alias for why this indirection exists.
+#
+# A plan is where the two-capability composition actually HAPPENS at runtime: it awaits both
+# fetches, hands them to the evaluator in the order that evaluator expects, and passes the
+# declaration and capability versions through to the proposer so provenance is complete. Nothing
+# in here decides anything analytical — every threshold and every version comes from the
+# declaration and the resolution.
+async def _plan_dead_stock(satisfied: DeclarationSatisfied, as_of: date) -> Sequence[Action]:
+    """Fetch, evaluate and propose for dead_stock. The one analysis that has a plan."""
+    universe = await satisfied.fetches["current_state"]()
+    selling = await satisfied.fetches["last_sale_at"]()
+    stale_after = next(
+        threshold for threshold in satisfied.declaration.thresholds if threshold.name == "stale_after_days"
+    )
+    findings = evaluate_dead_stock(
+        universe,  # type: ignore[arg-type]
+        selling,  # type: ignore[arg-type]
+        stale_after_days=stale_after.days,
+        as_of=as_of,
+    )
+    return propose_dead_stock_actions(
+        findings,
+        universe,  # type: ignore[arg-type]
+        declaration=satisfied.declaration,
+        capability_versions=satisfied.capability_versions,
+        as_of=as_of,
+    )
+
+
+_PLANS: Final[Mapping[str, Plan]] = MappingProxyType(
+    {
+        DEAD_STOCK.id: _plan_dead_stock,
     }
 )
 
@@ -513,10 +567,50 @@ def _check_actions() -> None:
             )
 
 
+def check_plan_bindings(
+    plans: Mapping[str, Plan],
+    actions: Mapping[str, Proposer],
+    declarations: Mapping[str, AnalysisDeclaration],
+) -> None:
+    """Plan invariants, as a PURE function so the offline suite can prove it bites.
+
+    Taking the three maps as arguments rather than closing over the module's is what makes the
+    violation constructible in a test: ``_PLANS`` is ``Final``, so a test that reassigned it
+    would be a type error, and one that mutated it would leave the registry wrong for every test
+    that ran afterwards. The same shape as ``check_envelope`` in the provision loader, and for
+    the same reason — the live suite only runs inside a staging window.
+
+    EVERY ANALYSIS THAT PROPOSES ACTIONS MUST HAVE A PLAN, and that is the direction that bites.
+    ``actions`` says an analysis can produce actions; a plan is the only thing that can make it
+    do so. A proposer with no plan is an analysis the orchestrator would enumerate, resolve, and
+    then silently do nothing for — provisioned, apparently healthy, producing a run row with zero
+    actions forever. That is indistinguishable from "this tenant genuinely has no dead stock",
+    which is precisely the confusion ``synapse.run`` exists to prevent.
+
+    The converse is also refused: a plan for an analysis nothing declares is arithmetic bound to
+    a name no declaration claims.
+    """
+    missing = sorted(set(actions) - set(plans))
+    if missing:
+        raise ValueError(
+            f"{missing} propose actions but have no plan. The orchestrator would resolve them "
+            "and produce nothing, which reads exactly like a tenant with no findings"
+        )
+    orphan = sorted(set(plans) - set(declarations))
+    if orphan:
+        raise ValueError(f"{orphan} have a plan but no declaration")
+
+
+def _check_plans() -> None:
+    """The import-time call. See ``check_plan_bindings`` for the invariants."""
+    check_plan_bindings(_PLANS, _ACTIONS, _DECLARATIONS)
+
+
 _check_registry()
 _check_declarations()
 _check_analyses()
 _check_actions()
+_check_plans()
 
 
 def declared_analysis_ids() -> tuple[str, ...]:
@@ -532,6 +626,38 @@ def registered_ids() -> tuple[str, ...]:
 def declined_ids() -> tuple[str, ...]:
     """Every id with a recorded reason for never resolving. Sorted."""
     return tuple(sorted(_DECLINED))
+
+
+def max_rungs() -> Mapping[str, Rung]:
+    """Every declared analysis's autonomy CEILING, for the provision loader to check against.
+
+    The envelope half of the envelope/selection split, handed to a layer that cannot import it:
+    ``synapse.persistence`` sits BELOW this module in the import-linter layer order, so the
+    loader takes the ceilings as an argument rather than reaching up for them. Injection, the
+    same as a resolver taking its engine.
+
+    Every declaration appears, including those with no proposer. A provision naming an analysis
+    that produces no actions is legal — it resolves, records a run and appends nothing — and
+    should not be refused as unknown.
+    """
+    return MappingProxyType(
+        {analysis_id: declaration.max_rung for analysis_id, declaration in _DECLARATIONS.items()}
+    )
+
+
+def plan_for(analysis_id: str) -> Plan | None:
+    """The adapter that runs ``analysis_id``, or ``None`` if it proposes no actions.
+
+    ``None`` is a legitimate answer rather than an error: a declaration may exist to be resolved
+    and evaluated without anything acting on its findings. ``_check_plans`` guarantees the case
+    that WOULD be a bug — a proposer with no plan — cannot reach here.
+    """
+    return _PLANS.get(analysis_id)
+
+
+def declaration_for(analysis_id: str) -> AnalysisDeclaration | None:
+    """One declaration by id, or ``None``. For a caller that has an id from a provision row."""
+    return _DECLARATIONS.get(analysis_id)
 
 
 async def resolve(
@@ -722,11 +848,16 @@ __all__ = [
     "Evaluator",
     "Probe",
     "ProbeBinding",
+    "Plan",
     "Proposer",
     "RegisteredCapability",
     "Resolver",
+    "check_plan_bindings",
+    "declaration_for",
     "declared_analysis_ids",
     "declined_ids",
+    "max_rungs",
+    "plan_for",
     "registered_ids",
     "resolve",
     "resolve_declaration",

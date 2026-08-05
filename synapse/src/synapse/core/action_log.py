@@ -63,14 +63,21 @@ class ActionAppender(Protocol):
     not learn which kind of appender it has, and should not.
     """
 
-    async def append(self, event: ActionEvent) -> None:
-        """Record one event.
+    async def append(self, event: ActionEvent) -> bool:
+        """Record one event. Returns whether it LANDED; ``False`` means it was suppressed.
 
-        Returns None, and CANNOT report whether the append was suppressed by the idempotency
-        index. That is deliberate: ``synapse_writer`` holds no SELECT, so a durable appender has
-        no way to look, and a caller branching on "did my append take effect" would be
-        reintroducing read-modify-write to an append-only log. Anything verifying suppression
-        counts through an ``ActionReader``.
+        THIS RETURNED ``None`` UNTIL SLICE 6, on the reasoning that ``synapse_writer`` holds no
+        SELECT so a durable appender cannot look. That reasoning was wrong in a specific way
+        worth keeping: it conflated READING THE LOG with knowing what your own statement did.
+        ``ON CONFLICT DO NOTHING`` reports its own ``rowcount``, which needs no SELECT grant and
+        discloses nothing about any other row. The information was always available and was
+        being discarded.
+
+        It is NOT an invitation to read-modify-write. The value says what one INSERT did; it
+        cannot be used to look up, compare or amend anything, and there is still no way to read
+        the log through an appender. ``synapse.run`` uses it to record how many of a run's
+        proposed actions were genuinely new, which is the difference between a re-run and a
+        first run.
         """
         ...
 
@@ -106,7 +113,7 @@ class InMemoryActionLog:
     def __init__(self) -> None:
         self._events: list[ActionEvent] = []
 
-    async def append(self, event: ActionEvent) -> None:
+    async def append(self, event: ActionEvent) -> bool:
         # DELIBERATELY NOT DEDUPLICATING on event_id, and this is a real difference from the
         # durable appender, which suppresses a byte-identical retry via ON CONFLICT DO NOTHING.
         # The difference is honest rather than an inconsistency: dedup there is a property of
@@ -115,6 +122,10 @@ class InMemoryActionLog:
         # guarantee — and what the shared protocol tests check — is that nothing is ever edited
         # or removed.
         self._events.append(event)
+        # ALWAYS True, and it is the honest answer rather than a stub: this log does not
+        # deduplicate, so every append genuinely lands. A False here would be a claim about a
+        # suppression that did not happen.
+        return True
 
     async def events(self) -> Sequence[ActionEvent]:
         return tuple(self._events)

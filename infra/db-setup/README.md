@@ -48,6 +48,45 @@ DIS Alembic as `postgres` (8 schemas + 18 revisions); sql/02 as
 `user_admin_backend` (dis_mirror_reader has exactly SELECT on core.tenants and
 core.stores).
 
+## Standing convention: PLATFORM scope for any file that reads a row
+
+**Every hand-run SQL file in this directory that reads or writes a FORCE RLS
+table opens with `set_config('app.user_type', 'PLATFORM', true)` inside a
+transaction — unconditionally, as a convention, not as a per-file judgement.**
+
+The failure this prevents is silent. Canonical's tables, `synapse.actions`,
+`synapse.provision` and `synapse.run` are all `FORCE ROW LEVEL SECURITY`, so a
+session with no `app.user_type` matches **zero rows and raises nothing**. FORCE
+means owning the table buys nothing, and Cloud SQL's `postgres` is `rolsuper=f,
+rolbypassrls=f` like any other role — so the trap applies to the most privileged
+credential anyone runs these with.
+
+Three situations then look identical at a psql prompt, and only one is loud:
+
+| cause | what you see |
+|---|---|
+| missing GRANT | `ERROR: permission denied` — loud |
+| **GUCs not set** | **0 rows, silently** |
+| genuinely no data | 0 rows, silently |
+
+This is a convention rather than advice because advice has already failed. It
+has bitten four hand-written queries in this repo — a trigger test whose UPDATE
+matched no visible row, migration 0002's DELETE, the provisioning pre-flight, and
+a verification snippet in `sql/04` — and **every one was written by someone who
+had already documented the trap elsewhere in this same repo.** Knowing about it
+does not work. Opening the file with the set_config does.
+
+Two details that matter:
+
+- **`app.tenant_id` too, if the file WRITES.** PLATFORM widens *reads* only. Every
+  policy's `WITH CHECK` still compares against the tenant GUC, so an INSERT under
+  PLATFORM alone fails with `new row violates row-level security policy`.
+- **Transaction-local (`true`), inside `BEGIN … COMMIT`.** A `false` third argument
+  would leak the scope into whatever the operator does next in that session.
+
+`provision_analysis.sql` is the worked example. Migration `0002` is the same
+shape in Python.
+
 ## Connecting to run the SQL
 
 The instance is private IP only. Connect via the Cloud SQL Auth Proxy (from a

@@ -177,12 +177,17 @@ REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA canonical FROM s
 --      -> canonical | store_sku_current_position | SELECT
 --         canonical | store_sku_sale_events      | SELECT
 --         synapse   | actions                    | SELECT
+--         synapse   | provision                  | SELECT
+--         synapse   | run                        | SELECT
 --
 --    THE THIRD ROW ARRIVED IN SLICE 5 and this block said "exactly two" until then.
 --    synapse_reader was granted SELECT on the action log because something will read
 --    it back, and the alternative was every read-side test holding an admin
 --    credential — a worse posture than a read-only role reading a read-only thing.
---    That grant is issued by sql/04, not here; this list is the whole picture.
+--    THE LAST TWO ARRIVED IN SLICE 6a with migration 0003: the orchestrator
+--    enumerates synapse.provision under PLATFORM scope, and synapse.run is read
+--    back to show what ran. All three synapse grants are issued by the migrations
+--    and sql/04, not here; this list is the whole picture.
 --
 -- 2. The role cannot bypass RLS. Both columns must be `f`. If either is `t`,
 --    tenant isolation is void for this role and dis-rls will refuse the engine on

@@ -35,6 +35,7 @@ from typing import ClassVar
 
 from synapse.core.capability import GateKind
 from synapse.core.holdout import Holdout
+from synapse.core.provision import Rung
 from synapse.core.resolution import SeriesPolicy
 
 
@@ -186,6 +187,19 @@ class AnalysisDeclaration:
     # return. Still declared before a SCORER exists, for the same reason.
     emits: tuple[str, ...]
     thresholds: tuple[Threshold, ...]
+    # THE ENVELOPE. The furthest a produced action may travel for ANY tenant — a property of
+    # this analysis's maturity, not of any customer, which is precisely why it lives in code
+    # where changing it is a reviewed diff rather than an UPDATE.
+    #
+    # A provision binds a rung; ``synapse.persistence.provision_postgres`` refuses one that
+    # exceeds this when it LOADS the row, so an over-privileged provision never reaches an
+    # orchestrator. Third instance of declare-in-code / bind-as-data / check-at-the-boundary:
+    # capability gate KINDS bound by an analysis, ``emits`` checked against the evaluator, and
+    # now this.
+    #
+    # Defaulted to SHADOW so that a new analysis is not autonomous by omission. An analysis
+    # earns a higher ceiling explicitly or does not have one.
+    max_rung: Rung = Rung.SHADOW
 
     def __post_init__(self) -> None:
         if not self.requires:
@@ -254,6 +268,10 @@ DEAD_STOCK = AnalysisDeclaration(
             "mean something — not a calculation someone might run over these 66."
         ),
     ),
+    # SHADOW, and it is the default rather than a considered ceiling: dead_stock has never
+    # been checked against a human judgement about which SKUs are genuinely dead. Raising this
+    # is a reviewed diff, which is the point of it being here rather than in the table.
+    max_rung=Rung.SHADOW,
     thresholds=(
         Threshold(
             name="stale_after_days",

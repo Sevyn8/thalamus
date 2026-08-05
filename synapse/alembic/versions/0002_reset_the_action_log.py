@@ -7,8 +7,10 @@ tests. They are test data sitting in a production tenant's stream, and the table
 by trigger, so nothing short of the owner disabling that trigger can remove them.
 
 THE TABLE CONTAINED NOTHING ELSE. Those four rows were the entire contents of the log: it was
-created in slice 5, nothing in production writes to it, and no analysis has yet emitted an
-action. That is what makes this migration safe, and it is a property with an expiry date —
+created in slice 5, and at the time this migration was written nothing in production wrote to it
+and no analysis had yet emitted an action. (SLICE 6a CHANGED THAT — the orchestrator appends —
+which is exactly why this reset was a one-off: see the expiry note below, which is now spent
+rather than pending.) That is what makes this migration safe, and it is a property with an expiry date —
 **this is the only free moment.** The instant anything real is appended, a reset like this one
 destroys history that cannot be reconstructed, because an append-only log has no other copy.
 

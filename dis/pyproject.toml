@@ -338,9 +338,13 @@ allow_indirect_imports = true
 # and core stays pure. This is what generalises the two forbidden contracts above — it is
 # the reason a fourth Synapse package cannot quietly arrive outside the rule again.
 [[tool.importlinter.contracts]]
-name = "synapse layers: registry > persistence > resolvers > core"
+name = "synapse layers: orchestrator > registry > persistence > resolvers > core"
 type = "layers"
 layers = [
+  # The orchestrator is the only package that DECIDES anything runs. Above registry because it
+  # composes resolution, planning and both writers; nothing below may reach up to it, which is
+  # what keeps "a resolver cannot trigger a run" a lint failure rather than a review comment.
+  "synapse.orchestrator",
   "synapse.registry",
   # synapse.persistence is the only package that WRITES. Above resolvers because a future
   # caller composing "resolve, then record" belongs at the registry level and may reach both,

@@ -30,5 +30,9 @@ consumer, and dis-rls refuses on first use any engine whose role reports otherwi
 PROVISIONED AND VERIFIED AGAINST STAGING: Terraform's ``google_sql_user`` in cloud,
 ``dis/infra/local/postgres-init.sql`` on a fresh local volume, grants by
 ``infra/db-setup/sql/03_synapse_reader_grant.sql`` after Alembic. The integration tests run
-as this role — that is what it exists for; nothing in production runs as it yet.
+as this role — that is what it exists for. SINCE SLICE 6a THE ORCHESTRATOR ALSO RUNS AS IT: it
+is the identity that enumerates synapse.provision under PLATFORM scope and reads every canonical
+row an analysis needs. So the sentence that stood here until now — "nothing in production runs as
+it yet" — is retired. Nothing SCHEDULES the orchestrator yet, which is a different and smaller
+claim; a hand-run is still a run.
 """

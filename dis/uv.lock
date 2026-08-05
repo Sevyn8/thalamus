@@ -3525,6 +3525,7 @@ version = "0.0.0"
 source = { editable = "../synapse" }
 dependencies = [
     { name = "dis-canonical" },
+    { name = "dis-core" },
     { name = "dis-rls" },
     { name = "pydantic" },
     { name = "sqlalchemy", extra = ["asyncio"] },
@@ -3533,6 +3534,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "dis-canonical" },
+    { name = "dis-core" },
     { name = "dis-rls" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36" },

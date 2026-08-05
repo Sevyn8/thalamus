@@ -21,6 +21,11 @@ dependencies = [
   # matters is LIBRARY vs DEPLOYABLE SERVICE — depending on dis-rls is fine;
   # depending on a service would not be.
   "dis-rls",
+  # UUIDv7 identifiers ONLY (dis_core.ids.new_uuid7). Already present transitively via dis-rls;
+  # declared directly because synapse.orchestrator imports it, and an import that relies on
+  # somebody else's dependency breaks the day that dependency is pruned. uuid4 is banned
+  # project-wide and synapse.core mints nothing, so the ids have to come from here.
+  "dis-core",
   # Statement construction only. sqlalchemy.table()/column() lightweight constructs
   # name the table in ONE module (synapse/resolvers/); there is no ORM model here.
   "sqlalchemy[asyncio]>=2.0.36",
