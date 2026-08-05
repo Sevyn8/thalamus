@@ -258,3 +258,14 @@ variable "clover_connector_image" {
   description = "clover-connector container image (the Cloud Run JOB). Built from connectors/thalamus-clover/Dockerfile with the MONOREPO ROOT as build context."
   default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/clover-connector:v2"
 }
+
+variable "alert_email" {
+  type        = string
+  description = "Where every alert goes. A LIST, not a person: a personal address breaks when one of three people is away and needs changing when the team grows."
+  # CONFIRMED BY THE OPERATOR, 2026-08-05, which is why this has a default and the MODULE's own
+  # variable deliberately does not. The env states the address; the module refuses to be reused
+  # anywhere without one being stated. Cloud Identity API is off on this project, so group
+  # membership could not be verified from the CLI — the first alert to fire is the confirmation
+  # that this list actually delivers.
+  default = "alerts@sevyn8.com"
+}

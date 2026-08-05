@@ -42,7 +42,10 @@ from uuid import UUID
 from dis_core.logging import configure_logging, get_logger
 from dis_rls import create_rls_engine
 from synapse.core.errors import SynapseError
+from synapse.orchestrator.freshness import emit_tenant_freshness, tenant_freshness
 from synapse.orchestrator.runner import SlotResult, run_due, summarise
+from synapse.persistence.provision_postgres import PostgresProvisionReader
+from synapse.registry import max_rungs
 
 # STRUCTURED, BECAUSE NOTHING HERE SELF-HEALS. `print()` reaches Cloud Logging with no
 # `severity`, so every line files at DEFAULT and no log-based alert can match one — the failure
@@ -193,6 +196,38 @@ async def _main(argv: list[str] | None = None) -> int:
                 only_analysis=args.analysis,
             )
         )
+        # FRESHNESS, INSIDE THE try BECAUSE THE finally DISPOSES THE READER. Emitted after the
+        # sweep so a freshness problem can never affect what the sweep does, and emitted for
+        # EVERY provisioned tenant — including healthy ones — because a signal that is absent
+        # when things are good cannot be thresholded.
+        #
+        # A SECOND READ OF THE PROVISION TABLE, not a second read per tenant. run_due does not
+        # return the provisions and threading them out would change its signature for an
+        # observation concern. One PLATFORM read of a table with two rows.
+        #
+        # min(), not last-wins: for a tenant that has never sold, the age is how long we have
+        # been watching, so the EARLIEST enablement is the honest start.
+        try:
+            enabled_at: dict[UUID, datetime] = {}
+            for provision in await PostgresProvisionReader(reader).active(max_rungs=max_rungs()):
+                previous = enabled_at.get(provision.tenant_id)
+                if previous is None or provision.enabled_at < previous:
+                    enabled_at[provision.tenant_id] = provision.enabled_at
+            emit_tenant_freshness(await tenant_freshness(reader, enabled_at=enabled_at, now=now))
+        except Exception as exc:  # noqa: BLE001 - observation must not fail the sweep
+            # NOT RE-RAISED: the sweep's real work (claiming runs, appending actions) has already
+            # succeeded by here, and failing the execution would misreport that.
+            #
+            # AND NOT ALERTED DIRECTLY, which is deliberate rather than an omission. This line
+            # carries no `outcome` field, so it does not match the failed-slot policy — whose
+            # action is "re-run the slot by hand" and would be wrong here. The freshness policy
+            # covers it instead: its evaluationMissingData is set to treat NO DATA as a breach,
+            # so if this emission stops the freshness alert fires on the silence. The absence of
+            # the absence-signal is caught by configuration rather than by a seventh alert.
+            _log.error(
+                f"tenant freshness could not be emitted: {type(exc).__name__}: {exc}",
+                extra={"error_type": type(exc).__name__},
+            )
     except SynapseError as exc:
         _log.error(
             f"the sweep could not start: {type(exc).__name__}: {exc}",

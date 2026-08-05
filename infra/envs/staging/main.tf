@@ -632,3 +632,34 @@ module "clover_connector_job" {
   clover_client_id    = "T4RKJYVE63ARA"
   clover_api_base_url = var.clover_base_url
 }
+
+# --- Slice 9: alerting, across DIS and Synapse ---
+#
+# THE FIRST OBSERVABILITY IN THIS PROJECT. Verified live before writing: 0 alert policies, 0
+# notification channels, 0 log-based metrics. Six policies, one email channel, two log metrics.
+#
+# ONE MODULE FOR BOTH PLANES on purpose (D1). Alerting per-component is how the dead-letter
+# queues, the registry cleanup and Synapse's failed runs all ended up unobserved: each was
+# somebody's concern and none was anybody's.
+#
+# NO NEW API IS REQUIRED. monitoring and logging were already enabled — by GCP's own defaults,
+# not by this repository — and are now DECLARED in infra/bootstrap so a rebuilt project gets them
+# and a plan would notice them being turned off.
+#
+# TWO OF THE SIX FIRE ON CREATION and that is the point rather than a defect: a message has been
+# sitting in dis-ingress-ready-dlq for days, and The Body Shop's sale data is stale. Both were
+# true and invisible before this module existed.
+module "monitoring_alerts" {
+  source = "../../modules/monitoring-alerts"
+
+  project_id  = var.project_id
+  alert_email = var.alert_email
+
+  # Named rather than defaulted, so a rename of the job is a visible one-line change here instead
+  # of six filters that silently match nothing.
+  orchestrator_job_name = "synapse-orchestrator"
+
+  # MUST TRACK synapse.orchestrator.freshness.STALE_AFTER_DAYS. Terraform cannot read a Python
+  # constant, so this is a second source of truth kept in step by hand and named as such.
+  stale_after_days = 3
+}

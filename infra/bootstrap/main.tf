@@ -90,6 +90,22 @@ resource "google_project_service" "baseline" {
     # fixes the App Engine region for the project PERMANENTLY — it cannot be changed or
     # removed. Choose the region deliberately; do not run it to clear an error.
     "cloudscheduler.googleapis.com",
+    # Slice 9. BOTH OF THESE WERE ALREADY ENABLED AND NEITHER WAS DECLARED, which is why
+    # they are here rather than being taken for granted. GCP auto-enables logging and
+    # monitoring on a new project, so `gcloud services list --enabled` shows them today and
+    # every log-based metric and alert policy in modules/monitoring-alerts depends on them —
+    # while nothing in this repository asked for them or would notice their absence.
+    #
+    # VERIFIED, 2026-08-05: enabled live; present in infra/_import/cm-infra (the LEGACY CM
+    # tree) and in NEITHER live baseline list. That combination — working, load-bearing,
+    # undeclared — is the exists-but-not-wired shape this project keeps paying for, and it is
+    # free to ignore only until something depends on it. Slice 9 is that something.
+    #
+    # Adding them is a NO-OP against the live project (google_project_service is idempotent
+    # and these are already on). The value is that a rebuilt project gets them, and that a
+    # `terraform plan` would notice if they were ever turned off.
+    "logging.googleapis.com",
+    "monitoring.googleapis.com",
   ])
 
   project            = google_project.thalamus.project_id
