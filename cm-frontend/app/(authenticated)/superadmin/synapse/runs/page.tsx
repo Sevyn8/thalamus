@@ -48,6 +48,13 @@ type RunRow = {
   finished_at: string | null;
 };
 
+// 'satisfied' is engineering voice for "the run completed". The other three name real distinct
+// states with no agreed plain-English equivalent, so they render as-is rather than invented.
+function outcomeLabel(outcome: string | null): string {
+  if (outcome === null) return "unfinished";
+  return outcome === "satisfied" ? "completed" : outcome;
+}
+
 const OUTCOME_TONE: Record<string, Tone> = {
   satisfied: "good",
   blocked: "unknown",
@@ -83,7 +90,7 @@ export default async function RunsPage() {
     <div>
       <PageHeader
         title="Runs"
-        subtitle="One row per tenant, analysis and day. A day runs once however many times it is dispatched."
+        subtitle="One row per client, monitor and day. A day runs once however many times it is dispatched."
       />
 
       <Column>
@@ -92,7 +99,7 @@ export default async function RunsPage() {
           {runs.length === 0 ? (
             <p className="text-body text-foreground-muted">
               Nothing has run yet. The orchestrator fires daily in each tenant&apos;s own timezone,
-              and only for provisioned analyses.
+              and only for monitors that are enabled.
             </p>
           ) : (
             /* SEVEN COLUMNS BECAME FIVE. At 840px seven gave every column ~120px
@@ -108,7 +115,7 @@ export default async function RunsPage() {
                     Outcome
                   </th>
                   <th className="text-label pb-2 pr-3 text-right font-normal text-foreground-subtle">
-                    Actions
+                    Alerts
                   </th>
                   <th className="text-label pb-2 text-right font-normal text-foreground-subtle">
                     Took
@@ -129,11 +136,16 @@ export default async function RunsPage() {
                     </td>
                     <td className="py-3 pr-3">
                       <Tag tone={row.outcome ? (OUTCOME_TONE[row.outcome] ?? "mute") : "unknown"}>
-                        {row.outcome ?? "unfinished"}
+                        {outcomeLabel(row.outcome)}
                       </Tag>
                     </td>
+                    {/* COLLAPSED TO THE COUNT THE MONITOR FOUND. It read "proposed → appended",
+                        which is the internal pair and needed a footnote to decode. Appended can be
+                        0 while an alert genuinely exists — a repeat of the same slot is suppressed
+                        rather than duplicated — so proposed is the honest headline and the
+                        suppression note moved to the legend. */}
                     <td className="text-caption py-3 pr-3 text-right font-mono whitespace-nowrap">
-                      {row.actions_proposed ?? "—"} → {row.actions_appended ?? "—"}
+                      {row.actions_proposed ?? "—"}
                     </td>
                     <td className="text-caption py-3 text-right font-mono whitespace-nowrap">
                       {took(row)}
@@ -145,11 +157,10 @@ export default async function RunsPage() {
           )}
           <div className="mt-3">
             <Footnote>
-              <span className="font-mono">Actions</span> reads proposed → appended; appended is
-              lower when a repeat of the same slot was suppressed by the idempotency index rather
-              than duplicated. An <span className="font-mono">unfinished</span> row is a run that
-              was claimed and never completed — a crashed sweep. The next dispatch for that slot
-              adopts and finishes it rather than skipping, which is why a crash does not lose a day.
+              Duplicate alerts for the same product are suppressed, so a repeat finding raises no
+              new alert. An <span className="font-mono">unfinished</span> row is a run that was
+              claimed and never completed; the next run for that day adopts and finishes it, which
+              is why a crash does not lose a day.
             </Footnote>
           </div>
         </section>

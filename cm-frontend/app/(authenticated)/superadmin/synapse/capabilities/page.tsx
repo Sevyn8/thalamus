@@ -81,7 +81,7 @@ export default async function CapabilitiesPage() {
                   <span className="font-mono">{c.capability_id}</span>
                   {" · "}
                   {c.used_by.length === 0
-                    ? "no analysis reads it yet"
+                    ? "no monitor reads it yet"
                     : `read by ${c.used_by.map((a) => ANALYSIS_NAMES[a] ?? a).join(", ")}`}
                 </>
               }

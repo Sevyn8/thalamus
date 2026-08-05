@@ -215,7 +215,7 @@ export function SectionHead({ children }: { children: ReactNode }) {
 //   stop     it failed
 //
 // WHY "unknown" EXISTS RATHER THAN A BARE 0. A run that proposed zero actions is
-// either "looked and found no risk" or "refused every product as stale", and
+// either "looked and found no risk" or "found nothing — sales data too old", and
 // until synapse.run.detail is populated NOTHING IN THE DATA DISTINGUISHES THEM.
 // Rendering both as "0 found" would be a guess presented as a result; rendering
 // both as "cannot assess" would be a different guess. The third state says
@@ -261,22 +261,24 @@ export function SynapseDown({ message }: { message: string }) {
 // A gap in the data, rendered as itself rather than as a blank (D5/D6). Carries
 // the reason, so a reader learns WHY the row is missing instead of wondering
 // whether the screen is broken.
-// TWO COLUMNS, matching Fact. The reason used to be a third column of prose,
-// which is what pushed these tables wide enough to need a bounded page; it now
-// sits under the label, where it reads as an explanation of that row rather than
-// as a column a reader is expected to scan.
-export function Unavailable({ what, because }: { what: string; because: string }) {
-  return (
-    <tr className="border-b border-border align-baseline last:border-b-0">
-      <td className="py-3 pr-4">
-        <p className="text-body text-foreground-muted">{what}</p>
-        <p className="text-caption mt-0.5 max-w-prose text-foreground-subtle">{because}</p>
-      </td>
-      <td className="py-3 text-right align-top">
-        <Tag tone="unknown">not recorded yet</Tag>
-      </td>
-    </tr>
-  );
+// Unavailable WAS HERE AND IS DELETED. Its only call site was the tenant page's
+// "Why each product was refused" row, whose body described synapse.run.detail,
+// counts_by_reason() and a Plan-signature change — engineering backlog rendered to
+// an operator. The row is gone, so the component is dead code rather than a
+// primitive waiting for a second use.
+
+// Singular/plural without a dependency. "1 tenants" and "1 actions" were on both Synapse
+// screens; a helper is cheaper than remembering the ternary at every call site.
+export function plural(n: number, one: string, many?: string): string {
+  return `${n} ${n === 1 ? one : (many ?? `${one}s`)}`;
+}
+
+// THE MODE, said once, in the header of every Synapse screen. Grey, not green and not amber:
+// silent mode is neither good news nor a problem, it is the state the whole plane is in. The
+// word "rung" never appears in the UI — it is the internal name for this and stays in the code,
+// the API (`AnalysisState.rung`) and the database.
+export function SilentModePill() {
+  return <Tag tone="mute">Silent mode</Tag>;
 }
 
 export function daysSince(iso: string | null): number | null {
