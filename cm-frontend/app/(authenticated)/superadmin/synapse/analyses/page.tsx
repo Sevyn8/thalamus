@@ -3,6 +3,15 @@ import { NameWithId, SectionHead, SynapseDown, Tag } from "@/components/synapse/
 import { CAPABILITY_NAMES } from "@/lib/synapse/names";
 import { SynapseUnavailable, synapseGet } from "@/lib/synapse/server-client";
 
+// NEVER PRERENDER THIS PAGE. It reads SYNAPSE_BFF_URL and the caller's session at
+// request time; prerendering executes it during `next build`, where neither
+// exists, and bakes the resulting error notice into static HTML that the
+// container then serves for ever. That shipped once — see lib/synapse/server-client.ts.
+//
+// scripts/assert-dynamic-routes.mjs fails the build if this route comes out
+// static, so the directive cannot be silently dropped.
+export const dynamic = "force-dynamic";
+
 // E2 — what exists, what each needs, and the ceiling on what each may do.
 //
 // THIS SCREEN NEVER OFFERS AN EDIT. Declarations are git: an analysis, its

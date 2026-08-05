@@ -85,7 +85,9 @@ import "server-only";
 
 import { auth0 } from "@/lib/auth0";
 
-const BASE = process.env.SYNAPSE_BFF_URL ?? "";
+// NO MODULE-SCOPE ENV READ HERE, deliberately. `const BASE = process.env.SYNAPSE_BFF_URL`
+// lived on this line and was bound at import — which froze it at container start and,
+// worse, at BUILD time for any page Next.js prerendered. See synapseGet below.
 
 const METADATA_URL =
   "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity";
@@ -141,18 +143,38 @@ async function userAccessToken(): Promise<string> {
 // slice 8a holds no write path, and the BFF has no writer credential to serve one
 // with. Adding a mutation means adding it in both places, visibly.
 export async function synapseGet<T>(path: string): Promise<T> {
-  if (!BASE) {
+  // ==========================================================================
+  // THE SESSION READ COMES FIRST, AND THE ORDER IS LOAD-BEARING.
+  // ==========================================================================
+  // Reading the Auth0 session touches cookies, and touching cookies is what marks
+  // this route DYNAMIC to Next.js. The pages also declare `force-dynamic`, but
+  // that is a directive an edit can delete; doing the session read first makes the
+  // route dynamic BY USE, so both would have to be undone to reintroduce the bug.
+  //
+  // WHAT HAPPENED WHEN THE CONFIG CHECK RAN FIRST: the throw fired before any
+  // cookie was touched, Next.js saw no dynamic API, prerendered the page AT BUILD
+  // TIME where SYNAPSE_BFF_URL does not exist, and baked "The Synapse service is
+  // not reachable" into static HTML. The container then served a file — no env
+  // read, no fetch — while the running revision had the variable set correctly and
+  // the BFF's logs stayed empty.
+  const userToken = await userAccessToken();
+
+  // READ PER REQUEST, never at module scope. This is runtime config: it can change
+  // with a revision bounce and must not need a rebuild. app/api/config/route.ts
+  // states the same rule for API_BASE_URL, and said so before this was written.
+  const base = process.env.SYNAPSE_BFF_URL ?? "";
+  if (!base) {
+    // KEPT, because it is right for a genuine runtime outage — BFF down, IAM
+    // revoked, VPC broken — and removing it would render a blank page for a real
+    // one. What was wrong was that it could be reached at BUILD time.
     throw new SynapseUnavailable(
       "SYNAPSE_BFF_URL is not configured; the Synapse console cannot load",
     );
   }
 
-  // Both tokens, concurrently. The ID token is a metadata-server round trip and
-  // the access token is a session read; serialising them would add latency to
-  // every page for no reason.
-  const [idToken, userToken] = await Promise.all([identityToken(BASE), userAccessToken()]);
+  const idToken = await identityToken(base);
 
-  const response = await fetch(`${BASE}${path}`, {
+  const response = await fetch(`${base}${path}`, {
     headers: {
       // Verified by the BFF: proves WHICH PERSON.
       Authorization: `Bearer ${userToken}`,

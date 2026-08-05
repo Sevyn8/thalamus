@@ -3,6 +3,15 @@ import { NameWithId, SectionHead, SynapseDown, Tag } from "@/components/synapse/
 import { ANALYSIS_NAMES } from "@/lib/synapse/names";
 import { SynapseUnavailable, synapseGet } from "@/lib/synapse/server-client";
 
+// NEVER PRERENDER THIS PAGE. It reads SYNAPSE_BFF_URL and the caller's session at
+// request time; prerendering executes it during `next build`, where neither
+// exists, and bakes the resulting error notice into static HTML that the
+// container then serves for ever. That shipped once — see lib/synapse/server-client.ts.
+//
+// scripts/assert-dynamic-routes.mjs fails the build if this route comes out
+// static, so the directive cannot be silently dropped.
+export const dynamic = "force-dynamic";
+
 // E1 — what Synapse can read, and what it cannot.
 //
 // THIS TABLE IS THE REGISTRY AND NOTHING ELSE. The build spec listed seven
