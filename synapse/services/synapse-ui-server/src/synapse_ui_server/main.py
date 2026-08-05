@@ -50,11 +50,25 @@ def create_app(config: Config | None = None) -> FastAPI:
     # FastAPI mounts without a dependency, so any caller able to invoke this
     # service could enumerate its API without being PLATFORM.
     #
-    # NOT BECAUSE OF TODAY'S RISK, which behind internal ingress plus an IAM
-    # invoker binding is genuinely low. Because this service is the PRECEDENT for
+    # NOT BECAUSE OF TODAY'S RISK. Because this service is the PRECEDENT for
     # fixing the other four, and "safe behind two layers" is exactly how a public
     # schema happens on the day one layer changes — an ingress setting relaxed for
     # a debugging session, a binding widened to unblock something.
+    #
+    # THAT DAY WAS 2026-08-05, AND THIS COMMENT PREDICTED ITS OWN FALSIFICATION.
+    # It used to open "NOT BECAUSE OF TODAY'S RISK, which behind INTERNAL INGRESS
+    # plus an IAM invoker binding is genuinely low" — and then ingress was relaxed
+    # to INGRESS_TRAFFIC_ALL, by exactly the mechanism the sentence below names,
+    # because INTERNAL_ONLY was never satisfiable by the only caller. So the
+    # premise went stale while the conclusion it argued for became MORE load-
+    # bearing, not less: one of the two layers is gone, IAM is the remaining
+    # network-layer control, and keeping the schema off this service is now doing
+    # real work rather than being belt-and-braces.
+    #
+    # Left in place as the record. A comment that names the condition under which
+    # it stops being true is worth more than one that is merely correct today —
+    # but it still goes stale silently, because nothing re-reads it when the
+    # condition fires.
     #
     # There is no consumer to lose: cm-frontend is the only caller and it is
     # server-side, with its request shapes typed in lib/synapse/*.

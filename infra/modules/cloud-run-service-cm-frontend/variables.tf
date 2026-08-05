@@ -119,7 +119,7 @@ variable "api_base_url" {
 
 variable "synapse_bff_url" {
   type        = string
-  description = "SYNAPSE_BFF_URL - the Synapse read-only BFF's origin, called SERVER-SIDE by the /superadmin/synapse pages. Unlike API_BASE_URL this is never reached from a browser: the BFF is internal-ingress with an IAM invoker binding, and the frontend authenticates with a Google ID token minted from the metadata server. THIS STRING DOUBLES AS THE ID-TOKEN AUDIENCE, so it must be the service's exact URI - which is why staging passes module.synapse_ui_server.service_url by reference rather than a copied literal. Empty disables the console cleanly: the pages render a named 'not reachable' notice rather than throwing."
+  description = "SYNAPSE_BFF_URL - the Synapse read-only BFF's origin, called SERVER-SIDE by the /superadmin/synapse pages. Unlike API_BASE_URL this is never reached from a browser: the BFF is reached only server-side with a Google ID token minted from the metadata server, and its IAM invoker binding is the control. It is NOT internal-ingress: that was tried and was never satisfiable, because this service has no VPC connector and no direct VPC egress, so its requests leave over the public internet. See cloud-run-service-synapse-ui-server/main.tf for the full reasoning. THIS STRING DOUBLES AS THE ID-TOKEN AUDIENCE, so it must be the service's exact URI - which is why staging passes module.synapse_ui_server.service_url by reference rather than a copied literal. Empty disables the console cleanly: the pages render a named 'not reachable' notice rather than throwing."
   default     = ""
 }
 

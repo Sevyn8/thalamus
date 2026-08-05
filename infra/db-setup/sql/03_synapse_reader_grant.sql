@@ -163,6 +163,54 @@ REVOKE ALL ON ALL FUNCTIONS IN SCHEMA canonical FROM synapse_reader;
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA canonical FROM synapse_reader;
 
 
+-- ============================================================================
+-- identity_mirror: the tenant and store names the CONSOLE reads (slice 8a)
+-- ============================================================================
+-- WHY THIS ROLE AND NOT AN HTTP CALL. synapse-ui-server's /fleet, /tenants/{id}
+-- and /runs all join identity_mirror for a name. The alternative considered was
+-- the BFF asking cm-backend over HTTP, which is a cleaner boundary and was
+-- rejected on CORRECTNESS, not taste: /fleet's guarantee that EVERY MIRRORED
+-- TENANT APPEARS is a LEFT JOIN from identity_mirror.tenants with the LIMIT
+-- pushed down. Over HTTP that becomes fetch-all-then-join-in-Python — the
+-- guarantee moves out of the database into application logic and the bound is
+-- lost. It also puts cm-backend in the read path's availability, for a name.
+--
+-- THIS CROSSES NO BOUNDARY THAT IS NOT ALREADY CROSSED. identity_mirror is DIS's
+-- schema — and so is canonical, which this role has read since it existed.
+--
+-- THE PRECEDENT IS sql/02: dis_mirror_reader gets USAGE on core plus SELECT on
+-- core.tenants and core.stores. Identical shape, the same two tables one hop
+-- upstream. This is the established pattern here, not a new one.
+--
+-- BOTH TABLES, NOT JUST tenants. stores is counted in _FLEET and in _TENANT;
+-- granting only tenants moves the failure rather than fixing it.
+--
+-- NO RLS TO SATISFY, VERIFIED FOUR WAYS rather than assumed, because this
+-- project has lost six incidents to the FORCE RLS silent zero: neither table has
+-- ENABLE ROW LEVEL SECURITY, nor FORCE, nor any CREATE POLICY, and both DDL
+-- files state "RLS not enabled" in their table comments. So a missing grant here
+-- fails LOUDLY with 42501 rather than returning zero rows — and the grant alone
+-- is sufficient. (The FORCE RLS tables this role reads — canonical.* and
+-- synapse.* — are a different matter and are already correct: each policy's
+-- USING clause carries the `app.user_type = 'PLATFORM'` disjunct, and the BFF
+-- opens every session through rls_platform_session.)
+GRANT USAGE ON SCHEMA identity_mirror TO synapse_reader;
+
+GRANT SELECT ON identity_mirror.tenants TO synapse_reader;
+GRANT SELECT ON identity_mirror.stores  TO synapse_reader;
+
+-- Same defensive narrowing as canonical above: strip anything broader, then
+-- re-affirm exactly the two SELECTs.
+REVOKE ALL ON ALL TABLES    IN SCHEMA identity_mirror FROM synapse_reader;
+GRANT  SELECT ON identity_mirror.tenants TO synapse_reader;
+GRANT  SELECT ON identity_mirror.stores  TO synapse_reader;
+
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA identity_mirror FROM synapse_reader;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA identity_mirror FROM synapse_reader;
+
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA identity_mirror FROM synapse_reader;
+
+
 -- ----------------------------------------------------------------------------
 -- VERIFY (run manually — each of these has a specific wrong answer)
 -- ----------------------------------------------------------------------------

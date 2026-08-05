@@ -110,6 +110,46 @@ GRANT SELECT ON synapse.actions TO synapse_reader;
 REVOKE UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA synapse FROM synapse_writer;
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA synapse FROM synapse_reader;
 
+
+-- ============================================================================
+-- RE-GRANT WHAT MIGRATION 0003 GAVE. THIS FILE WAS UNSAFE TO RE-RUN.
+-- ============================================================================
+-- THE DEFECT, and it was live until 2026-08-05. This file was written before
+-- migration 0003 existed, so its blanket
+--
+--     REVOKE ALL ON ALL TABLES IN SCHEMA synapse FROM synapse_reader;
+--     REVOKE UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA synapse FROM synapse_writer;
+--
+-- strips privileges 0003 later granted on tables this file never mentions.
+-- Re-running it would have:
+--   - removed SELECT on synapse.provision and synapse.run from synapse_reader,
+--     breaking ALL THREE database-backed console routes at once, and
+--   - removed UPDATE on synapse.run from synapse_writer, which is how the
+--     orchestrator records a finish — so runs would start and never complete.
+--
+-- BOTH FILES WERE INDIVIDUALLY CORRECT. The pair was not, and nothing about
+-- running this one tells you it invalidates the other. That is why the guard is
+-- tests/test_grants_cover_reads.py::test_no_hand_run_file_revokes_what_a_migration_granted
+-- and not a comment in either file: a comment cannot compare two artifacts.
+--
+-- ORDER IS LOAD-BEARING: these come AFTER the blanket REVOKEs above, or they are
+-- stripped by them. The verification block below is what proves the final state.
+--
+-- MIRRORS 0003 EXACTLY. If 0003 changes, change this with it — it is a second
+-- source of truth for the same grants, kept only because this file must remain
+-- safely re-runnable. The test above compares them.
+GRANT SELECT ON synapse.provision TO synapse_reader;
+GRANT SELECT ON synapse.run       TO synapse_reader;
+
+-- The run state machine, and nothing else. The writer reads and updates run rows;
+-- it still cannot read synapse.actions and cannot touch provision at all.
+GRANT SELECT, INSERT, UPDATE ON synapse.run TO synapse_writer;
+
+-- 0003's closing narrowings, restated for the same reason.
+REVOKE ALL ON synapse.provision FROM synapse_writer;
+REVOKE DELETE ON synapse.run FROM synapse_reader, synapse_writer;
+REVOKE TRUNCATE ON synapse.run, synapse.provision FROM synapse_reader, synapse_writer;
+
 -- The writer must hold NOTHING on canonical. It has never been granted anything
 -- there; this REVOKE is what makes that a re-assertable fact rather than a
 -- historical accident.

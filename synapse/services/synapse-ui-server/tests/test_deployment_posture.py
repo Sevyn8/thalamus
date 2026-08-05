@@ -76,9 +76,7 @@ def _terraform_code(*, keep_lifecycle: bool = True) -> str:
     source = re.sub(r"<<-?(\w+)\n.*?^\s*\1\b", "", source, flags=re.DOTALL | re.MULTILINE)
     if not keep_lifecycle:
         source = _strip_lifecycle_blocks(source)
-    return "\n".join(
-        line for line in source.splitlines() if not line.strip().startswith(("#", "//"))
-    )
+    return "\n".join(line for line in source.splitlines() if not line.strip().startswith(("#", "//")))
 
 
 def test_the_terraform_module_is_where_this_test_thinks_it_is() -> None:
