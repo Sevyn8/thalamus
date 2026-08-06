@@ -18,7 +18,9 @@ observed.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
@@ -185,3 +187,102 @@ async def test_the_in_memory_log_does_not_deduplicate_and_that_is_deliberate() -
     await log.append(_event(1))
     await log.append(_event(1))
     assert len(await log.events()) == 2
+
+
+# ---------------------------------------------------------------------------
+# The payload_hash allow-list, and what it implies for the slice-10 columns
+# ---------------------------------------------------------------------------
+
+
+def test_the_payload_hash_material_is_exactly_these_five_keys() -> None:
+    """A PIN, so a future edit cannot silently WIDEN the hash.
+
+    payload_hash is the fifth component of uq_actions_idempotency and it is an explicit
+    ALLOW-LIST, not a row-wide digest. That property is what makes an additive column safe: a new
+    field is outside the hash BY CONSTRUCTION rather than by somebody remembering to exclude it.
+
+    Widening it would change what counts as "the same action". Adding an observation column to
+    the material, for instance, would turn every re-run whose inputs moved by a day into a
+    CORRECTION rather than a suppressed repeat — the log would grow a row per day per finding and
+    the idempotency index would stop meaning anything. Narrowing it is the mirror failure: drop
+    quantity_at_stake and a genuine correction gets swallowed.
+
+    Asserted against the real function's output rather than a restated list, by hashing two
+    actions that differ in exactly one key at a time.
+    """
+    import inspect
+
+    from synapse.persistence import action_log_postgres
+
+    source = inspect.getsource(action_log_postgres.payload_hash)
+    material = source[source.index("material = {") : source.index("encoded =")]
+    keys = set(re.findall(r'"(\w+)":', material))
+    assert keys == {
+        "quantity_at_stake",
+        "expires_on",
+        "arm",
+        "capability_versions",
+        "thresholds",
+    }, f"payload_hash's material changed: {sorted(keys)}. Read the docstring before widening it."
+
+
+def test_the_observation_columns_are_outside_the_hash() -> None:
+    """FIRST OBSERVATION, NOT LATEST — the migration-0004 contract, made executable.
+
+    Two actions identical but for days_since_last_sale must hash the SAME, so the second collides
+    on uq_actions_idempotency, is suppressed by ON CONFLICT DO NOTHING, and the stored figure
+    stays the one that landed first. This is the pure half of that guarantee; the insert half is
+    in the live suite.
+    """
+    from synapse.persistence.action_log_postgres import payload_hash
+
+    first = _event(1).action
+    later = replace(first, days_since_last_sale=99, days_of_cover=Decimal("2.500"))
+    assert payload_hash(first) == payload_hash(later)
+
+
+def test_a_changed_quantity_still_splits_a_correction_from_a_retry() -> None:
+    """The other direction, and the reason the hash exists at all. Without this the test above
+    would also pass against a hash that ignored everything."""
+    from synapse.persistence.action_log_postgres import payload_hash
+
+    first = _event(1).action
+    corrected = replace(first, quantity_at_stake=Decimal("41.000"))
+    assert payload_hash(first) != payload_hash(corrected)
+
+
+def test_the_observations_survive_a_round_trip() -> None:
+    """parameters() writes them and project() reads them back. A column written and never read
+    would look present and be lossy the moment anything consumed the log."""
+    from synapse.persistence.action_log_postgres import parameters, project
+
+    event = _event(1)
+    action = replace(event.action, days_since_last_sale=17, days_of_cover=None)
+    params = parameters(replace(event, action=action))
+    assert params["days_since_last_sale"] == 17
+    assert params["days_of_cover"] is None
+
+    row = dict(params)
+    row["target"] = dict(action.target)
+    row["capability_versions"] = dict(action.provenance.capability_versions)
+    row["thresholds"] = dict(action.provenance.thresholds)
+    rebuilt = project(row)
+    assert rebuilt.action.days_since_last_sale == 17
+    assert rebuilt.action.days_of_cover is None
+
+
+def test_a_row_predating_the_migration_reads_back_as_none() -> None:
+    """NULL means "predates migration 0004, or the input was unavailable" — the column comment's
+    own words. A pre-0004 row has no such column value, and project() must not invent one."""
+    from synapse.persistence.action_log_postgres import parameters, project
+
+    event = _event(1)
+    row = dict(parameters(event))
+    row["target"] = dict(event.action.target)
+    row["capability_versions"] = dict(event.action.provenance.capability_versions)
+    row["thresholds"] = dict(event.action.provenance.thresholds)
+    row["days_since_last_sale"] = None
+    row["days_of_cover"] = None
+    rebuilt = project(row)
+    assert rebuilt.action.days_since_last_sale is None
+    assert rebuilt.action.days_of_cover is None

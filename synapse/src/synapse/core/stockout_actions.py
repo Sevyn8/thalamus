@@ -101,6 +101,12 @@ def propose_stockout_actions(
                 expires_on=expires_on,
                 arm=assign(holdout, subject),
                 provenance=provenance,
+                # stockout_risk does not compute a last-sale age. See migration 0004's comment.
+                days_since_last_sale=None,
+                # THE FINDING'S OWN MEASURE. An at-risk row is never a refusal, and
+                # StockoutRiskRow.__post_init__ makes "refused with a cover figure"
+                # unconstructible, so this is non-None and non-negative by the time it is read.
+                days_of_cover=finding.days_of_cover,
             )
         )
     return actions

@@ -116,6 +116,23 @@ def propose_dead_stock_actions(
                 expires_on=expires_on,
                 arm=assign(holdout, subject),
                 provenance=provenance,
+                # THE FINDING'S OWN MEASURE, carried onto the action so a future ranking has a
+                # history to fit against. Not a score and nothing reads it yet.
+                #
+                # NEGATIVE VALUES ARE DROPPED RATHER THAN PASSED. The evaluator deliberately
+                # passes a negative age through — a clock-skewed POS can date a sale after
+                # as_of, and clamping it there would hide the skew (dead_stock.py's own note).
+                # Action.__post_init__ refuses a negative, because a STORED negative age reads
+                # as extremely fresh to anything ranking on it later. None is the honest value:
+                # the column means "the input was unavailable", and a skewed clock is exactly
+                # that. The skew stays visible in the finding; it never enters the log.
+                days_since_last_sale=(
+                    finding.days_since_last_sale
+                    if finding.days_since_last_sale is not None and finding.days_since_last_sale >= 0
+                    else None
+                ),
+                # dead_stock does not compute cover. See migration 0004's comment.
+                days_of_cover=None,
             )
         )
     return actions

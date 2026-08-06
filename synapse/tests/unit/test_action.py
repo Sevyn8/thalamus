@@ -316,3 +316,112 @@ def test_the_action_fixture_matches_what_the_proposer_produces() -> None:
     assert fixture["expires_on"] == action.expires_on.isoformat()
     assert fixture["provenance"]["thresholds"] == dict(action.provenance.thresholds)
     assert fixture["provenance"]["capability_versions"] == dict(action.provenance.capability_versions)
+
+
+# ---------------------------------------------------------------------------
+# Actionability (slice 10). A FLAG, never a filter.
+# ---------------------------------------------------------------------------
+
+
+def test_a_zero_quantity_action_is_not_actionable() -> None:
+    """SKU-0029'S SHAPE, and the reason this slice exists.
+
+    The only real action in the log is a never-sold SKU with ZERO stock: genuine catalogue
+    hygiene, and nothing to mark down, transfer or clear. If delivery existed today that is the
+    first thing a client would ever see from Synapse, which is why actionability had to exist
+    before any rung is promoted.
+    """
+    assert _action(quantity_at_stake=Decimal("0.000")).is_actionable is False
+
+
+def test_a_positive_quantity_action_is_actionable() -> None:
+    """THE BASELINE. Without it every assertion here would also pass against a property that
+    returned False unconditionally — the refusal-test failure this project has already paid for."""
+    assert _action(quantity_at_stake=Decimal("40.000")).is_actionable is True
+
+
+def test_the_smallest_positive_quantity_is_actionable() -> None:
+    """The boundary is > 0, not >= some floor. A single unit is a real unit; inventing a minimum
+    would be the first threshold in this plane that nobody could defend."""
+    assert _action(quantity_at_stake=Decimal("0.001")).is_actionable is True
+
+
+def test_an_unknown_quantity_is_not_actionable() -> None:
+    """None means UNKNOWN, never zero (see Action's docstring). stock_qty is nullable in canonical
+    and dead_stock never inspects it, so a dead position with no stock figure reaches here as
+    None. Nothing can be decided from it, so it is not actionable — for a DIFFERENT reason than
+    the zero above."""
+    assert _action(quantity_at_stake=None).is_actionable is False
+
+
+def test_unknown_and_zero_stay_distinguishable_in_the_data() -> None:
+    """THE BOOL IS A VIEW, NOT A LOSSY ENCODING, and this is what makes that claim checkable.
+
+    Both cases answer False, and a reader who needs to know WHICH reads quantity_at_stake — which
+    is stored on the row. If this ever stops holding, the bool has started destroying information
+    and the tri-state argument reopens.
+    """
+    unknown = _action(quantity_at_stake=None)
+    verified_zero = _action(quantity_at_stake=Decimal("0.000"))
+    assert unknown.is_actionable == verified_zero.is_actionable is False
+    assert unknown.quantity_at_stake is None
+    assert verified_zero.quantity_at_stake == Decimal("0")
+
+
+def test_actionability_is_not_a_filter_on_the_proposers() -> None:
+    """D1 IS STRUCTURAL AND THIS PINS IT. A low-value action is still a recorded action: the
+    denominator attribution needs is destroyed by any filter applied before recording.
+
+    Asserted by counting the proposer's output over a universe containing a zero-stock dead
+    position — the one this slice flags as not actionable. If a future edit ever routes
+    is_actionable into the proposer, this count drops and the test fails.
+    """
+    findings = [
+        DeadStockRow(TENANT, STORE, "SKU-0029", days_since_last_sale=None, is_dead_stock=True),
+        DeadStockRow(TENANT, STORE, "SKU-2", days_since_last_sale=200, is_dead_stock=True),
+    ]
+    universe = [
+        _position("SKU-0029", Decimal("0.000")),
+        _position("SKU-2", Decimal("40.000")),
+    ]
+    actions = propose_dead_stock_actions(
+        findings, universe, declaration=DEAD_STOCK, capability_versions=VERSIONS, as_of=AS_OF
+    )
+    assert len(actions) == 2, "the proposer emitted fewer actions than dead findings"
+    assert [a.is_actionable for a in actions] == [False, True]
+
+
+# ---------------------------------------------------------------------------
+# The observation columns (slice 10). Not scores.
+# ---------------------------------------------------------------------------
+
+
+def test_the_observation_fields_default_to_none() -> None:
+    """DEFAULTED, so all ten modules that construct an Action keep working unchanged. A required
+    field here would have been a breaking change to a frozen contract for a value nothing reads
+    yet."""
+    action = _action()
+    assert action.days_since_last_sale is None
+    assert action.days_of_cover is None
+
+
+def test_a_negative_last_sale_age_is_refused() -> None:
+    """THE CLOCK-SKEW BOUNDARY. dead_stock deliberately passes a negative age through rather than
+    clamping it — a POS can date a sale after as_of and clamping would hide the skew. It is
+    refused HERE because a STORED negative age reads as extremely fresh to anything ranking on it
+    later. Visible in the finding, never in the log."""
+    with pytest.raises(ValueError, match="clock skew"):
+        _action(days_since_last_sale=-1)
+
+
+def test_a_negative_cover_is_refused() -> None:
+    with pytest.raises(ValueError, match="days_of_cover"):
+        _action(days_of_cover=Decimal("-0.001"))
+
+
+def test_zero_is_a_legal_observation() -> None:
+    """Zero days of cover is a real reading — stock on hand with demand that exhausts it today —
+    and zero days since the last sale means it sold today. Neither is negative and neither is
+    missing, so both must construct."""
+    assert _action(days_since_last_sale=0).days_since_last_sale == 0
+    assert _action(days_of_cover=Decimal("0")).days_of_cover == Decimal("0")

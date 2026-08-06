@@ -56,13 +56,15 @@ _INSERT = text(
         event_id, recorded_at, supersedes,
         target, verb, quantity_at_stake, expires_on, arm,
         declaration_id, declaration_version, capability_versions, thresholds, as_of,
-        payload_hash
+        payload_hash,
+        days_since_last_sale, days_of_cover
     ) VALUES (
         CAST(:event_id AS uuid), :recorded_at, CAST(:supersedes AS uuid),
         CAST(:target AS jsonb), :verb, :quantity_at_stake, :expires_on, :arm,
         :declaration_id, :declaration_version,
         CAST(:capability_versions AS jsonb), CAST(:thresholds AS jsonb), :as_of,
-        :payload_hash
+        :payload_hash,
+        :days_since_last_sale, :days_of_cover
     )
     ON CONFLICT DO NOTHING
     """
@@ -75,7 +77,8 @@ _SELECT = text(
     """
     SELECT event_id, recorded_at, supersedes,
            target, verb, quantity_at_stake, expires_on, arm,
-           declaration_id, declaration_version, capability_versions, thresholds, as_of
+           declaration_id, declaration_version, capability_versions, thresholds, as_of,
+           days_since_last_sale, days_of_cover
     FROM synapse.actions
     ORDER BY recorded_at, event_id
     LIMIT :limit
@@ -150,6 +153,11 @@ def parameters(event: ActionEvent) -> dict[str, Any]:
         "thresholds": _json(action.provenance.thresholds),
         "as_of": action.provenance.as_of,
         "payload_hash": payload_hash(action),
+        # OBSERVATIONS, and deliberately NOT in payload_hash's material — see payload_hash().
+        # Two rows differing only here are the SAME action seen twice, so the second is
+        # suppressed by uq_actions_idempotency and the first observation is what persists.
+        "days_since_last_sale": action.days_since_last_sale,
+        "days_of_cover": action.days_of_cover,
     }
 
 
@@ -172,6 +180,10 @@ def project(row: Mapping[str, Any]) -> ActionEvent:
             quantity_at_stake=_as_decimal(row["quantity_at_stake"]),
             expires_on=_as_date(row["expires_on"]),
             arm=Arm(row["arm"]),
+            # Read back so a round-trip is lossless. NULL for any row written before migration
+            # 0004, and for the analysis that does not produce that measure.
+            days_since_last_sale=row["days_since_last_sale"],
+            days_of_cover=_as_decimal(row["days_of_cover"]),
             provenance=Provenance(
                 declaration_id=str(row["declaration_id"]),
                 declaration_version=str(row["declaration_version"]),

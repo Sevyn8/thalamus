@@ -142,6 +142,24 @@ class Action:
     expires_on: date
     arm: Arm
     provenance: Provenance
+    # ------------------------------------------------------------------------
+    # OBSERVATIONS, NOT SCORES. The finding's own measure at the moment this action was first
+    # recorded, carried so that a future ranking has a history to fit against instead of
+    # starting its clock on the day it is scoped. Nothing reads them yet and nothing ranks.
+    #
+    # ONE PER ANALYSIS, and the other stays None: dead_stock measures days since the last sale,
+    # stockout_risk measures days of cover. They are not two views of one quantity, so a single
+    # "urgency" field would have had to mean different things depending on the declaration —
+    # which is the kind of field that reads as comparable and is not.
+    #
+    # DEFAULTED, so all ten modules that construct an Action keep working unchanged.
+    #
+    # FIRST OBSERVATION, NOT LATEST. Neither is in payload_hash's material, so a re-run whose
+    # only difference is one of these values is suppressed by uq_actions_idempotency and the
+    # stored figure stays the one from the run that landed first. That is correct for
+    # idempotency and it is what the column comments in migration 0004 promise.
+    days_since_last_sale: int | None = None
+    days_of_cover: Decimal | None = None
 
     def __post_init__(self) -> None:
         if not self.target:
@@ -156,6 +174,64 @@ class Action:
                 f"action expires {self.expires_on}, before the {self.provenance.as_of} it was "
                 "evaluated for; an action that arrives expired cannot be acted on"
             )
+        # NON-NEGATIVITY ONLY. Deliberately nothing that could make an existing construction
+        # fail: both fields default to None and every current call site omits them, so this
+        # guard can only fire on a value somebody newly supplies.
+        #
+        # days_since_last_sale CAN legitimately be negative in the evaluator — a clock-skewed
+        # POS can date a sale after as_of, and dead_stock passes that through rather than
+        # clamping it (see dead_stock.py's note on not hiding the skew). It is refused HERE
+        # because a negative age on a RECORDED action is a different thing from a negative
+        # intermediate: it would be stored, read back by a future ranking, and silently treated
+        # as extremely fresh. The evaluator keeps the skew visible; the log refuses to carry it.
+        if self.days_since_last_sale is not None and self.days_since_last_sale < 0:
+            raise ValueError(
+                f"days_since_last_sale is {self.days_since_last_sale}; a negative age means a "
+                "sale dated after as_of, which is source clock skew rather than an observation "
+                "worth recording against this action"
+            )
+        if self.days_of_cover is not None and self.days_of_cover < 0:
+            raise ValueError(
+                f"days_of_cover is {self.days_of_cover}; cover is stock divided by a rate and "
+                "the evaluator refuses every input that could produce a negative"
+            )
+
+    @property
+    def is_actionable(self) -> bool:
+        """Whether there is anything to DO about this action, today, for the platform reader.
+
+        A FLAG, NEVER A FILTER. Nothing in this plane may use it to suppress, reorder or gate the
+        recording of an action. D1 is structural: nothing sits between propose and record, and
+        the proposers' ``if not finding.is_dead_stock: continue`` is the only filter that exists
+        and is unchanged by this slice. A low-value action is still a recorded action, because
+        attribution needs the whole population and a filter applied before recording destroys the
+        denominator.
+
+        THE PREDICATE, and both false cases are false for different reasons:
+
+          ``None``      NOT actionable — the quantity is UNKNOWN. stock_qty is nullable in
+                        canonical and dead_stock never inspects it, so a dead position with no
+                        stock figure reaches here as None. Nothing can be decided from it.
+          ``0``         NOT actionable — VERIFIED nothing to act on. A never-sold SKU with zero
+                        stock is real catalogue hygiene, but there is no stock to mark down,
+                        transfer or clear. This is the shape of the only action in the log today.
+          ``> 0``       Actionable.
+
+        A BOOL RATHER THAN A TRI-STATE, AND NOTHING IS LOST. The distinction between "unknown"
+        and "verified zero" survives in the data: ``quantity_at_stake`` is stored on the row, so
+        None, 0 and positive are all recoverable. This bool is a VIEW over a preserved
+        distinction, not a lossy encoding of it — anything needing the three-way answer reads the
+        quantity directly.
+
+        AUDIENCE-RELATIVE, AND THERE IS NO AUDIENCE IN THE TYPE SYSTEM YET. Whether a zero-stock
+        dead SKU is worth surfacing depends on who is reading: it is genuine catalogue hygiene
+        for a platform operator and not a decision for a store manager. Nothing here can express
+        that — ``Verb`` is a union of one (see the note at action.py:48, which makes the same
+        argument for why there is one verb and not three), there is no recipient model, and no
+        delivery exists. So THIS DERIVATION ENCODES THE PLATFORM READING ONLY. A tenant-facing
+        answer is a different predicate and must not be assumed to be this one.
+        """
+        return self.quantity_at_stake is not None and self.quantity_at_stake > 0
 
 
 @dataclass(frozen=True)

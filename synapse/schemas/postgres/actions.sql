@@ -185,6 +185,13 @@ CREATE TABLE synapse.actions (
 
     -- ---------- Idempotency ----------
     payload_hash            VARCHAR(64) COLLATE "C"             NOT NULL,
+
+    -- ---------- Observations, not scores (slice 10) ----------
+    -- The finding's own measure at the moment this action was FIRST recorded. Neither is in
+    -- payload_hash's material, so a re-run of the same slot is suppressed and the stored figure
+    -- stays the first observation. One per analysis; the other is NULL.
+    days_since_last_sale    INTEGER                             NULL,
+    days_of_cover           NUMERIC(14, 3)                      NULL,
         -- sha256 hex over the parts of the action that may legitimately differ
         -- between two events sharing a natural key: quantity_at_stake,
         -- expires_on, arm, capability_versions, thresholds. Canonicalised with
@@ -341,6 +348,15 @@ COMMENT ON COLUMN synapse.actions.quantity_at_stake IS
 
 COMMENT ON COLUMN synapse.actions.payload_hash IS
 'sha256 hex over the parts of an action that may legitimately differ between two events sharing a natural key. The fifth component of uq_actions_idempotency, and what lets that index suppress a RETRY (identical payload, hash collides) while letting a CORRECTION land as its own row. Copies migration 0019''s resolution of the same problem in canonical.';
+
+COMMENT ON COLUMN synapse.actions.days_since_last_sale IS
+'Observation, not a score: the dead_stock finding''s own measure at the moment the action was
+first recorded. NULL means the row predates this migration, or the input was unavailable for
+this analysis (stockout_risk never sets it). Outside payload_hash by construction.';
+
+COMMENT ON COLUMN synapse.actions.days_of_cover IS
+'Observation, not a score: the stockout_risk finding''s own measure at first recording. NULL
+means the row predates this migration, or the analysis does not produce it (dead_stock).';
 
 COMMENT ON COLUMN synapse.actions.supersedes IS
 'The event this one corrects, or NULL. Deliberately NOT a foreign key to event_id: a correction may be written before the row it supersedes is visible to the session, and an FK would reject it.';
