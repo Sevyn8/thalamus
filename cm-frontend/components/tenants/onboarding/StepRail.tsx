@@ -87,10 +87,10 @@ export function StepRail({
                   className={cn(
                     "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs",
                     state === "complete" &&
-                      "border-emerald-500 bg-emerald-500 text-white dark:border-emerald-400 dark:bg-emerald-400 dark:text-emerald-950",
+                      "border-success bg-success text-white",
                     state === "current" && "border-primary text-primary",
                     state === "warning" &&
-                      "border-amber-500 text-amber-600 dark:border-amber-400 dark:text-amber-400",
+                      "border-warning text-warning",
                     state === "pending" && "border-border text-muted-foreground",
                     state === "disabled" &&
                       "border-border/50 text-muted-foreground/50",
@@ -105,7 +105,7 @@ export function StepRail({
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate">{step.label}</span>
                   {reason ? (
-                    <span className="truncate text-[11px] text-amber-600 dark:text-amber-400">
+                    <span className="truncate text-[11px] text-warning">
                       {reason}
                     </span>
                   ) : null}
@@ -129,7 +129,7 @@ export function StepRail({
             Saving...
           </span>
         ) : savedLabel ? (
-          <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+          <span className="inline-flex items-center gap-1.5 text-success">
             <Check className="h-3 w-3" />
             {savedLabel}
           </span>

@@ -134,7 +134,7 @@ export function Row({
       <div className="min-w-0 flex-1">
         <div
           className={
-            attention ? "text-body-strong text-amber-700 dark:text-amber-300" : "text-body-strong"
+            attention ? "text-body-strong text-warning" : "text-body-strong"
           }
         >
           {title}
@@ -172,9 +172,9 @@ export function Footnote({ children }: { children: ReactNode }) {
 // identically to the three that did not.
 export function Attention({ title, detail }: { title: string; detail: string }) {
   return (
-    <div className="rounded-md border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-500/15">
-      <p className="text-body-strong text-amber-700 dark:text-amber-300">{title}</p>
-      <p className="text-caption mt-1 max-w-prose text-amber-700/80 dark:text-amber-300/80">
+    <div className="rounded-md border border-[var(--warning-line)] bg-[var(--warning-bg)] p-4">
+      <p className="text-body-strong text-warning">{title}</p>
+      <p className="text-caption mt-1 max-w-prose text-warning/80">
         {detail}
       </p>
     </div>
@@ -249,11 +249,11 @@ export function Tag({ tone, children }: { tone: Tone; children: ReactNode }) {
 // went wrong" sends an operator to the wrong system.
 export function SynapseDown({ message }: { message: string }) {
   return (
-    <div className="rounded-md border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-500/15">
-      <p className="text-body-strong text-amber-700 dark:text-amber-300">
+    <div className="rounded-md border border-[var(--warning-line)] bg-[var(--warning-bg)] p-4">
+      <p className="text-body-strong text-warning">
         The Synapse service is not reachable.
       </p>
-      <p className="text-caption mt-1 text-amber-700/80 dark:text-amber-300/80">{message}</p>
+      <p className="text-caption mt-1 text-warning/80">{message}</p>
     </div>
   );
 }

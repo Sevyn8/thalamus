@@ -224,9 +224,9 @@ export function EditTenantUserModal({
         {formError ? (
           <div
             role="alert"
-            className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm dark:border-red-500/30 dark:bg-red-500/5"
+            className="flex items-start gap-2 rounded-md border border-[var(--danger-line)] bg-[var(--danger-bg)] p-3 text-sm dark:bg-danger/5"
           >
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
             <div>
               <p className="font-medium">Could not update user.</p>
               <p className="text-muted-foreground">{formError}</p>
@@ -237,9 +237,9 @@ export function EditTenantUserModal({
         {duplicateRowError ? (
           <div
             role="alert"
-            className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm dark:border-red-500/30 dark:bg-red-500/5"
+            className="flex items-start gap-2 rounded-md border border-[var(--danger-line)] bg-[var(--danger-bg)] p-3 text-sm dark:bg-danger/5"
           >
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
             <p className="text-muted-foreground">{duplicateRowError}</p>
           </div>
         ) : null}

@@ -8,12 +8,12 @@ import { cn } from "@/lib/utils";
 export type KpiTone = "blue" | "purple" | "teal" | "green" | "orange" | "red";
 
 const TONE_CLASSES: Record<KpiTone, string> = {
-  blue: "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
-  purple: "bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
-  teal: "bg-teal-50 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300",
-  green: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
-  orange: "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
-  red: "bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300",
+  blue: "bg-[var(--info-bg)] text-info dark:bg-info/15",
+  purple: "bg-[color-mix(in_srgb,var(--magenta)_12%,transparent)] text-[var(--magenta)]",
+  teal: "bg-[color-mix(in_srgb,var(--cyan)_12%,transparent)] text-[var(--cyan)]",
+  green: "bg-[var(--success-bg)] text-success dark:bg-success/15",
+  orange: "bg-[var(--warning-bg)] text-warning dark:bg-warning/15",
+  red: "bg-[var(--danger-bg)] text-danger dark:bg-danger/15",
 };
 
 // Phase 5e.4: extended with `available` + `unavailableText` props.
@@ -94,7 +94,7 @@ export function KpiCard({
             <span className="text-xs text-muted-foreground">{subtext}</span>
           ) : null}
           {!isUnavailable && delta ? (
-            <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+            <span className="text-xs font-medium text-success">
               {delta}
             </span>
           ) : null}

@@ -275,9 +275,9 @@ export function DocumentsStep({ tenantId, onSaved, onBack, setDirty, mode }: Ste
         {storageUnavailable ? (
           <div
             role="alert"
-            className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/5"
+            className="flex items-start gap-2 rounded-md border border-[var(--warning-line)] bg-[var(--warning-bg)] p-3 text-sm dark:bg-warning/5"
           >
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
             <div>
               <p className="font-medium">Document storage is not configured.</p>
               <p className="text-muted-foreground">
@@ -321,7 +321,7 @@ export function DocumentsStep({ tenantId, onSaved, onBack, setDirty, mode }: Ste
           </div>
 
           {inlineError ? (
-            <p className="text-xs text-red-600 dark:text-red-400">{inlineError}</p>
+            <p className="text-xs text-danger">{inlineError}</p>
           ) : null}
 
           {uploading ? (
@@ -374,7 +374,7 @@ export function DocumentsStep({ tenantId, onSaved, onBack, setDirty, mode }: Ste
                     {doc.file_size_bytes !== null ? ` · ${formatBytes(doc.file_size_bytes)}` : ""}
                   </p>
                   {doc.verification_status === "REJECTED" && doc.rejection_reason ? (
-                    <p className="mt-0.5 text-xs text-red-600 dark:text-red-400">
+                    <p className="mt-0.5 text-xs text-danger">
                       Rejected: {doc.rejection_reason}
                     </p>
                   ) : null}
@@ -393,7 +393,7 @@ export function DocumentsStep({ tenantId, onSaved, onBack, setDirty, mode }: Ste
                         disabled={verify.isPending}
                         onClick={() => onVerify(doc)}
                       >
-                        {verify.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
+                        {verify.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4 text-success" />}
                       </Button>
                       <Button
                         type="button"
@@ -402,7 +402,7 @@ export function DocumentsStep({ tenantId, onSaved, onBack, setDirty, mode }: Ste
                         aria-label={`Reject ${doc.file_name ?? "document"}`}
                         onClick={() => startReject(doc)}
                       >
-                        <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                        <XCircle className="h-4 w-4 text-danger" />
                       </Button>
                       <Button
                         type="button"

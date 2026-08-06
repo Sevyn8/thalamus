@@ -61,7 +61,7 @@ export function PermissionMatrixRow({
                 }
               >
                 {granted ? (
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-success" />
                 ) : null}
               </TooltipTrigger>
               <TooltipContent>{code}</TooltipContent>

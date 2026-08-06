@@ -204,7 +204,7 @@ export function RoleAssignmentEditor({
             className={cn(
               "flex flex-col gap-2 rounded-md border p-3",
               isDup
-                ? "border-red-300 bg-red-50/40 dark:border-red-500/40 dark:bg-red-500/5"
+                ? "border-[var(--danger-line)] bg-[var(--danger-bg)]/40 dark:bg-danger/5"
                 : "border-border bg-surface/40",
             )}
           >
@@ -281,7 +281,7 @@ export function RoleAssignmentEditor({
             {isDup ? (
               <div
                 role="alert"
-                className="flex items-start gap-1.5 text-caption text-red-700 dark:text-red-300"
+                className="flex items-start gap-1.5 text-caption text-danger"
               >
                 <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span>

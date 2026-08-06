@@ -73,8 +73,8 @@ function DashboardHeader({
         <h1 className="text-display">{title}</h1>
         <p className="text-sm text-muted-foreground">{subtitle}</p>
       </div>
-      <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/5 dark:text-emerald-300">
-        <span className="h-2 w-2 rounded-full bg-emerald-600 dark:bg-emerald-400" aria-hidden="true" />
+      <div className="flex items-center gap-2 rounded-md border border-[var(--success-line)] bg-[var(--success-bg)] px-3 py-1.5 text-xs text-success dark:bg-success/5">
+        <span className="h-2 w-2 rounded-full bg-success" aria-hidden="true" />
         All systems operational
       </div>
     </div>

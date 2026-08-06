@@ -29,7 +29,7 @@ export function ImpersonationBanner() {
   }
 
   return (
-    <div className="sticky top-0 z-30 flex items-center justify-between gap-4 bg-orange-500 px-6 py-2 text-sm text-orange-50 shadow">
+    <div className="sticky top-0 z-30 flex items-center justify-between gap-4 bg-warning px-6 py-2 text-sm text-[var(--warning-bg)] shadow">
       <span>
         <span className="font-medium">{actor}</span> is impersonating{" "}
         <span className="font-medium">{targetName}</span> ({targetRole}) for ticket {ticket}.{" "}
@@ -38,7 +38,7 @@ export function ImpersonationBanner() {
       <button
         type="button"
         onClick={endSession}
-        className="rounded-md border border-orange-50/50 px-3 py-1 text-xs font-medium hover:bg-orange-50/10"
+        className="rounded-md border border-[var(--warning-line)]/50 px-3 py-1 text-xs font-medium hover:bg-[var(--warning-bg)]/10"
       >
         End session
       </button>

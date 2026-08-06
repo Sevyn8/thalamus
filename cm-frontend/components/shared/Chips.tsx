@@ -18,26 +18,29 @@ import type {
 // ActionChip, ScopeChip) are unchanged.
 export type Tone = "green" | "amber" | "red" | "blue" | "violet" | "teal" | "purple" | "grey";
 
-// Light recipe (base classes) + dark: overrides. Light uses solid -50 bgs
-// + -700 text + -200 ring; dark uses tinted alpha overlays. Same chip,
-// two visually-equivalent recipes per theme.
+// dis-ui-ver2's badge vocabulary. ver2 defines six status classes (.b-ok/.b-warn/.b-fail/
+// .b-info/.b-live/.b-mut, index.css:548-577) and each sets a TRIPLE — foreground, background
+// and border together. A status colour is never used alone there, which is why the tokens come
+// in threes.
+//
+// ONE RECIPE, NOT TWO. The old chip carried a light recipe plus a dark: override on every tone.
+// Both themes now resolve through the same semantic tokens, so the dark variants are gone and
+// the chip cannot drift between modes.
+//
+// TWO TONES HAVE NO ver2 EQUIVALENT. `violet` and `purple` exist for org-node categories, which
+// ver2 has no palette for. Derived from ver2's spectrum accents rather than sourced elsewhere:
+// --magenta (index.css:26) for both, distinguished by fill weight. Flagged in the design spec.
 const TONE_CLASSES: Record<Tone, string> = {
-  green:
-    "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30",
-  amber:
-    "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30",
-  red:
-    "bg-red-50 text-red-700 ring-red-200 dark:bg-red-500/15 dark:text-red-300 dark:ring-red-500/30",
-  blue:
-    "bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-500/30",
+  green: "bg-[var(--success-bg)] text-success ring-[var(--success-line)]",
+  amber: "bg-[var(--warning-bg)] text-warning ring-[var(--warning-line)]",
+  red: "bg-[var(--danger-bg)] text-danger ring-[var(--danger-line)]",
+  blue: "bg-[var(--info-bg)] text-info ring-[var(--info-line)]",
+  teal: "bg-[color-mix(in_srgb,var(--cyan)_12%,transparent)] text-[var(--cyan)] ring-[color-mix(in_srgb,var(--cyan)_30%,transparent)]",
   violet:
-    "bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/30",
-  teal:
-    "bg-teal-50 text-teal-700 ring-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:ring-teal-500/30",
+    "bg-[color-mix(in_srgb,var(--magenta)_12%,transparent)] text-[var(--magenta)] ring-[color-mix(in_srgb,var(--magenta)_30%,transparent)]",
   purple:
-    "bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-200 dark:bg-fuchsia-500/15 dark:text-fuchsia-300 dark:ring-fuchsia-500/30",
-  grey:
-    "bg-zinc-100 text-zinc-700 ring-zinc-300 dark:bg-zinc-500/15 dark:text-zinc-300 dark:ring-zinc-500/30",
+    "bg-[color-mix(in_srgb,var(--magenta)_18%,transparent)] text-[var(--magenta)] ring-[color-mix(in_srgb,var(--magenta)_40%,transparent)]",
+  grey: "bg-muted text-foreground-muted ring-border",
 };
 
 export function Chip({
@@ -52,7 +55,7 @@ export function Chip({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset",
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset",
         TONE_CLASSES[tone],
         className,
       )}
@@ -64,14 +67,14 @@ export function Chip({
 }
 
 const DOT_CLASSES: Record<Tone, string> = {
-  green: "bg-emerald-600 dark:bg-emerald-400",
-  amber: "bg-amber-600 dark:bg-amber-400",
-  red: "bg-red-600 dark:bg-red-400",
-  blue: "bg-blue-600 dark:bg-blue-400",
-  violet: "bg-violet-600 dark:bg-violet-400",
-  teal: "bg-teal-600 dark:bg-teal-400",
-  purple: "bg-fuchsia-600 dark:bg-fuchsia-400",
-  grey: "bg-zinc-500 dark:bg-zinc-400",
+  green: "bg-success",
+  amber: "bg-warning",
+  red: "bg-danger",
+  blue: "bg-info",
+  teal: "bg-[var(--cyan)]",
+  violet: "bg-[var(--magenta)]",
+  purple: "bg-[var(--magenta)]",
+  grey: "bg-foreground-subtle",
 };
 
 // PlatformUserStatus and TenantUserStatus have identical values

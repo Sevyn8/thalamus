@@ -82,15 +82,22 @@
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
 
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-geist-sans);
+  /* IBM Plex, from dis-ui-ver2. The indirection is kept: next/font mints
+     --font-plex-* and the theme names stay stable, so call sites never change. */
+  --font-sans: var(--font-plex-sans);
+  --font-mono: var(--font-plex-mono);
+  --font-heading: var(--font-plex-sans);
 
-  --radius-sm: 0.125rem;
-  --radius: 0.25rem;
-  --radius-md: 0.375rem;
-  --radius-lg: 0.5rem;
-  --radius-xl: 0.625rem;
+  /* dis-ui-ver2 radii. ver2 declares three tokens (--r 10 / --r-sm 7 / --r-lg 14,
+     index.css:44-46) and then uses 9px for buttons and inputs (:388, :919) and a
+     20px pill for badges (:544). The scale below preserves CM's semantic slots so
+     no call site changes: `rounded` is the interactive radius, `rounded-md` the
+     card radius. Badges already use rounded-full, which matches ver2's pill. */
+  --radius-sm: 7px;   /* --r-sm   index.css:45 */
+  --radius: 9px;      /* buttons + inputs :388, :919 */
+  --radius-md: 10px;  /* --r      :44  cards */
+  --radius-lg: 14px;  /* --r-lg   :46 */
+  --radius-xl: 14px;  /* ver2 has nothing larger; capped rather than invented */
 
   --shadow-sm: var(--shadow-sm-value);
   --shadow-md: var(--shadow-md-value);
@@ -106,101 +113,156 @@
 }
 
 :root {
-  /* Light theme (default). System preference detection + user override
-     handled by next-themes; toggle in profile menu. */
-  --background: oklch(0.98 0 0);
-  --foreground: oklch(0.15 0 0);
-  --foreground-muted: oklch(0.40 0 0);
-  --foreground-subtle: oklch(0.55 0 0);
-  --surface: oklch(1.00 0 0);
-  --surface-raised: oklch(0.97 0 0);
-  --card: oklch(1.00 0 0);
-  --card-foreground: oklch(0.15 0 0);
-  --popover: oklch(1.00 0 0);
-  --popover-foreground: oklch(0.15 0 0);
-  --primary: oklch(0.62 0.19 257);
-  --primary-foreground: oklch(1.00 0 0);
-  --secondary: oklch(0.96 0 0);
-  --secondary-foreground: oklch(0.20 0 0);
-  --muted: oklch(0.96 0 0);
-  --muted-foreground: oklch(0.40 0 0);
-  --accent: oklch(0.96 0 0);
-  --accent-foreground: oklch(0.20 0 0);
-  --success: oklch(0.60 0.18 162);
-  --warning: oklch(0.72 0.17 65);
-  --danger: oklch(0.58 0.22 25);
-  --destructive: oklch(0.58 0.22 25);
-  --info: oklch(0.55 0.22 280);
-  --border: oklch(0.91 0 0);
-  --border-strong: oklch(0.83 0 0);
-  --input: oklch(0.91 0 0);
-  --ring: oklch(0.62 0.19 257);
+  /* ------------------------------------------------------------------
+     LIGHT — dis-ui-ver2 VERBATIM. Hex, not oklch: ver2's own comment says the
+     values are ported unconverted from the V2 mockups (index.css:18) and must
+     stay that way. Each line names the ver2 token it maps to.
+     ------------------------------------------------------------------ */
+  --background: #f6f7f9;          /* --canvas      index.css:27 */
+  --foreground: #171c24;          /* --text        :32 */
+  --foreground-muted: #586071;    /* --text-2      :33 */
+  --foreground-subtle: #8a93a3;   /* --text-3      :34 */
+  --surface: #ffffff;             /* --surface     :28 */
+  --surface-raised: #fbfcfd;      /* --surface-2   :29 */
+  --card: #ffffff;                /* --surface     :28 */
+  --card-foreground: #171c24;
+  --popover: #ffffff;             /* --surface     :28 */
+  --popover-foreground: #171c24;
+  --primary: #414bf5;             /* --ion         :23 */
+  --primary-foreground: #ffffff;
+  --secondary: #fbfcfd;           /* --surface-2   :29 */
+  --secondary-foreground: #171c24;
+  --muted: #eef1f5;               /* --line-2      :31 */
+  --muted-foreground: #586071;    /* --text-2      :33 */
+  --accent: #eaecfe;              /* --ion-weak    :24 */
+  --accent-foreground: #414bf5;   /* --ion         :23 */
+  --success: #0e9b84;             /* --ok          :35 */
+  --warning: #b26b00;             /* --warn        :38 */
+  --danger: #d0384a;              /* --fail        :41 */
+  --destructive: #d0384a;
+  --info: #414bf5;                /* --ion         :23 — ver2's info badge is ion */
+  --border: #e5e9ef;              /* --line        :30 */
+  --border-strong: #8a93a3;       /* DERIVED, see the spec's alias table */
+  --input: #e5e9ef;               /* --line        :30 */
+  --ring: #414bf5;                /* --ion         :23 */
 
-  --shadow-sm-value: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md-value: 0 4px 12px rgba(0, 0, 0, 0.08);
+  /* ver2's status triples. CM had fg-only status tokens; badges need all three. */
+  --success-bg: #e6f5f1;          /* --ok-bg       :36 */
+  --success-line: #bee6dd;        /* --ok-line     :37 */
+  --warning-bg: #fbf1e3;          /* --warn-bg     :39 */
+  --warning-line: #f0dbb8;        /* --warn-line   :40 */
+  --danger-bg: #fbebed;           /* --fail-bg     :42 */
+  --danger-line: #f2c9ce;         /* --fail-line   :43 */
+  --info-bg: #eaecfe;             /* --ion-weak    :24 */
+  --info-line: #d3d7fb;           /* index.css:567 */
 
-  --chart-1: oklch(0.62 0.19 257);
-  --chart-2: oklch(0.60 0.18 162);
-  --chart-3: oklch(0.72 0.17 65);
-  --chart-4: oklch(0.58 0.22 25);
-  --chart-5: oklch(0.55 0.22 280);
+  /* Brand accents. --cyan and --magenta are ver2's spectrum; unused until the
+     chrome-alignment phase, declared so nothing reaches for a raw hex. */
+  --cyan: #19d3e0;                /* index.css:25 */
+  --magenta: #e63dcb;             /* :26 */
 
-  --sidebar: oklch(1.00 0 0);
-  --sidebar-foreground: oklch(0.15 0 0);
-  --sidebar-primary: oklch(0.62 0.19 257);
-  --sidebar-primary-foreground: oklch(1.00 0 0);
-  --sidebar-accent: oklch(0.96 0 0);
-  --sidebar-accent-foreground: oklch(0.20 0 0);
-  --sidebar-border: oklch(0.91 0 0);
-  --sidebar-ring: oklch(0.62 0.19 257);
+  --shadow-sm-value: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 3px rgba(16, 24, 40, 0.04);
+  --shadow-md-value: 0 10px 30px rgba(16, 24, 40, 0.12);
+
+  --chart-1: #414bf5;
+  --chart-2: #0e9b84;
+  --chart-3: #b26b00;
+  --chart-4: #d0384a;
+  --chart-5: #19d3e0;
+
+  /* Sidebar follows the app surface, NOT ver2's always-dark chrome. Making it
+     dark is chrome alignment (ver2's 248px #0a0d14 rail), which is a separate
+     approved-out-of-scope phase. */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #171c24;
+  --sidebar-primary: #414bf5;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eef1f5;
+  --sidebar-accent-foreground: #171c24;
+  --sidebar-border: #e5e9ef;
+  --sidebar-ring: #414bf5;
 }
 
 .dark {
-  --background: oklch(0.10 0 0);
-  --foreground: oklch(0.92 0 0);
-  --foreground-muted: oklch(0.75 0 0);
-  --foreground-subtle: oklch(0.51 0 0);
-  --surface: oklch(0.16 0 0);
-  --surface-raised: oklch(0.20 0 0);
-  --card: oklch(0.16 0 0);
-  --card-foreground: oklch(0.92 0 0);
-  --popover: oklch(0.20 0 0);
-  --popover-foreground: oklch(0.92 0 0);
-  --primary: oklch(0.62 0.19 257);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.20 0 0);
-  --secondary-foreground: oklch(0.92 0 0);
-  --muted: oklch(0.20 0 0);
-  --muted-foreground: oklch(0.75 0 0);
-  --accent: oklch(0.20 0 0);
-  --accent-foreground: oklch(0.92 0 0);
-  --success: oklch(0.69 0.16 165);
-  --warning: oklch(0.75 0.16 71);
-  --danger: oklch(0.65 0.24 25);
-  --destructive: oklch(0.65 0.24 25);
-  --info: oklch(0.59 0.21 280);
-  --border: oklch(0.22 0 0);
-  --border-strong: oklch(0.30 0 0);
-  --input: oklch(0.22 0 0);
-  --ring: oklch(0.62 0.19 257);
+  /* ------------------------------------------------------------------
+     DERIVED — NOT PRESENT IN dis-ui-ver2.
 
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+     ver2 is light-only: no .dark block, no prefers-color-scheme, no toggle.
+     CM ships a three-way theme control, so dropping dark mode would remove a
+     working feature — a behaviour change, out of scope. This palette is
+     therefore DERIVED, and only from ver2's own ink family, which ver2 uses
+     for its sidebar chrome. No hex here is invented.
 
-  --sidebar: oklch(0.16 0 0);
-  --sidebar-foreground: oklch(0.92 0 0);
-  --sidebar-primary: oklch(0.62 0.19 257);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.20 0 0);
-  --sidebar-accent-foreground: oklch(0.92 0 0);
-  --sidebar-border: oklch(0.22 0 0);
-  --sidebar-ring: oklch(0.62 0.19 257);
+       --ink      #0a0d14  index.css:19  -> page background
+       --ink-2    #12161f  :20           -> raised surfaces (card, popover, sidebar)
+       --ink-3    #1b212e  :21           -> secondary / muted / accent fills
+       --ink-line #232b3a  :22           -> borders and inputs
 
-  --shadow-sm-value: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md-value: 0 4px 12px rgba(0, 0, 0, 0.4);
+     Text on dark uses ver2's own sidebar values: #c4cbd8 (index.css:128, the nav
+     resting colour) and #ffffff (:198, the active colour).
+
+     STATUS AND ACCENT HEX ARE ver2-VERBATIM IN BOTH MODES, by decision — a status
+     colour that shifted between themes would mean two different "danger" reds.
+     ------------------------------------------------------------------ */
+  --background: #0a0d14;
+  --foreground: #ffffff;
+  --foreground-muted: #c4cbd8;
+  --foreground-subtle: #8a93a3;
+  --surface: #12161f;
+  --surface-raised: #1b212e;
+  --card: #12161f;
+  --card-foreground: #ffffff;
+  --popover: #1b212e;
+  --popover-foreground: #ffffff;
+  --primary: #414bf5;
+  --primary-foreground: #ffffff;
+  --secondary: #1b212e;
+  --secondary-foreground: #ffffff;
+  --muted: #1b212e;
+  --muted-foreground: #c4cbd8;
+  --accent: #1b212e;
+  --accent-foreground: #ffffff;
+  --success: #0e9b84;
+  --warning: #b26b00;
+  --danger: #d0384a;
+  --destructive: #d0384a;
+  --info: #414bf5;
+  --border: #232b3a;
+  --border-strong: #586071;
+  --input: #232b3a;
+  --ring: #414bf5;
+
+  /* Status triples on dark: ver2's fg stays verbatim; the bg/line are the ink
+     surfaces, because ver2's pale status backgrounds are unreadable on #0a0d14. */
+  --success-bg: #1b212e;
+  --success-line: #232b3a;
+  --warning-bg: #1b212e;
+  --warning-line: #232b3a;
+  --danger-bg: #1b212e;
+  --danger-line: #232b3a;
+  --info-bg: #1b212e;
+  --info-line: #232b3a;
+
+  --cyan: #19d3e0;
+  --magenta: #e63dcb;
+
+  --chart-1: #414bf5;
+  --chart-2: #0e9b84;
+  --chart-3: #b26b00;
+  --chart-4: #d0384a;
+  --chart-5: #19d3e0;
+
+  --sidebar: #12161f;
+  --sidebar-foreground: #c4cbd8;
+  --sidebar-primary: #414bf5;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1b212e;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #232b3a;
+  --sidebar-ring: #414bf5;
+
+  --shadow-sm-value: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md-value: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
 @utility text-display {
@@ -255,6 +317,17 @@
 }
 
 @layer base {
+  /* ONE GLOBAL FOCUS RULE, from dis-ui-ver2 (index.css:79-83). ver2 has no
+     per-component focus ring; every focusable thing gets the same 2px ion outline
+     at 2px offset. This is the single most portable thing in that system and it
+     replaces CM's scattered ring-* utilities as the DEFAULT — components may still
+     override, but nothing has to remember to. */
+  :focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
   * {
     @apply border-border outline-ring/50;
   }

@@ -185,9 +185,9 @@ export function EditOrgNodeModal({
         {formError ? (
           <div
             role="alert"
-            className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm dark:border-red-500/30 dark:bg-red-500/5"
+            className="flex items-start gap-2 rounded-md border border-[var(--danger-line)] bg-[var(--danger-bg)] p-3 text-sm dark:bg-danger/5"
           >
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
             <div>
               <p className="font-medium">Could not update node.</p>
               <p className="text-muted-foreground">{formError}</p>
@@ -246,7 +246,7 @@ export function EditOrgNodeModal({
                   <span className="font-medium">{newParent.name}</span> (
                   {NODE_TYPE_LABEL[newParent.node_type]})
                   {!isAllowedAsNewParent(newParent) ? (
-                    <span className="ml-1 text-amber-700 dark:text-amber-300">
+                    <span className="ml-1 text-warning">
                       — not allowed; pick a node above {NODE_TYPE_LABEL[node.node_type]} in the cascade.
                     </span>
                   ) : null}

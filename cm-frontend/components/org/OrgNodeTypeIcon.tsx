@@ -16,13 +16,13 @@ const ICON_BY_TYPE: Record<OrgNodeType, React.ComponentType<{ className?: string
 };
 
 const TINT_BY_TYPE: Record<OrgNodeType, string> = {
-  TENANT: "text-blue-700 dark:text-blue-300",
-  BUSINESS_UNIT: "text-violet-700 dark:text-violet-300",
-  HQ: "text-blue-700 dark:text-blue-300",
-  COUNTRY: "text-teal-700 dark:text-teal-300",
-  REGION: "text-emerald-700 dark:text-emerald-300",
-  STORE: "text-amber-700 dark:text-amber-300",
-  DEPARTMENT: "text-zinc-600 dark:text-zinc-400",
+  TENANT: "text-info",
+  BUSINESS_UNIT: "text-[var(--magenta)]",
+  HQ: "text-info",
+  COUNTRY: "text-[var(--cyan)]",
+  REGION: "text-success",
+  STORE: "text-warning",
+  DEPARTMENT: "text-foreground-muted dark:text-foreground-subtle",
 };
 
 export function OrgNodeTypeIcon({ type, className }: { type: OrgNodeType; className?: string }) {

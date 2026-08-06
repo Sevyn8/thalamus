@@ -4,13 +4,13 @@ import { cn } from "@/lib/utils";
 import type { OrgNodeType } from "@/types/api";
 
 const RECIPE_BY_TYPE: Record<OrgNodeType, string> = {
-  TENANT: "bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-500/30",
-  BUSINESS_UNIT: "bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/30",
-  HQ: "bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-500/30",
-  COUNTRY: "bg-teal-50 text-teal-700 ring-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:ring-teal-500/30",
-  REGION: "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30",
-  STORE: "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30",
-  DEPARTMENT: "bg-zinc-100 text-zinc-700 ring-zinc-300 dark:bg-zinc-500/15 dark:text-zinc-300 dark:ring-zinc-500/30",
+  TENANT: "bg-[var(--info-bg)] text-info ring-[var(--info-line)] dark:bg-info/15",
+  BUSINESS_UNIT: "bg-[color-mix(in_srgb,var(--magenta)_12%,transparent)] text-[var(--magenta)] ring-[color-mix(in_srgb,var(--magenta)_30%,transparent)]",
+  HQ: "bg-[var(--info-bg)] text-info ring-[var(--info-line)] dark:bg-info/15",
+  COUNTRY: "bg-[color-mix(in_srgb,var(--cyan)_12%,transparent)] text-[var(--cyan)] ring-[color-mix(in_srgb,var(--cyan)_30%,transparent)]",
+  REGION: "bg-[var(--success-bg)] text-success ring-[var(--success-line)] dark:bg-success/15",
+  STORE: "bg-[var(--warning-bg)] text-warning ring-[var(--warning-line)] dark:bg-warning/15",
+  DEPARTMENT: "bg-muted text-foreground-muted ring-border",
 };
 
 const LABEL_BY_TYPE: Record<OrgNodeType, string> = {

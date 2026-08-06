@@ -26,12 +26,12 @@ const ICON_BY_CODE: Record<
 };
 
 const TONE_BY_CODE: Record<ModuleCode, string> = {
-  GOAL_CONSOLE: "bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/30",
-  PRICING_OS: "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30",
-  PERISHABLES_ASSISTANT: "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30",
+  GOAL_CONSOLE: "bg-[color-mix(in_srgb,var(--magenta)_12%,transparent)] text-[var(--magenta)] ring-[color-mix(in_srgb,var(--magenta)_30%,transparent)]",
+  PRICING_OS: "bg-[var(--success-bg)] text-success ring-[var(--success-line)] dark:bg-success/15",
+  PERISHABLES_ASSISTANT: "bg-[var(--warning-bg)] text-warning ring-[var(--warning-line)] dark:bg-warning/15",
   PROMOTIONS_ASSISTANT: "bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/30",
-  ADMIN: "bg-zinc-100 text-zinc-700 ring-zinc-300 dark:bg-zinc-500/15 dark:text-zinc-300 dark:ring-zinc-500/30",
-  DIS: "bg-teal-50 text-teal-700 ring-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:ring-teal-500/30",
+  ADMIN: "bg-muted text-foreground-muted ring-border",
+  DIS: "bg-[color-mix(in_srgb,var(--cyan)_12%,transparent)] text-[var(--cyan)] ring-[color-mix(in_srgb,var(--cyan)_30%,transparent)]",
 };
 
 export type ModuleSummaryCardProps = {

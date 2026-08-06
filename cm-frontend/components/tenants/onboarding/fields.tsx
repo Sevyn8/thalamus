@@ -28,7 +28,7 @@ export function FieldLabel({
     <label htmlFor={htmlFor} className="text-xs font-medium text-foreground">
       {children}
       {required ? (
-        <span className="ml-0.5 text-red-600 dark:text-red-400">*</span>
+        <span className="ml-0.5 text-danger">*</span>
       ) : null}
     </label>
   );
@@ -37,7 +37,7 @@ export function FieldLabel({
 export function FieldError({ message }: { message?: string }) {
   if (!message) return null;
   return (
-    <p className="mt-1 text-xs text-red-600 dark:text-red-400">{message}</p>
+    <p className="mt-1 text-xs text-danger">{message}</p>
   );
 }
 
@@ -51,7 +51,7 @@ export function FormErrorAlert({
   return (
     <div
       role="alert"
-      className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm dark:border-red-500/30 dark:bg-red-500/5"
+      className="flex items-start gap-2 rounded-md border border-[var(--danger-line)] bg-[var(--danger-bg)] p-3 text-sm dark:bg-danger/5"
     >
       <div>
         <p className="font-medium">{title}</p>

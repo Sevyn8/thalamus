@@ -42,7 +42,7 @@ function FieldLabel({
     <label htmlFor={htmlFor} className="text-xs font-medium text-foreground">
       {children}
       {required ? (
-        <span className="ml-0.5 text-red-600 dark:text-red-400">*</span>
+        <span className="ml-0.5 text-danger">*</span>
       ) : null}
     </label>
   );
@@ -191,9 +191,9 @@ export function CreateOrgNodeModal({
         {formError ? (
           <div
             role="alert"
-            className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm dark:border-red-500/30 dark:bg-red-500/5"
+            className="flex items-start gap-2 rounded-md border border-[var(--danger-line)] bg-[var(--danger-bg)] p-3 text-sm dark:bg-danger/5"
           >
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
             <div>
               <p className="font-medium">Could not create node.</p>
               <p className="text-muted-foreground">{formError}</p>
@@ -252,7 +252,7 @@ export function CreateOrgNodeModal({
             ))}
           </select>
           {parent && allowedTypes.length === 0 ? (
-            <p className="text-caption text-amber-700 dark:text-amber-300">
+            <p className="text-caption text-warning">
               No types can sit below {NODE_TYPE_LABEL[parent.node_type]}; pick a
               higher parent.
             </p>

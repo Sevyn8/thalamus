@@ -53,9 +53,9 @@ export function Auth0OrgSection({ tenantId }: { tenantId: string }) {
       {unavailable ? (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/5"
+          className="flex items-start gap-2 rounded-md border border-[var(--warning-line)] bg-[var(--warning-bg)] p-3 text-sm dark:bg-warning/5"
         >
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
           <div>
             <p className="font-medium">Auth0 provisioning is not configured.</p>
             <p className="text-muted-foreground">

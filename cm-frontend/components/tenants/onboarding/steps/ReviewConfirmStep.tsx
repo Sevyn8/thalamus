@@ -224,9 +224,9 @@ export function ReviewConfirmStep({
         {!canConfirm ? (
           <div
             role="alert"
-            className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/5"
+            className="flex items-start gap-2 rounded-md border border-[var(--warning-line)] bg-[var(--warning-bg)] p-3 text-sm dark:bg-warning/5"
           >
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
             <div>
               <p className="font-medium">Onboarding is not ready to complete.</p>
               <p className="text-muted-foreground">
@@ -242,9 +242,9 @@ export function ReviewConfirmStep({
             <li key={row.key} className="flex items-center gap-3 px-4 py-3">
               <span aria-hidden="true" className="shrink-0">
                 {row.ok ? (
-                  <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                  <CheckCircle2 className="h-5 w-5 text-success" />
                 ) : (
-                  <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                  <AlertTriangle className="h-5 w-5 text-warning" />
                 )}
               </span>
               <div className="min-w-0 flex-1">

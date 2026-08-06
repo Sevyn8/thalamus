@@ -180,7 +180,7 @@ export function AdminUsersSection({ tenantId }: { tenantId: string }) {
       {showAdd ? (
         <form onSubmit={onCreate} className="flex flex-col gap-3 rounded-md border border-border p-4" noValidate>
           {formError ? (
-            <p className="text-xs text-red-600 dark:text-red-400">{formError}</p>
+            <p className="text-xs text-danger">{formError}</p>
           ) : null}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1">

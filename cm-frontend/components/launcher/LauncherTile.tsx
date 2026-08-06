@@ -62,7 +62,7 @@ export function LauncherTile({
           <Icon className="h-5 w-5" aria-hidden="true" />
         </div>
         {!isAvailable ? (
-          <span className="rounded-sm bg-zinc-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-600 ring-1 ring-zinc-300 dark:bg-zinc-500/15 dark:text-zinc-300 dark:ring-zinc-500/30">
+          <span className="rounded-sm bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-foreground-muted ring-1 ring-border">
             Coming Soon
           </span>
         ) : null}

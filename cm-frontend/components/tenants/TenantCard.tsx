@@ -115,14 +115,14 @@ export function TenantCard({ tenant, onSelect }: TenantCardProps) {
           {tenant.modules.slice(0, 4).map((m) => (
             <span
               key={m.code}
-              className="inline-flex items-center rounded-md bg-zinc-100 text-zinc-700 ring-zinc-300 px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset dark:bg-zinc-500/10 dark:text-zinc-300 dark:ring-zinc-500/20"
+              className="inline-flex items-center rounded-md bg-muted text-foreground-muted ring-border px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset"
             >
               {m.name}
             </span>
           ))}
           {tenant.modules.length > 4 ? (
             <span
-              className="inline-flex items-center rounded-md bg-zinc-100/60 text-zinc-600 ring-zinc-300 px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset dark:bg-zinc-500/5 dark:text-zinc-400 dark:ring-zinc-500/20"
+              className="inline-flex items-center rounded-md bg-muted/60 text-foreground-muted ring-border px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset dark:text-foreground-subtle"
               aria-label={`${tenant.modules.length - 4} more modules`}
             >
               +{tenant.modules.length - 4}

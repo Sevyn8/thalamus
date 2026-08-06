@@ -220,7 +220,7 @@ function FooterActions({ user }: { user: TenantUser }) {
         ) : null}
         {showReactivate ? (
           <Button
-            className="bg-emerald-600 text-white hover:bg-emerald-600/90"
+            className="bg-success text-white hover:bg-success/90"
             onClick={onReactivateClick}
             disabled={inFlight}
           >

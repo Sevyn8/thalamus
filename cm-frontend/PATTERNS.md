@@ -15,6 +15,16 @@ Captured patterns and gotchas discovered during the build. Read before writing s
 
 - Idempotency-Key generated inside the API client per-call (`crypto.randomUUID()` at request time), not at hook instantiation. Retry-after-500 produces two distinct intents.
 
+## Design tokens — SUPERSEDED by the dis-ui-ver2 port
+
+> **The palette, fonts and radii below are HISTORICAL.** cm-frontend was reskinned onto
+> dis-ui-ver2's design system so CM and DIS read as one product. The live values, their ver2
+> provenance and every derived addition are in **`docs/design/dis-ver2-design-spec.md`**, which
+> is the standing playbook. What is still accurate here: the typography *scale* semantics
+> (`text-display`/`text-body`/`text-caption`…), the spacing semantics, the Tailwind v4
+> class-name collision warning, and the animation tokens — ver2 has none, so CM's are kept.
+> What is stale: the oklch palette, Geist, and the 2/4/6px radius scale.
+
 ## Design tokens (captured post Step 5.1.1)
 
 Tokens live in `app/globals.css` (`@theme inline` block + `:root` / `.dark` blocks) and mirrored as TypeScript constants in `lib/design-tokens.ts`. Use the tokens; don't introduce ad-hoc colors, sizes, or radii.
