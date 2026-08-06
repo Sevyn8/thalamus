@@ -129,7 +129,7 @@ def _resolve_constants(source: str) -> str:
     loop = re.search(r"for role in \(([^)]+)\):", source)
     if loop:
         roles = [r.strip() for r in loop.group(1).split(",")]
-        expanded = []
+        expanded: list[str] = []
         for line in source.splitlines():
             if "{role}" in line:
                 expanded.extend(line.replace("{role}", r) for r in roles)

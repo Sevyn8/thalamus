@@ -15,14 +15,26 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncEngine
 from synapse_ui_server import reads
 
 TENANT = UUID("019fb16b-e402-7dce-b026-6fa9f4919242")
 OTHER = UUID("decafbad-0000-4000-8000-000000000001")
+
+
+def _engine() -> AsyncEngine:
+    """A sentinel where an engine is expected, typed so mypy --strict accepts the call.
+
+    ``reads.tenant_runs`` never touches it: every test below patches ``rls_platform_session``,
+    which is the only thing that would open a connection. A real engine would be worse than a
+    sentinel here — it would make a passing test consistent with a connection having been made.
+    ``cast`` is a no-op at runtime, so this hands over exactly the bare object it always did.
+    """
+    return cast("AsyncEngine", object())
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +148,7 @@ async def test_a_tenant_sees_only_its_own_runs(patched) -> None:  # type: ignore
     conn = _RecordingConn(exists=True, rows=[_row(TENANT, "2026-08-06")])
     patched(conn)
 
-    rows = await reads.tenant_runs(object(), TENANT, limit=10)
+    rows = await reads.tenant_runs(_engine(), TENANT, limit=10)
 
     assert rows is not None and len(rows) == 1
     assert rows[0].tenant_id == TENANT
@@ -153,7 +165,7 @@ async def test_the_platform_session_is_the_one_used(patched) -> None:  # type: i
     an empty history for every tenant and look like a quiet fleet."""
     conn = _RecordingConn(exists=True, rows=[])
     patched(conn)
-    await reads.tenant_runs(object(), TENANT)
+    await reads.tenant_runs(_engine(), TENANT)
     assert conn.opened_with[1] is None, "the session must be PLATFORM (tenant=None), not scoped"  # type: ignore[attr-defined]
 
 
@@ -162,7 +174,7 @@ async def test_an_unknown_tenant_returns_none_not_an_empty_list(patched) -> None
     indistinguishable from a real tenant that has never run."""
     conn = _RecordingConn(exists=False, rows=[])
     patched(conn)
-    assert await reads.tenant_runs(object(), TENANT) is None
+    assert await reads.tenant_runs(_engine(), TENANT) is None
     assert not [c for c in conn.calls if "FROM synapse.run" in c[0]], (
         "the history query ran for a tenant that does not exist"
     )
@@ -177,7 +189,7 @@ async def test_the_limit_is_bounded_both_ends(patched, asked: int, expected: int
     PLATFORM endpoint is a way to pull the whole table through one request."""
     conn = _RecordingConn(exists=True, rows=[])
     patched(conn)
-    await reads.tenant_runs(object(), TENANT, limit=asked)
+    await reads.tenant_runs(_engine(), TENANT, limit=asked)
     history = [c for c in conn.calls if "FROM synapse.run" in c[0]]
     assert history[0][1]["limit"] == expected
 
@@ -185,7 +197,7 @@ async def test_the_limit_is_bounded_both_ends(patched, asked: int, expected: int
 async def test_the_default_limit_matches_the_fleet_endpoint(patched) -> None:  # type: ignore[no-untyped-def]
     conn = _RecordingConn(exists=True, rows=[])
     patched(conn)
-    await reads.tenant_runs(object(), TENANT)
+    await reads.tenant_runs(_engine(), TENANT)
     history = [c for c in conn.calls if "FROM synapse.run" in c[0]]
     assert history[0][1]["limit"] == 100
 
@@ -259,6 +271,6 @@ def test_the_route_returns_the_rows_it_is_given(monkeypatch: pytest.MonkeyPatch)
 def test_the_fleet_route_still_exists_and_is_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
     """Added ALONGSIDE /runs, not replacing it. The fleet-wide runs page still consumes it."""
     client = _client(monkeypatch, ())
-    paths = {r.path for r in client.app.routes if hasattr(r, "path")}  # type: ignore[attr-defined]
+    paths = {r.path for r in client.app.routes if hasattr(r, "path")}
     assert "/runs" in paths
     assert "/tenants/{tenant_id}/runs" in paths
