@@ -76,6 +76,13 @@
 --      the fixed literal in dis/infra/local/postgres-init.sql):
 --        postgresql+psycopg://synapse_reader:synapse_reader_password@localhost:5433/ithina_dis_db
 --
+--      THE WRITE TESTS USE A DIFFERENT DATABASE AND SO A DIFFERENT READER DSN.
+--      They run against a disposable clone (default `synapse_test`), and all
+--      three DSNs plus DIS_EXPECTED_DATABASE must name it — dis_rls resolves one
+--      expected database per process and refuses every other. The clone inherits
+--      these grants from the template, so nothing here needs re-running against
+--      it. See synapse/tests/integration/conftest.py for the invocation.
+--
 --   3. NOTHING BINDS THIS SECRET. No Cloud Run service or job mounts it and no
 --      service account holds secretAccessor on it. That is deliberate: nothing
 --      runs as synapse_reader in production yet. It exists so Synapse's

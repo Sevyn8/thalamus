@@ -85,6 +85,13 @@ GRANT CONNECT ON DATABASE ithina_dis_db TO synapse_reader;
 -- then infra/db-setup/sql/04_synapse_writer_grant.sql. Without those this role
 -- can log in and reach nothing.
 --
+-- THE WRITE TESTS DO NOT NEED ANY OF THAT DONE TO *THIS* DATABASE. Synapse's
+-- live write tests refuse to run against a real database at all: they build a
+-- DISPOSABLE clone of this one and run the chain against the clone. See
+-- synapse/tests/integration/conftest.py. The role, though, is cluster-wide and
+-- so is still wanted here — the harness creates it if it is missing, which it
+-- is on any devbox whose volume predates this block.
+--
 -- FRESH VOLUME ONLY, same as the role above. On an existing devbox either
 -- `make reset-local`, or run this one line by hand against 5433 as
 -- ithina_dis_admin:

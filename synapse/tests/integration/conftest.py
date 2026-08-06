@@ -1,7 +1,41 @@
 """Shared vacuity guard for Synapse's live tests, and how to run them at all.
 
-HOW TO RUN THESE AGAINST STAGING — the whole invocation, in one copy-pasteable place, because
-it has four requirements and three of them fail in ways that do not name themselves.
+THERE ARE TWO KINDS OF TEST IN HERE AND THEY RUN AGAINST DIFFERENT DATABASES.
+
+- The five RESOLVER tests are read-only and want REAL DATA, so they run against staging with
+  ``SYNAPSE_READER_URL``. They cannot pollute anything: ``synapse_reader`` holds SELECT and
+  nothing else, by grant rather than by convention.
+- The two WRITE modules (``test_action_log_live``, ``test_orchestrator_live``) append to
+  ``synapse.actions``, which is APPEND-ONLY — the trigger refuses DELETE for every role
+  including the owner, so a fixture row written to staging is permanent. They are REFUSED
+  against the real database outright; see ``assert_disposable``. They run against a disposable
+  database this file builds.
+
+HOW TO RUN THE WRITE TESTS — one copy-pasteable invocation. The database does not need to
+exist; the ``disposable_database`` fixture drops, clones and migrates it at session start.
+
+    cd dis && \\
+      DB=synapse_test && AT=localhost:5433/$DB && P=postgresql+psycopg && \\
+      SYNAPSE_ADMIN_URL="$P://ithina_dis_admin:ithina_dis_admin_password@$AT" \\
+      SYNAPSE_WRITER_URL="$P://synapse_writer:synapse_writer_password@$AT" \\
+      SYNAPSE_READER_URL="$P://synapse_reader:synapse_reader_password@$AT" \\
+      DIS_EXPECTED_DATABASE=$DB \\
+      uv run pytest -c pyproject.toml -p no:dis_testing \\
+        ../synapse/tests/integration/test_action_log_live.py \\
+        ../synapse/tests/integration/test_orchestrator_live.py
+
+ALL FOUR NAME THE SAME DATABASE, and that is forced rather than tidy: ``dis_rls`` resolves ONE
+``_EXPECTED_DATABASE`` at import and refuses every connection to any other name, so the reader
+and writer engines cannot be split across two databases in one process. Trying it fails with
+``RlsContextError``, which reads as a typo rather than as a structural limit.
+
+Inspect the wreckage afterwards with ``psql -d synapse_test`` — and SET THE GUCs when you do,
+or FORCE RLS reports 0 rows for a healthy log and an empty one alike. Nothing needs cleaning
+up; the next run drops it.
+
+HOW TO RUN THE RESOLVER TESTS AGAINST STAGING — the whole invocation, in one copy-pasteable
+place, because it has four requirements and three of them fail in ways that do not name
+themselves.
 
     cd dis && \\
       DIS_EXPECTED_DATABASE=thalamus \\
@@ -63,10 +97,15 @@ revoked grant, or an appender that raised on every call. The fix is STRUCTURAL r
 matter of care: prove the SUCCESS path in the same session, so a refusal is contrasted against a
 working baseline instead of against a vacuum.
 
-A FIXTURE RATHER THAN AN IMPORTABLE HELPER, deliberately: the suite runs under
-``--import-mode=importlib`` with no ``__init__.py``, so a sibling-module import is fragile in
-a way a fixture is not. Shared rather than copied per file because two byte-identical guards
-in one directory is how the duplicated Pub/Sub poll loop started, and that is already a
+FIXTURES WHERE A FIXTURE WORKS, ONE IMPORTABLE HELPER WHERE IT CANNOT. The vacuity guards are
+fixtures. ``assert_disposable`` cannot be: it has to run at COLLECTION time, before any engine
+exists, and a fixture runs too late to stop a module-scope DSN from being used. So this package
+gained the three ``__init__.py`` files that ``services/streaming-consumer/tests/`` already has,
+and the two write modules import it with ``from .conftest import`` — the same relative form used
+in 17 places there. Under ``--import-mode=importlib`` a BARE ``from conftest import`` raises
+ModuleNotFoundError at collection and takes the whole file down; the package markers are what
+make the relative form resolve. Shared rather than copied per file because two byte-identical
+guards in one directory is how the duplicated Pub/Sub poll loop started, and that is already a
 ledger item.
 """
 
@@ -77,7 +116,9 @@ from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID, uuid4
 
 import pytest
@@ -142,6 +183,251 @@ def require_canonical_rows() -> RequireRows:
     return _require
 
 
+# ===========================================================================================
+# THE DISPOSABLE-DATABASE GUARD
+# ===========================================================================================
+# WHY THIS IS STRUCTURE AND NOT A CONVENTION. The live write tests append to
+# ``synapse.actions``, which is APPEND-ONLY: the trigger refuses DELETE for every role including
+# the owner, so a fixture row written to the real database is IMMORTAL. Thirteen of them already
+# sit in staging, minted by earlier runs — each run coins fresh UUIDs (PROBE-{uuid4},
+# SKU-BASELINE-{uuid4}, SKU-IDEMPOTENCY-{uuid4}) rather than colliding with the last, so the row
+# count only ever grows. Those thirteen stay; they are invisible to tenant views through RLS.
+# This stops the growth.
+#
+# A COMMENT SAYING "point this at a scratch database" WOULD NOT HAVE PREVENTED THEM. The DSNs
+# come from the environment, and the environment on an operator's machine is the staging one,
+# because that is what every other task needs. So the refusal is code, it runs at COLLECTION
+# time before any engine is built, and it FAILS rather than skips — a skipped guard is
+# indistinguishable from a guard that never ran, which is a failure mode this project has
+# already paid for.
+#
+# TWO INDEPENDENT CHECKS, because either alone is escapable:
+#   - dbname ``thalamus``      catches the real database under any host or alias
+#   - host 10.55.0.3           catches the real INSTANCE whatever database is named, so a
+#                              second real database created later is refused without anyone
+#                              remembering to add it here
+_FORBIDDEN_DBNAMES = frozenset({"thalamus"})
+_FORBIDDEN_HOSTS = frozenset({"10.55.0.3"})
+
+
+def _describe(dsn: str) -> str:
+    """host/dbname only. NEVER the DSN — it carries the password and this string reaches pytest
+    output, which reaches CI logs."""
+    parts = urlsplit(dsn)
+    return f"host={parts.hostname or '?'} dbname={(parts.path or '/').lstrip('/') or '?'}"
+
+
+def assert_disposable(dsn: str | None, *, var: str) -> None:
+    """Refuse a write DSN that points at real staging. No-op when the DSN is unset.
+
+    Unset is fine — the tests skip, which is the honest outcome for an unarmed run. What must
+    never happen is an ARMED run against the real ledger.
+    """
+    if not dsn:
+        return
+    parts = urlsplit(dsn)
+    dbname = (parts.path or "/").lstrip("/").split("?")[0]
+    host = parts.hostname or ""
+    if dbname in _FORBIDDEN_DBNAMES or host in _FORBIDDEN_HOSTS:
+        raise RuntimeError(
+            f"{var} points at real staging ({_describe(dsn)}) and the live write tests refuse "
+            "to run against it. synapse.actions is append-only: every fixture row they write "
+            "would be permanent, and thirteen such rows already exist from before this guard.\n\n"
+            "Point the write DSNs at a DISPOSABLE database — see this file's header for the "
+            "harness. Reads are unaffected: SYNAPSE_READER_URL may stay on staging, because the "
+            "reader role cannot write."
+        )
+
+
+# ===========================================================================================
+# THE DISPOSABLE DATABASE ITSELF
+# ===========================================================================================
+# The guard above says where the write tests may NOT run. This builds the place they may.
+#
+# WHY IT IS BUILT FROM THE ALEMBIC CHAIN AND NOT FROM schemas/postgres/*.sql. Applying the DDL
+# directly would produce a database that no environment has ever had: the chain is what runs
+# against staging, so the chain is what the tests must run against. If 0002's reset or 0004's
+# ADD COLUMN is wrong, a DDL-built harness passes and staging breaks — the test bed would be
+# proving a schema nobody deploys. The DDL is still the source of truth for CONTENT; 0001 reads
+# actions.sql verbatim. This just refuses to take the shortcut past the applier.
+#
+# WHAT THE CHAIN DOES NOT BRING, and therefore what this fixture adds:
+#   - THE ROLES. `GRANT ... TO synapse_writer` is an error if the role is absent, and roles are
+#     cluster-wide rather than per-database. The local devbox has synapse_reader but NOT
+#     synapse_writer (postgres-init.sql grew it after the volume was created), so a devbox that
+#     has never been wiped fails on migration 0001 without this.
+#   - CANONICAL. Synapse READS canonical and writes synapse; the orchestrator opens both engines
+#     in one process. That cannot be split across two databases, and the reason is worth writing
+#     down because it is invisible until it bites: ``dis_rls`` resolves ONE ``_EXPECTED_DATABASE``
+#     at import and refuses every connection to any other name. Point the reader at the devbox
+#     and the writer at a scratch database and the writer fails with ``RlsContextError``, which
+#     reads as a config mistake rather than as a structural constraint.
+#
+#     So the disposable database is CREATE DATABASE ... TEMPLATE of the local DIS database: it
+#     arrives with canonical's real DDL, grants and RLS policies rather than a hand-written
+#     lookalike that would drift the moment canonical changes. One database, one expected name,
+#     both engines satisfied.
+#
+#     A BARE STUB IS THE FALLBACK when no template is available. One test asserts the writer
+#     holds nothing on canonical; against a database where that table is MISSING the failure is
+#     "relation does not exist" — a pass for a test looking only for an exception, proving
+#     nothing about grants. The table must EXIST and be unreachable.
+#
+# THIS DOES NOT MANUFACTURE CANONICAL ROWS, and must not. The vacuity guards above exist because
+# row-dependent tests are worthless against an empty table, and a harness that seeded canonical
+# would be the first crack in a read-only plane. A devbox with no residue makes the data-dependent
+# tests RAISE, which is the honest outcome — not something for this fixture to paper over.
+#
+# IT IS REBUILT AT SESSION START, NOT TORN DOWN AT SESSION END. Dropping afterwards would leave
+# nothing to inspect after a failure, which is when inspection matters. Dropping FIRST gets the
+# same pristine bed and keeps the wreckage.
+
+_DISPOSABLE_ROLES = ("synapse_writer", "synapse_reader")
+
+# The database the disposable one is cloned from. Its own name is never written to.
+_TEMPLATE_DB = os.environ.get("SYNAPSE_DISPOSABLE_TEMPLATE", "ithina_dis_db")
+
+
+def _maintenance_dsn(dsn: str) -> tuple[str, str]:
+    """Split a target DSN into (libpq DSN for the `postgres` maintenance db, target dbname)."""
+    parts = urlsplit(dsn)
+    dbname = (parts.path or "/").lstrip("/").split("?")[0]
+    userinfo = f"{parts.username}:{parts.password}@" if parts.username else ""
+    netloc = f"{userinfo}{parts.hostname}:{parts.port or 5432}"
+    return urlunsplit(("postgresql", netloc, "/postgres", "", "")), dbname
+
+
+def _provision_disposable(admin_dsn: str) -> str:
+    """Drop, recreate and migrate the disposable database. Returns its name.
+
+    Synchronous psycopg on purpose: this runs once at session start, before any engine exists,
+    and CREATE DATABASE cannot run inside a transaction block.
+    """
+    import subprocess
+    import sys
+
+    import psycopg
+
+    maintenance, dbname = _maintenance_dsn(admin_dsn)
+    if not dbname:
+        raise RuntimeError(f"SYNAPSE_ADMIN_URL names no database ({_describe(admin_dsn)})")
+
+    with psycopg.connect(maintenance, autocommit=True) as conn:
+        # The roles first: cluster-wide, so this is idempotent across databases and runs.
+        # NOSUPERUSER NOBYPASSRLS is not decoration — a bypassrls role turns every RLS
+        # assertion below into a tautology, which is the "superuser repro proves nothing"
+        # trap this project has already hit.
+        for role in _DISPOSABLE_ROLES:
+            conn.execute(
+                f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}') "
+                f"THEN CREATE ROLE {role} WITH LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB "
+                f"NOCREATEROLE PASSWORD '{role}_password'; END IF; END $$;"
+            )
+        conn.execute(f'DROP DATABASE IF EXISTS "{dbname}" WITH (FORCE)')
+        template = conn.execute("SELECT 1 FROM pg_database WHERE datname = %s", (_TEMPLATE_DB,)).fetchone()
+        if template:
+            # WITH (FORCE) above, and this next line, both need the TEMPLATE to be idle:
+            # postgres refuses to clone a database that has open connections. The error names
+            # the template rather than this call, so it is re-raised with the cause attached.
+            try:
+                conn.execute(f'CREATE DATABASE "{dbname}" TEMPLATE "{_TEMPLATE_DB}"')
+            except psycopg.errors.ObjectInUse as exc:
+                raise RuntimeError(
+                    f"cannot clone {_TEMPLATE_DB!r} into the disposable database while something "
+                    f"is connected to it. Close other psql/pytest sessions, or set "
+                    f"SYNAPSE_DISPOSABLE_TEMPLATE to a quiet database."
+                ) from exc
+        else:
+            conn.execute(f'CREATE DATABASE "{dbname}"')
+
+    with psycopg.connect(maintenance.replace("/postgres", f"/{dbname}"), autocommit=True) as conn:
+        for role in _DISPOSABLE_ROLES:
+            conn.execute(f'GRANT CONNECT ON DATABASE "{dbname}" TO {role}')
+        # The clone carries whatever synapse schema the template had, and the chain is not
+        # idempotent against an existing one. Start it from nothing so 0001..0004 all really run.
+        conn.execute("DROP SCHEMA IF EXISTS synapse CASCADE")
+        conn.execute("DROP TABLE IF EXISTS synapse_alembic_version")
+        if not template:
+            # Fallback stub: columns are irrelevant, the test must be denied before reading one.
+            # No grants, deliberately.
+            conn.execute("CREATE SCHEMA IF NOT EXISTS canonical")
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS canonical.store_sku_current_position "
+                "(tenant_id uuid NOT NULL, sku_id text NOT NULL)"
+            )
+
+    root = Path(__file__).resolve().parents[2]
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"],
+        cwd=root,
+        env={**os.environ, "SYNAPSE_ADMIN_URL": admin_dsn},
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"the alembic chain failed against the disposable database "
+            f"({_describe(admin_dsn)}):\n{result.stdout}\n{result.stderr}"
+        )
+    return dbname
+
+
+def _verify_disposable(admin_dsn: str) -> None:
+    """Refuse a permissive lookalike.
+
+    WITHOUT THIS THE HARNESS IS THE VACUITY BUG IT EXISTS TO AVOID. Every write-side test here
+    is a REFUSAL test — cross-tenant append denied, read-only role denied, UPDATE denied — and a
+    refusal test passes when nothing works. It would also pass on a database with RLS merely
+    ENABLED rather than FORCED (the owner bypasses it), or against a role carrying rolbypassrls.
+    Both produce a green suite that has verified nothing about isolation.
+    """
+    import psycopg
+
+    with psycopg.connect(admin_dsn.replace("postgresql+psycopg://", "postgresql://")) as conn:
+        forced = conn.execute(
+            "SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity FROM pg_class c "
+            "JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'synapse' "
+            "AND c.relkind = 'r' ORDER BY c.relname"
+        ).fetchall()
+        if not forced:
+            raise RuntimeError("the disposable database has no synapse tables; the chain did not run")
+        weak = [name for name, enabled, force in forced if not (enabled and force)]
+        if weak:
+            raise RuntimeError(
+                f"synapse tables without FORCE ROW LEVEL SECURITY on the disposable database: "
+                f"{weak}. Every write-side test is a refusal test and would pass regardless."
+            )
+        policies = conn.execute("SELECT tablename FROM pg_policies WHERE schemaname = 'synapse'").fetchall()
+        missing = {name for name, _, _ in forced} - {t for (t,) in policies}
+        if missing:
+            raise RuntimeError(f"synapse tables with FORCE RLS but no policy: {sorted(missing)}")
+        loose = conn.execute(
+            "SELECT rolname FROM pg_roles WHERE rolname = ANY(%s) AND (rolsuper OR rolbypassrls)",
+            (list(_DISPOSABLE_ROLES),),
+        ).fetchall()
+        if loose:
+            raise RuntimeError(
+                f"role(s) {[r for (r,) in loose]} carry rolsuper/rolbypassrls, so RLS does not "
+                "apply to them and every isolation assertion here is vacuous."
+            )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def disposable_database() -> str | None:
+    """Build the write tests a database of their own. No-op for an unarmed or read-only run.
+
+    Autouse and session-scoped: the read-only resolver tests in this directory take no write DSN
+    and are untouched, and an unarmed run does nothing at all.
+    """
+    admin_dsn = os.environ.get("SYNAPSE_ADMIN_URL")
+    if not admin_dsn:
+        return None
+    assert_disposable(admin_dsn, var="SYNAPSE_ADMIN_URL")
+    dbname = _provision_disposable(admin_dsn)
+    _verify_disposable(admin_dsn)
+    return dbname
+
+
 # ---------------------------------------------------------------------------
 # The action log: the write side, and the vacuity guard for refusal tests
 # ---------------------------------------------------------------------------
@@ -158,6 +444,7 @@ def require_canonical_rows() -> RequireRows:
 # Nothing constrains this value: the action log has no foreign key into any DIS schema (an
 # append-only log must outlive what it references), so a synthetic tenant id is insertable and
 # owns no canonical rows. Override with SYNAPSE_PROBE_TENANT_ID if that decision changes.
+
 PROBE_TENANT_ID = UUID(os.environ.get("SYNAPSE_PROBE_TENANT_ID", "decafbad-0000-4000-8000-000000000001"))
 
 # One probe per SESSION, not per test. The probe row is permanent, so five tests taking this

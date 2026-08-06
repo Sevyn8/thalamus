@@ -28,9 +28,18 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from synapse.core.provision import Cadence, Provision, Rung
 
+from .conftest import assert_disposable
+
 READER_DSN = os.environ.get("SYNAPSE_READER_URL")
 WRITER_DSN = os.environ.get("SYNAPSE_WRITER_URL")
 ADMIN_DSN = os.environ.get("SYNAPSE_ADMIN_URL")
+
+# AT COLLECTION TIME, before any engine exists. These tests INSERT provision rows and run real
+# sweeps, which append to the append-only ledger; pointed at staging they would write immortal
+# rows. conftest.assert_disposable refuses the real database and the real instance outright.
+# The READER DSN is deliberately not guarded — the reader role cannot write.
+assert_disposable(WRITER_DSN, var="SYNAPSE_WRITER_URL")
+assert_disposable(ADMIN_DSN, var="SYNAPSE_ADMIN_URL")
 
 pytestmark = [
     pytest.mark.integration,

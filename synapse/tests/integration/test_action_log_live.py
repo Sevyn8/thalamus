@@ -1,13 +1,15 @@
 """The durable action log against a real Postgres. Two roles, two engines, one database.
 
-NEEDS THE synapse SCHEMA, which is Synapse's own alembic chain rather than DIS's:
+RUNS AGAINST A DISPOSABLE DATABASE, NEVER STAGING, and that is enforced rather than advised —
+``assert_disposable`` below refuses the real database and the real instance at collection time.
+The invocation is in conftest.py's header; the ``disposable_database`` fixture drops, clones and
+migrates the target through Synapse's own alembic chain at session start, so there is no
+schema to set up by hand and no grant script to remember.
 
-    SYNAPSE_ADMIN_URL=... uv run alembic -c synapse/alembic.ini upgrade head
-    psql ... -f infra/db-setup/sql/04_synapse_writer_grant.sql
-
-then, in addition to the reader DSN every other live test uses:
-
-    SYNAPSE_WRITER_URL='postgresql+psycopg://synapse_writer:...@host:port/db'
+WHY IT MUST BE DISPOSABLE. Every test here appends, and ``synapse.actions`` is append-only by a
+trigger that binds even the table owner — so a row written to staging is PERMANENT. Each run
+coins fresh UUIDs rather than colliding with the last, so an armed run against the real ledger
+grows it by several immortal rows. Thirteen such rows exist from before the guard.
 
 TWO ENGINES IS THE POINT, not an inconvenience. The appender holds synapse_writer's engine
 (INSERT, no SELECT, nothing on canonical); the reader holds synapse_reader's (SELECT on the log
@@ -23,8 +25,10 @@ ungranted. The fixture appends a probe and reads it back, so every refusal below
 against a write that demonstrably landed. See conftest.py's header for the class.
 
 THESE TESTS WRITE UNDER A SYNTHETIC TENANT (``probe_tenant``), never the tenant with real data.
-The table is append-only by trigger, so their rows are permanent and cannot be cleaned up; RLS
-is the only isolation available, so it is the isolation used. Nothing here needs canonical data
+The table is append-only by trigger, so nothing they write can be cleaned up WITHIN a run; RLS
+is the only isolation available, so it is the isolation used. That still matters now the
+database is disposable — the clone carries the template's identity_mirror, and a probe row
+under a real tenant id would be visible to a real tenant's session. Nothing here needs canonical
 — every event is fabricated — so the write side and the read-real-data side split cleanly.
 
 WHAT THESE COVER THAT NOTHING ELSE CAN:
@@ -48,8 +52,18 @@ import pytest
 from synapse.core.action import Action, ActionEvent, Provenance, Verb
 from synapse.core.holdout import Arm
 
+from .conftest import assert_disposable
+
 READER_DSN = os.environ.get("SYNAPSE_READER_URL")
 WRITER_DSN = os.environ.get("SYNAPSE_WRITER_URL")
+
+# AT COLLECTION TIME, before any engine exists. THIS is the file that minted the thirteen
+# permanent rows in staging: it appends PROBE-/SKU-BASELINE-/SKU-IDEMPOTENCY- fixtures with a
+# fresh uuid4 each run, and synapse.actions refuses DELETE for every role including the owner.
+# conftest.assert_disposable refuses the real database and the real instance outright, so an
+# armed run against staging is no longer possible even deliberately.
+assert_disposable(WRITER_DSN, var="SYNAPSE_WRITER_URL")
+assert_disposable(os.environ.get("SYNAPSE_ADMIN_URL"), var="SYNAPSE_ADMIN_URL")
 
 pytestmark = [
     pytest.mark.integration,
