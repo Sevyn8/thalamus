@@ -1,4 +1,4 @@
-"""The app. Five read-only PLATFORM routes, one reader engine, no write path.
+"""The app. Six read-only PLATFORM routes, one reader engine, no write path.
 
 WHAT ``/readyz`` PROVES, and it is deliberately more than "the process is up": it opens a real
 PLATFORM session, which exercises dis-rls's first-use guard — the target database is the expected
@@ -133,6 +133,27 @@ def create_app(config: Config | None = None) -> FastAPI:
             **{k: v for k, v in detail.__dict__.items() if k != "analyses"},
             "analyses": [state.__dict__ for state in detail.analyses],
         }
+
+    @app.get("/tenants/{tenant_id}/runs")
+    async def get_tenant_runs(
+        tenant_id: UUID,
+        request: Request,
+        _: Annotated[Identity, Depends(require_platform)],
+        limit: int = 100,
+    ) -> dict[str, object]:
+        """One tenant's run history. Added alongside /runs, which is unchanged.
+
+        404 ON AN UNKNOWN TENANT, matching /tenants/{tenant_id} above and for the same reason: an
+        empty history for a mistyped id is indistinguishable from a real tenant that has never
+        run, and that confusion has already cost this project once.
+        """
+        rows = await reads.tenant_runs(request.app.state.engine, tenant_id, limit=limit)
+        if rows is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"{tenant_id} is not in identity_mirror.tenants",
+            )
+        return {"runs": [row.__dict__ for row in rows]}
 
     @app.get("/runs")
     async def get_runs(

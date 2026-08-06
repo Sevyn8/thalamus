@@ -36,6 +36,7 @@ __all__ = [
     "fleet",
     "runs",
     "tenant_detail",
+    "tenant_runs",
 ]
 
 # A console page, not an export. Bounding every read means a pathological estate degrades the
@@ -293,6 +294,70 @@ async def runs(engine: AsyncEngine, *, limit: int = 100) -> tuple[RunRow, ...]:
             # A run for a tenant the mirror has lost is still a run. Naming it rather than
             # dropping the row: synapse.run deliberately has no FK into any DIS schema, because
             # an append-only history must outlive what it references.
+            tenant_name=row["tenant_name"] or "(not in the tenant mirror)",
+            analysis_id=row["analysis_id"],
+            slot=row["slot"],
+            outcome=row["outcome"],
+            actions_proposed=row["actions_proposed"],
+            actions_appended=row["actions_appended"],
+            started_at=row["started_at"],
+            finished_at=row["finished_at"],
+        )
+        for row in rows
+    )
+
+
+# The tenant filter, and nothing else changes. Identical projection, join and ordering to
+# ``_RUNS`` so the two lists cannot disagree about what a run row IS — a second shape here would
+# be a second source of truth for the same table, which is the duplication class this project
+# keeps paying for.
+_TENANT_RUNS = text(
+    """
+    SELECT r.run_id, r.tenant_id, t.name AS tenant_name, r.analysis_id, r.slot,
+           r.outcome, r.actions_proposed, r.actions_appended, r.started_at, r.finished_at
+      FROM synapse.run r
+      LEFT JOIN identity_mirror.tenants t ON t.tenant_id = r.tenant_id
+     WHERE r.tenant_id = CAST(:tenant AS uuid)
+     ORDER BY r.slot DESC, r.started_at DESC
+     LIMIT :limit
+    """
+)
+
+# A PK lookup, run in the SAME session as the history so both see one consistent snapshot.
+# identity_mirror is the authority on whether a tenant exists at all — synapse.run deliberately
+# has no FK into it, so an absence of runs says nothing about whether the tenant is real.
+_TENANT_EXISTS = text("SELECT 1 FROM identity_mirror.tenants WHERE tenant_id = CAST(:tenant AS uuid)")
+
+
+async def tenant_runs(engine: AsyncEngine, tenant_id: UUID, *, limit: int = 100) -> tuple[RunRow, ...] | None:
+    """One tenant's runs, newest slot first. ``None`` when the id is not in the mirror at all.
+
+    THE None IS THE POINT, and it mirrors ``tenant_detail`` for the same reason: an empty history
+    for a mistyped id is indistinguishable from a real tenant that has never run. The caller
+    turns it into a 404 rather than an empty list, so a typo reads as a typo.
+
+    WHY THIS EXISTS AT ALL. The tenant page previously fetched the FLEET-WIDE ``/runs`` at its
+    maximum limit and filtered client-side on ``tenant_id``. That works and it silently
+    truncates: a busy fleet pushes an individual tenant's older runs past the cap, and the page
+    cannot tell a tenant with no history from one whose history fell off the end. The caption
+    admitted it on screen, which was honest and is not a substitute for the query being right.
+
+    PLATFORM SESSION, like every read here. ``synapse.run`` is FORCE ROW LEVEL SECURITY: a
+    session without ``app.user_type`` matches zero rows and raises nothing, so a raw connection
+    would return an empty history for every tenant and look like a quiet fleet.
+    """
+    bounded = max(1, min(limit, _MAX_ROWS))
+    async with rls_platform_session(engine, None) as conn:
+        exists = (await conn.execute(_TENANT_EXISTS, {"tenant": str(tenant_id)})).first()
+        if exists is None:
+            return None
+        rows = (
+            (await conn.execute(_TENANT_RUNS, {"tenant": str(tenant_id), "limit": bounded})).mappings().all()
+        )
+    return tuple(
+        RunRow(
+            run_id=_as_uuid(row["run_id"]),
+            tenant_id=_as_uuid(row["tenant_id"]),
             tenant_name=row["tenant_name"] or "(not in the tenant mirror)",
             analysis_id=row["analysis_id"],
             slot=row["slot"],

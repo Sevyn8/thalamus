@@ -68,8 +68,8 @@ function outcomeLabel(outcome: string | null): string {
   return outcome === "satisfied" ? "completed" : outcome;
 }
 
-// The runs list is fleet-wide and bounded by the BFF at _MAX_ROWS = 500, so this asks for the
-// maximum and filters client-side. RunRow carries tenant_id, which is what makes that possible.
+// The BFF bounds this at _MAX_ROWS = 500 and floors it at 1. Asking for the maximum is now a
+// per-client maximum rather than a share of a fleet-wide one.
 const RUNS_LIMIT = 500;
 
 type RunRow = {
@@ -113,18 +113,20 @@ export default async function TenantPage({
     throw error;
   }
 
-  // RUN HISTORY HAS NO TENANT-SCOPED ENDPOINT. /runs is fleet-wide with `limit` only, so this
-  // asks for the maximum the BFF accepts and filters on RunRow.tenant_id. The caption on the
-  // section says so, because a list that silently truncates is worse than one that admits it.
-  let runs: RunRow[] = [];
+  // TENANT-SCOPED, filtered in SQL. This used to fetch the fleet-wide /runs at its maximum limit
+  // and filter client-side on tenant_id, which silently truncated: another client's activity
+  // could push this one's older runs past the cap, and the page could not tell "no history" from
+  // "history fell off the end". The endpoint filters in the query, so the cap is this client's.
+  let tenantRuns: RunRow[] = [];
   try {
-    ({ runs } = await synapseGet<{ runs: RunRow[] }>(`/runs?limit=${RUNS_LIMIT}`));
+    ({ runs: tenantRuns } = await synapseGet<{ runs: RunRow[] }>(
+      `/tenants/${tenantId}/runs?limit=${RUNS_LIMIT}`,
+    ));
   } catch (error) {
     // A failed run-history read must not blank the whole page: the sections above it are the
     // ones an operator came for. Rendered as an empty history rather than an error.
     if (!(error instanceof SynapseUnavailable)) throw error;
   }
-  const tenantRuns = runs.filter((r) => r.tenant_id === tenantId);
 
   const staleDays = daysSince(detail.latest_sale);
   const isStale = staleDays === null || staleDays > STALE_AFTER_DAYS;
@@ -163,12 +165,16 @@ export default async function TenantPage({
           {/* "Alerts raised", never "open": synapse.actions has no lifecycle column. */}
           <Stat
             n={detail.actions_recorded}
-            label={detail.actions_recorded === 1 ? "alert raised" : "alerts raised"}
+            label={
+              detail.actions_recorded === 1
+                ? "alert raised (all time)"
+                : "alerts raised (all time)"
+            }
           />
         </StatStrip>
 
         <section>
-          <SectionHead>Alerts</SectionHead>
+          <SectionHead>Latest alerts</SectionHead>
           {alerting.length === 0 ? (
             <p className="text-body text-foreground-muted">
               No alerts from the most recent run of any monitor.
@@ -248,9 +254,6 @@ export default async function TenantPage({
               />
             ))
           )}
-          <div className="mt-3">
-            <Footnote>Showing recent runs across the fleet, filtered to this client.</Footnote>
-          </div>
         </section>
 
         <Footnote>

@@ -62,19 +62,32 @@ const SUBTITLE =
 // A tenant with alerts OR stale data is amber: both are things a person should look at, and a
 // tenant that is both says so on one pill rather than needing two. Everything else is a neutral
 // outline, because "nothing to report" and "nothing configured" are not achievements.
+// PRECEDENCE FOLLOWS THE ONBOARDING ORDER: connect a data source, then enable monitors. A client
+// with neither used to read "No monitors enabled", which names the SECOND thing missing and sends
+// an operator to configure monitors that would have nothing to watch.
+//
+//   1. no data ever      -> "Waiting for data"        the first step, and it blocks the rest
+//   2. no monitors       -> "No monitors enabled"     data is in; nothing is watching it
+//   3. alerts exist      -> "N alerts raised"         with a stale-data suffix if both are true
+//   4. stale             -> "Stale data"
+//   5. otherwise         -> "No alerts"
 function fleetStatus(t: FleetRow): string {
-  const stale = staleness(t);
+  if (t.latest_sale === null) return "Waiting for data";
   if (t.analyses_running === 0) return "No monitors enabled";
+  const stale = staleness(t);
   if (t.actions_recorded > 0) {
     return stale
       ? `${plural(t.actions_recorded, "alert")} raised · stale data`
       : `${plural(t.actions_recorded, "alert")} raised`;
   }
-  if (t.latest_sale === null) return "Waiting for data";
   return stale ? "Stale data" : "No alerts";
 }
 
+// TONE MOVES WITH THE CHAIN or the two desync. Rows 1, 2 and 5 are neutral — "waiting for data"
+// and "nothing configured" are onboarding states, not problems, and amber on them would make a
+// brand-new client look broken. Rows 3 and 4 are the ones a person should look at.
 function fleetTone(t: FleetRow): "unknown" | "mute" {
+  if (t.latest_sale === null) return "mute";
   if (t.analyses_running === 0) return "mute";
   return t.actions_recorded > 0 || staleness(t) ? "unknown" : "mute";
 }

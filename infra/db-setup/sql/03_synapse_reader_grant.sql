@@ -58,7 +58,7 @@
 --      verbatim (underscore), DSN secrets are hyphenated.
 --        gcloud secrets create synapse-reader-database-url --project=<PROJECT> \
 --          --replication-policy=automatic
---        printf 'postgresql+psycopg://synapse_reader:<PASSWORD>@<PRIVATE_IP>:5432/thalamus' \
+--        printf 'postgresql+psycopg://synapse_reader:<PASSWORD>@<PRIVATE_IP>:5432/thalamus?sslmode=require' \
 --          | gcloud secrets versions add synapse-reader-database-url \
 --              --project=<PROJECT> --data-file=-
 --
