@@ -106,7 +106,7 @@ function Body({ tenant }: { tenant: TenantDetail }) {
           {tenant.modules.map((m) => (
             <li
               key={m.code}
-              className="flex items-center justify-between rounded-md bg-muted/30 px-2 py-1.5 text-sm"
+              className="flex items-center justify-between rounded-md bg-muted px-2 py-1.5 text-sm"
             >
               <span>{m.name}</span>
             </li>

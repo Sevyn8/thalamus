@@ -246,7 +246,7 @@ export function OrgTreeRow({
                 type="button"
                 onClick={() => childrenQuery.fetchNextPage()}
                 disabled={isFetchingMore}
-                className="my-1 ml-2 inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2 py-0.5 text-caption text-foreground-muted hover:bg-surface-raised disabled:opacity-60"
+                className="my-1 ml-2 inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2 py-0.5 text-caption text-foreground-muted hover:bg-surface-raised disabled:opacity-55"
               >
                 {isFetchingMore ? (
                   <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />

@@ -12,7 +12,7 @@ function Switch({ className, ...props }: SwitchPrimitive.Root.Props) {
         "peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-transparent px-0.5 transition-colors outline-none",
         "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
         "data-[checked]:bg-primary data-[unchecked]:bg-input/60",
-        "disabled:cursor-not-allowed disabled:opacity-60",
+        "disabled:cursor-not-allowed disabled:opacity-55",
         "dark:data-[unchecked]:bg-input/40",
         className,
       )}

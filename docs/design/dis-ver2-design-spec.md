@@ -382,16 +382,40 @@ Derived from its spectrum accents — `--magenta` `#e63dcb` (`index.css:26`) and
 ### 9.4 Patterns ver2 lacks entirely
 
 Confirmed absent (`modal|dialog|toast|snackbar|overlay|backdrop` → zero matches in
-`index.css`). Treatments, all ver2-token-derived:
+`index.css`). Treatments, all ver2-token-derived. **Status column added when these were
+applied** — declaring a treatment and shipping it are different things, and the gap between
+them lasted two phases.
 
-| Pattern | Treatment |
-|---|---|
-| Modal / dialog | `--surface` + `--radius-lg` (14px) + `--shadow-md-value`; backdrop `--ink` at ~55% |
-| Toast (Sonner) | `.card` recipe at `--radius-md`, `--shadow-md-value`, status triples per variant |
-| Tooltip | `--ink-2` bg, `#fff` text, `--radius-sm` |
-| Disabled | `opacity: .55` + `cursor: not-allowed`; no token change |
-| Skeleton | `--muted` base, `--surface-raised` sweep |
-| Animation | ver2 has no duration/easing tokens — CM's existing scale is kept (see PATTERNS.md) |
+| Pattern | Treatment | Status |
+|---|---|---|
+| Modal / dialog | `--surface`, `--radius-lg` (14px), `--shadow-md-value`; backdrop `--ink` at 55% | **APPLIED** — `ui/dialog.tsx`, `ui/alert-dialog.tsx`, `ui/sheet.tsx` |
+| Toast (Sonner) | card recipe at `--radius-md`, `--shadow-md-value`, status triples per variant | **APPLIED** — `ui/sonner.tsx`, `.cn-toast` |
+| Tooltip | `--ink-2` bg, `#fff` text, `--radius-sm` | **DECLARED, NOT APPLIED** — see below |
+| Disabled | `opacity: .55` + `cursor: not-allowed`; no token change | **APPLIED** (partial — see below) |
+| Skeleton | `--surface` base, `--surface-raised` sweep | **ALREADY CORRECT** — `skeleton-shimmer` |
+| Animation | ver2 has no duration/easing tokens — CM's existing scale is kept | n/a |
+
+**`--ink` IS NOW A LIVE TOKEN.** It previously existed only as a value baked into
+`--background` (dark) and `--sidebar`. The backdrop needs it by name, and it is declared in
+`:root` and deliberately **not** overridden in `.dark`: a scrim is not a themed surface, so 55%
+ink is one value in both modes.
+
+**Tooltips: declared, not applied, on purpose.** CM has no tooltip *component* in use — hints
+are native `title` attributes, which cannot be styled. Introducing a component to carry this
+recipe would add hover/focus/dismiss behaviour where there is none today, which is a behaviour
+change, not a restyle. ver2 has no tooltip either, so there is no anchor to derive one from.
+The recipe above stands ready for the first real tooltip component; until then `ui/tooltip.tsx`
+keeps its own styling and is used only where a component already existed.
+
+**One colour authority for toasts.** Sonner ships `richColors`, a built-in status palette. It is
+**not enabled and must not be**: it would be a third set of status colours beside ver2's tokens
+and the Chip triples, and the one nobody updates when the palette moves. Every variant binds to
+the same `--success`/`--warning`/`--danger` triples the badges use.
+
+**Disabled is partial, and the reason is not laziness.** `disabled:opacity-55` is applied
+everywhere (verified generated: `opacity:.55` is in the built CSS). `cursor: not-allowed` is
+**not** added where `disabled:pointer-events-none` already sits — pointer-events-none suppresses
+the cursor entirely, so the two together are contradictory and the cursor rule would be inert.
 
 ### 9.5 `--border-strong`
 

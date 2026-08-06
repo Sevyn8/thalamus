@@ -159,6 +159,10 @@
 
   /* Brand accents. --cyan and --magenta are ver2's spectrum; unused until the
      chrome-alignment phase, declared so nothing reaches for a raw hex. */
+  /* --ink promoted to a LIVE token. It was previously only a value baked into
+     --background (dark) and --sidebar; the overlay backdrop needs it by name in BOTH
+     modes, and an inline #0a0d14 would reintroduce the raw hex the sweep removed. */
+  --ink: #0a0d14;                 /* index.css:19 */
   --cyan: #19d3e0;                /* index.css:25 */
   --magenta: #e63dcb;             /* :26 */
 
@@ -344,6 +348,13 @@
   html {
     @apply font-sans;
   }
+}
+
+/* The toast surface. Sonner drives colour through CSS variables (see ui/sonner.tsx) but
+   exposes none for elevation, so the §9.4 card recipe's shadow lands here. This class was
+   referenced by the Toaster and undefined until now. */
+.cn-toast {
+  box-shadow: var(--shadow-md-value);
 }
 
 @keyframes shimmer {
