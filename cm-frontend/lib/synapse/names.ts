@@ -17,3 +17,14 @@ export const CAPABILITY_NAMES: Record<string, string> = {
   last_sale_at: "When each product last sold",
   lead_time_distribution: "Supplier lead times",
 };
+
+// What each monitor flags, in one line, for an operator who has not read the
+// declaration. NOT AN API FIELD: /analyses returns analysis_id, name, version,
+// requires, max_rung, thresholds and holdout_percent — there is no description.
+// This is UI copy about two known monitors, kept beside ANALYSIS_NAMES for the
+// same reason and with the same bounded-duplication argument: a wording change
+// should not need a Python deploy.
+export const MONITOR_DESCRIPTIONS: Record<string, string> = {
+  dead_stock: "Flags products with stock on hand but no recent sales.",
+  stockout_risk: "Flags products selling faster than replenishment will cover.",
+};

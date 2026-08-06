@@ -2,14 +2,15 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import {
   Attention,
   Column,
-  Footnote,
   Row,
   SectionHead,
+  SilentModePill,
   Stat,
   StatStrip,
   SynapseDown,
   Tag,
   daysSince,
+  plural,
 } from "@/components/synapse/primitives";
 import { SynapseUnavailable, synapseGet } from "@/lib/synapse/server-client";
 
@@ -49,6 +50,40 @@ type FleetRow = {
 // in the project that can see it: no execution-status alert ever will.
 const STALE_AFTER_DAYS = 3;
 
+// The one place the mode is explained. It replaces both "Watching, and telling nobody yet" and
+// the footer paragraph that defined "watching" — a definition nobody reads at the bottom of a
+// page is worse than a sentence at the top that makes the pill mean something.
+const SUBTITLE =
+  "Monitors watch each client's sales data and raise alerts when something needs attention. " +
+  "In silent mode, alerts are recorded here but never sent to clients.";
+
+// Three states, in priority order, and none of them is "watching".
+//
+// A tenant with alerts OR stale data is amber: both are things a person should look at, and a
+// tenant that is both says so on one pill rather than needing two. Everything else is a neutral
+// outline, because "nothing to report" and "nothing configured" are not achievements.
+function fleetStatus(t: FleetRow): string {
+  const stale = staleness(t);
+  if (t.analyses_running === 0) return "No monitors enabled";
+  if (t.actions_recorded > 0) {
+    return stale
+      ? `${plural(t.actions_recorded, "alert")} raised · stale data`
+      : `${plural(t.actions_recorded, "alert")} raised`;
+  }
+  if (t.latest_sale === null) return "Waiting for data";
+  return stale ? "Stale data" : "No alerts";
+}
+
+function fleetTone(t: FleetRow): "unknown" | "mute" {
+  if (t.analyses_running === 0) return "mute";
+  return t.actions_recorded > 0 || staleness(t) ? "unknown" : "mute";
+}
+
+function staleness(t: FleetRow): boolean {
+  const age = daysSince(t.latest_sale);
+  return age === null || age > STALE_AFTER_DAYS;
+}
+
 export default async function SynapseFleetPage() {
   let tenants: FleetRow[];
   try {
@@ -59,7 +94,7 @@ export default async function SynapseFleetPage() {
       // to the wrong system; this names the BFF so the next step is obvious.
       return (
         <div>
-          <PageHeader title="Synapse" subtitle="Watching, and telling nobody yet." />
+          <PageHeader title="Synapse" subtitle={SUBTITLE} rightSlot={<SilentModePill />} />
           <Column>
             <SynapseDown message={error.message} />
           </Column>
@@ -74,14 +109,12 @@ export default async function SynapseFleetPage() {
     const age = daysSince(t.latest_sale);
     return age === null || age > STALE_AFTER_DAYS;
   });
-  const actions = tenants.reduce((sum, t) => sum + t.actions_recorded, 0);
+  const monitorsRunning = live.reduce((s, t) => s + t.analyses_running, 0);
+  const alertsRaised = tenants.reduce((sum, t) => sum + t.actions_recorded, 0);
 
   return (
     <div>
-      <PageHeader
-        title="Synapse"
-        subtitle="Watching, and telling nobody yet. Everything is at the shadow rung."
-      />
+      <PageHeader title="Synapse" subtitle={SUBTITLE} rightSlot={<SilentModePill />} />
 
       <Column>
         {/* THE THING NEEDING A PERSON IS A BANNER, NOT A ROW THAT LOOKS LIKE THE
@@ -96,21 +129,24 @@ export default async function SynapseFleetPage() {
               title={
                 age === null
                   ? `${t.name} has never sent a sale`
-                  : `${t.name}'s sales data is ${age} days old`
+                  : `${t.name}'s sales data is ${plural(age, "day")} stale`
               }
               detail={
                 age === null
-                  ? "Every rate-based analysis will refuse until something ingests."
-                  : `Last sale ${t.latest_sale}. Every rate-based analysis is refusing, correctly, and will until something ingests.`
+                  ? "No sale has ever been ingested. Rate-based monitors will find nothing until fresh data arrives."
+                  : `Last sale ingested ${t.latest_sale}. Rate-based monitors will find nothing until fresh data arrives.`
               }
             />
           );
         })}
 
         <StatStrip>
-          <Stat n={live.length} label="tenants live" />
-          <Stat n={live.reduce((s, t) => s + t.analyses_running, 0)} label="analyses running" />
-          <Stat n={actions} label="actions ever" />
+          <Stat n={live.length} label={live.length === 1 ? "client live" : "clients live"} />
+          <Stat n={monitorsRunning} label={monitorsRunning === 1 ? "monitor running" : "monitors running"} />
+          {/* "Alerts raised", NOT "open alerts". actions_recorded counts every action event ever
+              recorded; there is no lifecycle column on synapse.actions and no way to close one,
+              so "open" would name a state the system cannot represent. */}
+          <Stat n={alertsRaised} label={alertsRaised === 1 ? "alert raised" : "alerts raised"} />
         </StatStrip>
 
         <section>
@@ -135,27 +171,20 @@ export default async function SynapseFleetPage() {
                 }
                 meta={
                   <>
-                    {t.stores} {t.stores === 1 ? "store" : "stores"}
-                    {t.products > 0 ? ` · ${t.products} products` : " · no data has ever arrived"}
-                    {t.last_run_slot ? ` · last ran ${t.last_run_slot}` : ""}
+                    {plural(t.stores, "store")} · {plural(t.products, "product")} ·{" "}
+                    {plural(t.analyses_running, "monitor")}
+                    {t.last_run_slot ? ` · last run ${t.last_run_slot}` : ""}
                   </>
                 }
-                right={
-                  <Tag tone={t.analyses_running > 0 ? "good" : "mute"}>
-                    {t.analyses_running > 0
-                      ? `${t.analyses_running} analyses · watching`
-                      : "nothing on"}
-                  </Tag>
-                }
+                // THE PILL ENCODES HEALTH, NOT IMPLEMENTATION STATE. It used to read
+                // "2 analyses · watching" in GREEN, which said what the system was doing and
+                // coloured a client's dead stock as good news. An alert is not good news, so
+                // the count leads and the tone is amber; green stays available in Tag for
+                // things that are genuinely good.
+                right={<Tag tone={fleetTone(t)}>{fleetStatus(t)}</Tag>}
               />
             ))
           )}
-          <div className="mt-3">
-            <Footnote>
-              &quot;Watching&quot; is what the shadow rung is called here. The client is not told
-              and nothing reaches them.
-            </Footnote>
-          </div>
         </section>
       </Column>
     </div>

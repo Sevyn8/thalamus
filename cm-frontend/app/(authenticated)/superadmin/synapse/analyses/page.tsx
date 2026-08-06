@@ -51,7 +51,7 @@ export default async function AnalysesPage() {
     if (error instanceof SynapseUnavailable) {
       return (
         <div>
-          <PageHeader title="Analyses" subtitle="What Synapse computes." />
+          <PageHeader title="Monitors" subtitle="What Synapse watches for." />
           <Column>
             <SynapseDown message={error.message} />
           </Column>
@@ -64,7 +64,7 @@ export default async function AnalysesPage() {
   return (
     <div>
       <PageHeader
-        title="Analyses"
+        title="Monitors"
         subtitle="Declared in the repository, reviewed and merged. This screen reads them; it authors nothing."
       />
 
@@ -91,8 +91,12 @@ export default async function AnalysesPage() {
                     customer, which is why it lives in code. Showing it is how an
                     operator sees that nothing can reach a client without reading
                     Python. */}
+                {/* THE CEILING: the furthest this monitor may ever go, for any client. The
+                    internal name for the value is a "rung" and the shadow rung is what the UI
+                    calls silent mode — neither word is rendered. A value other than shadow has
+                    no agreed plain name yet, so it renders as-is rather than being invented. */}
                 <Tag tone={a.max_rung === "shadow" ? "mute" : "unknown"}>
-                  ceiling: {a.max_rung === "shadow" ? "watch only" : a.max_rung}
+                  {a.max_rung === "shadow" ? "Silent mode only" : `ceiling: ${a.max_rung}`}
                 </Tag>
                 {a.holdout_percent !== null && <Tag tone="mute">{a.holdout_percent}% held back</Tag>}
               </span>
