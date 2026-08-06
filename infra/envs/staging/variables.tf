@@ -200,8 +200,8 @@ variable "synapse_ui_server_image" {
 
 variable "synapse_orchestrator_image" {
   type        = string
-  description = "synapse-orchestrator container image (the Cloud Run JOB). Built from synapse/Dockerfile with the MONOREPO ROOT as build context — Synapse is a workspace sibling of dis/, so a dis/-rooted context cannot reach it — via synapse/cloudbuild.yaml with an explicit _TAG and no floating `latest`. NOT YET BUILT OR PUSHED as of slice 6b; the tag below is the one the first build must produce."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/synapse-orchestrator:v2"
+  description = "synapse-orchestrator container image (the Cloud Run JOB). Built from synapse/Dockerfile with the MONOREPO ROOT as build context — Synapse is a workspace sibling of dis/, so a dis/-rooted context cannot reach it — via synapse/cloudbuild.yaml with an explicit _TAG and no floating `latest`. Bump this tag in the same commit as any orchestrator deploy."
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/synapse-orchestrator:v3"
 }
 
 variable "mirror_sync_consumer_image" {
