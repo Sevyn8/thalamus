@@ -148,6 +148,14 @@ resource "google_cloud_run_v2_service" "synapse_ui_server" {
   client         = var.client
   client_version = var.client_version
 
+  # The service-level scaling block (distinct from template.scaling above) is
+  # re-materialized by the Cloud Run v2 API on every read with zeros that mean
+  # "absent". Declaring nothing produces a perpetual diff; ignoring it is the
+  # only convergent posture. Template-level min/max instances are unaffected.
+  lifecycle {
+    ignore_changes = [scaling]
+  }
+
   template {
     service_account = google_service_account.synapse_ui_server.email
 
