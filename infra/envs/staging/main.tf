@@ -663,3 +663,25 @@ module "monitoring_alerts" {
   # constant, so this is a second source of truth kept in step by hand and named as such.
   stale_after_days = 3
 }
+
+# --- migrate-synapse: the way Synapse's chain reaches this database ---
+#
+# NOT WIRED BEFORE NOW, and that absence was the finding: Synapse has had its own alembic chain
+# since slice 5 and no mechanism to apply it. How 0001-0003 got here is recorded nowhere in this
+# repository. Second instance of the same ledger item as DIS's missing migrate job.
+#
+# THE SAME IMAGE AS THE ORCHESTRATOR, by reference rather than a second pin, so the migration can
+# never run a different build than the workload it migrates for.
+#
+# THE ADMIN SECRET MUST EXIST BEFORE THIS APPLIES. `synapse-admin-database-url` is created out of
+# band like every other DSN secret here, and the ROLE IT HOLDS IS AN OPEN QUESTION — see the
+# module's secret_admin_url description. Creating it against the wrong role leaves later
+# migrations' objects owned differently from the tables they sit on.
+module "migrate_synapse_job" {
+  source = "../../modules/cloud-run-job-migrate-synapse"
+
+  project_id       = var.project_id
+  region           = var.region
+  image            = var.synapse_orchestrator_image
+  vpc_connector_id = module.network.vpc_connector_id
+}

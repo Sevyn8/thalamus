@@ -1,0 +1,118 @@
+# =============================================================================
+# migrate-synapse — the way Synapse's alembic chain reaches a database
+# =============================================================================
+#
+# WHY THIS EXISTS. Before it, Synapse's chain had NO mechanism at all. Searched and reported:
+# there is no Cloud Run job, no script, no Makefile target and no DEPLOY.md entry naming
+# SYNAPSE_ADMIN_URL — the only references in the whole repository are env.py itself, two
+# integration-test docstrings, a comment in dis/infra/local/postgres-init.sql, and a local
+# probe database. HOW 0001-0003 REACHED STAGING IS NOT RECORDED ANYWHERE. That is the second
+# instance of the standing `no-migrate-dis-job-exists` ledger item: two planes, two alembic
+# chains, and neither had a way in.
+#
+# SHAPE MIRRORS cloud-run-job-migrate-cm, deliberately and almost line for line, because that
+# job is the proven pattern in this project:
+#
+#   1. THE SAME IMAGE AS THE WORKLOAD, with the entrypoint overridden. migrate-cm shares
+#      var.cm_image with the cm-backend service for a stated reason (D6) and the same reason
+#      holds here: a separately pinned migration image can run a different build than the code
+#      it is migrating for.
+#   2. command AND args ARE BOTH SET. Without the override this job starts the orchestrator's
+#      daily sweep against the database it was meant to migrate. migrate-cm's own comment warns
+#      that the failure mode is a HUNG JOB rather than a visible wrong command; here it would be
+#      worse than hung — it would be a sweep that writes.
+#   3. VPC connector, PRIVATE_RANGES_ONLY. Cloud SQL is private IP only (ipv4Enabled=false,
+#      10.55.0.3), reached at the TCP layer exactly as the orchestrator reaches it.
+#
+# WHAT IS DIFFERENT FROM migrate-cm, and why:
+#
+#   - A DEDICATED SERVICE ACCOUNT rather than reusing the workload's. migrate-cm can reuse
+#     cm-backend-sa because that identity already holds secretAccessor on the one DSN the
+#     migration needs. Synapse's split is the point of the plane: synapse_reader SELECTs,
+#     synapse_writer INSERTs, and NEITHER can ALTER. An admin DSN is a strictly higher
+#     privilege, and granting the daily sweep's identity access to it would leave the sweep
+#     holding DDL rights permanently.
+#   - `alembic -c /synapse/alembic.ini`, an ABSOLUTE config path. Cloud Run v2 exposes no
+#     working directory, and the image's WORKDIR is /app while the chain lives at /synapse.
+#     Safe because nothing in the chain is CWD-sensitive: alembic.ini sets
+#     `script_location = %(here)s/alembic` (resolved against the ini's own directory), env.py
+#     imports no synapse package, and every migration locates its DDL through
+#     `Path(__file__).resolve().parents[2]`. All three checked before this job was written.
+#
+# THE VERSION TABLE IS `synapse_alembic_version` IN THE DEFAULT SCHEMA — env.py:49, and
+# explicitly NOT version_table_schema="synapse" (env.py:12). Two chains share this database and
+# each would read the other's head as its own if they shared a table.
+
+data "google_secret_manager_secret" "admin_url" {
+  project   = var.project_id
+  secret_id = var.secret_admin_url
+}
+
+# The migration identity. Separate from the orchestrator's on purpose — see the header.
+resource "google_service_account" "migrate_synapse" {
+  project      = var.project_id
+  account_id   = "migrate-synapse-sa"
+  display_name = "migrate-synapse — runs Synapse's alembic chain"
+  description  = "Holds secretAccessor on the synapse ADMIN DSN and nothing else. Deliberately NOT the orchestrator's identity: the daily sweep must never hold DDL rights."
+}
+
+resource "google_secret_manager_secret_iam_member" "admin_url" {
+  project   = var.project_id
+  secret_id = data.google_secret_manager_secret.admin_url.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.migrate_synapse.email}"
+}
+
+resource "google_cloud_run_v2_job" "migrate_synapse" {
+  deletion_protection = false
+
+  project  = var.project_id
+  name     = var.job_name
+  location = var.region
+
+  client         = var.client
+  client_version = var.client_version
+
+  template {
+    template {
+      service_account = google_service_account.migrate_synapse.email
+      max_retries     = var.max_retries
+      timeout         = var.task_timeout
+
+      vpc_access {
+        connector = var.vpc_connector_id
+        egress    = "PRIVATE_RANGES_ONLY"
+      }
+
+      containers {
+        image = var.image
+
+        # DO NOT REMOVE OR "SIMPLIFY". Without the override this runs the orchestrator's sweep.
+        command = ["alembic"]
+        args    = ["-c", "/synapse/alembic.ini", "upgrade", "head"]
+
+        resources {
+          limits = {
+            cpu    = var.cpu
+            memory = var.memory
+          }
+        }
+
+        # SYNAPSE_ADMIN_URL, not POSTGRES_ADMIN_URL: env.py refuses to fall back to DIS's
+        # variable, because one chain's URL silently driving the other is exactly the failure
+        # a shared database invites (env.py:18).
+        env {
+          name = "SYNAPSE_ADMIN_URL"
+          value_source {
+            secret_key_ref {
+              secret  = data.google_secret_manager_secret.admin_url.secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [google_secret_manager_secret_iam_member.admin_url]
+}

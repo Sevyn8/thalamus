@@ -30,6 +30,23 @@ dependencies = [
   # name the table in ONE module (synapse/resolvers/); there is no ORM model here.
   "sqlalchemy[asyncio]>=2.0.36",
   "pydantic>=2.9",
+  # THE MIGRATION ENTRYPOINT, and it is a runtime dependency rather than a dev one ON PURPOSE.
+  #
+  # Synapse's chain has no way to reach staging: no job, no script, no Makefile target, and how
+  # 0001-0003 were applied is recorded nowhere in this repository. migrate-synapse fixes that by
+  # MIRRORING migrate-cm — the same image as the workload, with `command = ["alembic"]`
+  # overriding the entrypoint.
+  #
+  # ONE IMAGE, NOT TWO, which is migrate-cm's own argument (D6: "a second pin would let the
+  # migration run a different build"). A migration must run the code it ships with; a separately
+  # pinned migration image can silently sit a revision behind the service it migrates for.
+  #
+  # THE IMAGE ALREADY CARRIES THE FILES — synapse/Dockerfile does `COPY synapse /synapse`, so
+  # alembic.ini, alembic/ and schemas/ are all present. Only the CLI was missing:
+  # `uv sync --no-dev --package thalamus-synapse` installs this package's closure, and alembic
+  # lives in the ithina-dis ROOT project's dependencies, which that closure excludes. Verified
+  # with `uv tree --package thalamus-synapse --no-dev` before and after this line.
+  "alembic>=1.14",
 ]
 
 [build-system]

@@ -3556,6 +3556,7 @@ name = "thalamus-synapse"
 version = "0.0.0"
 source = { editable = "../synapse" }
 dependencies = [
+    { name = "alembic" },
     { name = "dis-canonical" },
     { name = "dis-core" },
     { name = "dis-rls" },
@@ -3565,6 +3566,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "alembic", specifier = ">=1.14" },
     { name = "dis-canonical" },
     { name = "dis-core" },
     { name = "dis-rls" },
