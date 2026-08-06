@@ -75,6 +75,7 @@
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-muted: var(--sidebar-muted);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
@@ -170,16 +171,17 @@
   --chart-4: #d0384a;
   --chart-5: #19d3e0;
 
-  /* Sidebar follows the app surface, NOT ver2's always-dark chrome. Making it
-     dark is chrome alignment (ver2's 248px #0a0d14 rail), which is a separate
-     approved-out-of-scope phase. */
-  --sidebar: #ffffff;
-  --sidebar-foreground: #171c24;
-  --sidebar-primary: #414bf5;
+  /* CHROME: ver2's always-dark rail (index.css:126-135). The sidebar is the one
+     surface that does NOT follow the theme — it is dark in both modes, exactly as
+     ver2 is. Every value is from ver2's ink ladder. */
+  --sidebar: #0a0d14;                  /* --ink       index.css:19 */
+  --sidebar-foreground: #c4cbd8;       /* .side color :128 */
+  --sidebar-primary: #414bf5;          /* --ion       :23 */
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #eef1f5;
-  --sidebar-accent-foreground: #171c24;
-  --sidebar-border: #e5e9ef;
+  --sidebar-accent: #12161f;           /* --ink-2  nav hover+active :197, :201 */
+  --sidebar-accent-foreground: #ffffff;/* :198 */
+  --sidebar-border: #232b3a;           /* --ink-line  :22 */
+  --sidebar-muted: #5a6474;            /* .navgrp .lbl :176 — group labels */
   --sidebar-ring: #414bf5;
 }
 
@@ -252,13 +254,18 @@
   --chart-4: #d0384a;
   --chart-5: #19d3e0;
 
-  --sidebar: #12161f;
+  /* DERIVED — see the spec's §9. On dark the PAGE is --ink, so a sidebar at --ink
+     would vanish into it. It moves one step up the same ladder instead: darkest
+     surface on light, one step LIGHTER than the page on dark. Same ink family in
+     both directions, no new hex, and --sidebar-border keeps a crisp edge either way. */
+  --sidebar: #12161f;                  /* --ink-2 */
   --sidebar-foreground: #c4cbd8;
   --sidebar-primary: #414bf5;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #1b212e;
+  --sidebar-accent: #1b212e;           /* --ink-3, a step up again so hover still reads */
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #232b3a;
+  --sidebar-muted: #5a6474;
   --sidebar-ring: #414bf5;
 
   --shadow-sm-value: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);

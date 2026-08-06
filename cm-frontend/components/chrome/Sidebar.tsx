@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import {
-  ChevronLeft,
-  ChevronRight,
-  type LucideIcon,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, type LucideIcon } from "lucide-react";
 
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { IthinaLogo } from "@/components/chrome/IthinaLogo";
 import { useAuthSnapshot } from "@/lib/auth/auth-cache";
 import {
@@ -86,9 +86,7 @@ export function Sidebar({ navGroups }: SidebarProps) {
   const persona = snapshot?.user;
   const isTenantBrand = persona?.userType === "TENANT";
   const brandLine =
-    isTenantBrand && persona?.tenantName
-      ? persona.tenantName
-      : "Sevyn8";
+    isTenantBrand && persona?.tenantName ? persona.tenantName : "Sevyn8";
   const brandSub = isTenantBrand ? "Admin" : "Superadmin Console";
 
   useEffect(() => {
@@ -121,8 +119,8 @@ export function Sidebar({ navGroups }: SidebarProps) {
     <aside
       data-collapsed={collapsed}
       className={cn(
-        "sticky top-0 flex h-screen shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground transition-[width] duration-150",
-        collapsed ? "w-16" : "w-60",
+        "sticky top-0 flex h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-150",
+        collapsed ? "w-16" : "w-62",
         !hydrated && "invisible",
       )}
     >
@@ -146,7 +144,7 @@ export function Sidebar({ navGroups }: SidebarProps) {
             <span className="truncate text-sm font-semibold tracking-tight">
               {brandLine}
             </span>
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            <span className="text-sidebar-muted text-[10px] tracking-wider uppercase">
               {brandSub}
             </span>
           </div>
@@ -157,17 +155,20 @@ export function Sidebar({ navGroups }: SidebarProps) {
         {visibleGroups.map((group) => (
           <div key={group.heading}>
             {!collapsed ? (
-              <div className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <div className="text-sidebar-muted px-2.5 pb-1.5 text-[10.5px] font-semibold tracking-[0.14em] uppercase">
                 {group.heading}
               </div>
             ) : null}
             <ul className="flex flex-col gap-0.5">
               {group.items.map((item) => {
                 const active =
-                  pathname === item.href || pathname.startsWith(`${item.href}/`);
+                  pathname === item.href ||
+                  pathname.startsWith(`${item.href}/`);
                 const Icon = item.icon;
                 const displayLabel =
-                  isTenantBrand && item.labelTenant ? item.labelTenant : item.label;
+                  isTenantBrand && item.labelTenant
+                    ? item.labelTenant
+                    : item.label;
                 return (
                   <li key={item.href}>
                     <Link
@@ -175,15 +176,19 @@ export function Sidebar({ navGroups }: SidebarProps) {
                       title={collapsed ? displayLabel : undefined}
                       aria-current={active ? "page" : undefined}
                       className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors duration-150 ease-out",
+                        "relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition-colors duration-150 ease-out",
                         active
                           ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                          : "text-sidebar-foreground/80 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground",
+                          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                        active &&
+                          "before:absolute before:top-1.5 before:bottom-1.5 before:left-0 before:w-[3px] before:rounded-[3px] before:bg-[linear-gradient(var(--cyan),var(--primary))] before:content-['']",
                         collapsed && "justify-center px-2",
                       )}
                     >
-                      <Icon className="h-4 w-4 shrink-0" />
-                      {!collapsed ? <span className="truncate">{displayLabel}</span> : null}
+                      <Icon className="h-[15px] w-[15px] shrink-0 opacity-80" />
+                      {!collapsed ? (
+                        <span className="truncate">{displayLabel}</span>
+                      ) : null}
                     </Link>
                   </li>
                 );
@@ -200,11 +205,13 @@ export function Sidebar({ navGroups }: SidebarProps) {
               type="button"
               onClick={toggle}
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              className="m-2 flex h-9 items-center justify-center gap-2 rounded-md border border-border-strong bg-sidebar-accent/20 text-xs text-muted-foreground transition-colors duration-150 ease-out hover:bg-surface-raised hover:text-sidebar-foreground"
+              className="text-sidebar-muted m-2 flex h-9 items-center justify-center gap-2 rounded-lg border border-sidebar-border bg-transparent text-xs transition-colors duration-150 ease-out hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             />
           }
         >
-          {collapsed ? <ChevronRight className="h-4 w-4" /> : (
+          {collapsed ? (
+            <ChevronRight className="h-4 w-4" />
+          ) : (
             <>
               <ChevronLeft className="h-4 w-4" />
               <span>Collapse</span>

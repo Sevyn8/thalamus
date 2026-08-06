@@ -231,6 +231,34 @@ Hover **and** active share `background: --ink-2; color: #fff`. Active adds a 3px
 `::before` with `linear-gradient(var(--cyan), var(--ion))`, inset 6px top/bottom, radius 3
 (`:200-213`). Count chip `.ct`: mono 11px, `--ink-3` bg, radius 20, right-aligned.
 
+### Chrome — sidebar and topbar `:121-255`  *(ADOPTED, chrome-alignment phase)*
+
+**Shell** — `.app { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh }` (`:121-125`).
+
+**Sidebar** `.side` (`:126-135`) — `--ink` background, `#c4cbd8` text, flex column, sticky,
+`100vh`, own scroll. Group label `.navgrp .lbl` (`:173-179`): 10.5px, `.14em`, uppercase,
+**`#5a6474`**. Item `.nav a` (`:180-189`): gap 10, `8px 12px`, radius 8, `#c4cbd8`, 13.5px,
+`position: relative`. Icon `.ico` 15×15 at `opacity .8` (`:190-195`).
+
+**Hover and active are the SAME treatment** (`:196-205`) — `--ink-2` background, `#fff` text.
+
+**Active rail** (`:206-213`) — `::before`, `left 0`, `top/bottom 6px`, `width 3px`, `radius 3`,
+`linear-gradient(var(--cyan), var(--ion))`. **Two stops, VERTICAL.** This is not the topbar
+spectrum and the two must not be conflated.
+
+**Topbar** `.topbar` (`:239-245`) — sticky, `z-index 20`, **solid `--surface`**, bottom
+`1px --line`. Bar `12px 26px`, gap 14 (`:250-255`).
+
+**Spectrum** `.topbar .spectrum` (`:246-249`) — a 3px CHILD div above the bar, not a border:
+`linear-gradient(90deg, var(--cyan), var(--ion), var(--magenta))`. **Three stops, HORIZONTAL.**
+Mounted at `Shell.tsx:189-191`; it spans the topbar, which is a grid sibling of the sidebar, so
+the strip covers the content column only.
+
+**SOLID CHROME, NO TRANSLUCENCY — an adopted convention.** ver2's topbar is opaque `--surface`.
+CM previously used `bg-background/95` with `backdrop-blur`; that was dropped. A blurred bar reads
+as a different material from a solid one, and material inconsistency is one of the loudest ways
+two apps look unrelated.
+
 ### Boxes — `.note` `:811`, `.warnbox` `:819`, `.failbox` `:827`, `.okbox` `:835`, `.empty` `:843`
 Inline message surfaces using the same status triples.
 
@@ -319,14 +347,39 @@ between themes would be two different reds. Only the status *backgrounds* and *l
 dark — ver2's pale `#fbebed`-family fills are unreadable on `#0a0d14`, so they resolve to the
 ink surfaces instead.
 
-### 9.2 Tones ver2 has no palette for
+### 9.2 The sidebar on dark
+
+ver2's sidebar is `--ink` `#0a0d14` and ver2 has no dark mode. On CM's dark theme the PAGE is
+already `--ink`, so a sidebar at `--ink` would vanish into it.
+
+**The rail moves one step up the same ladder instead:**
+
+| | page | sidebar | hover/active |
+|---|---|---|---|
+| light | `--canvas` `#f6f7f9` | `--ink` `#0a0d14` | `--ink-2` `#12161f` |
+| dark | `--ink` `#0a0d14` | `--ink-2` `#12161f` | `--ink-3` `#1b212e` |
+
+So the sidebar is the **darkest surface on light** and **one step lighter than the page on
+dark**. The relationship inverts; the legibility does not. Every value is from ver2's ink
+family — no new hex — and `--sidebar-border` `--ink-line` `#232b3a` keeps a crisp edge in both.
+
+`--sidebar-muted` `#5a6474` is ver2's group-label colour (`index.css:176`), promoted to a token
+because CM's sidebar previously used `--muted-foreground`, which is a light-theme value and is
+unreadable on the dark rail.
+
+**THE ACTIVE RAIL IS KEPT WHEN COLLAPSED.** ver2 has no collapsed state, so there is nothing to
+be faithful to; the choice is CM's. It stays because at `w-16` the labels are gone and the rail
+is the only thing distinguishing active from hover — the background fill alone reads as hover at
+icon size. It matters more collapsed, not less.
+
+### 9.3 Tones ver2 has no palette for
 
 `Chip` carries `violet` and `purple` for org-node categories; ver2 has no categorical hues.
 Derived from its spectrum accents — `--magenta` `#e63dcb` (`index.css:26`) and `--cyan`
 `#19d3e0` (`:25`) — via `color-mix`, distinguished by fill weight. Same for
 `OrgNodeTypeBadge`, `OrgNodeTypeIcon`, `ModuleSummaryCard` and `KpiCard`.
 
-### 9.3 Patterns ver2 lacks entirely
+### 9.4 Patterns ver2 lacks entirely
 
 Confirmed absent (`modal|dialog|toast|snackbar|overlay|backdrop` → zero matches in
 `index.css`). Treatments, all ver2-token-derived:
@@ -340,7 +393,7 @@ Confirmed absent (`modal|dialog|toast|snackbar|overlay|backdrop` → zero matche
 | Skeleton | `--muted` base, `--surface-raised` sweep |
 | Animation | ver2 has no duration/easing tokens — CM's existing scale is kept (see PATTERNS.md) |
 
-### 9.4 `--border-strong`
+### 9.5 `--border-strong`
 
 CM hovers by strengthening a border; ver2 hovers by shifting a **background** and has only two
 line tokens (`--line` `#e5e9ef`, `--line-2` `#eef1f5`, the latter *lighter*). Mapped to
@@ -371,7 +424,8 @@ CM's token names are kept so no call site changes; only the values move to ver2.
 | `--danger`, `--destructive` | `--fail` | `#d0384a` | + `-bg` `#fbebed`, `-line` `#f2c9ce` |
 | `--border`, `--input` | `--line` | `#e5e9ef` | |
 | `--border-strong` | `--text-3` | `#8a93a3` | **derived**, §9.4 |
-| `--sidebar*` | app surface | — | **not** ver2's always-dark rail — §11 |
+| `--sidebar*` | `--ink` ladder | `#0a0d14` | ver2's always-dark rail; dark derivation § 9.2 |
+| `--sidebar-muted` | `.navgrp .lbl` | `#5a6474` | index.css:176 |
 | `--radius-sm` | `--r-sm` | `7px` | |
 | `--radius` | (buttons/inputs `:388`) | `9px` | |
 | `--radius-md` | `--r` | `10px` | |
@@ -379,14 +433,11 @@ CM's token names are kept so no call site changes; only the values move to ver2.
 
 ---
 
-## 11. Chrome alignment — a candidate future phase, NOT started
+## 11. Still parked
 
-Three ver2 traits are layout rather than tokens and are deliberately out of scope:
+**The 1240px content cap** and ver2's `24px 26px 90px` content padding (`index.css:356-360`).
+CM's Synapse pages already carry their own 840px reading column, which would have to be
+reconciled first, and capping the content area reflows every page — layout, not chrome.
 
-1. **The 248px always-dark sidebar** (`--ink`, `index.css:121-135`). CM's sidebar follows the
-   app surface — white in light mode. Adopting ver2's rail is a structural change to CM's
-   chrome, not a token swap, which is why `--sidebar*` maps to the surface family above.
-2. **The topbar spectrum** — a 3px `cyan → ion → magenta` strip (`:246-249`). `--cyan` and
-   `--magenta` are declared in CM so nothing reaches for a raw hex when this lands.
-3. **The 1240px content cap** and `24px 26px 90px` padding (`:356-360`). CM's Synapse pages
-   already carry their own 840px reading column, which would need reconciling first.
+The sidebar and topbar spectrum that used to sit here were adopted in the chrome-alignment
+phase; their recipes are in §5 and the dark-mode derivation is §9.2.
