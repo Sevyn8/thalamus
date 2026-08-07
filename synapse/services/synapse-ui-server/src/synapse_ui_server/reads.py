@@ -22,6 +22,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -401,3 +402,230 @@ async def tenant_runs(engine: AsyncEngine, tenant_id: UUID, *, limit: int = 100)
 
 def _as_uuid(value: Any) -> UUID:
     return value if isinstance(value, UUID) else UUID(str(value))
+
+
+# ---------------------------------------------------------------------------
+# Alerts: the first per-ACTION reads in this service (slice 5c)
+# ---------------------------------------------------------------------------
+#
+# EVERYTHING ABOVE COUNTS ACTIONS; THESE TWO RETURN THEM. `synapse.actions` appeared in this
+# module only as `count(*)` subqueries, which is why the console has never shown an individual
+# alert and why the tenant page's Alerts section aggregates per MONITOR rather than listing
+# alerts. A detail page needs a row to click from as well as one to click to, so this is a pair.
+#
+# PLATFORM ONLY, AND THE PAYLOAD IS THE REASON. These rows carry sku_id, product_name and
+# store_name — every one of them in tenant_view_contract.FORBIDDEN_TENANT_FIELDS. A tenant-facing
+# surface reusing either of these is the leak that contract exists to prevent, which is what
+# test_alert_detail.py's negative test asserts structurally rather than by review.
+#
+# BOTH JOINS ARE LEFT, and that is not defensive habit. `synapse.actions` deliberately carries no
+# foreign key into any DIS schema — an append-only log must outlive what it references — so a
+# delisted SKU or a closed store must still render its alert rather than drop the row.
+#
+# store_id / sku_id ARE STORED GENERATED COLUMNS off `target` (actions.sql:148-156), so neither
+# query extracts JSONB to join.
+
+_ALERT_COLUMNS = """
+           a.event_id, a.as_of, a.recorded_at, a.declaration_id, a.declaration_version,
+           a.verb, a.arm, a.expires_on, a.quantity_at_stake,
+           a.days_since_last_sale, a.days_of_cover, a.thresholds,
+           a.store_id, a.sku_id,
+           s.name AS store_name,
+           p.product_name,
+           p.stock_qty AS current_stock_qty
+"""
+
+_ALERT_JOINS = """
+      FROM synapse.actions a
+      LEFT JOIN identity_mirror.stores s
+             ON s.store_id = a.store_id
+      LEFT JOIN canonical.store_sku_current_position p
+             ON p.tenant_id = a.tenant_id AND p.store_id = a.store_id AND p.sku_id = a.sku_id
+"""
+
+_TENANT_ALERTS = text(
+    f"""
+    SELECT {_ALERT_COLUMNS}
+    {_ALERT_JOINS}
+     WHERE a.tenant_id = CAST(:tenant AS uuid)
+     ORDER BY a.as_of DESC, a.recorded_at DESC, a.event_id
+     LIMIT :limit
+    """
+)
+
+_ALERT_DETAIL = text(
+    f"""
+    SELECT {_ALERT_COLUMNS}
+    {_ALERT_JOINS}
+     WHERE a.tenant_id = CAST(:tenant AS uuid)
+       AND a.event_id = CAST(:event AS uuid)
+    """
+)
+
+# THE HISTORY, and what it can honestly be. Rows sharing (declaration_id, target) at other slots:
+# the idempotency index is (declaration_id, declaration_version, verb, as_of, target,
+# payload_hash), so a repeat of the SAME slot with the SAME payload writes NOTHING and is
+# invisible here by construction. A gap therefore means "not re-raised", never "resolved" — the
+# page says so rather than letting a reader infer the wrong one.
+#
+# KEYED ON event_id, NOT as_of. payload_hash is part of that index, so one slot can legitimately
+# hold two rows if the payload changed within it; collapsing on as_of would hide the second.
+#
+# MATCHED ON THE WHOLE `target`, not on store_id/sku_id, because target IS the grain the
+# idempotency index uses. An analysis at a different grain would group correctly without a change
+# here.
+_ALERT_HISTORY = text(
+    """
+    SELECT h.event_id, h.as_of, h.recorded_at, h.quantity_at_stake,
+           h.days_since_last_sale, h.days_of_cover
+      FROM synapse.actions h
+      JOIN synapse.actions a
+        ON a.tenant_id = h.tenant_id
+       AND a.declaration_id = h.declaration_id
+       AND a.target = h.target
+     WHERE a.tenant_id = CAST(:tenant AS uuid)
+       AND a.event_id = CAST(:event AS uuid)
+     ORDER BY h.as_of DESC, h.recorded_at DESC
+     LIMIT :limit
+    """
+)
+
+
+@dataclass(frozen=True)
+class AlertRow:
+    """One recorded alert, as the tenant page lists it and the detail page headlines it.
+
+    PLATFORM-ONLY BY CONSTRUCTION: sku_id, product_name and store_name are all in
+    FORBIDDEN_TENANT_FIELDS. Never reuse this type on a tenant-facing surface.
+    """
+
+    event_id: UUID
+    as_of: date
+    recorded_at: datetime
+    declaration_id: str
+    declaration_version: str
+    verb: str
+    arm: str
+    expires_on: date
+    # AT DETECTION. The units the monitor saw when it raised this, frozen on the row.
+    quantity_at_stake: Decimal | None
+    days_since_last_sale: int | None
+    days_of_cover: Decimal | None
+    # The thresholds THIS row was judged against, not today's declaration.
+    thresholds: Mapping[str, int]
+    store_id: UUID | None
+    sku_id: str | None
+    # NULL when the mirror or canonical no longer holds the row; the alert still renders.
+    store_name: str | None
+    product_name: str | None
+    # CURRENT. Today's stock for the same position — deliberately a different instant from
+    # quantity_at_stake, and labelled as such wherever it is rendered.
+    current_stock_qty: Decimal | None
+
+
+@dataclass(frozen=True)
+class AlertHistoryRow:
+    """One earlier raising of the same alert. See _ALERT_HISTORY for what absence means."""
+
+    event_id: UUID
+    as_of: date
+    recorded_at: datetime
+    quantity_at_stake: Decimal | None
+    days_since_last_sale: int | None
+    days_of_cover: Decimal | None
+
+
+@dataclass(frozen=True)
+class AlertDetail:
+    """One alert with its own history. ``None`` from the reader means 404, never an empty shell."""
+
+    alert: AlertRow
+    history: tuple[AlertHistoryRow, ...]
+
+
+def _alert_row(row: Any) -> AlertRow:
+    return AlertRow(
+        event_id=_as_uuid(row["event_id"]),
+        as_of=row["as_of"],
+        recorded_at=row["recorded_at"],
+        declaration_id=row["declaration_id"],
+        declaration_version=row["declaration_version"],
+        verb=row["verb"],
+        arm=row["arm"],
+        expires_on=row["expires_on"],
+        quantity_at_stake=row["quantity_at_stake"],
+        days_since_last_sale=row["days_since_last_sale"],
+        days_of_cover=row["days_of_cover"],
+        thresholds=row["thresholds"] or {},
+        store_id=_as_uuid(row["store_id"]) if row["store_id"] is not None else None,
+        sku_id=row["sku_id"],
+        store_name=row["store_name"],
+        product_name=row["product_name"],
+        current_stock_qty=row["current_stock_qty"],
+    )
+
+
+async def tenant_alerts(
+    engine: AsyncEngine, tenant_id: UUID, *, limit: int = 100
+) -> tuple[AlertRow, ...] | None:
+    """One tenant's recorded alerts, newest slot first. ``None`` when the tenant is unknown.
+
+    The tenant-existence probe runs FIRST and separately, matching ``tenant_runs``: an empty list
+    for a mistyped id is indistinguishable from a real tenant that has never been alerted, and
+    that confusion has already cost this project once.
+    """
+    bounded = max(1, min(limit, _MAX_ROWS))
+    async with rls_platform_session(engine, None) as conn:
+        exists = (await conn.execute(_TENANT_EXISTS, {"tenant": str(tenant_id)})).first()
+        if exists is None:
+            return None
+        rows = (
+            (await conn.execute(_TENANT_ALERTS, {"tenant": str(tenant_id), "limit": bounded}))
+            .mappings()
+            .all()
+        )
+    return tuple(_alert_row(row) for row in rows)
+
+
+async def alert_detail(
+    engine: AsyncEngine, tenant_id: UUID, event_id: UUID, *, history_limit: int = 50
+) -> AlertDetail | None:
+    """One alert and its earlier raisings. ``None`` when no such alert exists FOR THIS TENANT.
+
+    A TENANT MISMATCH IS INDISTINGUISHABLE FROM A TYPO, DELIBERATELY. Both predicates are in the
+    WHERE clause, so a real event under a different tenant simply returns no row and the route
+    404s. Answering 403 would confirm the event exists somewhere, which is a cross-tenant
+    existence oracle on a console that spans the fleet.
+    """
+    async with rls_platform_session(engine, None) as conn:
+        found = (
+            (await conn.execute(_ALERT_DETAIL, {"tenant": str(tenant_id), "event": str(event_id)}))
+            .mappings()
+            .first()
+        )
+        if found is None:
+            return None
+        history = (
+            (
+                await conn.execute(
+                    _ALERT_HISTORY,
+                    {"tenant": str(tenant_id), "event": str(event_id), "limit": history_limit},
+                )
+            )
+            .mappings()
+            .all()
+        )
+    return AlertDetail(
+        alert=_alert_row(found),
+        history=tuple(
+            AlertHistoryRow(
+                event_id=_as_uuid(row["event_id"]),
+                as_of=row["as_of"],
+                recorded_at=row["recorded_at"],
+                quantity_at_stake=row["quantity_at_stake"],
+                days_since_last_sale=row["days_since_last_sale"],
+                days_of_cover=row["days_of_cover"],
+            )
+            for row in history
+        ),
+    )

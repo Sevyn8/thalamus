@@ -155,6 +155,57 @@ def create_app(config: Config | None = None) -> FastAPI:
             )
         return {"runs": [row.__dict__ for row in rows]}
 
+    @app.get("/tenants/{tenant_id}/alerts")
+    async def get_tenant_alerts(
+        tenant_id: UUID,
+        request: Request,
+        _: Annotated[Identity, Depends(require_platform)],
+        limit: int = 100,
+    ) -> dict[str, object]:
+        """One tenant's recorded alerts, newest slot first.
+
+        THE FIRST ENDPOINT IN THIS SERVICE THAT RETURNS PER-PRODUCT DATA. Everything before it
+        counts actions; this lists them, because the console's Alerts section aggregated per
+        monitor and there was no individual alert to open. PLATFORM only, like every route here —
+        the payload carries sku_id, product_name and store_name, all of which
+        tenant_view_contract forbids on a tenant-facing surface.
+
+        404 ON AN UNKNOWN TENANT, matching /tenants/{tenant_id} and /tenants/{tenant_id}/runs.
+        """
+        rows = await reads.tenant_alerts(request.app.state.engine, tenant_id, limit=limit)
+        if rows is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"{tenant_id} is not in identity_mirror.tenants",
+            )
+        return {"alerts": [row.__dict__ for row in rows]}
+
+    @app.get("/tenants/{tenant_id}/alerts/{event_id}")
+    async def get_alert_detail(
+        tenant_id: UUID,
+        event_id: UUID,
+        request: Request,
+        _: Annotated[Identity, Depends(require_platform)],
+    ) -> dict[str, object]:
+        """One alert with its earlier raisings.
+
+        404 COVERS BOTH "no such event" AND "that event belongs to another tenant", and the
+        conflation is the point. Answering 403 for the mismatch would confirm the event exists
+        under some other tenant — a cross-tenant existence oracle on a console that spans the
+        fleet. The reader puts both predicates in one WHERE so the two cases are genuinely
+        indistinguishable here rather than merely reported alike.
+        """
+        detail = await reads.alert_detail(request.app.state.engine, tenant_id, event_id)
+        if detail is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"no alert {event_id} for tenant {tenant_id}",
+            )
+        return {
+            "alert": detail.alert.__dict__,
+            "history": [row.__dict__ for row in detail.history],
+        }
+
     @app.get("/runs")
     async def get_runs(
         request: Request, _: Annotated[Identity, Depends(require_platform)], limit: int = 100

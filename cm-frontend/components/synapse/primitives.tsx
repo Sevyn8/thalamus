@@ -183,7 +183,18 @@ export function Attention({ title, detail }: { title: string; detail: string }) 
 
 // R2 had no way back. "My Sevyn8" was the only upward link in the chrome and it
 // goes somewhere else entirely, so a tenant panel was a dead end.
-export function Breadcrumb({ tenant }: { tenant: string }) {
+// `tenantHref` turns the client name into a LINK rather than the last crumb, which
+// is what a third level needs. Omitted on the tenant page itself: a crumb pointing
+// at the page you are on is a dead control, and the current page is never a link.
+export function Breadcrumb({
+  tenant,
+  tenantHref,
+  current,
+}: {
+  tenant: string;
+  tenantHref?: string;
+  current?: string;
+}) {
   return (
     <nav className="text-caption text-foreground-muted" aria-label="Breadcrumb">
       <a className="text-primary underline-offset-2 hover:underline" href="/superadmin/synapse">
@@ -194,7 +205,19 @@ export function Breadcrumb({ tenant }: { tenant: string }) {
         Fleet
       </a>
       {" · "}
-      <span className="text-foreground">{tenant}</span>
+      {tenantHref ? (
+        <a className="text-primary underline-offset-2 hover:underline" href={tenantHref}>
+          {tenant}
+        </a>
+      ) : (
+        <span className="text-foreground">{tenant}</span>
+      )}
+      {current ? (
+        <>
+          {" · "}
+          <span className="text-foreground">{current}</span>
+        </>
+      ) : null}
     </nav>
   );
 }

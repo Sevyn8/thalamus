@@ -32,6 +32,13 @@ const MUST_BE_DYNAMIC = [
   "superadmin/synapse/runs",
   "superadmin/synapse/capabilities",
   "superadmin/synapse/analyses",
+  // THE TWO TENANT-SCOPED ROUTES WERE UNGUARDED UNTIL 5c, which was a gap rather than
+  // a decision: both read the BFF and the session per request exactly like the four
+  // above, so both carry the same prerender hazard and neither was being checked. The
+  // dynamic-segment routes are listed by their MANIFEST path ([tenantId], not a
+  // concrete id) because that is the key the build emits.
+  "superadmin/synapse/tenants/[tenantId]",
+  "superadmin/synapse/tenants/[tenantId]/alerts/[eventId]",
 ];
 
 const APP_DIR = join(process.cwd(), ".next", "server", "app");

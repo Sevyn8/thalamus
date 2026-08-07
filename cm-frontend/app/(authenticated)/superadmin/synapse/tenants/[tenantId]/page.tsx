@@ -49,6 +49,24 @@ type AnalysisState = {
   refusals: Refusals | undefined;
 };
 
+// 5c. The tenant page listed alerts AGGREGATED PER MONITOR ("3 alerts raised") because
+// no endpoint returned individual ones — synapse.actions appeared in the BFF only as
+// count(*). /tenants/{id}/alerts returns them, so the section can list what was actually
+// raised and each line can open.
+type AlertRow = {
+  event_id: string;
+  as_of: string;
+  declaration_id: string;
+  quantity_at_stake: string | null;
+  days_since_last_sale: number | null;
+  days_of_cover: string | null;
+  sku_id: string | null;
+  product_name: string | null;
+  store_name: string | null;
+};
+
+const ALERTS_LIMIT = 50;
+
 type TenantDetail = {
   tenant_id: string;
   name: string;
@@ -128,6 +146,18 @@ export default async function TenantPage({
     throw error;
   }
 
+  // DEGRADES RATHER THAN FAILS, matching the runs fetch below: the page is still worth
+  // rendering without its alert list, and an exception here would take the whole tenant
+  // view down over a section.
+  let alerts: AlertRow[] = [];
+  try {
+    ({ alerts } = await synapseGet<{ alerts: AlertRow[] }>(
+      `/tenants/${tenantId}/alerts?limit=${ALERTS_LIMIT}`,
+    ));
+  } catch (error) {
+    if (!(error instanceof SynapseUnavailable)) throw error;
+  }
+
   // TENANT-SCOPED, filtered in SQL. This used to fetch the fleet-wide /runs at its maximum limit
   // and filter client-side on tenant_id, which silently truncated: another client's activity
   // could push this one's older runs past the cap, and the page could not tell "no history" from
@@ -190,25 +220,46 @@ export default async function TenantPage({
 
         <section>
           <SectionHead>Latest alerts</SectionHead>
-          {alerting.length === 0 ? (
-            <p className="text-body text-foreground-muted">
-              No alerts from the most recent run of any monitor.
-            </p>
+          {/* LISTS THE ALERTS THEMSELVES NOW, not a per-monitor count. The count was all
+              the data allowed before /tenants/{id}/alerts existed; each line now opens the
+              full story. Falls back to the aggregate ONLY when the alert fetch failed but
+              the monitors say alerts exist — showing nothing there would claim a quiet
+              client when the truth is a broken section. */}
+          {alerts.length === 0 ? (
+            alerting.length === 0 ? (
+              <p className="text-body text-foreground-muted">
+                No alerts from the most recent run of any monitor.
+              </p>
+            ) : (
+              <p className="text-body text-foreground-muted">
+                {plural(
+                  alerting.reduce((n, a) => n + (a.actions_proposed ?? 0), 0),
+                  "alert",
+                )}{" "}
+                raised, but the alert list could not be loaded.
+              </p>
+            )
           ) : (
-            alerting.map((state) => (
+            alerts.map((a) => (
               <Row
-                key={state.analysis_id}
+                key={a.event_id}
                 attention
-                // HEADLINED ON actions_proposed, NOT actions_appended. Appended can be 0 while
-                // an alert genuinely exists: the idempotency index suppresses a repeat of the
-                // same slot, so a real finding that was already recorded yesterday appends
-                // nothing today. Proposed is what the monitor found.
-                title={`${plural(state.actions_proposed ?? 0, "alert")} raised`}
+                title={
+                  <a
+                    className="text-primary underline-offset-2 hover:underline"
+                    href={`/superadmin/synapse/tenants/${tenantId}/alerts/${a.event_id}`}
+                  >
+                    {a.product_name ?? a.sku_id ?? "Unknown product"}
+                  </a>
+                }
                 meta={
                   <>
-                    {state.last_slot ? `Raised ${state.last_slot} ` : ""}by the{" "}
-                    {ANALYSIS_NAMES[state.analysis_id] ?? state.analysis_id} monitor · not sent to
+                    {a.store_name ? `${a.store_name} · ` : ""}Raised {a.as_of} by the{" "}
+                    {ANALYSIS_NAMES[a.declaration_id] ?? a.declaration_id} monitor · not sent to
                     client (silent mode)
+                    <span className="text-micro mt-1 block font-mono text-foreground-subtle">
+                      {a.sku_id ?? "no SKU on this alert"}
+                    </span>
                   </>
                 }
               />
