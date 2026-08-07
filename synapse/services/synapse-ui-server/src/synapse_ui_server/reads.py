@@ -103,8 +103,9 @@ class AnalysisState:
     actions_proposed: int | None
     actions_appended: int | None
     detail: str | None
-    # {reason: count} over the closed vocabulary; None when this monitor's last run never
-    # reached its plan, {} when it ran and refused nothing. See RunRow.refusals.
+    # {reason: count} over the closed vocabulary; empty when no refusals were recorded.
+    # Optional only because a monitor may have NO last run at all, in which case the whole
+    # LEFT JOIN row is absent rather than empty. See RunRow.refusals.
     refusals: Mapping[str, int] | None
 
 
@@ -127,11 +128,13 @@ class RunRow:
     # synapse.core.stockout_risk, and this service deliberately imports no analysis code — a BFF
     # that owned a copy of the reason set would be a second place to update when one is added.
     #
-    # THREE STATES, and the console renders three different things:
-    #   None  the run never reached its plan (blocked/undeclared/failed, or predates 0005)
-    #   {}    the plan ran and refused nothing
-    #   {..}  counts by reason
-    # Collapsing None into {} would report a crashed run as a clean one.
+    # NOT NULL IN THE DATABASE (migration 0005), so a run row always carries a map: empty
+    # means no refusals were recorded, and "this run assessed nothing at all" is what
+    # `outcome` says rather than a second encoding here.
+    #
+    # Typed optional ANYWAY, and deliberately: the console is deployed separately from this
+    # service and from the migration, so a client may read a row written before 0005 landed.
+    # Rendering "no refusals" for a row that has not been told is a claim; None is not.
     refusals: Mapping[str, int] | None
 
 

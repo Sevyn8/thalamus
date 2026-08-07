@@ -267,18 +267,32 @@ def test_the_completion_statement_writes_the_column() -> None:
     assert "refusals = CAST(:refusals AS jsonb)" in sql
 
 
-def test_null_and_empty_are_distinguishable_at_the_write_path() -> None:
-    """THE DISTINCTION THE COLUMN EXISTS FOR. None (the run never reached its plan) must not
-    become '{}' (the plan ran and refused nothing) — collapsing them reports a crashed run as a
-    clean one."""
-    assert _serialise(None) is None
+def test_the_write_path_always_produces_a_json_object_never_null() -> None:
+    """THE COLUMN IS NOT NULL (migration 0005). An earlier draft made it nullable and gave NULL a
+    third meaning — "the run never reached its plan" — that nothing ever wrote: the runner
+    initialises the map and passes it on every path, so a blocked run stored '{}' regardless. The
+    prose was the wrong source of truth, and this pins the one that is left.
+
+    "Why did this run assess nothing" is answered by ``outcome``, not by a second encoding here.
+    """
     assert _serialise({}) == "{}"
     assert _serialise({RefusalReason.SERIES_TOO_STALE: 2}) == '{"series_too_stale": 2}'
 
 
-def _serialise(refusals: Mapping[RefusalReason, int] | None) -> str | None:
+def test_the_recorder_defaults_to_an_empty_map_not_none() -> None:
+    """A caller that omits the argument must not write NULL into a NOT NULL column."""
+    import inspect
+
+    from synapse.persistence.run_postgres import PostgresRunRecorder
+
+    default = inspect.signature(PostgresRunRecorder.complete).parameters["refusals"].default
+    assert default is not None, "a None default would violate the NOT NULL column"
+    assert dict(default) == {}
+
+
+def _serialise(refusals: Mapping[RefusalReason, int]) -> str:
     """Mirrors run_postgres.complete's parameter construction."""
-    return None if refusals is None else json.dumps(dict(sorted(refusals.items())))
+    return json.dumps(dict(sorted(refusals.items())))
 
 
 def test_the_enum_serialises_to_its_own_value_as_a_json_key() -> None:

@@ -103,10 +103,11 @@ CREATE TABLE IF NOT EXISTS synapse.run (
     -- "zero, and we cannot tell which". A run that refused every series as stale now
     -- says so here.
     --
-    -- NULL vs '{}' IS MEANINGFUL AND NOT AN ACCIDENT. NULL = the run never reached its
-    -- plan (blocked, undeclared, failed, or predating this migration), so nothing was
-    -- assessable to begin with. '{}' = the plan RAN and refused nothing. Rendering the
-    -- two the same way would report a crashed run as a clean one.
+    -- NOT NULL DEFAULT '{}', SO THERE IS ONE SHAPE TO READ. An earlier draft made this
+    -- nullable and gave NULL a third meaning ("never reached its plan") that nothing
+    -- produced: the orchestrator initialises the map and writes it on every path, so a
+    -- blocked run stored '{}' anyway. "Why did this run assess nothing" is answered by
+    -- `outcome`, which already carries it. An empty map means no refusals were recorded.
     --
     -- JSONB rather than five typed columns: the vocabulary grows with the analyses, and
     -- a column per reason would make every new refusal branch a migration. Rather than a
@@ -117,7 +118,7 @@ CREATE TABLE IF NOT EXISTS synapse.run (
     -- see below -- so a re-run may rewrite this row, and the correctness rule is that
     -- the same slot over the same data yields the same bytes. Python dicts preserve
     -- insertion order, which follows refusal order, so sorting is what makes that true.
-    refusals            JSONB                       NULL,
+    refusals            JSONB       NOT NULL DEFAULT '{}'::jsonb,
 
     CONSTRAINT pk_run PRIMARY KEY (run_id),
 

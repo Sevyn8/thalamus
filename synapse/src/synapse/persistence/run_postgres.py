@@ -36,6 +36,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
+from types import MappingProxyType
 from uuid import UUID
 
 from sqlalchemy import text
@@ -198,7 +199,7 @@ class PostgresRunRecorder:
         actions_proposed: int | None = None,
         actions_appended: int | None = None,
         detail: str | None = None,
-        refusals: Mapping[str, int] | None = None,
+        refusals: Mapping[str, int] = MappingProxyType({}),
     ) -> None:
         """Mark a claimed run terminal. Refuses an outcome the CHECK constraint would reject.
 
@@ -206,8 +207,12 @@ class PostgresRunRecorder:
         opaque constraint violation at the end of a run that has already appended its actions,
         where this one names the bad value at the call site.
 
-        ``refusals`` IS SERIALISED WITH SORTED KEYS, and that is the persistence half of the
-        re-run stability rule. ``synapse.run`` is NOT append-only (run.sql:44 states the absence
+        ``refusals`` DEFAULTS TO EMPTY RATHER THAN None because the column is NOT NULL: a caller
+        that omits it is saying "no refusals recorded", which is what an empty map means. There is
+        no third state — "this run assessed nothing at all" is what ``outcome`` says.
+
+        SERIALISED WITH SORTED KEYS, and that is the persistence half of the re-run stability
+        rule. ``synapse.run`` is NOT append-only (run.sql:44 states the absence
         of the trigger is a decision): a row records the state of an ATTEMPT, and an attempt that
         is taken over after a crash rewrites it. So the correctness rule here is not "written
         once" but "the same slot, re-run, yields the same bytes" — and a Python dict preserves
@@ -235,9 +240,8 @@ class PostgresRunRecorder:
                     "actions_proposed": actions_proposed,
                     "actions_appended": actions_appended,
                     "detail": detail,
-                    # NULL when there is nothing to record, `{}` when the analysis ran and
-                    # refused nothing. Those are different facts: NULL means this run never
-                    # reached a plan, `{}` means it did and every position was assessable.
-                    "refusals": None if refusals is None else json.dumps(dict(sorted(refusals.items()))),
+                    # Always a JSON object, never NULL — the column refuses NULL and the empty
+                    # map is the honest value for a run with nothing to report.
+                    "refusals": json.dumps(dict(sorted(refusals.items()))),
                 },
             )

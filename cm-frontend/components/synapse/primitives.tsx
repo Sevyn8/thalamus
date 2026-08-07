@@ -305,12 +305,14 @@ export function daysSince(iso: string | null): number | null {
 // "could not assess anything" were the same row. The orchestrator now records
 // WHICH, so the screen can say it instead of hedging.
 //
-// THREE STATES, and they are not interchangeable:
-//   null  the run never reached its plan (blocked/undeclared/failed), or it
-//         predates migration 0005. Nothing was assessable and the outcome says why.
-//   {}    the plan ran and refused nothing.
-//   {..}  counts by reason.
-// Collapsing null into {} would render a crashed run as a clean one.
+// NOT NULL IN THE DATABASE (migration 0005): a run row always carries a map, and an
+// empty one means no refusals were recorded. "This run assessed nothing at all" is
+// what the outcome chip says, not a second encoding here.
+//
+// STILL OPTIONAL IN THIS TYPE, deliberately. The BFF, the orchestrator and this app
+// deploy separately, so a response may predate the column. Absent is not the same as
+// empty: empty asserts "nothing was refused", absent asserts nothing at all, and only
+// one of those is safe to render as silence.
 export type Refusals = Record<string, number> | null;
 
 // Operator phrasing for the closed vocabulary in synapse.core.stockout_risk.
