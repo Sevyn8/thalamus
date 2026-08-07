@@ -210,6 +210,12 @@ variable "mirror_sync_consumer_image" {
   default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/mirror-sync-consumer:v1"
 }
 
+variable "dis_migrate_image" {
+  type        = string
+  description = "migrate-dis container image (the Cloud Run JOB that runs DIS's alembic chain). Built from dis/terraform/docker/migrate-dis.Dockerfile with the dis/ WORKSPACE ROOT as build context, via cloudbuild-migrate-dis.yaml with an explicit _TAG and no floating `latest`. UNLIKE migrate-cm and migrate-synapse this is a DEDICATED image rather than a workload's: DIS's chain lives at the workspace root and no DIS service image carries alembic (measured — zero occurrences in all four service closures). A stale pin here is quiet in the worst way: the job runs an older chain, succeeds, and leaves the schema at a head nobody asked for. NOT YET BUILT — bump to the tag actually pushed before the first apply."
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/migrate-dis:v1"
+}
+
 variable "dis_ui_ver2_image" {
   type        = string
   description = "dis-ui-ver2 (SPA) container image. The tag live on the imported service. Built by dis/terraform/docker/cloudbuild-dis-ui-ver2.yaml with an explicit _TAG=vN and no floating `latest`; bump this in the same commit as any deploy."

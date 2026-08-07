@@ -685,3 +685,42 @@ module "migrate_synapse_job" {
   image            = var.synapse_orchestrator_image
   vpc_connector_id = module.network.vpc_connector_id
 }
+
+# --- migrate-dis: the way DIS's chain reaches this database ---
+#
+# THE SAME ABSENCE AS ABOVE, one plane over, and the older of the two. DIS's revisions reached
+# this database BY HAND — infra/db-setup/README.md:45-49 records `postgres` at 18 revisions on
+# 2026-07-20, while the live stamp is 0019, so at least one arrived later and unrecorded. This
+# is the original `no-migrate-dis-job-exists` ledger item; migrate-synapse above was its second
+# instance. Both now have a mechanism.
+#
+# THE FIRST EXECUTION APPLIES NOTHING. The database is already at head, so `upgrade head` is a
+# no-op and the run proves the MECHANISM — image, identity, secret, VPC path, target guard,
+# version table — exactly as migrate-synapse's first run did. Revision 0020 is the first that
+# will reach staging without a proxy and a laptop.
+#
+# A DEDICATED IMAGE, not a workload's, and that is the one real divergence from both ancestors.
+# migrate-cm rides cm-backend's image and migrate-synapse rides the orchestrator's because each
+# of those already carried its chain. No DIS service image carries alembic at all — verified
+# against the resolved closure of all four — and DIS's chain lives at the workspace root, owned
+# by the root project that does declare it. The module header carries the full argument.
+#
+# POSTGRES_DB IS LOAD-BEARING HERE AND HAS NO ANALOGUE IN migrate-synapse. Eighteen of the
+# nineteen revisions refuse to run unless it matches the connected database, and the code
+# default is the local `ithina_dis_db`. Wired to var.database_name — the same variable the
+# Cloud SQL module is given — rather than a literal, so the job and the database it targets
+# cannot drift apart.
+#
+# THE ADMIN SECRET MUST EXIST BEFORE THIS APPLIES. `dis-admin-database-url` is created out of
+# band like every other DSN secret here (done, 2026-08-07), against the `postgres` role —
+# confirmed by uniform `postgres` ownership across all eight DIS schemas, not merely inferred
+# from README:47.
+module "migrate_dis_job" {
+  source = "../../modules/cloud-run-job-migrate-dis"
+
+  project_id        = var.project_id
+  region            = var.region
+  image             = var.dis_migrate_image
+  vpc_connector_id  = module.network.vpc_connector_id
+  expected_database = var.database_name
+}

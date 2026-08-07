@@ -1,0 +1,63 @@
+# Cloud Build: build + push the migrate-dis image.
+#
+# Run from dis/ (NOT the monorepo root - the -f path and the build context below
+# both resolve from dis/, and dis/.gcloudignore is what filters the upload):
+#   gcloud builds submit --config terraform/docker/cloudbuild-migrate-dis.yaml \
+#     --substitutions=_TAG=v1 .
+#
+# _TAG is REQUIRED and has an empty default on purpose: an omitted tag fails the
+# build loudly instead of silently re-pinning a floating tag. There is deliberately
+# no `latest` tag - the Cloud Run pin is an explicit vN. Both rules exist because a
+# floating `latest` is how thalamus-images/dis-ui-ver2:latest came to point at v7
+# while v15 was serving.
+#
+# THE TAG BUILT HERE MUST MATCH infra/envs/staging/variables.tf's
+# `dis_migrate_image` DEFAULT, and the two are a hand-kept pair - terraform cannot
+# read this file and this file cannot read terraform. Bump both in the SAME commit.
+# The failure when they drift is quiet in the worst way for a MIGRATION image: the
+# job runs an older chain against a newer database, reports success, and leaves the
+# schema at a head nobody asked for.
+#
+# The build context is the dis/ WORKSPACE ROOT because the Dockerfile is a
+# uv-workspace build whose COPYs are workspace-relative (pyproject.toml, uv.lock,
+# alembic.ini, alembic/, schemas/). Unlike every other image here it copies NO
+# libs/ or services/ directory: the chain imports no DIS package. Same context as
+# the mirror-sync-consumer build, opposite of the dis-ui-ver2 build (frontend
+# package root) and of the synapse build (monorepo root).
+#
+# NEITHER .gcloudignore NOR .dockerignore EXCLUDES alembic/ OR schemas/ - checked,
+# because five revisions read DDL off disk at runtime and an excluded schemas/ would
+# not fail the build, it would fail migration 0001 mid-chain against a real database.
+#
+# NO DOCKER_BUILDKIT=1 here, and the absence is deliberate rather than an omission:
+# the ver2 build needs BuildKit for a `# syntax=` directive and heredoc COPYs, and
+# this Dockerfile has neither.
+#
+# The image takes no build args. Everything the job needs is RUNTIME env supplied by
+# the Cloud Run job (POSTGRES_ADMIN_URL from Secret Manager, POSTGRES_DB), so the
+# same image is promotable across environments unchanged.
+
+substitutions:
+  _REGION: "asia-south1"
+  _REPO: "thalamus-images"
+  # REQUIRED. Empty default = fail loud rather than mispin (see header).
+  _TAG: ""
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  # --no-cache: force a fresh dependency resolve and a fresh build-time chain load
+  # every build; a cached layer can hide a drifted lock or a stale revision set.
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - terraform/docker/migrate-dis.Dockerfile
+      - --no-cache
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/migrate-dis:${_TAG}
+      - .
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/migrate-dis:${_TAG}
