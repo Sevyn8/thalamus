@@ -28,8 +28,11 @@
 #   grep -rn "synapse-ui-server:" infra/envs/
 #
 # NO BUILD ARGS. Everything the service needs is RUNTIME env supplied by Cloud Run
-# (SYNAPSE_READER_URL, SYNAPSE_JWT_ISSUER, SYNAPSE_JWT_AUDIENCE,
-# DIS_EXPECTED_DATABASE), so one image is promotable across environments unchanged
+# (SYNAPSE_READER_URL, SYNAPSE_LIFECYCLE_URL, SYNAPSE_JWT_ISSUER,
+# SYNAPSE_JWT_AUDIENCE, DIS_EXPECTED_DATABASE), so one image is promotable across
+# environments unchanged. SYNAPSE_LIFECYCLE_URL arrived in slice 5d and the service
+# REFUSES TO START without it — a v6 revision deployed against a module that does
+# not set it will fail readiness, not degrade
 # and no credential is ever baked in.
 #
 # NO DOCKER_BUILDKIT=1: this Dockerfile uses neither a `# syntax=` directive nor

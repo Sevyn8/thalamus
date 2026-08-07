@@ -1,4 +1,8 @@
-# synapse-ui-server — Synapse's read-only BFF, run as a Cloud Run SERVICE.
+# synapse-ui-server — Synapse's BFF, run as a Cloud Run SERVICE.
+#
+# READ-ONLY UNTIL SLICE 5d, and nearly so still: every GET reads through
+# synapse_reader, and the single POST appends to synapse.action_events as
+# synapse_lifecycle — a role holding INSERT on that one table and nothing else.
 #
 # A SECOND DOCKERFILE RATHER THAN A PARAMETERISED ONE, and the reasoning matters
 # because this project has paid three times for duplication (the Pub/Sub poll
@@ -37,7 +41,10 @@
 #   synapse-ui-server  itself
 #
 # Assembled in a scratch tree and verified with the real command: 37 packages,
-# resolves clean, and the app object builds with all seven routes registered.
+# resolves clean, and the app object builds with EVERY route registered — checked by
+# (path, method) rather than path alone, so the one write endpoint cannot register as
+# a GET and still pass. The set was seven routes when this was written and has drifted
+# twice since; it is now enumerated in full below rather than sampled.
 # (The orchestrator's image is 21 packages — FastAPI, uvicorn and pyjwt are the
 # difference, and keeping them out of it is exactly why this is a separate
 # workspace member.)
@@ -83,7 +90,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 # IT WAS WRITTEN TWICE AND THAT SHIPPED A BROKEN IMAGE. The CMD said
 # `synapse_ui_server.main:app` while the check imported `create_app` — two
 # different attributes of the same module. The check passed (create_app exists,
-# builds, registers seven routes) and the container then died on
+# builds, registers its routes) and the container then died on
 # `Attribute "app" not found in module "synapse_ui_server.main"`. One copy was
 # checked and the other shipped, which is the duplication class this project
 # keeps paying for.
@@ -112,7 +119,17 @@ ENV ASGI_TARGET="synapse_ui_server.main:create_app"
 # its health check and 404s the console — and it runs synapse.registry's
 # import-time invariants, so a declaration whose evaluator no longer matches its
 # `emits` fails here too.
+# THE ENV LIST IS PART OF THE CONTRACT AND MUST TRACK load_config(). v6 failed here:
+# slice 5d made SYNAPSE_LIFECYCLE_URL required and this list still held the pre-5d
+# three, so the startup guard fired — correctly — during the build. The guard was
+# right and the check was stale. A variable added to load_config() must be added
+# here in the same commit, or the next build fails at step 15 instead of the review.
+#
+# SYNAPSE_WRITER_URL IS DELIBERATELY ABSENT and must stay absent: load_config refuses
+# to start when it is set, because that is the ORCHESTRATOR's credential. Setting it
+# here to "make the check pass" would break every real revision.
 RUN SYNAPSE_READER_URL="postgresql+psycopg://u@h/d" \
+    SYNAPSE_LIFECYCLE_URL="postgresql+psycopg://l@h/d" \
     SYNAPSE_JWT_ISSUER="https://build.invalid/" \
     SYNAPSE_JWT_AUDIENCE="build-check" \
     python -c "\
@@ -121,9 +138,16 @@ from uvicorn.importer import import_from_string; \
 target = os.environ['ASGI_TARGET']; \
 factory = import_from_string(target); \
 app = factory(); \
-paths = {r.path for r in app.routes if hasattr(r, 'path')}; \
-required = {'/healthz', '/readyz', '/fleet', '/tenants/{tenant_id}', '/runs', '/capabilities', '/analyses'}; \
-missing = required - paths; \
+routes = {(r.path, m) for r in app.routes if hasattr(r, 'path') for m in (getattr(r, 'methods', None) or {'GET'})}; \
+required = { \
+    ('/healthz', 'GET'), ('/readyz', 'GET'), ('/fleet', 'GET'), ('/runs', 'GET'), \
+    ('/capabilities', 'GET'), ('/analyses', 'GET'), \
+    ('/tenants/{tenant_id}', 'GET'), ('/tenants/{tenant_id}/runs', 'GET'), \
+    ('/tenants/{tenant_id}/alerts', 'GET'), \
+    ('/tenants/{tenant_id}/alerts/{event_id}', 'GET'), \
+    ('/tenants/{tenant_id}/alerts/{event_id}/decisions', 'POST'), \
+}; \
+missing = required - routes; \
 assert not missing, f'routes did not register: {sorted(missing)}'; \
 print(f'{target} resolves and builds {len(required)} routes')"
 
