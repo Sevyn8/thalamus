@@ -685,3 +685,36 @@ module "migrate_synapse_job" {
   image            = var.synapse_orchestrator_image
   vpc_connector_id = module.network.vpc_connector_id
 }
+
+# --- migrate-dis: the way DIS's chain reaches this database ---
+#
+# THE SAME ABSENCE AS ABOVE, one plane over, and the older of the two. DIS's 19 revisions
+# reached this database ONCE, BY HAND, on 2026-07-20 — infra/db-setup/README.md:45-49 records
+# it as `postgres` at 18 revisions, and nothing in this repository has applied one since. This
+# is the original `no-migrate-dis-job-exists` ledger item; migrate-synapse above was its second
+# instance. Both now have a mechanism.
+#
+# A DEDICATED IMAGE, not a workload's, and that is the one real divergence from both ancestors.
+# migrate-cm rides cm-backend's image and migrate-synapse rides the orchestrator's because each
+# of those already carried its chain. No DIS service image carries alembic at all — verified
+# against the resolved closure of all four — and DIS's chain lives at the workspace root, owned
+# by the root project that does declare it. The module header carries the full argument.
+#
+# POSTGRES_DB IS LOAD-BEARING HERE AND HAS NO ANALOGUE IN migrate-synapse. Eighteen of the
+# nineteen revisions refuse to run unless it matches the connected database, and the code
+# default is the local `ithina_dis_db`. Wired to var.database_name — the same variable the
+# Cloud SQL module is given — rather than a literal, so the job and the database it targets
+# cannot drift apart.
+#
+# THE ADMIN SECRET MUST EXIST BEFORE THIS APPLIES. `dis-admin-database-url` is created out of
+# band like every other DSN secret here, against the `postgres` role — settled by README:47's
+# status line over :32's stale plan line, and corroborated at :116.
+module "migrate_dis_job" {
+  source = "../../modules/cloud-run-job-migrate-dis"
+
+  project_id        = var.project_id
+  region            = var.region
+  image             = var.dis_migrate_image
+  vpc_connector_id  = module.network.vpc_connector_id
+  expected_database = var.database_name
+}
