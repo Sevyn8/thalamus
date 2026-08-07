@@ -284,6 +284,17 @@ def assert_disposable(dsn: str | None, *, var: str) -> None:
 
 _DISPOSABLE_ROLES = ("synapse_writer", "synapse_reader")
 
+# THE ONE TABLE IN THIS SCHEMA THAT MUST NOT HAVE RLS, and the reason is a trap rather than an
+# exception. synapse.quarantined_tenants LISTS tenants; it is not OWNED by one, so there is no
+# tenant_id for a policy to compare and no meaningful scoping.
+#
+# Worse than meaningless — ACTIVELY HARMFUL. synapse.actions_analytical is security_invoker, so
+# its anti-join runs with the querying role's rights. If RLS hid the registry's rows from that
+# session, NOT EXISTS would find nothing and the view would return EVERY row including the
+# quarantined ones. The quarantine would fail OPEN, look correct, and be discovered by a model
+# trained on fixtures.
+_NO_RLS_BY_DESIGN = frozenset({"quarantined_tenants"})
+
 # The database the disposable one is cloned from. Its own name is never written to.
 _TEMPLATE_DB = os.environ.get("SYNAPSE_DISPOSABLE_TEMPLATE", "ithina_dis_db")
 
@@ -391,14 +402,27 @@ def _verify_disposable(admin_dsn: str) -> None:
         ).fetchall()
         if not forced:
             raise RuntimeError("the disposable database has no synapse tables; the chain did not run")
-        weak = [name for name, enabled, force in forced if not (enabled and force)]
+        # THE ONE TABLE IN THIS SCHEMA THAT MUST NOT HAVE RLS, and the reason is a trap rather
+        # than an exception. synapse.quarantined_tenants LISTS tenants; it is not OWNED by one,
+        # so there is no tenant_id for a policy to compare and no meaningful scoping.
+        #
+        # Worse than meaningless — ACTIVELY HARMFUL. synapse.actions_analytical is
+        # security_invoker, so its anti-join runs with the querying role's rights. If RLS hid the
+        # registry's rows from that session, NOT EXISTS would find nothing and the view would
+        # return EVERY row including the quarantined ones. The quarantine would fail OPEN, look
+        # correct, and be discovered by a model trained on fixtures.
+        weak = [
+            name
+            for name, enabled, force in forced
+            if not (enabled and force) and name not in _NO_RLS_BY_DESIGN
+        ]
         if weak:
             raise RuntimeError(
                 f"synapse tables without FORCE ROW LEVEL SECURITY on the disposable database: "
                 f"{weak}. Every write-side test is a refusal test and would pass regardless."
             )
         policies = conn.execute("SELECT tablename FROM pg_policies WHERE schemaname = 'synapse'").fetchall()
-        missing = {name for name, _, _ in forced} - {t for (t,) in policies}
+        missing = {name for name, _, _ in forced} - {t for (t,) in policies} - _NO_RLS_BY_DESIGN
         if missing:
             raise RuntimeError(f"synapse tables with FORCE RLS but no policy: {sorted(missing)}")
         loose = conn.execute(

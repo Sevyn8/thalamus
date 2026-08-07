@@ -24,6 +24,13 @@ and a BEFORE UPDATE OR DELETE trigger raises for every role including the table 
 THE SHAPE CAME FIRST, DELIBERATELY. The table was written a slice later, against types that had
 already run — the opposite of canonical's signal-history table, a DDL written ahead of its
 writer and still holding zero rows in both schemas.
+
+ANALYTICS MUST READ ``synapse.actions_analytical``, NOT ``synapse.actions``. The table retains
+thirteen immortal test-fixture rows written before the suite was isolated — it is append-only, so
+deletion is impossible by design — and they are real-looking enough to train a model on fiction
+without anyone noticing. The view excludes every tenant in ``synapse.quarantined_tenants``, whose
+``note`` column carries the provenance of each entry and the boundary of what is excluded (actions
+only; a quarantined tenant's runs and freshness signals are genuine). Migration 0007.
 """
 
 from __future__ import annotations

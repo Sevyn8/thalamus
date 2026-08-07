@@ -285,3 +285,24 @@ REVOKE USAGE ON SCHEMA canonical FROM synapse_writer;
 --         expected rows, you have measured RLS, not the grant. Re-check with
 --         app.user_type='PLATFORM' before concluding the log is empty.
 -- ============================================================================
+
+
+-- ============================================================================
+-- RE-GRANT WHAT MIGRATION 0007 GAVE. THIRD INSTANCE, SAME GUARD.
+-- ============================================================================
+-- The blanket `REVOKE ALL ON ALL TABLES IN SCHEMA synapse FROM synapse_reader`
+-- near the top strips the console's SELECT on the quarantine registry and, with
+-- it, the analytical view's anti-join.
+--
+-- THAT FAILURE WOULD BE SILENT AND WOULD FAIL OPEN. synapse.actions_analytical
+-- is security_invoker, so the anti-join runs with the querying role's rights. A
+-- reader that cannot SELECT synapse.quarantined_tenants finds no matching row,
+-- NOT EXISTS is true for every action, and the view returns the fixture rows it
+-- exists to hide -- looking entirely correct while doing the opposite of its job.
+GRANT SELECT ON synapse.quarantined_tenants TO synapse_reader;
+GRANT SELECT ON synapse.actions_analytical  TO synapse_reader;
+
+-- Nobody writes the registry. Seeding is a migration's job, running as the schema
+-- owner: a quarantine list the application can edit is not a quarantine.
+REVOKE ALL ON synapse.quarantined_tenants FROM synapse_writer, synapse_lifecycle;
+REVOKE ALL ON synapse.actions_analytical  FROM synapse_writer, synapse_lifecycle;

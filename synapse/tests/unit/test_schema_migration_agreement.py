@@ -43,6 +43,7 @@ _TABLES: tuple[tuple[str, str, int], ...] = (
     ("run", "run.sql", 10),
     ("provision", "provision.sql", 6),
     ("action_events", "action_events.sql", 8),
+    ("quarantined_tenants", "quarantined_tenants.sql", 5),
 )
 
 

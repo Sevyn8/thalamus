@@ -145,7 +145,14 @@ def test_the_chain_reaches_0006_and_the_seed_row_landed(at_head: str) -> None:
         _as_tenant(conn)
         (stamp,) = conn.execute("SELECT version_num FROM synapse_alembic_version").fetchone()  # type: ignore[misc]
         (count,) = conn.execute("SELECT count(*) FROM synapse.action_events").fetchone()  # type: ignore[misc]
-    assert stamp == "0006"
+    # READ FROM THE CHAIN, NOT A LITERAL. This said `== "0006"`, which was true only while 0006
+    # WAS the head; adding 0007 broke it, and the breakage said nothing about 0006. The 0005 test
+    # rotted the same way one revision earlier — twice is a pattern, so this asks the chain.
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    head = ScriptDirectory.from_config(Config(str(_ROOT / "alembic.ini"))).get_current_head()
+    assert stamp == head
     assert count == 1, "the seed event is missing; the append-only checks would be vacuous"
 
 
