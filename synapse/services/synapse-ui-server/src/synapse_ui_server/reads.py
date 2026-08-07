@@ -19,6 +19,7 @@ connection.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
@@ -82,9 +83,14 @@ class TenantDetail:
 class AnalysisState:
     """One provisioned analysis for one tenant, with its most recent run.
 
-    ``outcome`` and the two counts come from ``synapse.run``; ``detail`` is the column that
-    exists and is NOT populated (outstanding item 4). It is carried as ``None`` rather than
-    omitted so the UI can say WHY the refusal breakdown is missing instead of leaving a gap.
+    ``outcome``, the two counts, ``detail`` and ``refusals`` all come from ``synapse.run``.
+
+    ``refusals`` IS THE ONE THAT CHANGED IN SLICE 5b. This docstring used to say detail "exists
+    and is NOT populated (outstanding item 4)", which was true: nothing threaded a breakdown onto
+    the run row, so a monitor that refused every series looked identical to one that found
+    nothing. Item 4 is closed — the plan returns its refusals and the orchestrator records them —
+    and this carries the result so the tenant page can say "12 series refused — sales data too
+    old" instead of showing a bare zero.
     """
 
     analysis_id: str
@@ -97,6 +103,9 @@ class AnalysisState:
     actions_proposed: int | None
     actions_appended: int | None
     detail: str | None
+    # {reason: count} over the closed vocabulary; None when this monitor's last run never
+    # reached its plan, {} when it ran and refused nothing. See RunRow.refusals.
+    refusals: Mapping[str, int] | None
 
 
 @dataclass(frozen=True)
@@ -113,6 +122,17 @@ class RunRow:
     actions_appended: int | None
     started_at: datetime
     finished_at: datetime | None
+    # WHAT THE ANALYSIS COULD NOT ASSESS, as {reason: count}. Read straight through as the
+    # database's own JSONB rather than re-typed here: the vocabulary belongs to
+    # synapse.core.stockout_risk, and this service deliberately imports no analysis code — a BFF
+    # that owned a copy of the reason set would be a second place to update when one is added.
+    #
+    # THREE STATES, and the console renders three different things:
+    #   None  the run never reached its plan (blocked/undeclared/failed, or predates 0005)
+    #   {}    the plan ran and refused nothing
+    #   {..}  counts by reason
+    # Collapsing None into {} would report a crashed run as a clean one.
+    refusals: Mapping[str, int] | None
 
 
 # ---------------------------------------------------------------------------
@@ -209,10 +229,10 @@ _TENANT_ANALYSES = text(
     """
     SELECT p.analysis_id, p.cadence, p.rung, p.timezone, p.enabled_at,
            r.slot AS last_slot, r.outcome AS last_outcome,
-           r.actions_proposed, r.actions_appended, r.detail
+           r.actions_proposed, r.actions_appended, r.detail, r.refusals
       FROM synapse.provision p
       LEFT JOIN LATERAL (
-            SELECT slot, outcome, actions_proposed, actions_appended, detail
+            SELECT slot, outcome, actions_proposed, actions_appended, detail, refusals
               FROM synapse.run rr
              WHERE rr.tenant_id = p.tenant_id AND rr.analysis_id = p.analysis_id
              ORDER BY rr.slot DESC
@@ -255,6 +275,7 @@ async def tenant_detail(engine: AsyncEngine, tenant_id: UUID) -> TenantDetail | 
                 last_slot=row["last_slot"],
                 last_outcome=row["last_outcome"],
                 actions_proposed=row["actions_proposed"],
+                refusals=row["refusals"],
                 actions_appended=row["actions_appended"],
                 detail=row["detail"],
             )
@@ -266,7 +287,8 @@ async def tenant_detail(engine: AsyncEngine, tenant_id: UUID) -> TenantDetail | 
 _RUNS = text(
     """
     SELECT r.run_id, r.tenant_id, t.name AS tenant_name, r.analysis_id, r.slot,
-           r.outcome, r.actions_proposed, r.actions_appended, r.started_at, r.finished_at
+           r.outcome, r.actions_proposed, r.actions_appended, r.started_at, r.finished_at,
+           r.refusals
       FROM synapse.run r
       LEFT JOIN identity_mirror.tenants t ON t.tenant_id = r.tenant_id
      ORDER BY r.slot DESC, r.started_at DESC
@@ -302,6 +324,7 @@ async def runs(engine: AsyncEngine, *, limit: int = 100) -> tuple[RunRow, ...]:
             actions_appended=row["actions_appended"],
             started_at=row["started_at"],
             finished_at=row["finished_at"],
+            refusals=row["refusals"],
         )
         for row in rows
     )
@@ -314,7 +337,8 @@ async def runs(engine: AsyncEngine, *, limit: int = 100) -> tuple[RunRow, ...]:
 _TENANT_RUNS = text(
     """
     SELECT r.run_id, r.tenant_id, t.name AS tenant_name, r.analysis_id, r.slot,
-           r.outcome, r.actions_proposed, r.actions_appended, r.started_at, r.finished_at
+           r.outcome, r.actions_proposed, r.actions_appended, r.started_at, r.finished_at,
+           r.refusals
       FROM synapse.run r
       LEFT JOIN identity_mirror.tenants t ON t.tenant_id = r.tenant_id
      WHERE r.tenant_id = CAST(:tenant AS uuid)
@@ -366,6 +390,7 @@ async def tenant_runs(engine: AsyncEngine, tenant_id: UUID, *, limit: int = 100)
             actions_appended=row["actions_appended"],
             started_at=row["started_at"],
             finished_at=row["finished_at"],
+            refusals=row["refusals"],
         )
         for row in rows
     )

@@ -113,7 +113,7 @@ async def test_every_action_is_stamped_with_the_slot_not_todays_date() -> None:
     assertion fails on every day except one.
     """
     slot = date(2020, 1, 2)
-    actions = await _propose(_satisfied([_position("SKU-DEAD")], []), slot)
+    actions = (await _propose(_satisfied([_position("SKU-DEAD")], []), slot)).actions
 
     assert actions, "a position that never sold is dead stock; the fixture must produce one"
     assert {action.provenance.as_of for action in actions} == {slot}
@@ -123,7 +123,7 @@ async def test_the_expiry_is_derived_from_the_slot_too() -> None:
     """expires_on is inside the payload hash, so it has the same requirement as as_of: derived
     from the slot, never from the clock. Otherwise a retry hashes differently and duplicates."""
     slot = date(2020, 1, 2)
-    actions = await _propose(_satisfied([_position("SKU-DEAD")], []), slot)
+    actions = (await _propose(_satisfied([_position("SKU-DEAD")], []), slot)).actions
     expires_after = next(t for t in DEAD_STOCK.thresholds if t.name == "expires_after_days")
     assert {action.expires_on for action in actions} == {slot + timedelta(days=expires_after.days)}
 
@@ -151,7 +151,7 @@ async def test_a_different_slot_proposes_different_actions() -> None:
 async def test_every_proposed_action_carries_an_arm_and_full_provenance() -> None:
     """D2. An action without an arm can never be analysed and the counterfactual cannot be added
     later; one without capability versions cannot be compared across a version change."""
-    actions = await _propose(_satisfied([_position("SKU-DEAD")], []), date(2026, 8, 5))
+    actions = (await _propose(_satisfied([_position("SKU-DEAD")], []), date(2026, 8, 5))).actions
     for action in actions:
         assert action.arm in (Arm.TREATMENT, Arm.HOLDOUT)
         assert action.provenance.declaration_id == "dead_stock"
@@ -227,10 +227,10 @@ def test_the_plan_check_bites_when_a_proposer_has_no_plan() -> None:
 
 
 def test_the_plan_check_bites_on_a_plan_with_no_declaration() -> None:
-    from synapse.registry import check_plan_bindings
+    from synapse.registry import PlanResult, check_plan_bindings
 
-    async def _plan(*args: object, **kwargs: object) -> Sequence[Any]:
-        return []
+    async def _plan(*args: object, **kwargs: object) -> PlanResult:
+        return PlanResult(actions=(), refusals={})
 
     with pytest.raises(ValueError, match="no declaration"):
         check_plan_bindings({"invented": _plan}, {}, {})

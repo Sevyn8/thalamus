@@ -46,7 +46,7 @@ the guessing this project's contracts keep refusing to do.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from types import MappingProxyType
 from typing import Final, Protocol, assert_never
@@ -91,7 +91,12 @@ from synapse.core.resolution import (
     satisfies,
 )
 from synapse.core.stockout_actions import propose_stockout_actions
-from synapse.core.stockout_risk import StockoutRiskRow, evaluate_stockout_risk
+from synapse.core.stockout_risk import (
+    RefusalReason,
+    StockoutRiskRow,
+    counts_by_reason,
+    evaluate_stockout_risk,
+)
 from synapse.resolvers.current_state import resolve_current_state
 from synapse.resolvers.daily_series import (
     DATE_COLUMN,
@@ -131,7 +136,37 @@ Proposer = Callable[..., Sequence[Action]]
 #
 # FOURTH INSTANCE OF THE PLUGIN PATTERN, not a new mechanism: descriptor+resolver,
 # declaration+evaluator, declaration+proposer, and now declaration+plan.
-Plan = Callable[[DeclarationSatisfied, date], Awaitable[Sequence[Action]]]
+
+
+@dataclass(frozen=True)
+class PlanResult:
+    """What one analysis produced for one slot: its actions, and what it could not assess.
+
+    WHY THE RETURN WIDENED FROM ``Sequence[Action]``. Refusals produce NO ACTIONS by definition —
+    a refusal is the absence of a verdict — so a return type of actions alone can express
+    "nothing found" and cannot express "nothing could be assessed". Those are different facts and
+    an operator needs them apart: the first is a quiet catalogue, the second is broken input.
+    ``synapse.run`` recorded only counts, so the console had to render a third state meaning
+    "zero, and we cannot tell which". This is what removes that ambiguity at the source.
+
+    THREE ALTERNATIVES WERE CLOSED before widening a shared signature. The refusals cannot ride
+    on the actions (there are none); they cannot be stashed on the resolution
+    (``DeclarationSatisfied`` is frozen); and the plan cannot write them itself without the
+    registry reaching a database, which an import-linter contract forbids by name. Re-deriving
+    them in the orchestrator would mean fetching and evaluating twice.
+
+    ``refusals`` IS KEYED BY A CLOSED VOCABULARY, never free text — the keys are stored, and a
+    stored key that varies per slot breaks the re-run stability ``synapse.run`` depends on.
+    Empty for an analysis that cannot refuse (dead_stock) and for a run that refused nothing;
+    those two are deliberately indistinguishable here, because the DIFFERENCE lives in the
+    analysis declaration rather than in one run's result.
+    """
+
+    actions: Sequence[Action]
+    refusals: Mapping[RefusalReason, int] = field(default_factory=dict)
+
+
+Plan = Callable[[DeclarationSatisfied, date], Awaitable[PlanResult]]
 
 # The dataclass each declaration's evaluator returns, for the emits check below. A mapping rather
 # than an attribute on the evaluator, because a plain function cannot carry one without either a
@@ -298,8 +333,15 @@ _ACTIONS: Final[Mapping[str, Proposer]] = MappingProxyType(
 # declaration and capability versions through to the proposer so provenance is complete. Nothing
 # in here decides anything analytical — every threshold and every version comes from the
 # declaration and the resolution.
-async def _plan_dead_stock(satisfied: DeclarationSatisfied, as_of: date) -> Sequence[Action]:
-    """Fetch, evaluate and propose for dead_stock. The gateless one: no window, no narrowing."""
+async def _plan_dead_stock(satisfied: DeclarationSatisfied, as_of: date) -> PlanResult:
+    """Fetch, evaluate and propose for dead_stock. The gateless one: no window, no narrowing.
+
+    NO REFUSALS, AND NOT BECAUSE NONE HAPPENED. dead_stock cannot refuse at all: every position
+    in the universe gets a verdict, and "never sold" is the deadest verdict rather than an
+    inability to reach one. So the empty mapping here is a statement about the ANALYSIS, not
+    about this slot — which is why the run row's breakdown being empty must never be rendered as
+    "nothing was refused today" for an analysis that has no refusal concept.
+    """
     universe = await satisfied.fetches["current_state"]()
     selling = await satisfied.fetches["last_sale_at"]()
     stale_after = next(
@@ -311,16 +353,19 @@ async def _plan_dead_stock(satisfied: DeclarationSatisfied, as_of: date) -> Sequ
         stale_after_days=stale_after.days,
         as_of=as_of,
     )
-    return propose_dead_stock_actions(
-        findings,
-        universe,  # type: ignore[arg-type]
-        declaration=satisfied.declaration,
-        capability_versions=satisfied.capability_versions,
-        as_of=as_of,
+    return PlanResult(
+        actions=propose_dead_stock_actions(
+            findings,
+            universe,  # type: ignore[arg-type]
+            declaration=satisfied.declaration,
+            capability_versions=satisfied.capability_versions,
+            as_of=as_of,
+        ),
+        refusals={},
     )
 
 
-async def _plan_stockout_risk(satisfied: DeclarationSatisfied, as_of: date) -> Sequence[Action]:
+async def _plan_stockout_risk(satisfied: DeclarationSatisfied, as_of: date) -> PlanResult:
     """Fetch, evaluate and propose for stockout_risk.
 
     ``min_observations`` IS READ OFF THE GATE, not restated. The evaluator's in-window
@@ -343,12 +388,19 @@ async def _plan_stockout_risk(satisfied: DeclarationSatisfied, as_of: date) -> S
         min_observations=gate.days,
         as_of=as_of,
     )
-    return propose_stockout_actions(
-        findings,
-        universe,  # type: ignore[arg-type]
-        declaration=satisfied.declaration,
-        capability_versions=satisfied.capability_versions,
-        as_of=as_of,
+    # THE REFUSALS ARE COUNTED HERE AND NOWHERE ELSE. This is the only scope that holds the
+    # findings: the proposer takes them and returns actions, and a refused position produces no
+    # action, so a caller downstream of the proposer cannot recover what was refused. Before this
+    # returned them, the counts were computed by an integration test's print and discarded.
+    return PlanResult(
+        actions=propose_stockout_actions(
+            findings,
+            universe,  # type: ignore[arg-type]
+            declaration=satisfied.declaration,
+            capability_versions=satisfied.capability_versions,
+            as_of=as_of,
+        ),
+        refusals=counts_by_reason(findings),
     )
 
 

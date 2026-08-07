@@ -51,10 +51,11 @@ from synapse.core.declaration_resolution import (
 )
 from synapse.core.provision import Provision, Rung
 from synapse.core.slot import slot_for
+from synapse.core.stockout_risk import RefusalReason
 from synapse.persistence.action_log_postgres import PostgresActionAppender
 from synapse.persistence.provision_postgres import PostgresProvisionReader
 from synapse.persistence.run_postgres import Claim, Finished, PostgresRunRecorder
-from synapse.registry import max_rungs, plan_for, resolve_declaration
+from synapse.registry import PlanResult, max_rungs, plan_for, resolve_declaration
 
 __all__ = ["SlotResult", "run_due"]
 
@@ -211,6 +212,11 @@ async def _run_one(
     appended = 0
     outcome = "satisfied"
     detail: str | None = None
+    # EMPTY MEANS "NOTHING REFUSED", NOT "NOT MEASURED", and only on the satisfied path. A run
+    # that never reached its plan — blocked, undeclared, failed — has refused nothing because it
+    # assessed nothing, and the outcome column already says so; writing {} there is honest
+    # because the breakdown describes what the ANALYSIS refused, not what the run failed at.
+    refusals: Mapping[RefusalReason, int] = {}
     try:
         resolution = await resolve_declaration(
             reader_engine,
@@ -224,7 +230,9 @@ async def _run_one(
         )
         match resolution:
             case DeclarationSatisfied():
-                proposed = await _propose(resolution, slot)
+                planned = await _propose(resolution, slot)
+                proposed = planned.actions
+                refusals = planned.refusals
                 if not dry_run:
                     appended = await _append_all(writer_engine, provision.tenant_id, proposed, now)
             case DeclarationBlocked():
@@ -248,6 +256,10 @@ async def _run_one(
             actions_proposed=len(proposed),
             actions_appended=appended,
             detail=detail,
+            # ENUM -> WIRE AT THE BOUNDARY. RefusalReason members ARE strings, but
+            # Mapping's key type is invariant, so the conversion is explicit rather than
+            # implicit — and it keeps the persistence layer free of analytical vocabulary.
+            refusals={str(reason): count for reason, count in refusals.items()},
         )
 
     return SlotResult(
@@ -262,7 +274,7 @@ async def _run_one(
     )
 
 
-async def _propose(resolution: DeclarationSatisfied, slot: date) -> Sequence[Action]:
+async def _propose(resolution: DeclarationSatisfied, slot: date) -> PlanResult:
     """Run the analysis's plan. ``as_of`` IS THE SLOT, and that is the load-bearing line.
 
     Not ``date.today()``. The slot is what makes a redelivered dispatch produce byte-identical
@@ -275,8 +287,8 @@ async def _propose(resolution: DeclarationSatisfied, slot: date) -> Sequence[Act
     plan = plan_for(resolution.declaration.id)
     if plan is None:
         # A declaration with no proposer: resolved, evaluated by nothing, produces no actions.
-        # Legal, and recorded as a satisfied run with zero actions.
-        return ()
+        # Legal, and recorded as a satisfied run with zero actions and no refusals.
+        return PlanResult(actions=(), refusals={})
     return await plan(resolution, slot)
 
 

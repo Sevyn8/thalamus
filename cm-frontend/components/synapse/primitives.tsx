@@ -215,11 +215,16 @@ export function SectionHead({ children }: { children: ReactNode }) {
 //   stop     it failed
 //
 // WHY "unknown" EXISTS RATHER THAN A BARE 0. A run that proposed zero actions is
-// either "looked and found no risk" or "found nothing — sales data too old", and
-// until synapse.run.detail is populated NOTHING IN THE DATA DISTINGUISHES THEM.
+// either "looked and found no risk" or "found nothing — sales data too old".
 // Rendering both as "0 found" would be a guess presented as a result; rendering
 // both as "cannot assess" would be a different guess. The third state says
 // exactly what is true: zero, and we cannot tell which.
+//
+// SLICE 5b NARROWED WHEN THAT HEDGE IS NEEDED, and did not remove it. The run row
+// now carries a refusal breakdown, so a run that refused series SAYS SO and the
+// screen names the reason. The hedge still applies where the breakdown is null —
+// a run that never reached its plan, or one predating migration 0005 — which is
+// exactly the case where the data genuinely cannot tell which.
 export type Tone = "good" | "unknown" | "mute" | "stop";
 
 // DELEGATES TO THE HOUSE CHIP rather than restating its recipe. Chips.tsx already
@@ -266,6 +271,11 @@ export function SynapseDown({ message }: { message: string }) {
 // counts_by_reason() and a Plan-signature change — engineering backlog rendered to
 // an operator. The row is gone, so the component is dead code rather than a
 // primitive waiting for a second use.
+//
+// THE BACKLOG IT DESCRIBED IS NOW DONE (slice 5b): the Plan signature returns
+// refusals, migration 0005 stores them, and refusalSentence() below renders the
+// answer that row was apologising for not having. It is still not coming back —
+// the refusal now belongs ON the monitor's own line, not in a row of its own.
 
 // Singular/plural without a dependency. "1 tenants" and "1 actions" were on both Synapse
 // screens; a helper is cheaper than remembering the ternary at every call site.
@@ -284,4 +294,66 @@ export function SilentModePill() {
 export function daysSince(iso: string | null): number | null {
   if (!iso) return null;
   return Math.floor((Date.now() - new Date(`${iso}T00:00:00Z`).getTime()) / 86_400_000);
+}
+
+// ---------------------------------------------------------------------------
+// The refusal breakdown (synapse.run.refusals, migration 0005)
+// ---------------------------------------------------------------------------
+//
+// THIS IS WHAT RETIRED THE "unknown" TONE'S REASON FOR EXISTING on run rows. A
+// zero-action run used to be un-interpretable: "looked and found nothing" and
+// "could not assess anything" were the same row. The orchestrator now records
+// WHICH, so the screen can say it instead of hedging.
+//
+// THREE STATES, and they are not interchangeable:
+//   null  the run never reached its plan (blocked/undeclared/failed), or it
+//         predates migration 0005. Nothing was assessable and the outcome says why.
+//   {}    the plan ran and refused nothing.
+//   {..}  counts by reason.
+// Collapsing null into {} would render a crashed run as a clean one.
+export type Refusals = Record<string, number> | null;
+
+// Operator phrasing for the closed vocabulary in synapse.core.stockout_risk.
+// RefusalReason. Deliberately plain: "series_too_stale" is the wire value and
+// belongs in the code, not on a screen someone reads at 09:00.
+const REASON_LABEL: Record<string, string> = {
+  series_too_stale: "sales data too old",
+  no_observations_in_window: "no recent sales",
+  no_stock_quantity: "no stock figure",
+  too_few_observations: "too few sales days",
+  no_positive_demand: "returns exceeded sales",
+};
+
+// AN UNKNOWN KEY RENDERS AS ITSELF, DE-UNDERSCORED, rather than as "unknown" or
+// not at all. The BFF passes the database's JSONB straight through and owns no
+// copy of the vocabulary, so a reason added to the analysis reaches this screen
+// BEFORE this map knows about it. Showing the raw-ish key is a weaker statement
+// than a label, and a weaker true statement beats a confident wrong one.
+export function reasonLabel(key: string): string {
+  return REASON_LABEL[key] ?? key.replace(/_/g, " ");
+}
+
+// The dominant reason and the total, or null when there is nothing to say.
+// Ties break on the key so the phrasing is stable across renders of one row.
+export function refusalSummary(
+  refusals: Refusals,
+): { total: number; top: string; count: number } | null {
+  if (!refusals) return null;
+  const entries = Object.entries(refusals).filter(([, n]) => n > 0);
+  if (entries.length === 0) return null;
+  entries.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const total = entries.reduce((sum, [, n]) => sum + n, 0);
+  const [top, count] = entries[0]!;
+  return { total, top, count };
+}
+
+// "12 series refused as stale" — the per-monitor line Phase A's item 5a wanted
+// and could not have. Names the DOMINANT reason and, when there are others,
+// says so rather than implying the total is all one cause.
+export function refusalSentence(refusals: Refusals): string | null {
+  const summary = refusalSummary(refusals);
+  if (!summary) return null;
+  const head = `${plural(summary.count, "series")} refused — ${reasonLabel(summary.top)}`;
+  const rest = summary.total - summary.count;
+  return rest > 0 ? `${head}, and ${rest} for other reasons` : head;
 }

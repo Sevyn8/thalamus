@@ -43,26 +43,27 @@
     "sku_id",
     "days_of_cover",
     "is_at_risk",
-    "refused_because"
+    "refused_because",
+    "refusal_reason"
   ],
   "thresholds": [
     {
       "name": "window_days",
       "days": 28,
       "fitted": false,
-      "stands_in_for": "the window length at which this tenant's demand rate is most predictive, which would be fitted by backtesting rate-from-window-N against realised demand — infrastructure that does not exist. 28 is defensible beyond convention though: it is FOUR COMPLETE WEEKLY CYCLES, so day-of-week effects average out instead of dominating. Seven or fourteen days is one or two cycles and carries the week's shape as if it were the trend; sixty or more describes a period that has ended. The fitted version needs realised-demand comparison, not arithmetic."
+      "stands_in_for": "the window length at which this tenant's demand rate is most predictive, which would be fitted by backtesting rate-from-window-N against realised demand \u2014 infrastructure that does not exist. 28 is defensible beyond convention though: it is FOUR COMPLETE WEEKLY CYCLES, so day-of-week effects average out instead of dominating. Seven or fourteen days is one or two cycles and carries the week's shape as if it were the trend; sixty or more describes a period that has ended. The fitted version needs realised-demand comparison, not arithmetic."
     },
     {
       "name": "at_risk_below_days",
       "days": 14,
       "fitted": false,
-      "stands_in_for": "the replenishment LEAD TIME, and this one is pure convention — fourteen days is a common retail reorder horizon and nothing more. Three verified facts make the correct number unknowable here. (1) lead_time_distribution is in the registry's _DECLINED with a written reason: no observed lead times exist anywhere in canonical, because a distribution needs paired order-issue and receipt events and nothing produces either. (2) the canonical hot table DOES carry lead_time_days SMALLINT NULL, but dis_validation.provenance classifies it MAPPING-PRODUCED — whatever a source asserted, not a measurement — so it could not stand in for an observed lead time even if populated. (3) It is not in current_state's `returns` and the resolver does not project it, so Synapse cannot read it at all today; using it would mean widening the capability. UNVERIFIED, because staging is private-IP only and was not reachable when this was written: whether the column actually holds values for this tenant. If it does, this threshold becomes derivable per SKU and stops being a constant. Check it by counting rows where lead_time_days IS NOT NULL on the canonical hot table — the one synapse/resolvers/current_state.py names — under the PLATFORM GUC, since that table is FORCE RLS and a bare count reads zero for everyone."
+      "stands_in_for": "the replenishment LEAD TIME, and this one is pure convention \u2014 fourteen days is a common retail reorder horizon and nothing more. Three verified facts make the correct number unknowable here. (1) lead_time_distribution is in the registry's _DECLINED with a written reason: no observed lead times exist anywhere in canonical, because a distribution needs paired order-issue and receipt events and nothing produces either. (2) the canonical hot table DOES carry lead_time_days SMALLINT NULL, but dis_validation.provenance classifies it MAPPING-PRODUCED \u2014 whatever a source asserted, not a measurement \u2014 so it could not stand in for an observed lead time even if populated. (3) It is not in current_state's `returns` and the resolver does not project it, so Synapse cannot read it at all today; using it would mean widening the capability. UNVERIFIED, because staging is private-IP only and was not reachable when this was written: whether the column actually holds values for this tenant. If it does, this threshold becomes derivable per SKU and stops being a constant. Check it by counting rows where lead_time_days IS NOT NULL on the canonical hot table \u2014 the one synapse/resolvers/current_state.py names \u2014 under the PLATFORM GUC, since that table is FORCE RLS and a bare count reads zero for everyone."
     },
     {
       "name": "stale_after_days",
       "days": 3,
       "fitted": false,
-      "stands_in_for": "this tenant's actual ingestion cadence — how often data really arrives — which telemetry.connector_health was built to answer and cannot: its missed_intervals column is NULL in Phase A because config.sources.schedule is a free-text human label rather than a machine cadence. Three days says a rate should not be more than a few days behind the stock it is divided into, when the decision horizon is fourteen. NOTE that on today's data every series is seventeen days stale, so EVERY position is refused and the analysis produces nothing. That is the guard working, the same way '0 of 65 have 60 days' was the correct answer; it is not a reason to loosen this."
+      "stands_in_for": "this tenant's actual ingestion cadence \u2014 how often data really arrives \u2014 which telemetry.connector_health was built to answer and cannot: its missed_intervals column is NULL in Phase A because config.sources.schedule is a free-text human label rather than a machine cadence. Three days says a rate should not be more than a few days behind the stock it is divided into, when the decision horizon is fourteen. NOTE that on today's data every series is seventeen days stale, so EVERY position is refused and the analysis produces nothing. That is the guard working, the same way '0 of 65 have 60 days' was the correct answer; it is not a reason to loosen this."
     },
     {
       "name": "expires_after_days",

@@ -6,6 +6,7 @@ import {
   Breadcrumb,
   Column,
   Footnote,
+  type Refusals,
   Row,
   SectionHead,
   SilentModePill,
@@ -15,6 +16,7 @@ import {
   Tag,
   daysSince,
   plural,
+  refusalSentence,
 } from "@/components/synapse/primitives";
 import { ANALYSIS_NAMES, MONITOR_DESCRIPTIONS } from "@/lib/synapse/names";
 import { SynapseUnavailable, synapseGet } from "@/lib/synapse/server-client";
@@ -42,6 +44,9 @@ type AnalysisState = {
   actions_proposed: number | null;
   actions_appended: number | null;
   detail: string | null;
+  // migration 0005. Restores what Phase A's item 5a wanted and could not have:
+  // null = the last run never reached its plan; {} = it ran and refused nothing.
+  refusals: Refusals | undefined;
 };
 
 type TenantDetail = {
@@ -83,7 +88,17 @@ type RunRow = {
   actions_appended: number | null;
   started_at: string;
   finished_at: string | null;
+  refusals: Refusals | undefined;
 };
+
+// "Last ran 2026-08-07 · 12 series refused — sales data too old". The full
+// sentence rather than the fleet table's terse chip: this is the screen where an
+// operator asks why one client's monitor is quiet.
+function monitorNote(state: AnalysisState): string {
+  const ran = state.last_slot ? `Last ran ${state.last_slot}` : "Has not run yet";
+  const refused = refusalSentence(state.refusals ?? null);
+  return refused ? `${ran} · ${refused}` : ran;
+}
 
 export default async function TenantPage({
   params,
@@ -229,7 +244,11 @@ export default async function TenantPage({
                       {raised > 0 ? plural(raised, "alert") : "No alerts last run"}
                     </Tag>
                   }
-                  note={state.last_slot ? `Last ran ${state.last_slot}` : "Has not run yet"}
+                  // WHY A MONITOR RAISED NOTHING, when the run says. Appended to the
+                  // "last ran" line rather than given its own row: it is a property of
+                  // that run, and Phase A deleted a standalone row here precisely
+                  // because it described engineering backlog instead of the data.
+                  note={monitorNote(state)}
                 />
               );
             })

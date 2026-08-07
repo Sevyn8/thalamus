@@ -32,7 +32,8 @@ With one scheduler and one job, the window is a crashed attempt overlapping its 
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from uuid import UUID
@@ -90,7 +91,8 @@ _COMPLETE = text(
            outcome = :outcome,
            actions_proposed = :actions_proposed,
            actions_appended = :actions_appended,
-           detail = :detail
+           detail = :detail,
+           refusals = CAST(:refusals AS jsonb)
      WHERE run_id = :run_id
     """
 )
@@ -196,12 +198,27 @@ class PostgresRunRecorder:
         actions_proposed: int | None = None,
         actions_appended: int | None = None,
         detail: str | None = None,
+        refusals: Mapping[str, int] | None = None,
     ) -> None:
         """Mark a claimed run terminal. Refuses an outcome the CHECK constraint would reject.
 
         Checked here as well as in the database because the database's refusal arrives as an
         opaque constraint violation at the end of a run that has already appended its actions,
         where this one names the bad value at the call site.
+
+        ``refusals`` IS SERIALISED WITH SORTED KEYS, and that is the persistence half of the
+        re-run stability rule. ``synapse.run`` is NOT append-only (run.sql:44 states the absence
+        of the trigger is a decision): a row records the state of an ATTEMPT, and an attempt that
+        is taken over after a crash rewrites it. So the correctness rule here is not "written
+        once" but "the same slot, re-run, yields the same bytes" — and a Python dict preserves
+        INSERTION order, which follows the order positions happened to be refused in. Two runs
+        over identical data would then store the same mapping with different key order and
+        compare unequal as text. Sorting removes the only source of that variance.
+
+        The keys are RefusalReason members, whose values are fixed strings; a caller passing free
+        text would store a key that cannot be grouped and would vary per slot. Typed as
+        ``Mapping[str, int]`` rather than the enum so this layer keeps no analytical vocabulary —
+        StrEnum members ARE strings, so the enum satisfies it without a conversion.
         """
         if outcome not in OUTCOMES:
             raise ValueError(
@@ -218,5 +235,9 @@ class PostgresRunRecorder:
                     "actions_proposed": actions_proposed,
                     "actions_appended": actions_appended,
                     "detail": detail,
+                    # NULL when there is nothing to record, `{}` when the analysis ran and
+                    # refused nothing. Those are different facts: NULL means this run never
+                    # reached a plan, `{}` means it did and every position was assessable.
+                    "refusals": None if refusals is None else json.dumps(dict(sorted(refusals.items()))),
                 },
             )

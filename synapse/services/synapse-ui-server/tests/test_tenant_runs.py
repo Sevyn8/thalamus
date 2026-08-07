@@ -119,6 +119,8 @@ def _row(tenant: UUID, sku_slot: str) -> dict[str, Any]:
         "actions_appended": 1,
         "started_at": datetime(2026, 8, 6, 3, 0, tzinfo=UTC),
         "finished_at": datetime(2026, 8, 6, 3, 1, tzinfo=UTC),
+        # The refusal breakdown reads straight through from JSONB (migration 0005).
+        "refusals": {"series_too_stale": 3},
     }
 
 
@@ -257,6 +259,7 @@ def test_the_route_returns_the_rows_it_is_given(monkeypatch: pytest.MonkeyPatch)
         actions_appended=1,
         started_at=datetime(2026, 8, 6, 3, 0, tzinfo=UTC),
         finished_at=datetime(2026, 8, 6, 3, 1, tzinfo=UTC),
+        refusals={"series_too_stale": 3},
     )
     client = _client(monkeypatch, (row,))
     response = client.get(f"/tenants/{TENANT}/runs")
@@ -274,3 +277,53 @@ def test_the_fleet_route_still_exists_and_is_unchanged(monkeypatch: pytest.Monke
     paths = {r.path for r in client.app.routes if hasattr(r, "path")}
     assert "/runs" in paths
     assert "/tenants/{tenant_id}/runs" in paths
+
+
+# ---------------------------------------------------------------------------
+# The refusal breakdown reaches the console (slice 5b)
+# ---------------------------------------------------------------------------
+
+
+def test_every_run_query_selects_the_refusal_breakdown() -> None:
+    """THE SEAM THAT SILENTLY DROPS DATA. A column written by the orchestrator and not selected
+    here is invisible to the console, and nothing fails — which is exactly what happened to
+    ``detail``: it has been populated for blocked and failed runs since slice 6 and no query
+    ever asked for it.
+
+    All three run-bearing queries are checked, because the fleet table, the tenant's run history
+    and the tenant's per-monitor line each read a different one.
+    """
+    for name in ("_RUNS", "_TENANT_RUNS", "_TENANT_ANALYSES"):
+        # NO getattr DEFAULT. A skip-if-missing made this pass vacuously against a name that
+        # never existed (_TENANT_DETAIL), which is the failure mode this whole test is about.
+        statement = getattr(reads, name)
+        assert "refusals" in str(statement), f"{name} does not select the refusal breakdown"
+
+
+def test_the_bff_owns_no_copy_of_the_reason_vocabulary() -> None:
+    """The reason set belongs to synapse.core.stockout_risk. A copy here would be a second place
+    to update when a refusal branch is added, and the copy that drifts is always the one nobody
+    is looking at. The BFF passes the database's JSONB straight through.
+    """
+    import pathlib
+
+    src = pathlib.Path(reads.__file__).parent
+    for path in src.glob("*.py"):
+        body = path.read_text(encoding="utf-8")
+        assert "series_too_stale" not in body, (
+            f"{path.name} names a RefusalReason member; the BFF must not carry the vocabulary"
+        )
+
+
+def test_the_row_types_carry_refusals_as_an_optional_mapping() -> None:
+    """None and {} must stay distinguishable all the way to the client: None means the run never
+    reached its plan, {} means it ran and refused nothing. A non-optional type would force one
+    into the other."""
+    from typing import get_type_hints
+
+    for row_type in (reads.RunRow, reads.AnalysisState):
+        hints = get_type_hints(row_type)
+        assert "refusals" in hints, f"{row_type.__name__} does not carry refusals"
+        assert "NoneType" in str(hints["refusals"]) or "None" in str(hints["refusals"]), (
+            f"{row_type.__name__}.refusals must be optional so null stays distinct from {{}}"
+        )

@@ -22,6 +22,7 @@ import pytest
 from synapse.core.current_state import CurrentStateRow
 from synapse.core.daily_series import DailySeriesRow
 from synapse.core.stockout_risk import (
+    RefusalReason,
     StockoutRiskRow,
     counts_by_reason,
     evaluate_stockout_risk,
@@ -257,6 +258,7 @@ def test_a_refused_row_cannot_carry_a_cover_figure() -> None:
             days_of_cover=Decimal(3),
             is_at_risk=False,
             refused_because="stale",
+            refusal_reason=RefusalReason.SERIES_TOO_STALE,
         )
 
 
@@ -271,6 +273,7 @@ def test_a_refused_row_cannot_be_flagged_at_risk() -> None:
             days_of_cover=None,
             is_at_risk=True,
             refused_because="stale",
+            refusal_reason=RefusalReason.SERIES_TOO_STALE,
         )
 
 

@@ -398,6 +398,11 @@ STOCKOUT_RISK = AnalysisDeclaration(
         # consumer must be able to tell "no risk" from "not assessed" — an absence cannot say
         # which. The registry checks this against StockoutRiskRow's fields at import.
         "refused_because",
+        # THE SAME REFUSAL, AS A CLOSED-VOCABULARY CATEGORY. Declared because it is emitted, and
+        # the emits check is field-for-field: a row field absent from this tuple fails at import.
+        # It exists because refused_because is prose carrying dates and counts, which cannot key
+        # a breakdown stored on synapse.run — see RefusalReason.
+        "refusal_reason",
     ),
     holdout=Holdout(
         unit=("tenant_id", "store_id", "sku_id"),

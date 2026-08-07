@@ -94,6 +94,31 @@ CREATE TABLE IF NOT EXISTS synapse.run (
     -- outcome's own explanation, which is prose by design.
     detail              TEXT                        NULL,
 
+    -- WHAT THE ANALYSIS COULD NOT ASSESS, as {reason: count} over a CLOSED vocabulary
+    -- (synapse.core.stockout_risk.RefusalReason). Added by migration 0005.
+    --
+    -- THE COLUMN THAT DISTINGUISHES TWO ZEROES. actions_proposed = 0 means either
+    -- "looked and found nothing" or "could not look" — and until this existed nothing
+    -- in the data told them apart, so the console rendered a third state meaning
+    -- "zero, and we cannot tell which". A run that refused every series as stale now
+    -- says so here.
+    --
+    -- NULL vs '{}' IS MEANINGFUL AND NOT AN ACCIDENT. NULL = the run never reached its
+    -- plan (blocked, undeclared, failed, or predating this migration), so nothing was
+    -- assessable to begin with. '{}' = the plan RAN and refused nothing. Rendering the
+    -- two the same way would report a crashed run as a clean one.
+    --
+    -- JSONB rather than five typed columns: the vocabulary grows with the analyses, and
+    -- a column per reason would make every new refusal branch a migration. Rather than a
+    -- child table because this is one small map read only alongside its run row, never
+    -- joined or aggregated across runs.
+    --
+    -- KEYS ARE WRITTEN SORTED (run_postgres.complete). synapse.run is NOT append-only --
+    -- see below -- so a re-run may rewrite this row, and the correctness rule is that
+    -- the same slot over the same data yields the same bytes. Python dicts preserve
+    -- insertion order, which follows refusal order, so sorting is what makes that true.
+    refusals            JSONB                       NULL,
+
     CONSTRAINT pk_run PRIMARY KEY (run_id),
 
     -- THE SLOT KEY. One run per tenant per analysis per slot, forever.

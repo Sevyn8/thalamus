@@ -2,10 +2,13 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import {
   Column,
   Footnote,
+  type Refusals,
   SectionHead,
   SynapseDown,
   Tag,
   type Tone,
+  reasonLabel,
+  refusalSummary,
 } from "@/components/synapse/primitives";
 import { ANALYSIS_NAMES } from "@/lib/synapse/names";
 import { SynapseUnavailable, synapseGet } from "@/lib/synapse/server-client";
@@ -46,6 +49,9 @@ type RunRow = {
   actions_appended: number | null;
   started_at: string;
   finished_at: string | null;
+  // migration 0005. null = the run never reached its plan; {} = it ran and
+  // refused nothing; {..} = counts by reason.
+  refusals: Refusals | undefined;
 };
 
 // 'satisfied' is engineering voice for "the run completed". The other three name real distinct
@@ -61,6 +67,14 @@ const OUTCOME_TONE: Record<string, Tone> = {
   undeclared: "unknown",
   failed: "stop",
 };
+
+// "skipped · sales data too old". The dominant reason only — the full breakdown is
+// per-analysis and belongs on the tenant page, not in a fleet table's status cell.
+function skipNote(row: RunRow): string | null {
+  const summary = refusalSummary(row.refusals ?? null);
+  if (!summary) return null;
+  return `skipped · ${reasonLabel(summary.top)}`;
+}
 
 function took(row: RunRow): string {
   if (!row.finished_at) return "still running";
@@ -138,6 +152,15 @@ export default async function RunsPage() {
                       <Tag tone={row.outcome ? (OUTCOME_TONE[row.outcome] ?? "mute") : "unknown"}>
                         {outcomeLabel(row.outcome)}
                       </Tag>
+                      {/* WHY THE COUNT IS ZERO, when the row can say. Rendered only
+                          when something was actually refused: a run that assessed
+                          everything and found nothing gets no second line, because
+                          "0 refused" is noise on every healthy row. */}
+                      {skipNote(row) && (
+                        <p className="text-caption mt-1 text-foreground-muted">
+                          {skipNote(row)}
+                        </p>
+                      )}
                     </td>
                     {/* COLLAPSED TO THE COUNT THE MONITOR FOUND. It read "proposed → appended",
                         which is the internal pair and needed a footnote to decode. Appended can be

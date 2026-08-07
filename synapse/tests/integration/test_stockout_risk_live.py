@@ -239,7 +239,8 @@ async def test_it_evaluates_and_refuses_every_stale_series(
         series = await outcome.fetches["daily_series"]()
         plan = plan_for("stockout_risk")
         assert plan is not None
-        actions = await plan(outcome, as_of)
+        planned = await plan(outcome, as_of)
+        actions = planned.actions
     finally:
         await engine.dispose()
 
@@ -258,7 +259,8 @@ async def test_it_evaluates_and_refuses_every_stale_series(
     print(
         f"\nstockout_risk as_of {as_of}: {len(findings)} positions, "
         f"{sum(1 for f in findings if f.refused_because is None)} assessed, "
-        f"{len(actions)} actions. Refusals: {dict(counts_by_reason(findings))}"
+        f"{len(actions)} actions. Refusals: {dict(counts_by_reason(findings))}\n"
+        f"Recorded on the run row as: {dict(planned.refusals)}"
     )
 
     assert len(findings) == len(universe), "one row per position, assessed or not"
