@@ -327,6 +327,20 @@
   font-weight: 400;
 }
 
+/* THE READING MEASURE. ver2's number and ver2's mechanism, not a new invention:
+   `.pagehead .sub { max-width: 720px }` (dis-ui-ver2/src/index.css:374) is the ONLY
+   width narrowing anywhere in ver2 — its single `.content` container is 1240px
+   (index.css:356-360) and no page type narrows below it.
+
+   So the system is: the PAGE is wide, the PROSE is capped. This utility is that cap.
+
+   IT REPLACES max-w-prose, which was 65ch — a different number arrived at a different
+   way. Two measures for one job is how a design system stops being one; 720px is the
+   one with a citation behind it. */
+@utility text-measure {
+  max-width: 720px;
+}
+
 @layer base {
   /* ONE GLOBAL FOCUS RULE, from dis-ui-ver2 (index.css:79-83). ver2 has no
      per-component focus ring; every focusable thing gets the same 2px ion outline

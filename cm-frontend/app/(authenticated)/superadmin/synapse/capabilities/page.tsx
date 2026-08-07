@@ -132,7 +132,7 @@ export default async function CapabilitiesPage() {
                     written this" into "this cannot be written" — the first is a work
                     item, the second is a fact about the data that no amount of code
                     changes. */}
-                <p className="text-caption mt-2 max-w-prose leading-relaxed text-foreground-muted">
+                <p className="text-caption mt-2 text-measure leading-relaxed text-foreground-muted">
                   {c.declined_reason}
                 </p>
               </div>

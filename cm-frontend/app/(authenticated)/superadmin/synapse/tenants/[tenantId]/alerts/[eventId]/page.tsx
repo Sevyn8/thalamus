@@ -216,7 +216,11 @@ export default async function AlertDetailPage({
 
         <section>
           <SectionHead>Why it was flagged</SectionHead>
-          <p className="text-body text-foreground">{whyFlagged(alert)}</p>
+          {/* THE MEASURE, NOT THE CONTAINER. This is the one genuinely prose-heavy
+              element on the page: a full sentence explaining a judgement. At the
+              container's 1240px it would run far past a comfortable line length,
+              which is exactly what ver2 caps `.pagehead .sub` at 720px to avoid. */}
+          <p className="text-body text-measure text-foreground">{whyFlagged(alert)}</p>
           <Footnote>
             Judged against the thresholds recorded with this alert, not against the monitor&apos;s
             current settings — so an older alert keeps explaining itself the way it was raised.

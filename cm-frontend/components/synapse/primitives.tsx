@@ -15,28 +15,32 @@ import { Chip, type Tone as ChipTone } from "@/components/shared/Chips";
 // THE BOUNDED READING COLUMN — the fix that makes the rest legible
 // ---------------------------------------------------------------------------
 //
-// The app fills the window; the content does not. Without this every screen ran
+// The app fills the window; the content does not. Without a bound every screen ran
 // edge to edge on a 1900px monitor and a label sat half a screen from its value,
 // which is a proximity failure no amount of correct colour can rescue.
 //
-// 840px, LEFT-ALIGNED, and not `mx-auto`. Two precedents exist in this repo and
-// they disagree — app/my-ithina uses max-w-5xl (1024px) and profile uses
-// max-w-3xl (768px), both centred — so there is no scale convention to honour and
-// no reason to round 840 up to max-w-4xl (896px) for tidiness. 840 was measured
-// against real data in a real mockup; 56px of it is the proximity being bought.
+// THE BOUND MOVED OUT OF HERE. This used to carry `max-w-[840px]`, left-aligned,
+// chosen before ver2's system arrived — measured against a mockup rather than
+// derived from anything, as the comment that used to sit here admitted ("two
+// precedents exist in this repo and they disagree"). ver2 has ONE container at
+// 1240px (index.css:356-360) applied to every route by its Shell, and NO page type
+// narrows below it. cm-frontend now has the same container in
+// app/(authenticated)/layout.tsx, so a second cap here would be a narrower box
+// inside a correct one, and the Synapse pages would stay the odd ones out.
 //
-// PATTERNS.md SPECIFIES NO CONTAINER WIDTH. It specifies `p-6` outer padding and
-// names PageHeader as the page wrapper — checked before writing this, because the
-// rule is to grep the docs for the mechanism rather than to assume.
+// WHAT NARROWS INSTEAD IS PROSE, which is also ver2's answer: `.pagehead .sub` is
+// capped at 720px (index.css:374) and nothing else is. That is the `text-measure`
+// utility, applied to sentences rather than to pages.
 //
-// px-6 ON THE OUTER, max-w ON THE INNER, so 840 is the CONTENT width and the text
-// left edge lines up with PageHeader's own px-6. The six Synapse screens had no
-// horizontal padding at all before this: PageHeader was inset and the body was
-// flush to the sidebar, so a page did not even align with its own title.
+// SO THIS IS NOW A SPACING PRIMITIVE, not a width one. It keeps px-6 — which is
+// what lines the body's left edge up with PageHeader's own px-6 — and the vertical
+// rhythm. The six Synapse screens had no horizontal padding at all before it
+// existed: PageHeader was inset and the body was flush to the sidebar, so a page
+// did not align with its own title.
 export function Column({ children }: { children: ReactNode }) {
   return (
-    <div className="px-6 pb-12">
-      <div className="max-w-[840px] space-y-6">{children}</div>
+    <div className="px-6 pt-6">
+      <div className="space-y-6">{children}</div>
     </div>
   );
 }
@@ -160,11 +164,11 @@ export function Row({
 // The idempotency sentence appeared on two consecutive rows. An explanation is
 // worth reading once and is clutter every time after — so it sits under the
 // section it explains, at caption weight, where a returning reader skips it.
-// max-w-prose rather than a hand-picked character count: it is the house token,
+// text-measure rather than a hand-picked character count: it is the house token,
 // already used nine times, and it replaces the three different ch values the
 // mockup reached for.
 export function Footnote({ children }: { children: ReactNode }) {
-  return <p className="text-caption max-w-prose text-foreground-subtle">{children}</p>;
+  return <p className="text-caption text-measure text-foreground-subtle">{children}</p>;
 }
 
 // The amber banner for the thing that needs a person. NOT a row that looks like
@@ -174,7 +178,7 @@ export function Attention({ title, detail }: { title: string; detail: string }) 
   return (
     <div className="rounded-md border border-[var(--warning-line)] bg-[var(--warning-bg)] p-4">
       <p className="text-body-strong text-warning">{title}</p>
-      <p className="text-caption mt-1 max-w-prose text-warning/80">
+      <p className="text-caption mt-1 text-measure text-warning/80">
         {detail}
       </p>
     </div>

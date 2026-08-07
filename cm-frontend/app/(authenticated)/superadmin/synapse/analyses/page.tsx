@@ -117,7 +117,7 @@ export default async function AnalysesPage() {
                            telemetry column that is NULL in Phase A. Summarising
                            turns a checkable statement into a shrug, and the honesty
                            is the only thing making these constants defensible. */
-                        <p className="text-caption mt-1 max-w-prose leading-relaxed text-foreground-subtle">
+                        <p className="text-caption mt-1 text-measure leading-relaxed text-foreground-subtle">
                           {t.stands_in_for}
                         </p>
                       )}

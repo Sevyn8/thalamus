@@ -35,7 +35,7 @@ export default function AtlasPage() {
             touching the empty state's own alignment. */}
         <div className="rounded-md border border-dashed border-border p-8 text-center">
           <p className="text-heading">Atlas is not built</p>
-          <p className="text-body mx-auto mt-2 max-w-prose text-foreground-muted">
+          <p className="text-body mx-auto mt-2 text-measure text-foreground-muted">
             Canonical field meanings, synonyms, and the mapping between a tenant&apos;s language and
             ours. This page has no data behind it because Atlas has no data yet.
           </p>

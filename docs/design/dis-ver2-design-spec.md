@@ -457,11 +457,43 @@ CM's token names are kept so no call site changes; only the values move to ver2.
 
 ---
 
-## 11. Still parked
+## 11. Closed
 
-**The 1240px content cap** and ver2's `24px 26px 90px` content padding (`index.css:356-360`).
-CM's Synapse pages already carry their own 840px reading column, which would have to be
-reconciled first, and capping the content area reflows every page — layout, not chrome.
+Nothing is parked. The section stays rather than being deleted: a spec that silently loses its
+parked list reads as though nothing was ever parked.
+
+**The 1240px content cap — ADOPTED.** `app/(authenticated)/layout.tsx` now wraps every route in
+one container, matching ver2's `.content` (`index.css:356-360`: `max-width: 1240px`,
+`padding: 24px 26px 90px`), which `Shell.tsx:233` applies to every route in ver2.
+
+**The reconciliation this was parked on.** The premise was "ver2's 1240 vs Synapse's 840" — two
+systems. The audit found THREE, and ver2's 1240 was not among them: the chrome-alignment phase
+ported ver2's colour and chrome but never its container, so cm-frontend had
+
+  - unbounded pages (users, tenants, stores, audit, roles, modules, org, dashboard, onboard),
+  - an 840px LEFT-ALIGNED column on the Synapse pages and atlas (`Column`, no `mx-auto` — so it
+    was never the centred reading column the name implied), and
+  - assorted centred caps outside superadmin (my-ithina 1024, profile 768).
+
+**Why everything went wide rather than a two-tier system.** ver2 has exactly one container and
+no page-type variation — a grep for per-page `maxWidth` in its components returns nothing. The
+only narrowing anywhere in ver2 is `.pagehead .sub { max-width: 720px }` (`index.css:374`), which
+caps subtitle PROSE. So ver2's answer to "do reading-heavy views narrow?" is: the page does not,
+the prose does. A two-tier page system would have been an invention attributed to ver2.
+
+**The reading measure.** ver2's number and mechanism, as the `text-measure` utility
+(`app/globals.css`): `max-width: 720px`, applied to sentences rather than pages. It replaced
+Tailwind's `max-w-prose` (65ch) everywhere — two measures for one job is how a design system
+stops being one, and 720px is the one with a citation behind it.
+
+Applied to: `Footnote`, `Attention`'s detail, `SynapseDown`'s message, the alert detail page's
+"why it was flagged" sentence, and the explanatory copy on capabilities and analyses. NOT applied
+to tables, run history, monitor lists, stat grids or product cards — those take the full
+container.
+
+**`Column` survives as a SPACING primitive.** It keeps `px-6` (which aligns the body's left edge
+with `PageHeader`'s own `px-6`) and the vertical rhythm; the width bound is gone. A second cap
+inside a correct container would have left the Synapse pages the odd ones out again.
 
 The sidebar and topbar spectrum that used to sit here were adopted in the chrome-alignment
 phase; their recipes are in §5 and the dark-mode derivation is §9.2.
