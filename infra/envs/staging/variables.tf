@@ -167,7 +167,7 @@ variable "cm_auth0_ticket_result_url" {
 variable "cm_frontend_image" {
   type        = string
   description = "cm-frontend container image. The tag live on the imported service; cm-frontend is deployed by gcloud, so bump this in the same commit as any deploy."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/cm-frontend:v26"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/cm-frontend:v27"
 }
 
 variable "cm_documents_bucket_name" {
@@ -195,13 +195,13 @@ variable "dis_ui_server_image" {
 variable "synapse_ui_server_image" {
   type        = string
   description = "synapse-ui-server container image (the read-only BFF behind the Synapse superadmin console). Built from synapse/services/synapse-ui-server with the MONOREPO ROOT as build context — the BFF is a workspace member alongside thalamus-synapse, so a dis/-rooted context cannot reach it. Explicit _TAG, never a floating `latest`. BUILT AND DEPLOYED: v1 shipped with a CMD/build-check mismatch that made the container fail to start; v2 is the running revision. Bump this in the same commit as any rebuild."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/synapse-ui-server:v5"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/synapse-ui-server:v6"
 }
 
 variable "synapse_orchestrator_image" {
   type        = string
   description = "synapse-orchestrator container image (the Cloud Run JOB). Built from synapse/Dockerfile with the MONOREPO ROOT as build context — Synapse is a workspace sibling of dis/, so a dis/-rooted context cannot reach it — via synapse/cloudbuild.yaml with an explicit _TAG and no floating `latest`. Bump this tag in the same commit as any orchestrator deploy."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/synapse-orchestrator:v6"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/synapse-orchestrator:v7"
 }
 
 variable "mirror_sync_consumer_image" {
