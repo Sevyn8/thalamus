@@ -148,6 +148,35 @@ GRANT SELECT, INSERT, UPDATE ON synapse.run TO synapse_writer;
 -- 0003's closing narrowings, restated for the same reason.
 REVOKE ALL ON synapse.provision FROM synapse_writer;
 REVOKE DELETE ON synapse.run FROM synapse_reader, synapse_writer;
+
+
+-- ============================================================================
+-- RE-GRANT WHAT MIGRATION 0006 GAVE. THE SAME DEFECT, CAUGHT BY THE GUARD.
+-- ============================================================================
+-- SECOND INSTANCE OF THE PAIRING ABOVE, and this time the test found it before
+-- the file shipped rather than after: adding synapse.action_events in 0006 made
+-- this file's blanket `REVOKE ALL ON ALL TABLES IN SCHEMA synapse FROM
+-- synapse_reader` strip the console's SELECT on the operator decision log. The
+-- guard named the table.
+--
+-- THE THIRD ROLE IS HANDLED HERE TOO, because this file's job is to re-assert the
+-- WHOLE synapse posture, not the writer's half of it. synapse_lifecycle is the
+-- console's write identity: INSERT on action_events and nothing else. It is
+-- deliberately NOT given SELECT — the console reads that table as synapse_reader.
+GRANT USAGE  ON SCHEMA synapse           TO synapse_lifecycle;
+GRANT SELECT ON synapse.action_events    TO synapse_reader;
+
+REVOKE ALL   ON ALL TABLES IN SCHEMA synapse FROM synapse_lifecycle;
+GRANT  INSERT ON synapse.action_events        TO synapse_lifecycle;
+
+-- THE ORCHESTRATOR MUST NOT HOLD THIS TABLE. Migration 0001 set ALTER DEFAULT
+-- PRIVILEGES granting synapse_writer INSERT on every FUTURE table in the schema,
+-- so action_events arrived writable by the sweep's identity — verified by running
+-- 0006 and reading information_schema. If the orchestrator can append lifecycle
+-- events, no row is attributable to the process that caused it. The blanket
+-- REVOKE above already removes it; this states the intent so a later re-grant
+-- has to argue with a line rather than with silence.
+REVOKE ALL ON synapse.action_events FROM synapse_writer;
 REVOKE TRUNCATE ON synapse.run, synapse.provision FROM synapse_reader, synapse_writer;
 
 -- The writer must hold NOTHING on canonical. It has never been granted anything

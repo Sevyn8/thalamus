@@ -11,17 +11,36 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, date, datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from dis_core.logging import configure_logging, get_logger
 from dis_rls import create_rls_engine, rls_platform_session
 from synapse_ui_server import catalog, reads
 from synapse_ui_server.auth import Auth0Verifier, AuthError, Identity, require_platform
 from synapse_ui_server.config import Config, load_config
+from synapse_ui_server.lifecycle import (
+    Decision,
+    DismissReason,
+    LifecycleVerb,
+    record_decision,
+)
+
+
+class DecisionBody(BaseModel):
+    """What the console posts. Typed loosely as str so an unknown member is refused by the
+    enum with a message naming the legal set, rather than by pydantic with a schema error the
+    operator cannot act on."""
+
+    verb: str
+    reason: str | None = None
+    snoozed_until: date | None = None
+
 
 _log = get_logger("synapse-ui-server")
 
@@ -32,17 +51,24 @@ _REASON_STATUS = {"missing": 401, "invalid": 401, "forbidden": 403}
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
     config: Config = app.state.config
-    # ONE engine, from the reader DSN. There is no writer engine because there is no writer DSN;
-    # see the package docstring for why that is a property rather than an omission.
+    # TWO ENGINES, TWO CREDENTIALS, AND THE SPLIT IS THE SAFETY. The reader serves every GET;
+    # the lifecycle engine exists only for lifecycle.record_decision and connects as a role
+    # holding INSERT on synapse.action_events and nothing else. Neither can do the other's job:
+    # the reader cannot write anywhere, and the lifecycle role cannot read a single row.
     app.state.engine = create_rls_engine(config.reader_url)
+    app.state.lifecycle_engine = create_rls_engine(config.lifecycle_url)
     app.state.verifier = getattr(app.state, "verifier", None) or Auth0Verifier(
         jwks_url=config.jwks_url, issuer=config.jwt_issuer, audience=config.jwt_audience
     )
-    _log.info("synapse-ui-server ready", extra={"read_only": True, "writer_configured": False})
+    _log.info(
+        "synapse-ui-server ready",
+        extra={"read_only": False, "write_surface": "synapse.action_events (insert only)"},
+    )
     try:
         yield
     finally:
         await app.state.engine.dispose()
+        await app.state.lifecycle_engine.dispose()
 
 
 def create_app(config: Config | None = None) -> FastAPI:
@@ -205,6 +231,53 @@ def create_app(config: Config | None = None) -> FastAPI:
             "alert": detail.alert.__dict__,
             "history": [row.__dict__ for row in detail.history],
         }
+
+    @app.post("/tenants/{tenant_id}/alerts/{event_id}/decisions", status_code=201)
+    async def record_alert_decision(
+        tenant_id: UUID,
+        event_id: UUID,
+        body: DecisionBody,
+        request: Request,
+        identity: Annotated[Identity, Depends(require_platform)],
+    ) -> dict[str, object]:
+        """Record what an operator decided about an alert. THE ONLY WRITE THIS SERVICE MAKES.
+
+        THE ALERT IS READ FIRST, THROUGH THE READER. Two reasons and both matter: it 404s a
+        typo or another tenant's event before anything is written, and it is where the target
+        grain comes from — the lifecycle credential holds INSERT and no SELECT, so this module
+        physically cannot look the alert up with the same connection it writes on.
+
+        THE DECISION APPLIES TO THE TARGET, NOT THE EVENT. A snooze means "this product at this
+        store"; tomorrow's detection is a new event_id and must inherit it. The clicked event is
+        recorded as provenance.
+
+        THE ACTOR IS THE AUTH0 SUBJECT AND NOTHING MORE. The session carries no name or email
+        claim, so that is the whole honest identity available.
+        """
+        detail = await reads.alert_detail(request.app.state.engine, tenant_id, event_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail=f"no alert {event_id} for tenant {tenant_id}")
+
+        try:
+            decision = Decision(
+                action_event_id=event_id,
+                tenant_id=tenant_id,
+                declaration_id=detail.alert.declaration_id,
+                target=detail.alert.target,
+                verb=LifecycleVerb(body.verb),
+                reason=DismissReason(body.reason) if body.reason else None,
+                snoozed_until=body.snoozed_until,
+                actor_subject=identity.subject,
+            )
+        except ValueError as exc:
+            # Covers both an unknown enum member and an illegal combination. 422, not 500: the
+            # request was understood and refused, and the message names the legal set.
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        lifecycle_event_id = await record_decision(
+            request.app.state.lifecycle_engine, decision, recorded_at=datetime.now(UTC)
+        )
+        return {"lifecycle_event_id": str(lifecycle_event_id)}
 
     @app.get("/runs")
     async def get_runs(

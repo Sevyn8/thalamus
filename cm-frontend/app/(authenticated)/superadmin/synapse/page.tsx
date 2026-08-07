@@ -38,6 +38,7 @@ type FleetRow = {
   name: string;
   analyses_running: number;
   actions_recorded: number;
+  open_alerts: number;
   last_run_slot: string | null;
   latest_sale: string | null;
   stores: number;
@@ -124,6 +125,7 @@ export default async function SynapseFleetPage() {
   });
   const monitorsRunning = live.reduce((s, t) => s + t.analyses_running, 0);
   const alertsRaised = tenants.reduce((sum, t) => sum + t.actions_recorded, 0);
+  const openAlerts = tenants.reduce((sum, t) => sum + t.open_alerts, 0);
 
   return (
     <div>
@@ -156,9 +158,16 @@ export default async function SynapseFleetPage() {
         <StatStrip>
           <Stat n={live.length} label={live.length === 1 ? "client live" : "clients live"} />
           <Stat n={monitorsRunning} label={monitorsRunning === 1 ? "monitor running" : "monitors running"} />
-          {/* "Alerts raised", NOT "open alerts". actions_recorded counts every action event ever
-              recorded; there is no lifecycle column on synapse.actions and no way to close one,
-              so "open" would name a state the system cannot represent. */}
+          {/* "OPEN" IS SAYABLE NOW. This comment used to read: "'Alerts raised', NOT 'open
+              alerts'… there is no lifecycle column on synapse.actions and no way to close one,
+              so 'open' would name a state the system cannot represent." Migration 0006 gives it
+              one — an operator can snooze, dismiss or acknowledge — so the state exists and the
+              headline is the number somebody can act on.
+
+              BOTH ARE SHOWN. The all-time count is the attribution denominator D1 protects, and
+              quietly redefining it under the same label would change what an old screenshot
+              meant. Open leads because it is the actionable one. */}
+          <Stat n={openAlerts} label={openAlerts === 1 ? "open alert" : "open alerts"} />
           <Stat n={alertsRaised} label={alertsRaised === 1 ? "alert raised" : "alerts raised"} />
         </StatStrip>
 

@@ -57,11 +57,18 @@ def _alert(**overrides: Any) -> dict[str, Any]:
         "days_since_last_sale": 214,
         "days_of_cover": None,
         "thresholds": {"stale_after_days": 90, "expires_after_days": 30},
+        "target": {"tenant_id": str(TENANT), "store_id": str(STORE), "sku_id": "SKU-000123"},
         "store_id": STORE,
         "sku_id": "SKU-000123",
         "store_name": "Mokotow",
         "product_name": "Vitamin C 500mg",
         "current_stock_qty": Decimal("38.000"),
+        # No operator has acted on this target: the "open" state (slice 5d).
+        "lifecycle_verb": None,
+        "lifecycle_reason": None,
+        "lifecycle_snoozed_until": None,
+        "lifecycle_recorded_at": None,
+        "lifecycle_actor": None,
     }
     base.update(overrides)
     return base
@@ -149,9 +156,12 @@ def test_both_display_joins_are_left_joins() -> None:
     which is exactly when someone is looking at it."""
     for statement in (reads._ALERT_DETAIL, reads._TENANT_ALERTS):
         sql = str(statement)
-        assert sql.count("LEFT JOIN") == 2, sql
+        # Three now: the two display joins plus the lifecycle LATERAL added in 5d. Counted
+        # rather than merely present, so an INNER creeping in anywhere fails here.
+        assert sql.count("LEFT JOIN") == 3, sql
         assert "JOIN identity_mirror.stores" in sql
         assert "JOIN canonical.store_sku_current_position" in sql
+        assert "LEFT JOIN LATERAL" in sql
 
 
 def test_the_alert_queries_touch_no_canonical_table_beyond_the_position() -> None:
@@ -292,6 +302,7 @@ def _client(monkeypatch: pytest.MonkeyPatch, *, listing: object, detail: object)
     app = create_app(
         Config(
             reader_url="postgresql+psycopg://u@h/d",
+            lifecycle_url="postgresql+psycopg://l@h/d",
             jwt_issuer="https://x/",
             jwt_audience="a",
             expected_database="thalamus",
@@ -418,6 +429,7 @@ def test_every_route_in_this_service_requires_platform() -> None:
     app = create_app(
         Config(
             reader_url="postgresql+psycopg://u@h/d",
+            lifecycle_url="postgresql+psycopg://l@h/d",
             jwt_issuer="https://x/",
             jwt_audience="a",
             expected_database="thalamus",

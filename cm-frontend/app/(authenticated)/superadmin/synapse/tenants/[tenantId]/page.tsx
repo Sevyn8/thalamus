@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { PageHeader } from "@/components/shared/PageHeader";
 import {
+  AlertStateTag,
   Attention,
   Breadcrumb,
   Column,
@@ -14,7 +15,9 @@ import {
   StatStrip,
   SynapseDown,
   Tag,
+  alertState,
   daysSince,
+  isOpen,
   plural,
   refusalSentence,
 } from "@/components/synapse/primitives";
@@ -63,6 +66,9 @@ type AlertRow = {
   sku_id: string | null;
   product_name: string | null;
   store_name: string | null;
+  lifecycle_verb: string | null;
+  lifecycle_reason: string | null;
+  lifecycle_snoozed_until: string | null;
 };
 
 const ALERTS_LIMIT = 50;
@@ -176,6 +182,9 @@ export default async function TenantPage({
   const staleDays = daysSince(detail.latest_sale);
   const isStale = staleDays === null || staleDays > STALE_AFTER_DAYS;
   const alerting = detail.analyses.filter((a) => (a.actions_proposed ?? 0) > 0);
+  // One "today" for every chip and count on the page; see the detail page's note.
+  const today = new Date().toISOString().slice(0, 10);
+  const openAlerts = alerts.filter((a) => isOpen(alertState(a, today))).length;
 
   return (
     <div>
@@ -207,7 +216,19 @@ export default async function TenantPage({
           <Stat n={detail.products} label={detail.products === 1 ? "product watched" : "products watched"} />
           <Stat n={detail.sales_seen} label={detail.sales_seen === 1 ? "sale ingested" : "sales ingested"} />
           <Stat n={detail.latest_sale ?? "—"} label="last sale" warn={isStale} />
-          {/* "Alerts raised", never "open": synapse.actions has no lifecycle column. */}
+          {/* "OPEN" IS SAYABLE NOW. This read "alerts raised (all time)" because
+              synapse.actions had no lifecycle column and "open" would have named a
+              state the system could not represent. Migration 0006 gives it one, so
+              the honest headline is the one an operator acts on.
+
+              ACKNOWLEDGED COUNTS AS OPEN (see isOpen): acknowledging says somebody
+              has seen it and left it standing, which is not the same as closing it.
+
+              THE ALL-TIME COUNT IS KEPT ALONGSIDE, not replaced. It is the
+              attribution denominator D1 exists to protect, and redefining the
+              number under the same label would silently change what an old
+              screenshot means. */}
+          <Stat n={openAlerts} label={openAlerts === 1 ? "open alert" : "open alerts"} warn={openAlerts > 0} />
           <Stat
             n={detail.actions_recorded}
             label={
@@ -243,7 +264,10 @@ export default async function TenantPage({
             alerts.map((a) => (
               <Row
                 key={a.event_id}
-                attention
+                // ATTENTION ONLY WHILE IT IS OPEN. A dismissed or snoozed alert stays
+                // on the list — it is still a recorded finding — but it stops shouting.
+                attention={isOpen(alertState(a, today))}
+                right={<AlertStateTag row={a} today={today} />}
                 title={
                   <a
                     className="text-primary underline-offset-2 hover:underline"

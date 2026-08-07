@@ -59,6 +59,8 @@ class FleetRow:
     name: str
     analyses_running: int
     actions_recorded: int
+    # Open = nobody has closed it. See _FLEET's LATERAL for what "closed" means.
+    open_alerts: int
     last_run_slot: date | None
     # None when the tenant has no sale events at all, which is different from stale.
     latest_sale: date | None
@@ -152,6 +154,7 @@ _FLEET = text(
            t.name,
            COALESCE(p.analyses_running, 0)  AS analyses_running,
            COALESCE(a.actions_recorded, 0)  AS actions_recorded,
+           COALESCE(o.open_alerts, 0)       AS open_alerts,
            r.last_run_slot,
            s.latest_sale,
            COALESCE(st.stores, 0)           AS stores,
@@ -162,6 +165,32 @@ _FLEET = text(
                   GROUP BY tenant_id) p  ON p.tenant_id = t.tenant_id
       LEFT JOIN (SELECT tenant_id, count(*) AS actions_recorded
                    FROM synapse.actions GROUP BY tenant_id) a ON a.tenant_id = t.tenant_id
+      -- OPEN ALERTS, resolved per TARGET like every other lifecycle read (slice 5d).
+      -- An alert is open unless its target's LATEST decision is a dismissal or a snooze
+      -- that has not lapsed. Acknowledged still counts as open: it says somebody has
+      -- seen it and left it standing, which is not the same as closing it.
+      --
+      -- ALONGSIDE actions_recorded, NOT INSTEAD OF IT. That count is the attribution
+      -- denominator D1 protects; redefining it under the same name would silently change
+      -- what an older screenshot meant.
+      LEFT JOIN (
+          SELECT act.tenant_id, count(*) AS open_alerts
+            FROM synapse.actions act
+            LEFT JOIN LATERAL (
+                SELECT DISTINCT ON (e.tenant_id, e.declaration_id, e.target)
+                       e.verb, e.snoozed_until
+                  FROM synapse.action_events e
+                 WHERE e.tenant_id = act.tenant_id
+                   AND e.declaration_id = act.declaration_id
+                   AND e.target = act.target
+                 ORDER BY e.tenant_id, e.declaration_id, e.target,
+                          e.recorded_at DESC, e.lifecycle_event_id DESC
+            ) le ON TRUE
+           WHERE le.verb IS NULL
+              OR le.verb = 'acknowledge'
+              OR (le.verb = 'snooze' AND le.snoozed_until < CURRENT_DATE)
+           GROUP BY act.tenant_id
+      ) o ON o.tenant_id = t.tenant_id
       LEFT JOIN (SELECT tenant_id, max(slot) AS last_run_slot
                    FROM synapse.run GROUP BY tenant_id) r  ON r.tenant_id = t.tenant_id
       LEFT JOIN (SELECT tenant_id, max(event_date) AS latest_sale
@@ -195,6 +224,7 @@ async def fleet(engine: AsyncEngine) -> tuple[FleetRow, ...]:
             name=row["name"],
             analyses_running=int(row["analyses_running"]),
             actions_recorded=int(row["actions_recorded"]),
+            open_alerts=int(row["open_alerts"]),
             last_run_slot=row["last_run_slot"],
             latest_sale=row["latest_sale"],
             stores=int(row["stores"]),
@@ -429,18 +459,52 @@ _ALERT_COLUMNS = """
            a.event_id, a.as_of, a.recorded_at, a.declaration_id, a.declaration_version,
            a.verb, a.arm, a.expires_on, a.quantity_at_stake,
            a.days_since_last_sale, a.days_of_cover, a.thresholds,
-           a.store_id, a.sku_id,
+           a.store_id, a.sku_id, a.target,
            s.name AS store_name,
            p.product_name,
-           p.stock_qty AS current_stock_qty
+           p.stock_qty AS current_stock_qty,
+           le.verb AS lifecycle_verb,
+           le.reason AS lifecycle_reason,
+           le.snoozed_until AS lifecycle_snoozed_until,
+           le.recorded_at AS lifecycle_recorded_at,
+           le.actor_subject AS lifecycle_actor
 """
 
-_ALERT_JOINS = """
+# LIFECYCLE STATE IS DERIVED AT READ TIME, PER TARGET (slice 5d).
+#
+# PER TARGET, NOT PER EVENT, and that is the whole semantic. An operator who snoozes means
+# "stop showing me this product at this store" — tomorrow's detection of the same thing is a
+# NEW row with a new event_id, so a per-event match would evaporate on exactly the alert the
+# snooze was meant to silence. The event records (declaration_id, target), the same key the
+# actions idempotency index uses, and this joins on it.
+#
+# DISTINCT ON takes the LATEST event for the target: a dismissal after a snooze wins, and so
+# does a fresh snooze after a lapsed one. Ties broken by lifecycle_event_id so the answer is
+# stable rather than whichever row the planner reached first.
+#
+# NOTHING HERE SUPPRESSES A DETECTION. This is a JOIN on a read; the orchestrator does not
+# read this table and keeps recording every slot. A snoozed target still accumulates rows in
+# synapse.actions, which is what makes the post-expiry history complete.
+_LIFECYCLE_JOIN = """
+      LEFT JOIN LATERAL (
+          SELECT DISTINCT ON (e.tenant_id, e.declaration_id, e.target)
+                 e.verb, e.reason, e.snoozed_until, e.recorded_at, e.actor_subject
+            FROM synapse.action_events e
+           WHERE e.tenant_id = a.tenant_id
+             AND e.declaration_id = a.declaration_id
+             AND e.target = a.target
+           ORDER BY e.tenant_id, e.declaration_id, e.target,
+                    e.recorded_at DESC, e.lifecycle_event_id DESC
+      ) le ON TRUE
+"""
+
+_ALERT_JOINS = f"""
       FROM synapse.actions a
       LEFT JOIN identity_mirror.stores s
              ON s.store_id = a.store_id
       LEFT JOIN canonical.store_sku_current_position p
              ON p.tenant_id = a.tenant_id AND p.store_id = a.store_id AND p.sku_id = a.sku_id
+      {_LIFECYCLE_JOIN}
 """
 
 _TENANT_ALERTS = text(
@@ -513,6 +577,9 @@ class AlertRow:
     days_of_cover: Decimal | None
     # The thresholds THIS row was judged against, not today's declaration.
     thresholds: Mapping[str, int]
+    # THE GRAIN, carried so a lifecycle decision can be recorded against it. The writing
+    # credential holds INSERT and no SELECT, so the target must come from a READ first.
+    target: Mapping[str, Any]
     store_id: UUID | None
     sku_id: str | None
     # NULL when the mirror or canonical no longer holds the row; the alert still renders.
@@ -521,6 +588,13 @@ class AlertRow:
     # CURRENT. Today's stock for the same position — deliberately a different instant from
     # quantity_at_stake, and labelled as such wherever it is rendered.
     current_stock_qty: Decimal | None
+    # THE LATEST OPERATOR DECISION FOR THIS TARGET, or None when nobody has acted. Per target,
+    # not per event: see _LIFECYCLE_JOIN. None means untouched, which is the "open" state.
+    lifecycle_verb: str | None
+    lifecycle_reason: str | None
+    lifecycle_snoozed_until: date | None
+    lifecycle_recorded_at: datetime | None
+    lifecycle_actor: str | None
 
 
 @dataclass(frozen=True)
@@ -557,11 +631,17 @@ def _alert_row(row: Any) -> AlertRow:
         days_since_last_sale=row["days_since_last_sale"],
         days_of_cover=row["days_of_cover"],
         thresholds=row["thresholds"] or {},
+        target=row["target"],
         store_id=_as_uuid(row["store_id"]) if row["store_id"] is not None else None,
         sku_id=row["sku_id"],
         store_name=row["store_name"],
         product_name=row["product_name"],
         current_stock_qty=row["current_stock_qty"],
+        lifecycle_verb=row["lifecycle_verb"],
+        lifecycle_reason=row["lifecycle_reason"],
+        lifecycle_snoozed_until=row["lifecycle_snoozed_until"],
+        lifecycle_recorded_at=row["lifecycle_recorded_at"],
+        lifecycle_actor=row["lifecycle_actor"],
     )
 
 

@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 
 import { PageHeader } from "@/components/shared/PageHeader";
+import { DecisionControls } from "./DecisionControls";
 import {
+  AlertStateTag,
   Breadcrumb,
   Column,
   Footnote,
@@ -44,6 +46,13 @@ type Alert = {
   store_name: string | null;
   product_name: string | null;
   current_stock_qty: string | null;
+  // Slice 5d. Resolved PER TARGET by the BFF, so a snooze taken on yesterday's
+  // detection covers today's new one for the same product at the same store.
+  lifecycle_verb: string | null;
+  lifecycle_reason: string | null;
+  lifecycle_snoozed_until: string | null;
+  lifecycle_recorded_at: string | null;
+  lifecycle_actor: string | null;
 };
 
 type HistoryRow = {
@@ -128,6 +137,10 @@ export default async function AlertDetailPage({
 
   const { alert, history } = detail;
   const product = alert.product_name ?? alert.sku_id ?? "Unknown product";
+  // COMPUTED ONCE PER RENDER and passed down, so every chip on the page agrees
+  // about what "today" is. A snooze that lapses mid-render would otherwise show
+  // as snoozed in one place and open in another.
+  const today = new Date().toISOString().slice(0, 10);
   const atDetection = units(alert.quantity_at_stake);
   const current = units(alert.current_stock_qty);
 
@@ -158,7 +171,12 @@ export default async function AlertDetailPage({
                 </span>
               </>
             }
-            right={<Tag tone="mute">not sent to client (silent mode)</Tag>}
+            right={
+              <div className="flex flex-col items-end gap-1">
+                <AlertStateTag row={alert} today={today} />
+                <Tag tone="mute">not sent to client (silent mode)</Tag>
+              </div>
+            }
           />
         </section>
 
@@ -178,6 +196,22 @@ export default async function AlertDetailPage({
               zero — a stock figure was unavailable when it ran.
             </Footnote>
           )}
+        </section>
+
+        <section>
+          <SectionHead>What to do about it</SectionHead>
+          <DecisionControls tenantId={tenantId} eventId={eventId} />
+          {alert.lifecycle_recorded_at && (
+            <Footnote>
+              Last decision recorded {alert.lifecycle_recorded_at.slice(0, 10)}
+              {alert.lifecycle_actor ? ` by ${alert.lifecycle_actor}` : ""}. Decisions are
+              append-only: changing your mind records a new one rather than editing this.
+            </Footnote>
+          )}
+          <Footnote>
+            A snooze or dismissal affects THIS SCREEN only. The monitor keeps checking and keeps
+            recording every detection, so nothing is lost while an alert is quiet.
+          </Footnote>
         </section>
 
         <section>

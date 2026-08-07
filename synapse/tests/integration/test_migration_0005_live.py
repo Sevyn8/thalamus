@@ -211,7 +211,11 @@ def test_the_revision_is_idempotent_against_a_fresh_database(at_0004: str) -> No
     Re-running the upgrade proves the IF NOT EXISTS arm rather than assuming it."""
     dsn = f"postgresql+psycopg://{at_0004.split('://', 1)[1]}"
     _alembic(dsn, "0005")
-    _alembic(dsn, "head")  # already at head: must not raise
+    # RE-RUN 0005 SPECIFICALLY, not "head". This said "head" and pinned the stamp to 0005, which
+    # was true only while 0005 WAS the head — adding 0006 broke it, and the breakage said
+    # nothing about 0005's idempotency. Naming the revision keeps the test about its own subject
+    # as the chain grows.
+    _alembic(dsn, "0005")  # already applied: must be a no-op, not an error
 
     (stamp,) = _rows(at_0004, "SELECT version_num FROM synapse_alembic_version")[0]
     assert stamp == "0005"

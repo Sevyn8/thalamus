@@ -110,3 +110,39 @@ CREATE ROLE synapse_writer
        PASSWORD 'synapse_writer_password';
 
 GRANT CONNECT ON DATABASE ithina_dis_db TO synapse_writer;
+
+-- ---------------------------------------------------------------------------
+-- synapse_lifecycle — the CONSOLE's write identity (slice 5d)
+-- ---------------------------------------------------------------------------
+-- A THIRD role rather than reusing synapse_writer, and the reason is attribution:
+-- synapse_writer is the orchestrator's identity (INSERT on synapse.actions, no
+-- SELECT anywhere). Lending it to an HTTP surface would make every row ambiguous
+-- about which process caused it and would hand the console a credential that can
+-- append to the action log.
+--
+-- It holds INSERT on synapse.action_events and NOTHING ELSE. The console reads
+-- that table through synapse_reader. So what an operator's click can do is bounded
+-- by the grant, not by which code path was taken.
+--
+-- NOBYPASSRLS matters here specifically: synapse.action_events is FORCE ROW LEVEL
+-- SECURITY and its WITH CHECK pins each insert to the session's tenant, so a
+-- bypassing role could write an event against a tenant it was not acting for.
+--
+-- THE GRANTS ARE NOT HERE. They name synapse.action_events, which does not exist
+-- until migration 0006 has run:
+--     SYNAPSE_ADMIN_URL=... uv run alembic -c synapse/alembic.ini upgrade head
+-- Without that this role can log in and reach nothing.
+--
+-- FRESH VOLUME ONLY, same as the two above. On an existing devbox run this one
+-- line by hand against 5433 as ithina_dis_admin:
+--
+--   CREATE ROLE synapse_lifecycle WITH LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE PASSWORD 'synapse_lifecycle_password';
+CREATE ROLE synapse_lifecycle
+       WITH LOGIN
+       NOSUPERUSER
+       NOBYPASSRLS
+       NOCREATEDB
+       NOCREATEROLE
+       PASSWORD 'synapse_lifecycle_password';
+
+GRANT CONNECT ON DATABASE ithina_dis_db TO synapse_lifecycle;

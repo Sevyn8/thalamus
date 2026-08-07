@@ -382,3 +382,81 @@ export function refusalSentence(refusals: Refusals): string | null {
   const rest = summary.total - summary.count;
   return rest > 0 ? `${head}, and ${rest} for other reasons` : head;
 }
+
+// ---------------------------------------------------------------------------
+// Alert lifecycle (synapse.action_events, migration 0006)
+// ---------------------------------------------------------------------------
+//
+// PER TARGET, NOT PER ALERT. The BFF resolves the latest decision for
+// (declaration_id, target), so a snooze taken yesterday covers today's new
+// detection of the same product at the same store. That is what an operator
+// means by "snooze"; a per-row state would evaporate on the next detection.
+//
+// A SNOOZE EXPIRES; A DISMISSAL DOES NOT. So "snoozed" is a function of the
+// date and has to be recomputed on every render rather than stored.
+export type Lifecycle = {
+  lifecycle_verb: string | null;
+  lifecycle_reason: string | null;
+  lifecycle_snoozed_until: string | null;
+};
+
+export type AlertState = "open" | "snoozed" | "dismissed" | "acknowledged";
+
+// `today` is injected rather than read here so a caller can pin it. Compared as
+// ISO date strings: both sides are date-only, and Date parsing would drag a
+// timezone into a comparison that has none.
+export function alertState(row: Lifecycle, today: string): AlertState {
+  if (row.lifecycle_verb === "dismissed" || row.lifecycle_verb === "dismiss") return "dismissed";
+  if (row.lifecycle_verb === "snooze") {
+    // A LAPSED SNOOZE IS OPEN AGAIN, and the row says so without anything having
+    // written a second event. Nothing expires it in the database on purpose:
+    // the decision was "quiet until this date", not "quiet, then noisy".
+    return row.lifecycle_snoozed_until && row.lifecycle_snoozed_until >= today ? "snoozed" : "open";
+  }
+  if (row.lifecycle_verb === "acknowledge") return "acknowledged";
+  return "open";
+}
+
+const STATE_TONE: Record<AlertState, Tone> = {
+  open: "unknown",
+  snoozed: "mute",
+  dismissed: "mute",
+  acknowledged: "good",
+};
+
+// Distinct from the refusal REASON_LABEL above: that one names why a MONITOR
+// could not assess a position, this one names why an OPERATOR dismissed an
+// alert. Same word, two vocabularies, and merging them would let a monitor's
+// refusal render as a human decision.
+const DISMISS_REASON_LABEL: Record<string, string> = {
+  seasonal: "seasonal",
+  display_stock: "display stock",
+  discontinued: "discontinued",
+  wrong_data: "wrong data",
+};
+
+// ACKNOWLEDGED IS NOT CLOSED. It says somebody has seen this and left it
+// standing — the difference between an unread queue and a handled one — so it
+// still counts as open everywhere a count is taken.
+export function isOpen(state: AlertState): boolean {
+  return state === "open" || state === "acknowledged";
+}
+
+export function AlertStateTag({ row, today }: { row: Lifecycle; today: string }) {
+  const state = alertState(row, today);
+  const reason =
+    state === "dismissed" && row.lifecycle_reason
+      ? ` · ${DISMISS_REASON_LABEL[row.lifecycle_reason] ?? row.lifecycle_reason}`
+      : "";
+  const until =
+    state === "snoozed" && row.lifecycle_snoozed_until
+      ? ` until ${row.lifecycle_snoozed_until}`
+      : "";
+  return (
+    <Tag tone={STATE_TONE[state]}>
+      {state}
+      {until}
+      {reason}
+    </Tag>
+  );
+}

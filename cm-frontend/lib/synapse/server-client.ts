@@ -139,9 +139,51 @@ async function userAccessToken(): Promise<string> {
   }
 }
 
-// Every read is a GET and there is no post/put/delete helper here, deliberately:
-// slice 8a holds no write path, and the BFF has no writer credential to serve one
-// with. Adding a mutation means adding it in both places, visibly.
+// A GET helper and, since slice 5d, exactly one POST helper. The comment here used
+// to read "there is no post/put/delete helper, deliberately: slice 8a holds no write
+// path" — and it was right that adding a mutation should mean adding it in both
+// places, visibly. This is that, done visibly.
+//
+// THE BROWSER CANNOT DO THIS ITSELF, which is why the write is server-side rather
+// than a fetch from a client component. Reaching the BFF needs BOTH tokens below;
+// the Google ID token is minted from the runtime service account's metadata, which
+// no browser has, and SYNAPSE_BFF_URL is server-only (not NEXT_PUBLIC_).
+export async function synapsePost<T>(path: string, body: unknown): Promise<T> {
+  // SAME ORDER AS THE GET, and for the same reason: the session read is what marks
+  // the caller dynamic. A server action is already dynamic, but the two helpers
+  // staying identical in shape is what keeps one from drifting into a bug the other
+  // already paid for.
+  const userToken = await userAccessToken();
+  const base = process.env.SYNAPSE_BFF_URL ?? "";
+  if (!base) {
+    throw new SynapseUnavailable(
+      "SYNAPSE_BFF_URL is not configured; the Synapse console cannot record decisions",
+    );
+  }
+  const idToken = await identityToken(base);
+
+  const response = await fetch(`${base}${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${userToken}`,
+      "X-Serverless-Authorization": `Bearer ${idToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    // 422 carries the BFF's own message naming the legal vocabulary; surfacing the
+    // status alone would turn "pick a reason" into "something went wrong".
+    const detail = await response.text().catch(() => "");
+    throw new SynapseUnavailable(
+      `Synapse BFF ${path} returned ${response.status}${detail ? `: ${detail}` : ""}`,
+    );
+  }
+  return (await response.json()) as T;
+}
+
 export async function synapseGet<T>(path: string): Promise<T> {
   // ==========================================================================
   // THE SESSION READ COMES FIRST, AND THE ORDER IS LOAD-BEARING.

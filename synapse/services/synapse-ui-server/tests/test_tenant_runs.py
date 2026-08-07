@@ -220,6 +220,7 @@ def _client(monkeypatch: pytest.MonkeyPatch, result: object) -> Any:
     app = create_app(
         Config(
             reader_url="postgresql+psycopg://u@h/d",
+            lifecycle_url="postgresql+psycopg://l@h/d",
             jwt_issuer="https://x/",
             jwt_audience="a",
             expected_database="thalamus",
