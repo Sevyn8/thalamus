@@ -34,12 +34,12 @@ variable "secret_admin_url" {
     Secret Manager id of the POSTGRES_ADMIN_URL DSN. Created OUT OF BAND, as every other DSN
     secret in this project was — Terraform only ever READS them.
 
-    THE ROLE IS `postgres`, and unlike Synapse's equivalent this is settled rather than open.
-    infra/db-setup/README.md:47 records the actual 2026-07-20 run as `postgres`, and :116
-    corroborates it with the exact environment (`POSTGRES_ADMIN_URL=postgres`,
-    `POSTGRES_DB=thalamus`). The same file's :32 says `ithina_dis_user`, but that is the PLAN
-    line and it is stale — see the module header. Creating this against `ithina_dis_user` would
-    leave new objects owned differently from the tables they sit on.
+    THE ROLE IS `postgres`, and unlike Synapse's equivalent this is CONFIRMED rather than
+    inferred: ownership is uniform `postgres` across all eight DIS schemas, checked against the
+    database 2026-08-07. infra/db-setup/README.md:47 and :116 agree; the same file's :32 says
+    `ithina_dis_user`, but that is the PLAN line and it is stale — see the module header, which
+    also records the second way that README is out of date. Creating this against
+    `ithina_dis_user` would leave new objects owned differently from the tables they sit on.
 
     Deliberately NOT `synapse-admin-database-url`. Two chains, two secrets, two identities:
     sharing one would let either plane's migration run with the other's credential.

@@ -688,11 +688,16 @@ module "migrate_synapse_job" {
 
 # --- migrate-dis: the way DIS's chain reaches this database ---
 #
-# THE SAME ABSENCE AS ABOVE, one plane over, and the older of the two. DIS's 19 revisions
-# reached this database ONCE, BY HAND, on 2026-07-20 — infra/db-setup/README.md:45-49 records
-# it as `postgres` at 18 revisions, and nothing in this repository has applied one since. This
+# THE SAME ABSENCE AS ABOVE, one plane over, and the older of the two. DIS's revisions reached
+# this database BY HAND — infra/db-setup/README.md:45-49 records `postgres` at 18 revisions on
+# 2026-07-20, while the live stamp is 0019, so at least one arrived later and unrecorded. This
 # is the original `no-migrate-dis-job-exists` ledger item; migrate-synapse above was its second
 # instance. Both now have a mechanism.
+#
+# THE FIRST EXECUTION APPLIES NOTHING. The database is already at head, so `upgrade head` is a
+# no-op and the run proves the MECHANISM — image, identity, secret, VPC path, target guard,
+# version table — exactly as migrate-synapse's first run did. Revision 0020 is the first that
+# will reach staging without a proxy and a laptop.
 #
 # A DEDICATED IMAGE, not a workload's, and that is the one real divergence from both ancestors.
 # migrate-cm rides cm-backend's image and migrate-synapse rides the orchestrator's because each
@@ -707,8 +712,9 @@ module "migrate_synapse_job" {
 # cannot drift apart.
 #
 # THE ADMIN SECRET MUST EXIST BEFORE THIS APPLIES. `dis-admin-database-url` is created out of
-# band like every other DSN secret here, against the `postgres` role — settled by README:47's
-# status line over :32's stale plan line, and corroborated at :116.
+# band like every other DSN secret here (done, 2026-08-07), against the `postgres` role —
+# confirmed by uniform `postgres` ownership across all eight DIS schemas, not merely inferred
+# from README:47.
 module "migrate_dis_job" {
   source = "../../modules/cloud-run-job-migrate-dis"
 

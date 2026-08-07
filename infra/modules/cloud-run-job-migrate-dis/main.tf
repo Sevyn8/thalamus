@@ -2,12 +2,21 @@
 # migrate-dis — the way DIS's alembic chain reaches a database
 # =============================================================================
 #
-# WHY THIS EXISTS. DIS's 19 revisions reached staging ONCE, BY HAND. infra/db-setup/README.md
-# records it at :45-49 — "DIS Alembic as `postgres` (8 schemas + 18 revisions)", 2026-07-20 —
-# and nothing else in this repository applies them. `POSTGRES_ADMIN_URL` appears only in tests,
+# WHY THIS EXISTS. DIS's revisions reached staging BY HAND. infra/db-setup/README.md records it
+# at :45-49 — "DIS Alembic as `postgres` (8 schemas + 18 revisions)", 2026-07-20 — and nothing
+# else in this repository applies them. `POSTGRES_ADMIN_URL` appears only in tests,
 # docs/local-setup.md, decisions.md and migrate-synapse's own comment: no job, no cloudbuild
 # step, no script, no terraform. That is the standing `no-migrate-dis-job-exists` ledger item,
 # and this closes it. migrate-synapse (b544974) closed the same item for the other plane.
+#
+# THE FIRST EXECUTION IS A NO-OP, AND THAT IS THE POINT. The live stamp is 0019 — the chain
+# head — confirmed against the database 2026-08-07. So `upgrade head` applies nothing and the
+# run proves the MECHANISM: image, identity, secret, VPC path, target guard, version table.
+# Same proving pattern migrate-synapse used. A first run that also applied DDL would conflate
+# "the job works" with "the migration works", and a failure would not say which.
+#
+# It also means this job's value is entirely prospective: revision 0020 is the first one that
+# will reach staging without somebody opening a proxy and running alembic from a laptop.
 #
 # SHAPE MIRRORS cloud-run-job-migrate-synapse, which mirrors cloud-run-job-migrate-cm, because
 # that lineage is the proven pattern here:
@@ -63,19 +72,32 @@
 # rather than inventing one.
 #
 # ============================================================================================
-# THE ROLE IS `postgres`, AND ITS OWN SOURCE CONTRADICTS ITSELF
+# THE ROLE IS `postgres`, AND ITS OWN SOURCE IS WRONG IN TWO SEPARATE WAYS
 # ============================================================================================
-# infra/db-setup/README.md says both of these:
+# infra/db-setup/README.md is the only record of how DIS's chain reached this database, and
+# NEITHER of its two statements about that run can be taken at face value:
 #
 #   :32  (the PLAN)   "DIS Alembic (`ithina-retail-dis`, `POSTGRES_URL` -> the shared DB as
 #                      `ithina_dis_user`)"
 #   :47  (the STATUS) "DIS Alembic as `postgres` (8 schemas + 18 revisions)"
 #
-# The status line describes what was ACTUALLY RUN and is corroborated at :116
-# (`POSTGRES_ADMIN_URL=postgres`), so `postgres` is the role — and it must stay `postgres`,
-# because objects created by a different role would be owned differently from the tables they
-# sit on. Recorded here rather than left as a discrepancy in a README nobody re-reads: the
-# plan line is stale, not a second option.
+#   1. THE ROLE. The plan line says `ithina_dis_user`; the status line says `postgres`. The
+#      status line describes what was ACTUALLY RUN, is corroborated at :116
+#      (`POSTGRES_ADMIN_URL=postgres`), and is now CONFIRMED against the database: ownership is
+#      uniform `postgres` across all eight DIS schemas, checked 2026-08-07. The plan line is
+#      stale, not a second option. It must stay `postgres` — objects created by another role
+#      would be owned differently from the tables they sit on.
+#
+#   2. THE REVISION COUNT. The status line says 18. The live stamp is 0019, so at least one
+#      revision was hand-applied AFTER 2026-07-20 and nobody updated the file. That is the more
+#      instructive half: the README is a point-in-time note that reads like a standing record,
+#      and its number drifted the moment somebody ran alembic without editing it.
+#
+# BOTH ARE WHY THIS JOB EXISTS RATHER THAN A RUNBOOK PARAGRAPH. A mechanism that runs leaves a
+# version table behind; a document describing a mechanism drifts silently and is believed
+# anyway. The stamp is the truth, the README is a memory of it — check
+# `SELECT version_num FROM alembic_version` before trusting any prose about this chain,
+# including these comments.
 #
 # THE ADMIN PASSWORD MUST BE URL-SAFE OR PERCENT-ENCODED. An unencoded '@' parses as the host
 # separator, so the DSN silently points somewhere else instead of failing — learned empirically
