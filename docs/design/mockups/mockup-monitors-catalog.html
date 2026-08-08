@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<!--
+  REFERENCE MOCKUP — Synapse console: Monitors catalog (fleet-wide).
+  Design language: dis-ui-ver2 per docs/design/dis-ver2-design-spec.md.
+  Hex values here are approximations for standalone viewing; the implementation
+  MUST bind to cm-frontend's existing tokens (globals.css), never these literals.
+  Chrome (sidebar/topbar) is context only — the deliverable is the content column.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Synapse — Monitors catalog</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0a0d14; --ink-2:#161b26; --ink-3:#222938; --ink-line:#2e3648;
+    --surface:#ffffff; --page:#f6f7fa; --line:#e5e8ef; --line-strong:#d4d9e3;
+    --text:#171c28; --text-2:#4b5264; --text-3:#7c8398;
+    --ion:#414bf5; --cyan:#19d3e0; --magenta:#e63dcb;
+    --good-bg:#e7f6ee; --good-fg:#116b3f; --good-ln:#bfe6d0;
+    --warn-bg:#fdf3e2; --warn-fg:#8a5a09; --warn-ln:#f3ddb0;
+    --bad-bg:#fdecec; --bad-fg:#a02525; --bad-ln:#f3c6c6;
+    --mute-bg:#eef0f5; --mute-fg:#5a6474; --mute-ln:#dde1ea;
+    --r-sm:7px; --r-md:9px; --r-lg:10px; --r-xl:14px;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{font-family:'IBM Plex Sans',sans-serif;background:var(--page);color:var(--text);font-size:14px}
+  .shell{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+  .sidebar{background:var(--ink);color:#c4cbd8;padding:20px 0}
+  .brand{font-family:'IBM Plex Mono',monospace;font-weight:600;letter-spacing:.35em;color:#fff;font-size:13px;padding:4px 20px 22px}
+  .navsec{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#5a6474;padding:14px 20px 6px}
+  .nav{display:flex;flex-direction:column}
+  .nav a{position:relative;display:flex;align-items:center;gap:10px;color:#c4cbd8;text-decoration:none;padding:9px 20px;font-size:13.5px}
+  .nav a:hover{background:var(--ink-2);color:#fff}
+  .nav a.active{background:var(--ink-2);color:#fff;font-weight:500}
+  .nav a.active::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--cyan),var(--ion))}
+  .main{display:flex;flex-direction:column}
+  .spectrum{height:3px;background:linear-gradient(90deg,var(--cyan),var(--ion),var(--magenta))}
+  .topbar{background:var(--surface);border-bottom:1px solid var(--line);padding:12px 32px;display:flex;justify-content:space-between;align-items:center}
+  .crumb{font-size:13px;color:var(--text-3)}
+  .crumb b{color:var(--text);font-weight:500}
+  .content{max-width:1240px;width:100%;margin:0 auto;padding:28px 32px 64px}
+  h1{font-size:20px;font-weight:600;margin-bottom:4px}
+  .sub{color:var(--text-2);font-size:13.5px;margin-bottom:22px;max-width:720px}
+  .toolbar{display:flex;gap:10px;margin-bottom:16px;align-items:center}
+  .search{flex:1;max-width:340px;display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:8px 12px;color:var(--text-3);font-size:13px}
+  .filter{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);padding:8px 12px;font-size:12.5px;color:var(--text-2);cursor:pointer}
+  .filter:hover{border-color:var(--line-strong)}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-xl);overflow:hidden}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  thead th{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3);font-weight:500;text-align:left;padding:12px 16px;border-bottom:1px solid var(--line);background:#fafbfd}
+  tbody td{padding:14px 16px;border-bottom:1px solid var(--line);vertical-align:top}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:#fafbfd;cursor:pointer}
+  .mname{font-weight:600;font-size:14px}
+  .mdesc{color:var(--text-2);font-size:12.5px;margin-top:2px}
+  .mono{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-3)}
+  .pill{display:inline-block;font-size:11.5px;font-weight:500;padding:3px 10px;border-radius:999px;border:1px solid}
+  .p-detect{background:#edeefe;color:#2d34ac;border-color:#cdd0f7}
+  .p-recommend{background:#e6f9f4;color:#0d6b57;border-color:#bfece0}
+  .p-prescribe{background:var(--warn-bg);color:var(--warn-fg);border-color:var(--warn-ln)}
+  .p-good{background:var(--good-bg);color:var(--good-fg);border-color:var(--good-ln)}
+  .p-mute{background:var(--mute-bg);color:var(--mute-fg);border-color:var(--mute-ln)}
+  .adopt{font-variant-numeric:tabular-nums}
+  .adoptbar{width:72px;height:4px;border-radius:2px;background:var(--mute-bg);margin-top:6px;overflow:hidden}
+  .adoptbar i{display:block;height:100%;background:linear-gradient(90deg,var(--cyan),var(--ion))}
+  .count{font-weight:600;font-variant-numeric:tabular-nums}
+  .dim{color:var(--text-3)}
+  .foot{padding:12px 16px;font-size:12px;color:var(--text-3);border-top:1px solid var(--line);background:#fafbfd}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">S E V Y N 8</div>
+    <div class="navsec">Synapse</div>
+    <nav class="nav">
+      <a href="#">Overview</a>
+      <a href="#" class="active">Monitors</a>
+      <a href="#">Alerts</a>
+      <a href="#">Tenants</a>
+      <a href="#">Runs</a>
+    </nav>
+    <div class="navsec">Platform</div>
+    <nav class="nav">
+      <a href="#">Capabilities</a>
+      <a href="#">Analyses</a>
+    </nav>
+  </aside>
+  <div class="main">
+    <div class="spectrum"></div>
+    <div class="topbar">
+      <div class="crumb">Superadmin / Synapse / <b>Monitors</b></div>
+      <div class="crumb">amit@sevyn8.com</div>
+    </div>
+    <div class="content">
+      <h1>Monitors</h1>
+      <p class="sub">Every analysis type the platform can run. Types are declared in code; tenants adopt them individually. Click a monitor for its contract, thresholds, and per-tenant status.</p>
+
+      <div class="toolbar">
+        <div class="search">&#8981;&nbsp; Search monitors&hellip;</div>
+        <div class="filter">Category: All &#9662;</div>
+        <div class="filter">Adoption: All &#9662;</div>
+        <div class="filter">Status: All &#9662;</div>
+      </div>
+
+      <div class="card">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:32%">Monitor</th>
+              <th style="width:14%">Category</th>
+              <th style="width:14%">Adoption</th>
+              <th style="width:12%">Open alerts</th>
+              <th style="width:14%">Last sweep</th>
+              <th style="width:14%">Latest outcome</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><div class="mname">Dead stock</div><div class="mdesc">Positions that never sell at a store</div><div class="mono">dead_stock</div></td>
+              <td><span class="pill p-detect">Detection</span></td>
+              <td><span class="adopt">2 of 2 tenants</span><div class="adoptbar"><i style="width:100%"></i></div></td>
+              <td><span class="count">1</span></td>
+              <td class="dim">Today, 03:00</td>
+              <td><span class="pill p-good">satisfied</span></td>
+            </tr>
+            <tr>
+              <td><div class="mname">Stockout risk</div><div class="mdesc">Stock too thin for the observed sales rate</div><div class="mono">stockout_risk</div></td>
+              <td><span class="pill p-detect">Detection</span></td>
+              <td><span class="adopt">2 of 2 tenants</span><div class="adoptbar"><i style="width:100%"></i></div></td>
+              <td><span class="count">6</span></td>
+              <td class="dim">Today, 03:00</td>
+              <td><span class="pill p-good">satisfied</span></td>
+            </tr>
+            <tr>
+              <td><div class="mname">Overstock &middot; cash locked</div><div class="mdesc">Cover too deep for the rate; retail value tied up</div><div class="mono">overstock_cash_locked</div></td>
+              <td><span class="pill p-detect">Detection</span></td>
+              <td><span class="adopt">1 of 2 tenants</span><div class="adoptbar"><i style="width:50%"></i></div></td>
+              <td><span class="count dim">&mdash;</span></td>
+              <td class="dim">Not yet run</td>
+              <td><span class="pill p-mute">not deployed</span></td>
+            </tr>
+            <tr>
+              <td><div class="mname">Bundle candidates</div><div class="mdesc">Co-purchase partners for slow-moving SKUs</div><div class="mono">bundle_candidates</div></td>
+              <td><span class="pill p-recommend">Recommendation</span></td>
+              <td><span class="adopt">0 of 2 tenants</span><div class="adoptbar"><i style="width:0%"></i></div></td>
+              <td><span class="count dim">&mdash;</span></td>
+              <td class="dim">Not yet run</td>
+              <td><span class="pill p-mute">not deployed</span></td>
+            </tr>
+            <tr>
+              <td><div class="mname">Markdown suggestion</div><div class="mdesc">New display price for slow movers &middot; shadow mode</div><div class="mono">markdown_suggestion</div></td>
+              <td><span class="pill p-prescribe">Prescription</span></td>
+              <td><span class="adopt">0 of 2 tenants</span><div class="adoptbar"><i style="width:0%"></i></div></td>
+              <td><span class="count dim">&mdash;</span></td>
+              <td class="dim">Not yet run</td>
+              <td><span class="pill p-mute">not deployed</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="foot">5 monitor types &middot; categories: Detection finds, Recommendation suggests, Prescription proposes a number (always shadow mode first)</div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
