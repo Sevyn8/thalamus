@@ -65,49 +65,20 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
-from enum import StrEnum
 from uuid import UUID
 
+from synapse.core.cover import assess_cover
 from synapse.core.current_state import CurrentStateRow
 from synapse.core.daily_series import DailySeriesRow
+from synapse.core.refusal import RefusalReason
 
+# RefusalReason is RE-EXPORTED, not redefined: it moved to core/refusal.py in M1 (shared with
+# overstock_cash_locked) and every existing importer keeps working unchanged.
 __all__ = ["RefusalReason", "StockoutRiskRow", "counts_by_reason", "evaluate_stockout_risk"]
 
 _Key = tuple[UUID, UUID, str]
-
-
-class RefusalReason(StrEnum):
-    """The CLOSED set of reasons a position cannot be assessed. One member per refusal branch.
-
-    WHY A VOCABULARY NOW, WHEN THE PROSE WAS ENOUGH BEFORE. The prose was enough while the only
-    consumer was a human reading a log line. It stops being enough the moment a COUNT of refusals
-    is stored on ``synapse.run``, because a stored breakdown needs keys that are stable across
-    runs, and these reasons are not: four of the five interpolate ``as_of``, an observation count
-    or a date into their leading clause. ``counts_by_reason`` used to derive its buckets by
-    splitting that prose at the first colon or semicolon, which meant a re-run of the SAME SLOT
-    could produce different keys — the exact thing the run row must not do.
-
-    DERIVED FROM THE BRANCHES, NOT INVENTED. Each member below is one arm of ``_refusal`` and
-    there are no others; the pairing is asserted in the unit suite so a new branch cannot ship
-    without a member.
-
-    THE PROSE SURVIVES ALONGSIDE IT. ``refused_because`` still carries the per-series specifics —
-    which date, how many observations, how stale — because that is what makes a refusal
-    actionable for whoever reads one row. The enum is the groupable category; the prose is the
-    evidence. Neither replaces the other.
-
-    StrEnum so a member serialises to its own value as a JSON object key without a custom
-    encoder, and so a stored breakdown reads as ``{"series_too_stale": 12}`` rather than as
-    integers nobody can interpret without this file.
-    """
-
-    NO_STOCK_QUANTITY = "no_stock_quantity"
-    NO_OBSERVATIONS_IN_WINDOW = "no_observations_in_window"
-    SERIES_TOO_STALE = "series_too_stale"
-    TOO_FEW_OBSERVATIONS = "too_few_observations"
-    NO_POSITIVE_DEMAND = "no_positive_demand"
 
 
 @dataclass(frozen=True)
@@ -184,50 +155,30 @@ def evaluate_stockout_risk(
     PURE. No engine, no clock, no registry: rows in, rows out. ``synapse.core`` is DB-free by
     contract and this is arithmetic over rows somebody else fetched.
     """
-    if window_days < 1:
-        raise ValueError(f"window_days must be at least 1, got {window_days}")
-    window_start = as_of - timedelta(days=window_days - 1)
-
-    in_window: dict[_Key, list[DailySeriesRow]] = {}
-    for row in series:
-        if window_start <= row.event_date <= as_of:
-            in_window.setdefault((row.tenant_id, row.store_id, row.sku_id), []).append(row)
-
     return tuple(
-        _assess(
-            position,
-            in_window.get((position.tenant_id, position.store_id, position.sku_id), ()),
+        _row(position, cover, refusal, at_risk_below_days=at_risk_below_days)
+        for position, cover, refusal in assess_cover(
+            universe,
+            series,
             window_days=window_days,
-            at_risk_below_days=at_risk_below_days,
             stale_after_days=stale_after_days,
             min_observations=min_observations,
             as_of=as_of,
         )
-        for position in universe
     )
 
 
-def _assess(
+def _row(
     position: CurrentStateRow,
-    observations: Sequence[DailySeriesRow],
+    cover: Decimal | None,
+    refusal: tuple[RefusalReason, str] | None,
     *,
-    window_days: int,
     at_risk_below_days: int,
-    stale_after_days: int,
-    min_observations: int,
-    as_of: date,
 ) -> StockoutRiskRow:
-    """One position. The refusal ORDER is deliberate — see below."""
-    refused = _refusal(
-        position,
-        observations,
-        stale_after_days=stale_after_days,
-        min_observations=min_observations,
-        window_days=window_days,
-        as_of=as_of,
-    )
-    if refused is not None:
-        reason, prose = refused
+    """Shape one assessment into this analysis's emitted row. The ARITHMETIC lives in
+    core/cover.py; what remains here is the verdict this analysis draws from it."""
+    if refusal is not None:
+        reason, prose = refusal
         return StockoutRiskRow(
             tenant_id=position.tenant_id,
             store_id=position.store_id,
@@ -237,14 +188,7 @@ def _assess(
             refused_because=prose,
             refusal_reason=reason,
         )
-
-    # Guarded by the refusals: stock is not None, the window sum is strictly positive.
-    total = sum((row.net_quantity for row in observations), Decimal(0))
-    rate = total / Decimal(window_days)
-    stock = position.stock_qty
-    assert stock is not None  # noqa: S101 - refused above; narrowing for the type checker
-    cover = stock / rate
-
+    assert cover is not None  # noqa: S101 - refused above; narrowing for the type checker
     return StockoutRiskRow(
         tenant_id=position.tenant_id,
         store_id=position.store_id,
@@ -254,68 +198,6 @@ def _assess(
         refused_because=None,
         refusal_reason=None,
     )
-
-
-def _refusal(
-    position: CurrentStateRow,
-    observations: Sequence[DailySeriesRow],
-    *,
-    stale_after_days: int,
-    min_observations: int,
-    window_days: int,
-    as_of: date,
-) -> tuple[RefusalReason, str] | None:
-    """Why this position cannot be assessed, as (category, prose), or None.
-
-    BOTH HALVES ARE PRODUCED AT THE SAME SITE, deliberately. Deriving the category from the prose
-    afterwards is what the old ``counts_by_reason`` did, and it produced unstable keys because
-    the prose interpolates dates and counts. Returning the pair means the branch that KNOWS which
-    refusal this is says so directly, and the two can never drift.
-
-    ORDERED MOST-FUNDAMENTAL FIRST, so the reported reason is the one an operator should act on.
-    A series that is BOTH stale and thin is reported as stale, because refreshing the data may
-    resolve both while collecting more of a stale series resolves neither.
-    """
-    if position.stock_qty is None:
-        return (
-            RefusalReason.NO_STOCK_QUANTITY,
-            "stock_qty is NULL: no numerator, and NULL is not zero",
-        )
-
-    if not observations:
-        return (
-            RefusalReason.NO_OBSERVATIONS_IN_WINDOW,
-            f"no observations in the {window_days}-day window ending {as_of.isoformat()}; "
-            "the series may have cleared the gate on older history",
-        )
-
-    latest = max(row.event_date for row in observations)
-    staleness = (as_of - latest).days
-    if staleness > stale_after_days:
-        return (
-            RefusalReason.SERIES_TOO_STALE,
-            f"the series ends {latest.isoformat()}, {staleness} days before {as_of.isoformat()} "
-            f"and past the {stale_after_days}-day limit. Dividing current stock by a rate that "
-            "stopped that long ago mixes two instants",
-        )
-
-    if len(observations) < min_observations:
-        return (
-            RefusalReason.TOO_FEW_OBSERVATIONS,
-            f"{len(observations)} observations inside the {window_days}-day window, fewer than "
-            f"the {min_observations} the gate requires. The gate measures ALL history; the rate "
-            "uses this window",
-        )
-
-    total = sum((row.net_quantity for row in observations), Decimal(0))
-    if total <= 0:
-        return (
-            RefusalReason.NO_POSITIVE_DEMAND,
-            f"net demand over the window is {total}, not positive — returns met or exceeded "
-            "sales. A zero rate has no cover and a negative one has no meaning",
-        )
-
-    return None
 
 
 def counts_by_reason(rows: Sequence[StockoutRiskRow]) -> Mapping[RefusalReason, int]:

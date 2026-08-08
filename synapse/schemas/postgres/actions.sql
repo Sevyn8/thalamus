@@ -192,6 +192,25 @@ CREATE TABLE synapse.actions (
     -- stays the first observation. One per analysis; the other is NULL.
     days_since_last_sale    INTEGER                             NULL,
     days_of_cover           NUMERIC(14, 3)                      NULL,
+
+    -- The third observation column (M1, migration 0008). RETAIL value of the
+    -- stock at the DETECTION-TIME price: stock_qty x current_retail_price.
+    --
+    -- NOT COST AND NOT MARGIN, and that is a rule rather than a caveat.
+    -- stockout_risk.py:14-17 governs money figures here: canonical's
+    -- tax_treatment is TBD, so unit_cost has no determined basis and anything
+    -- derived from it would be a confident wrong number. unit_cost is also
+    -- NULL on every position today, so a cost figure would be NULL anyway.
+    --
+    -- PRECISION (18,2). The factors are NUMERIC(14,3) and NUMERIC(12,4), whose
+    -- DDL-maximum product is ~1e19 and would not fit -- but a position holding
+    -- 1e11 units at 1e8 a unit is not a retail position. Realistic maxima
+    -- (1e5 units, 1e6 currency) give 1e11, which sits five orders below this
+    -- column's ~1e16 ceiling. The evaluator computes in unbounded Decimal and
+    -- quantizes HALF_UP to 2dp before binding, so the rounding is a stated
+    -- decision rather than an implicit cast, and an out-of-range value would
+    -- raise on INSERT rather than truncate silently.
+    retail_value_locked     NUMERIC(18, 2)                      NULL,
         -- sha256 hex over the parts of the action that may legitimately differ
         -- between two events sharing a natural key: quantity_at_stake,
         -- expires_on, arm, capability_versions, thresholds. Canonicalised with

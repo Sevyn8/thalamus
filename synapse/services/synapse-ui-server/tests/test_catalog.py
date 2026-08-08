@@ -61,12 +61,13 @@ def test_a_resolving_capability_carries_no_declined_reason() -> None:
 
 
 def test_used_by_is_derived_from_the_declarations() -> None:
-    """Not a maintained list. current_state is required by both analyses; last_sale_at by
-    dead_stock alone. If this were hand-kept it would be wrong one slice after it was written."""
+    """Not a maintained list, and M1 is the proof: adding overstock_cash_locked changed two of
+    these four sets without anyone editing a mapping. current_state is required by all three
+    analyses; last_sale_at by dead_stock alone; daily_series by the two cover-based ones."""
     by_id = {row.capability_id: row for row in catalog.capabilities()}
-    assert set(by_id["current_state"].used_by) == {"dead_stock", "stockout_risk"}
+    assert set(by_id["current_state"].used_by) == {"dead_stock", "overstock_cash_locked", "stockout_risk"}
     assert set(by_id["last_sale_at"].used_by) == {"dead_stock"}
-    assert set(by_id["daily_series"].used_by) == {"stockout_risk"}
+    assert set(by_id["daily_series"].used_by) == {"overstock_cash_locked", "stockout_risk"}
     assert by_id["lead_time_distribution"].used_by == ()
 
 

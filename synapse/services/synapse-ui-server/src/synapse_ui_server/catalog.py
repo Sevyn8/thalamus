@@ -53,6 +53,7 @@ _CAPABILITY_NAMES: Final[Mapping[str, str]] = {
 _ANALYSIS_NAMES: Final[Mapping[str, str]] = {
     "dead_stock": "Stock that isn't selling",
     "stockout_risk": "Running out before the next delivery",
+    "overstock_cash_locked": "Money tied up in slow stock",
 }
 
 

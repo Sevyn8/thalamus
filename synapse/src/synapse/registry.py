@@ -57,6 +57,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from synapse.core.action import Action
 from synapse.core.analysis import (
     DEAD_STOCK,
+    OVERSTOCK_CASH_LOCKED,
     STOCKOUT_RISK,
     AnalysisDeclaration,
     Gate,
@@ -79,6 +80,9 @@ from synapse.core.declaration_resolution import (
     DeclarationSatisfied,
     DeclarationUndeclared,
 )
+from synapse.core.overstock import OverstockRow, evaluate_overstock
+from synapse.core.overstock import counts_by_reason as overstock_counts_by_reason
+from synapse.core.overstock_actions import propose_overstock_actions
 from synapse.core.provision import Rung
 from synapse.core.resolution import (
     Observation,
@@ -175,6 +179,7 @@ _EVALUATOR_ROWS: Final[Mapping[str, type]] = MappingProxyType(
     {
         DEAD_STOCK.id: DeadStockRow,
         STOCKOUT_RISK.id: StockoutRiskRow,
+        OVERSTOCK_CASH_LOCKED.id: OverstockRow,
     }
 )
 
@@ -290,6 +295,7 @@ _DECLARATIONS: Final[Mapping[str, AnalysisDeclaration]] = MappingProxyType(
     {
         DEAD_STOCK.id: DEAD_STOCK,
         STOCKOUT_RISK.id: STOCKOUT_RISK,
+        OVERSTOCK_CASH_LOCKED.id: OVERSTOCK_CASH_LOCKED,
     }
 )
 
@@ -307,6 +313,7 @@ _ANALYSES: Final[Mapping[str, Evaluator]] = MappingProxyType(
     {
         DEAD_STOCK.id: evaluate_dead_stock,
         STOCKOUT_RISK.id: evaluate_stockout_risk,
+        OVERSTOCK_CASH_LOCKED.id: evaluate_overstock,
     }
 )
 
@@ -321,6 +328,7 @@ _ACTIONS: Final[Mapping[str, Proposer]] = MappingProxyType(
     {
         DEAD_STOCK.id: propose_dead_stock_actions,
         STOCKOUT_RISK.id: propose_stockout_actions,
+        OVERSTOCK_CASH_LOCKED.id: propose_overstock_actions,
     }
 )
 
@@ -404,10 +412,46 @@ async def _plan_stockout_risk(satisfied: DeclarationSatisfied, as_of: date) -> P
     )
 
 
+async def _plan_overstock(satisfied: DeclarationSatisfied, as_of: date) -> PlanResult:
+    """Fetch, evaluate and propose for overstock_cash_locked.
+
+    IDENTICAL FETCH SHAPE TO stockout_risk, deliberately: the two read the same two capabilities
+    over the same window with the same gate, and the arithmetic they share lives in core/cover.py.
+    ``min_observations`` is read OFF THE GATE for the same reason its sibling does — the
+    in-window sufficiency check must use the number the gate used, not a second constant.
+    """
+    universe = await satisfied.fetches["current_state"]()
+    series = await satisfied.fetches["daily_series"]()
+    thresholds = {threshold.name: threshold.days for threshold in satisfied.declaration.thresholds}
+    requirement = next(r for r in satisfied.declaration.requires if r.capability_id == "daily_series")
+    (gate,) = requirement.gates
+
+    findings = evaluate_overstock(
+        universe,  # type: ignore[arg-type]
+        series,  # type: ignore[arg-type]
+        window_days=thresholds["window_days"],
+        overstock_after_days=thresholds["overstock_after_days"],
+        stale_after_days=thresholds["stale_after_days"],
+        min_observations=gate.days,
+        as_of=as_of,
+    )
+    return PlanResult(
+        actions=propose_overstock_actions(
+            findings,
+            universe,  # type: ignore[arg-type]
+            declaration=satisfied.declaration,
+            capability_versions=satisfied.capability_versions,
+            as_of=as_of,
+        ),
+        refusals=overstock_counts_by_reason(findings),
+    )
+
+
 _PLANS: Final[Mapping[str, Plan]] = MappingProxyType(
     {
         DEAD_STOCK.id: _plan_dead_stock,
         STOCKOUT_RISK.id: _plan_stockout_risk,
+        OVERSTOCK_CASH_LOCKED.id: _plan_overstock,
     }
 )
 

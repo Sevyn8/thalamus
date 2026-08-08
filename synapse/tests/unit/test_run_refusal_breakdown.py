@@ -96,9 +96,11 @@ def test_every_refusal_branch_returns_a_vocabulary_member() -> None:
     a NEW branch added later is caught even if no test drives it: every `return (` inside
     ``_refusal`` must name a RefusalReason.
     """
-    from synapse.core import stockout_risk
+    # _refusal MOVED to core/cover.py in M1: overstock reads the same quotient from the
+    # other tail, so the computation and its refusal order are shared rather than copied.
+    from synapse.core import cover
 
-    source = inspect.getsource(stockout_risk._refusal)
+    source = inspect.getsource(cover._refusal)
     returns = [m for m in re.findall(r"return \(\s*([A-Za-z_.]+)", source)]
     assert returns, "no tuple returns parsed from _refusal; the regex stopped biting"
     for returned in returns:
@@ -111,9 +113,11 @@ def test_every_refusal_branch_returns_a_vocabulary_member() -> None:
 def test_the_vocabulary_has_no_unused_members() -> None:
     """The other direction: a member nobody produces is a promise the data never keeps, and a
     console branch for it would be dead code that reads as coverage."""
-    from synapse.core import stockout_risk
+    # _refusal MOVED to core/cover.py in M1: overstock reads the same quotient from the
+    # other tail, so the computation and its refusal order are shared rather than copied.
+    from synapse.core import cover
 
-    source = inspect.getsource(stockout_risk._refusal)
+    source = inspect.getsource(cover._refusal)
     for member in RefusalReason:
         assert f"RefusalReason.{member.name}" in source, (
             f"{member.name} is declared but no branch produces it"

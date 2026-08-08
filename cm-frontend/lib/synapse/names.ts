@@ -9,6 +9,7 @@
 export const ANALYSIS_NAMES: Record<string, string> = {
   dead_stock: "Stock that isn't selling",
   stockout_risk: "Running out before the next delivery",
+  overstock_cash_locked: "Money tied up in slow stock",
 };
 
 export const CAPABILITY_NAMES: Record<string, string> = {
@@ -27,4 +28,6 @@ export const CAPABILITY_NAMES: Record<string, string> = {
 export const MONITOR_DESCRIPTIONS: Record<string, string> = {
   dead_stock: "Flags products with stock on hand but no recent sales.",
   stockout_risk: "Flags products selling faster than replenishment will cover.",
+  overstock_cash_locked:
+    "Flags products with far more stock than recent sales will clear, and states what that stock is worth at retail.",
 };

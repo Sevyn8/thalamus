@@ -555,7 +555,7 @@ def test_a_capability_with_no_gates_is_exempt_from_the_grain_rule() -> None:
 
 def test_the_declarations_are_data_and_immutable() -> None:
     """Adding an analysis is adding a row, never editing an engine — the registry's own rule."""
-    assert declared_analysis_ids() == ("dead_stock", "stockout_risk")
+    assert declared_analysis_ids() == ("dead_stock", "overstock_cash_locked", "stockout_risk")
     with pytest.raises(TypeError):
         registry_module._DECLARATIONS["invented"] = DEAD_STOCK  # type: ignore[index]
 

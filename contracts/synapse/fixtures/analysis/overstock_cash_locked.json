@@ -1,0 +1,88 @@
+{
+  "id": "overstock_cash_locked",
+  "version": "0.1.0",
+  "grain": [
+    "tenant_id",
+    "store_id",
+    "sku_id"
+  ],
+  "requires": [
+    {
+      "capability_id": "current_state",
+      "fields": [
+        "tenant_id",
+        "store_id",
+        "sku_id",
+        "stock_qty",
+        "sku_status"
+      ],
+      "gates": []
+    },
+    {
+      "capability_id": "daily_series",
+      "fields": [
+        "tenant_id",
+        "store_id",
+        "sku_id",
+        "event_date",
+        "net_quantity"
+      ],
+      "gates": [
+        {
+          "kind": "min_history_days",
+          "days": 7,
+          "policy": "any_series"
+        }
+      ],
+      "window_from_threshold": "window_days"
+    }
+  ],
+  "emits": [
+    "tenant_id",
+    "store_id",
+    "sku_id",
+    "days_of_cover",
+    "retail_value_locked",
+    "is_overstocked",
+    "refused_because",
+    "refusal_reason"
+  ],
+  "thresholds": [
+    {
+      "name": "window_days",
+      "days": 28,
+      "fitted": false,
+      "stands_in_for": "the same window stockout_risk uses, and it must stay the same number. Both read days_of_cover off ONE computation (core/cover.py); two window lengths would mean two different quotients sharing one name, and the mutual exclusion that keeps a markdown off a stockout candidate would stop holding."
+    },
+    {
+      "name": "overstock_after_days",
+      "days": 30,
+      "fitted": false,
+      "stands_in_for": "the point at which held stock costs more than it earns \u2014 a carrying-cost calculation needing warehousing cost, cost of capital and unit_cost, none of which exist here. Thirty is a defensible convention rather than a measurement: roughly a month of cover, comfortably above the fourteen-day stockout horizon so the two verdicts cannot collide, and below the sixty-plus days at which 'slow' becomes 'dead' and dead_stock's recency claim is the better description. The fitted version needs a carrying-cost model, not arithmetic."
+    },
+    {
+      "name": "stale_after_days",
+      "days": 3,
+      "fitted": false,
+      "stands_in_for": "the same freshness bar stockout_risk states, for the same reason and with the same unknown behind it: this tenant's real ingestion cadence, which telemetry.connector_health was built to answer and cannot. Dividing stock by a rate that stopped days ago mixes two instants whichever tail you read."
+    },
+    {
+      "name": "expires_after_days",
+      "days": 30,
+      "fitted": false,
+      "stands_in_for": "how long an overstock judgement stays true. THIRTY, not stockout_risk's seven, and the asymmetry is the point: a stockout estimate decays fast because the stock is leaving, while overstock decays slowly precisely BECAUSE the stock is not moving. Matches dead_stock's thirty, the closer sibling in tempo."
+    }
+  ],
+  "holdout": {
+    "unit": [
+      "tenant_id",
+      "store_id",
+      "sku_id"
+    ],
+    "holdout_percent": 20,
+    "salt": "overstock_cash_locked/2026-08",
+    "fitted": false,
+    "stands_in_for": "a power calculation, as both siblings' do. 20 matches them so the three are comparable, which is worth more than any of the numbers being individually right."
+  },
+  "max_rung": "shadow"
+}

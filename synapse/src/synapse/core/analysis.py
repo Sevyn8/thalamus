@@ -502,3 +502,136 @@ STOCKOUT_RISK = AnalysisDeclaration(
         ),
     ),
 )
+
+
+# =============================================================================================
+# M1 — overstock_cash_locked
+# =============================================================================================
+# THE OTHER TAIL OF stockout_risk's ARITHMETIC. Both divide stock by a demand rate; this fires
+# when the quotient is large. The requires block is stockout_risk's, copied deliberately: the
+# two read the SAME two capabilities over the SAME window with the SAME gate, and a divergence
+# would mean two different numbers both called days_of_cover.
+#
+# WHY THIS AND NOT "OVERSTOCK AS A dead_stock SEVERITY". stockout_risk's own header rejected
+# overstock once, as "dead_stock's claim at a different severity" where both would propose
+# REVIEW on overlapping targets with nothing to adjudicate precedence. That objection was right
+# about the analysis imagined then — one keyed on RECENCY. This is keyed on COVER, a different
+# measurement: a SKU selling briskly every day can hold months of cover while being nowhere near
+# dead, and a genuinely dead SKU has NO cover figure at all because its demand rate is zero and
+# the quotient is undefined. The two partition on the data rather than on a severity dial.
+OVERSTOCK_CASH_LOCKED = AnalysisDeclaration(
+    id="overstock_cash_locked",
+    version="0.1.0",
+    grain=("tenant_id", "store_id", "sku_id"),
+    requires=(
+        CapabilityRequirement(
+            capability_id="current_state",
+            # stock_qty is the numerator. sku_status because a delisted SKU running out is the
+            # intended end of its life, not a problem.
+            fields=("tenant_id", "store_id", "sku_id", "stock_qty", "sku_status"),
+            gates=(),
+        ),
+        CapabilityRequirement(
+            capability_id="daily_series",
+            fields=("tenant_id", "store_id", "sku_id", "event_date", "net_quantity"),
+            # The rate is computed over a TRAILING window, not the tenant's whole history: a
+            # rate over eighty days containing a promotion describes a period that has ended,
+            # and cover is a forward-looking statement. Named rather than inlined so the
+            # declaration stays the single source of the number.
+            window_from_threshold="window_days",
+            # THE FIRST GATE ANY ANALYSIS HAS EVER BOUND. daily_series has declared
+            # MIN_HISTORY_DAYS since slice 1 and nothing bound it, because dead_stock composes
+            # two gateless capabilities — so the entire precondition path was unexercised by a
+            # real analysis until now.
+            #
+            # SEVEN, FROM THE MEASURED LADDER, not from taste. Against staging's 613 events:
+            # 1 day -> 65/65, 3 -> 61, 5 -> 55, 7 -> 46, 10 -> 25, 14 -> 9, 20 -> 0, 60 -> 0.
+            # Seven passes 46 of 65 and refuses 19, so both directions of the precondition path
+            # are exercised by real data rather than only by tests. It is also the point at which
+            # a daily rate stops being one week of noise.
+            #
+            # DO NOT MOVE THIS TO MAKE ANYTHING PASS. If it stops splitting, that is a finding
+            # about the data, not a reason to lower the bar.
+            #
+            # ANY_SERIES, AND THAT CHOICE IS WHAT DISCHARGED SLICE 2's DEFERRAL. ALL_SERIES with
+            # 46/65 gives PreconditionUnmet and the analysis never runs at all. ANY_SERIES is
+            # satisfied — and before slice 7, fetch would then have returned rows for all 65
+            # INCLUDING the 19 that failed, so the analysis would have computed cover for series
+            # it had just declared unfit. Satisfied now carries the qualifying population and the
+            # narrowing is bound into fetch.
+            gates=(MinHistoryDays(days=7, policy=SeriesPolicy.ANY_SERIES),),
+        ),
+    ),
+    emits=(
+        "tenant_id",
+        "store_id",
+        "sku_id",
+        "days_of_cover",
+        # RETAIL value at the detection-time price. Not cost, not margin — stockout_risk.py:14-17
+        # is the governing rule for money figures in this codebase.
+        "retail_value_locked",
+        "is_overstocked",
+        "refused_because",
+        "refusal_reason",
+    ),
+    holdout=Holdout(
+        unit=("tenant_id", "store_id", "sku_id"),
+        holdout_percent=20,
+        salt="overstock_cash_locked/2026-08",
+        fitted=False,
+        stands_in_for=(
+            "a power calculation, as both siblings' do. 20 matches them so the three are "
+            "comparable, which is worth more than any of the numbers being individually right."
+        ),
+    ),
+    max_rung=Rung.SHADOW,
+    thresholds=(
+        Threshold(
+            name="window_days",
+            days=28,
+            fitted=False,
+            stands_in_for=(
+                "the same window stockout_risk uses, and it must stay the same number. Both read "
+                "days_of_cover off ONE computation (core/cover.py); two window lengths would mean "
+                "two different quotients sharing one name, and the mutual exclusion that keeps a "
+                "markdown off a stockout candidate would stop holding."
+            ),
+        ),
+        Threshold(
+            name="overstock_after_days",
+            days=30,
+            fitted=False,
+            stands_in_for=(
+                "the point at which held stock costs more than it earns — a carrying-cost "
+                "calculation needing warehousing cost, cost of capital and unit_cost, none of "
+                "which exist here. Thirty is a defensible convention rather than a measurement: "
+                "roughly a month of cover, comfortably above the fourteen-day stockout horizon so "
+                "the two verdicts cannot collide, and below the sixty-plus days at which 'slow' "
+                "becomes 'dead' and dead_stock's recency claim is the better description. The "
+                "fitted version needs a carrying-cost model, not arithmetic."
+            ),
+        ),
+        Threshold(
+            name="stale_after_days",
+            days=3,
+            fitted=False,
+            stands_in_for=(
+                "the same freshness bar stockout_risk states, for the same reason and with the "
+                "same unknown behind it: this tenant's real ingestion cadence, which "
+                "telemetry.connector_health was built to answer and cannot. Dividing stock by a "
+                "rate that stopped days ago mixes two instants whichever tail you read."
+            ),
+        ),
+        Threshold(
+            name="expires_after_days",
+            days=30,
+            fitted=False,
+            stands_in_for=(
+                "how long an overstock judgement stays true. THIRTY, not stockout_risk's seven, "
+                "and the asymmetry is the point: a stockout estimate decays fast because the "
+                "stock is leaving, while overstock decays slowly precisely BECAUSE the stock is "
+                "not moving. Matches dead_stock's thirty, the closer sibling in tempo."
+            ),
+        ),
+    ),
+)

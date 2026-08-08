@@ -167,6 +167,14 @@ class Action:
     # idempotency and it is what the column comments in migration 0004 promise.
     days_since_last_sale: int | None = None
     days_of_cover: Decimal | None = None
+    # THE THIRD OBSERVATION COLUMN (M1, migration 0008). RETAIL value of the stock at the
+    # DETECTION-TIME price -- explicitly not cost and not margin. stockout_risk.py:14-17 is the
+    # governing rule: unit_cost has no determined basis while tax_treatment is TBD, so any
+    # cost-derived money figure would be a confident wrong number.
+    #
+    # NULL means "not computed by this analysis". dead_stock and stockout_risk leave it None and
+    # always will; only overstock_cash_locked sets it.
+    retail_value_locked: Decimal | None = None
 
     def __post_init__(self) -> None:
         if not self.target:
@@ -196,6 +204,11 @@ class Action:
                 f"days_since_last_sale is {self.days_since_last_sale}; a negative age means a "
                 "sale dated after as_of, which is source clock skew rather than an observation "
                 "worth recording against this action"
+            )
+        if self.retail_value_locked is not None and self.retail_value_locked < 0:
+            raise ValueError(
+                f"retail_value_locked is {self.retail_value_locked}; it is stock times a price "
+                "and both are non-negative by CHECK, so a negative means the inputs were wrong"
             )
         if self.days_of_cover is not None and self.days_of_cover < 0:
             raise ValueError(
