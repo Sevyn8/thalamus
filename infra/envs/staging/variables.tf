@@ -167,7 +167,7 @@ variable "cm_auth0_ticket_result_url" {
 variable "cm_frontend_image" {
   type        = string
   description = "cm-frontend container image. The tag live on the imported service; cm-frontend is deployed by gcloud, so bump this in the same commit as any deploy."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/cm-frontend:v33"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/cm-frontend:v34"
 }
 
 variable "cm_documents_bucket_name" {
@@ -195,7 +195,7 @@ variable "dis_ui_server_image" {
 variable "synapse_ui_server_image" {
   type        = string
   description = "synapse-ui-server container image (the read-only BFF behind the Synapse superadmin console). Built from synapse/services/synapse-ui-server with the MONOREPO ROOT as build context — the BFF is a workspace member alongside thalamus-synapse, so a dis/-rooted context cannot reach it. Explicit _TAG, never a floating `latest`. BUILT AND DEPLOYED: v1 shipped with a CMD/build-check mismatch that made the container fail to start; v2 is the running revision. Bump this in the same commit as any rebuild."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/synapse-ui-server:v9"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/synapse-ui-server:v10"
 }
 
 variable "synapse_orchestrator_image" {
