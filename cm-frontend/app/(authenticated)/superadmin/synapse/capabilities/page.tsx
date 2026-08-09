@@ -144,7 +144,7 @@ export default async function CapabilitiesPage() {
         )}
 
         <Footnote>
-          A capability missing from this page is not necessarily impossible — it may simply have no
+          A capability missing from this page is not necessarily impossible; it may simply have no
           entry yet. An entry under <span className="font-mono">not available</span> carries a
           verified reason, which is a stronger claim and is why the list is short.
         </Footnote>

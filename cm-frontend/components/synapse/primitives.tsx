@@ -513,6 +513,12 @@ export function SynapseDown({ message }: { message: string }) {
 
 // Singular/plural without a dependency. "1 tenants" and "1 actions" were on both Synapse
 // screens; a helper is cheaper than remembering the ternary at every call site.
+//
+// THE `${one}s` DEFAULT FAILS ON IRREGULARS, SILENTLY AND IN PRODUCTION. It shipped
+// "43 seriess refused" on the tenant Monitors tab, because the plural of "series" is
+// "series" and nothing here knows that. PASS THE THIRD ARGUMENT for any word that does
+// not simply take an s: plural(n, "series", "series"). The default is right for day,
+// alert, monitor, product and run, which is why it survived this long.
 export function plural(n: number, one: string, many?: string): string {
   return `${n} ${n === 1 ? one : (many ?? `${one}s`)}`;
 }
@@ -583,13 +589,16 @@ export function refusalSummary(
   return { total, top, count };
 }
 
-// "12 series refused as stale" — the per-monitor line Phase A's item 5a wanted
+// "12 series refused as stale", the per-monitor line Phase A's item 5a wanted
 // and could not have. Names the DOMINANT reason and, when there are others,
 // says so rather than implying the total is all one cause.
+//
+// "series" IS PASSED TWICE ON PURPOSE. Its plural is itself, and plural()'s default
+// appends an s to anything, which is how "43 seriess refused" reached staging.
 export function refusalSentence(refusals: Refusals): string | null {
   const summary = refusalSummary(refusals);
   if (!summary) return null;
-  const head = `${plural(summary.count, "series")} refused — ${reasonLabel(summary.top)}`;
+  const head = `${plural(summary.count, "series", "series")} refused, ${reasonLabel(summary.top)}`;
   const rest = summary.total - summary.count;
   return rest > 0 ? `${head}, and ${rest} for other reasons` : head;
 }

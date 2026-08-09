@@ -144,7 +144,7 @@ export default async function AnalysesPage() {
 
         <Footnote>
           Every number on this page is a stated convention. None is derived from any tenant&apos;s
-          data, and each says what it stands in for — fitting them needs capabilities that do not
+          data, and each says what it stands in for: fitting them needs capabilities that do not
           exist.
         </Footnote>
       </Column>

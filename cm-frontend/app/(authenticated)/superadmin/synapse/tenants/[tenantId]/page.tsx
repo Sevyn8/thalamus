@@ -283,7 +283,11 @@ export default async function TenantPage({
         <StatStrip>
           <Stat n={detail.products} label={detail.products === 1 ? "product watched" : "products watched"} />
           <Stat n={detail.sales_seen} label={detail.sales_seen === 1 ? "sale ingested" : "sales ingested"} />
-          <Stat n={detail.latest_sale ?? "—"} label="last sale" warn={isStale} />
+          {/* "never" RATHER THAN A DASH. latest_sale is null only when no sale has ever
+              been ingested for this client, which is a fact worth stating; a dash makes
+              the reader work out whether it means none, unknown, or not loaded. There is
+              no zero case for a date, so one word covers it. */}
+          <Stat n={detail.latest_sale ?? "never"} label="last sale" warn={isStale} />
           {/* "OPEN" IS SAYABLE NOW. This read "alerts raised (all time)" because
               synapse.actions had no lifecycle column and "open" would have named a
               state the system could not represent. Migration 0006 gives it one, so
@@ -397,7 +401,23 @@ export default async function TenantPage({
             </p>
           ) : (
             detail.analyses.map((state) => {
-              const raised = state.actions_proposed ?? 0;
+              // READS actions_appended, NOT actions_proposed, AND THE DIFFERENCE IS A
+              // CROSS-TAB DEFECT RATHER THAN A PREFERENCE. The Runs tab, one tab over,
+              // renders the same run through runOutcomeTag, which counts appended. While
+              // this counted proposed the two tabs disagreed about the SAME RUN on any day
+              // the idempotency index suppressed a repeat: 1 proposed, 0 recorded, and one
+              // screen saying "1 alert" beside another saying "no new alerts". That is the
+              // cross-surface disagreement B2a spent a slice removing, and it came back in
+              // B2b-1 through a label nobody read as a claim. Appended is what was actually
+              // recorded, which is the only number an operator can go and look at.
+              //
+              // LABELLED "raised last run", NEVER BARE. It read "6 alerts" in an AMBER tag on
+              // a page whose stat strip says "open alerts", so every signal said "6 open" while
+              // the number meant "6 recorded by the most recent run". Proposed or appended,
+              // neither says whether any is still open: open is a lifecycle question and
+              // TenantDetail.open_alerts is the only thing that answers it. Muted for the same
+              // reason, since a past raise is not something needing attention.
+              const raised = state.actions_appended ?? 0;
               return (
                 <Row
                   key={state.analysis_id}
@@ -428,8 +448,8 @@ export default async function TenantPage({
                     </>
                   }
                   right={
-                    <Tag tone={raised > 0 ? "unknown" : "mute"}>
-                      {raised > 0 ? plural(raised, "alert") : "No alerts last run"}
+                    <Tag tone="mute">
+                      {raised > 0 ? `${plural(raised, "alert")} raised last run` : "No alerts last run"}
                     </Tag>
                   }
                   // WHY A MONITOR RAISED NOTHING, when the run says. Appended to the

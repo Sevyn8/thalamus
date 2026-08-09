@@ -200,14 +200,20 @@ export default async function AlertDetailPage({
               is today's position. A product that has since sold out must read as
               recovered rather than as this page contradicting itself. */}
           <StatStrip>
-            <Stat n={atDetection ?? "—"} label="units at detection" />
-            <Stat n={current ?? "—"} label="units in stock now" />
+            {/* "not recorded" RATHER THAN A DASH, AND IT IS ACCURATE RATHER THAN CONVENIENT.
+                units() returns null ONLY when the underlying column is null: a zero quantity
+                parses to 0 and renders as "0". So the fallback fires exactly when nothing was
+                recorded, never when the recorded value happens to be zero. The footnote below
+                has always drawn that distinction; the dash was the one thing on screen that
+                blurred it. */}
+            <Stat n={atDetection ?? "not recorded"} label="units at detection" />
+            <Stat n={current ?? "not recorded"} label="units in stock now" />
             <Stat n={alert.as_of} label="raised (slot)" />
           </StatStrip>
           {atDetection === null && (
             <Footnote>
               The monitor recorded no quantity for this position, which is not the same as
-              zero — a stock figure was unavailable when it ran.
+              zero: a stock figure was unavailable when it ran.
             </Footnote>
           )}
         </section>
@@ -237,7 +243,7 @@ export default async function AlertDetailPage({
           <p className="text-body text-measure text-foreground">{whyFlagged(alert)}</p>
           <Footnote>
             Judged against the thresholds recorded with this alert, not against the monitor&apos;s
-            current settings — so an older alert keeps explaining itself the way it was raised.
+            current settings, so an older alert keeps explaining itself the way it was raised.
           </Footnote>
         </section>
 
@@ -275,7 +281,7 @@ export default async function AlertDetailPage({
               read the gap as the problem having gone away. */}
           <Footnote>
             Re-raising the same alert on the same day is suppressed and leaves no record, so a
-            day missing here means the monitor did not raise it again — not that the problem was
+            day missing here means the monitor did not raise it again, not that the problem was
             resolved.
           </Footnote>
         </section>
