@@ -121,6 +121,18 @@ class RunRow:
     tenant_name: str
     analysis_id: str
     slot: date
+
+    # THE ZONE THE SLOT WAS FLOORED IN, snapshotted onto the run by the orchestrator rather than
+    # joined from synapse.provision, which is mutable. Projected because started_at is an INSTANT
+    # and a console cannot render it as a wall clock without knowing whose clock: a 03:00
+    # Asia/Kolkata sweep is 21:30 UTC the PREVIOUS day, so a UTC rendering shows a time that
+    # disagrees with the slot date above it.
+    #
+    # NOT NULL on the table (ck_run_timezone_present also forbids the empty string), so this is
+    # not optional here. Unlike refusals there is no pre-migration shape to defend against: the
+    # column has existed since 0003, which created the table.
+    timezone: str
+
     outcome: str | None
     actions_proposed: int | None
     actions_appended: int | None
@@ -320,7 +332,7 @@ async def tenant_detail(engine: AsyncEngine, tenant_id: UUID) -> TenantDetail | 
 
 _RUNS = text(
     """
-    SELECT r.run_id, r.tenant_id, t.name AS tenant_name, r.analysis_id, r.slot,
+    SELECT r.run_id, r.tenant_id, t.name AS tenant_name, r.analysis_id, r.slot, r.timezone,
            r.outcome, r.actions_proposed, r.actions_appended, r.started_at, r.finished_at,
            r.refusals
       FROM synapse.run r
@@ -353,6 +365,7 @@ async def runs(engine: AsyncEngine, *, limit: int = 100) -> tuple[RunRow, ...]:
             tenant_name=row["tenant_name"] or "(not in the tenant mirror)",
             analysis_id=row["analysis_id"],
             slot=row["slot"],
+            timezone=row["timezone"],
             outcome=row["outcome"],
             actions_proposed=row["actions_proposed"],
             actions_appended=row["actions_appended"],
@@ -370,7 +383,7 @@ async def runs(engine: AsyncEngine, *, limit: int = 100) -> tuple[RunRow, ...]:
 # keeps paying for.
 _TENANT_RUNS = text(
     """
-    SELECT r.run_id, r.tenant_id, t.name AS tenant_name, r.analysis_id, r.slot,
+    SELECT r.run_id, r.tenant_id, t.name AS tenant_name, r.analysis_id, r.slot, r.timezone,
            r.outcome, r.actions_proposed, r.actions_appended, r.started_at, r.finished_at,
            r.refusals
       FROM synapse.run r
@@ -419,6 +432,7 @@ async def tenant_runs(engine: AsyncEngine, tenant_id: UUID, *, limit: int = 100)
             tenant_name=row["tenant_name"] or "(not in the tenant mirror)",
             analysis_id=row["analysis_id"],
             slot=row["slot"],
+            timezone=row["timezone"],
             outcome=row["outcome"],
             actions_proposed=row["actions_proposed"],
             actions_appended=row["actions_appended"],

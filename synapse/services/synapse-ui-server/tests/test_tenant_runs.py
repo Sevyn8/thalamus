@@ -114,6 +114,7 @@ def _row(tenant: UUID, sku_slot: str) -> dict[str, Any]:
         "tenant_name": "The Body Shop",
         "analysis_id": "dead_stock",
         "slot": date.fromisoformat(sku_slot),
+        "timezone": "Asia/Kolkata",
         "outcome": "satisfied",
         "actions_proposed": 1,
         "actions_appended": 1,
@@ -255,6 +256,7 @@ def test_the_route_returns_the_rows_it_is_given(monkeypatch: pytest.MonkeyPatch)
         tenant_name="The Body Shop",
         analysis_id="dead_stock",
         slot=date(2026, 8, 6),
+        timezone="Asia/Kolkata",
         outcome="satisfied",
         actions_proposed=1,
         actions_appended=1,
@@ -268,6 +270,7 @@ def test_the_route_returns_the_rows_it_is_given(monkeypatch: pytest.MonkeyPatch)
     body = response.json()["runs"]
     assert len(body) == 1
     assert body[0]["tenant_id"] == str(TENANT)
+    assert body[0]["timezone"] == "Asia/Kolkata"
     # No per-product field may appear on any synapse_ui_server response.
     assert not {"sku_id", "product_name", "target"} & set(body[0])
 
@@ -314,6 +317,53 @@ def test_the_bff_owns_no_copy_of_the_reason_vocabulary() -> None:
         assert "series_too_stale" not in body, (
             f"{path.name} names a RefusalReason member; the BFF must not carry the vocabulary"
         )
+
+
+# ---------------------------------------------------------------------------
+# The run's own timezone reaches the console (phase B1)
+# ---------------------------------------------------------------------------
+
+
+def test_every_run_query_selects_the_timezone() -> None:
+    """THE SAME SEAM test_every_run_query_selects_the_refusal_breakdown guards, one column over.
+
+    ``timezone`` has been on synapse.run since migration 0003 and no query ever asked for it, so
+    the console had an INSTANT and no clock to read it against. Both run queries are checked
+    because the fleet page and the tenant page each read a different one, and a column selected
+    by only one of them is a screen that renders times on one page and not the other.
+    """
+    for name in ("_RUNS", "_TENANT_RUNS"):
+        statement = getattr(reads, name)
+        assert "r.timezone" in str(statement), f"{name} does not select the run's timezone"
+
+
+def test_the_row_type_carries_a_non_optional_timezone() -> None:
+    """NOT OPTIONAL, unlike refusals, and the asymmetry is deliberate. refusals is optional
+    because a row may predate migration 0005; timezone cannot be, because 0003 CREATED the table
+    with the column NOT NULL and ck_run_timezone_present also forbids the empty string. Typing it
+    optional would invite a null branch that no stored row can reach.
+    """
+    from typing import get_type_hints
+
+    hints = get_type_hints(reads.RunRow)
+    assert "timezone" in hints, "RunRow does not carry the run's timezone"
+    assert hints["timezone"] is str, "RunRow.timezone must be a plain str, not optional"
+
+
+def test_the_run_row_holds_no_tenant_forbidden_field() -> None:
+    """RunRow's shape against the recorded tenant-facing constraint.
+
+    /runs is PLATFORM-only today, so this is not the constraint biting yet; it is the check that
+    a WIDENED run row cannot drift into carrying an identifier that the 8b tenant view would then
+    have to strip. Asserted against tenant_view_contract's exported set rather than a restated
+    list, for the reason that module gives: a restated list is a second source of truth.
+    """
+    from typing import get_type_hints
+
+    from synapse_ui_server.tenant_view_contract import FORBIDDEN_TENANT_FIELDS
+
+    leaked = FORBIDDEN_TENANT_FIELDS & set(get_type_hints(reads.RunRow))
+    assert not leaked, f"RunRow carries tenant-forbidden field(s): {sorted(leaked)}"
 
 
 def test_the_row_types_carry_refusals_as_an_optional_mapping() -> None:
