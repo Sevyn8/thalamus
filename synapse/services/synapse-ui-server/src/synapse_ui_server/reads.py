@@ -709,3 +709,198 @@ async def alert_detail(
             for row in history
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# Fleet-wide alerts: the inbox (Phase A)
+# ---------------------------------------------------------------------------
+#
+# READS synapse.actions_analytical, NOT synapse.actions, and that is the whole reason the view
+# exists. Migration 0007 built it to keep the immortal probe rows of the sentinel fixture tenant
+# out of analytical surfaces. The tenant-scoped alert list gets away with the base table because
+# the sentinel is only visible by navigating to it deliberately; a FLEET-WIDE inbox lands those
+# rows in the default view and, worse, in the chip counts, where they would inflate every number
+# an operator reads without appearing to come from anywhere.
+#
+# The view is SELECT a.* over the same table, so every column reference below is unchanged.
+
+# THE ONE LIFECYCLE-STATE DERIVATION for both fleet endpoints. The list filters on it and the
+# chips group by it; two copies would drift and the chips would stop matching the list.
+#
+# TIMEZONE: EXPLICIT UTC, never CURRENT_DATE. CURRENT_DATE resolves in the DB session's timezone,
+# which is configuration rather than contract. The TypeScript side compares against
+# `new Date().toISOString().slice(0, 10)`, which is UTC by definition, and the snooze expiry is
+# minted the same way (DecisionControls.tsx). Anchoring here to UTC explicitly makes the two
+# sides agree by construction instead of by both happening to sit in the same zone; the local
+# devbox reports Etc/UTC today, which is exactly the kind of coincidence that hides a defect
+# until an environment differs.
+#
+# PHASE B: there are two state derivations, this and primitives.tsx alertState(). Filtering has
+# to be SQL, so this one exists of necessity; consolidating to one authority is Phase B, along
+# with having the tenant page read the server's state instead of recomputing it.
+_LIFECYCLE_STATE = """
+        CASE WHEN le.verb IS NULL                 THEN 'open'
+             WHEN le.verb = 'dismiss'             THEN 'dismissed'
+             WHEN le.verb = 'acknowledge'         THEN 'acknowledged'
+             WHEN le.verb = 'snooze'
+              AND le.snoozed_until >= (now() AT TIME ZONE 'UTC')::date THEN 'snoozed'
+             ELSE 'open'
+        END
+"""
+
+_FLEET_ALERT_JOINS = f"""
+      FROM synapse.actions_analytical a
+      LEFT JOIN identity_mirror.tenants t
+             ON t.tenant_id = a.tenant_id
+      LEFT JOIN identity_mirror.stores s
+             ON s.store_id = a.store_id
+      LEFT JOIN canonical.store_sku_current_position p
+             ON p.tenant_id = a.tenant_id AND p.store_id = a.store_id AND p.sku_id = a.sku_id
+      {_LIFECYCLE_JOIN}
+"""
+
+# THE FILTERS ARE ALL OPTIONAL AND ALL BOUND. `:x IS NULL OR column = :x` rather than building
+# the WHERE clause in Python: one statement, one plan, and no string concatenation anywhere near
+# a value. The state filter reads the alias from a subselect because a SELECT alias is not
+# referenceable in the WHERE of the same level, which is also what keeps _LIFECYCLE_STATE to a
+# single occurrence per statement.
+_FLEET_ALERTS = text(
+    f"""
+    SELECT * FROM (
+        SELECT {_ALERT_COLUMNS},
+               a.tenant_id,
+               COALESCE(t.name, '(not in the tenant mirror)') AS tenant_name,
+               {_LIFECYCLE_STATE} AS lifecycle_state
+        {_FLEET_ALERT_JOINS}
+    ) x
+     WHERE (CAST(:tenant AS uuid)   IS NULL OR x.tenant_id      = CAST(:tenant AS uuid))
+       AND (CAST(:store AS uuid)    IS NULL OR x.store_id       = CAST(:store AS uuid))
+       AND (CAST(:analysis AS text) IS NULL OR x.declaration_id = CAST(:analysis AS text))
+       AND (CAST(:state AS text)    IS NULL OR x.lifecycle_state = CAST(:state AS text))
+     ORDER BY x.as_of DESC, x.recorded_at DESC, x.event_id
+     LIMIT :limit
+    """
+)
+
+# WHOLE FLEET, DELIBERATELY UNPAGINATED. Deriving the chips from the returned page would
+# understate every count the moment `limit` bites, and a filter chip that disagrees with the list
+# it filters is worse than no chip.
+_FLEET_ALERT_STATE_COUNTS = text(
+    f"""
+    SELECT x.lifecycle_state, count(*) AS alerts
+      FROM (
+        SELECT {_LIFECYCLE_STATE} AS lifecycle_state
+        {_FLEET_ALERT_JOINS}
+      ) x
+     GROUP BY x.lifecycle_state
+    """
+)
+
+# Every state the derivation can produce. Exported so the route can return zeros rather than
+# omitting a state: a missing key and a zero look identical to a chip, and only one is true.
+ALERT_STATES: tuple[str, ...] = ("open", "snoozed", "acknowledged", "dismissed")
+
+
+@dataclass(frozen=True)
+class FleetAlertRow:
+    """One alert on the fleet inbox: an AlertRow plus its tenant and its derived state.
+
+    A SEPARATE TYPE RATHER THAN A WIDER AlertRow. tenant_name is meaningless on a tenant-scoped
+    surface, and adding lifecycle_state to the shared _ALERT_COLUMNS would change AlertRow, which
+    the 5c detail tests construct field by field. Those tests are required to keep passing
+    untouched, so the fleet shape is its own.
+
+    PLATFORM-ONLY, like every alert payload: sku_id, product_name, store_name and tenant_name are
+    all in tenant_view_contract.FORBIDDEN_TENANT_FIELDS.
+    """
+
+    event_id: UUID
+    tenant_id: UUID
+    tenant_name: str
+    as_of: date
+    recorded_at: datetime
+    declaration_id: str
+    quantity_at_stake: Decimal | None
+    days_since_last_sale: int | None
+    days_of_cover: Decimal | None
+    store_id: UUID | None
+    sku_id: str | None
+    store_name: str | None
+    product_name: str | None
+    # Derived in SQL, not here: the list filters on it and the chips group by it.
+    lifecycle_state: str
+    lifecycle_reason: str | None
+    lifecycle_snoozed_until: date | None
+
+
+async def fleet_alerts(
+    engine: AsyncEngine,
+    *,
+    state: str | None = None,
+    analysis_id: str | None = None,
+    tenant_id: UUID | None = None,
+    store_id: UUID | None = None,
+    limit: int = 100,
+) -> tuple[FleetAlertRow, ...]:
+    """Every alert across the fleet, newest slot first.
+
+    NO 404 PATH. Unlike the tenant-scoped reads there is no id whose absence means "you asked
+    for something that does not exist": an empty fleet is a legitimate answer, and a filter that
+    matches nothing is a legitimate answer too.
+
+    ORDERING CARRIES A UNIQUE TIEBREAKER. as_of and recorded_at both tie in practice because a
+    sweep records a whole slot at once, so without event_id a LIMIT would duplicate or skip rows
+    at the page boundary. Same three keys _TENANT_ALERTS already uses.
+    """
+    bounded = max(1, min(limit, _MAX_ROWS))
+    async with rls_platform_session(engine, None) as conn:
+        rows = (
+            (
+                await conn.execute(
+                    _FLEET_ALERTS,
+                    {
+                        "state": state,
+                        "analysis": analysis_id,
+                        "tenant": str(tenant_id) if tenant_id else None,
+                        "store": str(store_id) if store_id else None,
+                        "limit": bounded,
+                    },
+                )
+            )
+            .mappings()
+            .all()
+        )
+    return tuple(
+        FleetAlertRow(
+            event_id=_as_uuid(row["event_id"]),
+            tenant_id=_as_uuid(row["tenant_id"]),
+            tenant_name=row["tenant_name"],
+            as_of=row["as_of"],
+            recorded_at=row["recorded_at"],
+            declaration_id=row["declaration_id"],
+            quantity_at_stake=row["quantity_at_stake"],
+            days_since_last_sale=row["days_since_last_sale"],
+            days_of_cover=row["days_of_cover"],
+            store_id=_as_uuid(row["store_id"]) if row["store_id"] is not None else None,
+            sku_id=row["sku_id"],
+            store_name=row["store_name"],
+            product_name=row["product_name"],
+            lifecycle_state=row["lifecycle_state"],
+            lifecycle_reason=row["lifecycle_reason"],
+            lifecycle_snoozed_until=row["lifecycle_snoozed_until"],
+        )
+        for row in rows
+    )
+
+
+async def alert_state_counts(engine: AsyncEngine) -> Mapping[str, int]:
+    """How many alerts sit in each lifecycle state, fleet-wide.
+
+    EVERY STATE IS PRESENT, including the zeros. A chip reading "Acknowledged 0" is a fact; a
+    chip missing because the query returned no rows for that state is an absence the reader
+    cannot distinguish from it.
+    """
+    async with rls_platform_session(engine, None) as conn:
+        rows = (await conn.execute(_FLEET_ALERT_STATE_COUNTS)).mappings().all()
+    counted = {row["lifecycle_state"]: int(row["alerts"]) for row in rows}
+    return {state: counted.get(state, 0) for state in ALERT_STATES}

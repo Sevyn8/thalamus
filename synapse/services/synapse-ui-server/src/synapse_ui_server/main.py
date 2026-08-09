@@ -279,6 +279,57 @@ def create_app(config: Config | None = None) -> FastAPI:
         )
         return {"lifecycle_event_id": str(lifecycle_event_id)}
 
+    @app.get("/alerts/state-counts")
+    async def get_alert_state_counts(
+        request: Request, _: Annotated[Identity, Depends(require_platform)]
+    ) -> dict[str, object]:
+        """Fleet-wide alert counts per lifecycle state, for the inbox filter chips.
+
+        DECLARED BEFORE /alerts, and the order is deliberate rather than cosmetic. FastAPI
+        matches routes in declaration order, so if a parameterised sibling like
+        /alerts/{event_id} is ever added above this one, the literal "state-counts" would be
+        captured as that parameter and this endpoint would silently stop being reachable.
+
+        NOT DERIVED FROM THE LIST. The list is paginated and these counts are not: computing
+        chips from a returned page understates every number the moment the limit bites, and a
+        chip that disagrees with the list it filters is worse than no chip at all.
+        """
+        return {"states": dict(await reads.alert_state_counts(request.app.state.engine))}
+
+    @app.get("/alerts")
+    async def get_alerts(
+        request: Request,
+        _: Annotated[Identity, Depends(require_platform)],
+        state: str | None = None,
+        analysis_id: str | None = None,
+        tenant_id: UUID | None = None,
+        store_id: UUID | None = None,
+        limit: int = 100,
+    ) -> dict[str, object]:
+        """Every alert across the fleet, newest slot first, with optional filters.
+
+        READS THE ANALYTICAL VIEW, not synapse.actions. Migration 0007 built
+        synapse.actions_analytical to keep the sentinel fixture tenant's immortal probe rows out
+        of analytical surfaces, and a fleet-wide inbox is precisely that: those rows would land
+        in the default view and inflate the chip counts, arriving from a tenant nobody would
+        think to look at.
+
+        NO 404. An empty fleet and a filter matching nothing are both legitimate answers; there
+        is no id here whose absence means the caller asked for something that does not exist.
+
+        An unknown `state` value is not an error either: it simply matches nothing, which is what
+        a filter is entitled to do.
+        """
+        rows = await reads.fleet_alerts(
+            request.app.state.engine,
+            state=state,
+            analysis_id=analysis_id,
+            tenant_id=tenant_id,
+            store_id=store_id,
+            limit=limit,
+        )
+        return {"alerts": [row.__dict__ for row in rows]}
+
     @app.get("/runs")
     async def get_runs(
         request: Request, _: Annotated[Identity, Depends(require_platform)], limit: int = 100

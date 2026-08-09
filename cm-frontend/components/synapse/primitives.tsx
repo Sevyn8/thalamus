@@ -442,25 +442,52 @@ const DISMISS_REASON_LABEL: Record<string, string> = {
 // ACKNOWLEDGED IS NOT CLOSED. It says somebody has seen this and left it
 // standing — the difference between an unread queue and a handled one — so it
 // still counts as open everywhere a count is taken.
-export function isOpen(state: AlertState): boolean {
+//
+// TAKES A STRING, not AlertState, so the fleet inbox can pass the state the BFF
+// derived without a cast. An unrecognised value is NOT open: a state this build
+// does not know about is one it cannot claim needs attention.
+export function isOpen(state: string): boolean {
   return state === "open" || state === "acknowledged";
 }
 
-export function AlertStateTag({ row, today }: { row: Lifecycle; today: string }) {
-  const state = alertState(row, today);
-  const reason =
-    state === "dismissed" && row.lifecycle_reason
-      ? ` · ${DISMISS_REASON_LABEL[row.lifecycle_reason] ?? row.lifecycle_reason}`
-      : "";
-  const until =
-    state === "snoozed" && row.lifecycle_snoozed_until
-      ? ` until ${row.lifecycle_snoozed_until}`
-      : "";
+// ONE RENDERING, TWO SOURCES OF THE STATE. The tenant-scoped screens derive the
+// state here from the raw lifecycle columns (alertState); the fleet inbox is
+// handed a state the BFF already derived in SQL, because the list is FILTERED on
+// it and a chip disagreeing with the filter that selected the row is worse than
+// no chip. Both paths land on this function, so the tone map, the word and the
+// suffixes stay one thing. Unifying the two derivations is Phase B.
+function stateTag(state: AlertState, reason: string | null, snoozedUntil: string | null) {
+  const suffix =
+    state === "snoozed" && snoozedUntil
+      ? ` until ${snoozedUntil}`
+      : state === "dismissed" && reason
+        ? ` · ${DISMISS_REASON_LABEL[reason] ?? reason}`
+        : "";
   return (
     <Tag tone={STATE_TONE[state]}>
       {state}
-      {until}
-      {reason}
+      {suffix}
     </Tag>
   );
+}
+
+export function AlertStateTag({ row, today }: { row: Lifecycle; today: string }) {
+  return stateTag(alertState(row, today), row.lifecycle_reason, row.lifecycle_snoozed_until);
+}
+
+// The fleet inbox's tag. `state` arrives as a plain string from JSON rather than
+// as AlertState, so an unrecognised value is rendered AS ITSELF in the neutral
+// tone rather than coerced into one of the four: if the BFF ever grows a fifth
+// state, a reader should see the word, not silently see it filed as "open".
+export function ServerStateTag({
+  state,
+  reason,
+  snoozedUntil,
+}: {
+  state: string;
+  reason: string | null;
+  snoozedUntil: string | null;
+}) {
+  if (!(state in STATE_TONE)) return <Tag tone="mute">{state}</Tag>;
+  return stateTag(state as AlertState, reason, snoozedUntil);
 }

@@ -30,6 +30,10 @@ import { join } from "node:path";
 const MUST_BE_DYNAMIC = [
   "superadmin/synapse",
   "superadmin/synapse/runs",
+  // The fleet alerts inbox. Reads /alerts and /alerts/state-counts per request
+  // and takes its filters from the query string, so a prerender would freeze one
+  // reader's filtered view into static HTML for everyone.
+  "superadmin/synapse/alerts",
   "superadmin/synapse/capabilities",
   "superadmin/synapse/analyses",
   // THE TWO TENANT-SCOPED ROUTES WERE UNGUARDED UNTIL 5c, which was a gap rather than

@@ -167,7 +167,21 @@ export default async function SynapseFleetPage() {
               BOTH ARE SHOWN. The all-time count is the attribution denominator D1 protects, and
               quietly redefining it under the same label would change what an old screenshot
               meant. Open leads because it is the actionable one. */}
-          <Stat n={openAlerts} label={openAlerts === 1 ? "open alert" : "open alerts"} />
+          {/* THE NUMBER IS THE WAY IN. The fleet inbox is the screen that answers
+              "what needs a person, anywhere", and this figure is the reason
+              somebody would want it. Linking the count rather than adding a
+              separate button keeps the strip a strip. */}
+          <Stat
+            n={
+              <a
+                className="underline-offset-4 hover:underline"
+                href="/superadmin/synapse/alerts"
+              >
+                {openAlerts}
+              </a>
+            }
+            label={openAlerts === 1 ? "open alert" : "open alerts"}
+          />
           <Stat n={alertsRaised} label={alertsRaised === 1 ? "alert raised" : "alerts raised"} />
         </StatStrip>
 
