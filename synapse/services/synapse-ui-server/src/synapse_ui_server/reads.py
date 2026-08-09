@@ -110,6 +110,22 @@ class AnalysisState:
     last_outcome: str | None
     actions_proposed: int | None
     actions_appended: int | None
+    # WHY A RUN WAS BLOCKED OR HOW IT FAILED. FREE TEXT WRITTEN BY THE ORCHESTRATOR AT RUNTIME,
+    # largely exception text, and RENDERED NOWHERE TODAY. That is correct and should stay so
+    # until somebody sanitises it.
+    #
+    # THE REASON THIS COMMENT EXISTS. The console has twice rendered a field written for a
+    # different audience: Threshold.stands_in_for, a reviewer's argument carrying
+    # PERCENTILE_CONT and capability-slice reasoning, and _DECLINED's reason, an audit note
+    # citing dis_validation.provenance and a grep across four package trees. Both were correct
+    # where they were declared and wrong on a screen. This field is the same shape and worse:
+    # it is not even authored, it is whatever an exception said, so it can carry a stack frame,
+    # a DSN fragment or a table name.
+    #
+    # NOT SANITISED HERE, deliberately. Truncating or scrubbing it in the reader would make the
+    # API lie about what the orchestrator recorded. A surface that wants it needs an
+    # operator-facing summary alongside, the same fix _THRESHOLD_DESCRIPTIONS and
+    # _DECLINED_SUMMARIES are in catalog.py.
     detail: str | None
     # {reason: count} over the closed vocabulary; empty when no refusals were recorded.
     # Optional only because a monitor may have NO last run at all, in which case the whole

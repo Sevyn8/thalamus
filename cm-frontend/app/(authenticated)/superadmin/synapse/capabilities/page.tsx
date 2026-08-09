@@ -38,7 +38,15 @@ type CapabilityView = {
   capability_id: string;
   name: string;
   resolves: boolean;
+  // SERVED AND DELIBERATELY NOT RENDERED, the same call as ThresholdView.stands_in_for.
+  // _DECLINED's reason is a verified audit note: it classifies a column as a MAPPING-PRODUCED
+  // declared scalar, cites dis_validation.provenance, and records that a RECEIPT subtype was
+  // "verified by grep across services, libs, mappings and connectors". Every word earns its
+  // place in the registry; none of it belongs on a console.
   declined_reason: string | null;
+  // The same fact in one operator-facing sentence. Guaranteed present for a declined capability
+  // by test_every_declined_capability_has_an_operator_summary in the BFF.
+  declined_summary: string | null;
   used_by: string[];
 };
 
@@ -131,12 +139,19 @@ export default async function CapabilitiesPage() {
                     <Tag tone="stop">no data exists</Tag>
                   </span>
                 </div>
-                {/* THE REASON, VERBATIM. "declined" without it flattens "nobody has
-                    written this" into "this cannot be written" — the first is a work
-                    item, the second is a fact about the data that no amount of code
-                    changes. */}
+                {/* THE REASON, IN ONE SENTENCE. Saying only "not available"
+                    flattens "nobody has written this" into "this cannot be
+                    written": the first is a work item, the second is a fact about
+                    the data that no amount of code changes, and an operator needs
+                    to know which.
+
+                    THIS RENDERED declined_reason VERBATIM UNTIL B2b-2. That value
+                    is an audit note citing dis_validation.provenance and a grep
+                    across four package trees, written for whoever revisits the
+                    decision. It is unchanged and still served; the console now
+                    draws the operator-facing summary beside it. */}
                 <p className="text-caption mt-2 text-measure leading-relaxed text-foreground-muted">
-                  {c.declined_reason}
+                  {c.declined_summary ?? "No reason has been recorded for this capability."}
                 </p>
               </div>
             ))}

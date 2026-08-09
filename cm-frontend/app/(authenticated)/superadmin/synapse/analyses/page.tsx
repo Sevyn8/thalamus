@@ -31,7 +31,16 @@ type ThresholdView = {
   name: string;
   days: number;
   fitted: boolean;
+  // SERVED AND DELIBERATELY NOT RENDERED. stands_in_for is what the constant SUBSTITUTES FOR:
+  // an argument aimed at whoever reviews the declaration, which analysis.py's __post_init__
+  // refuses to let a constant ship without. The six values run to 1302 characters and name
+  // PERCENTILE_CONT, _DECLINED, telemetry.connector_health and config.sources.schedule. It was
+  // rendered under every threshold, which put a reviewer's note in front of an operator.
+  // Kept on the type so it is visibly a choice not to draw it.
   stands_in_for: string | null;
+  // What the number DOES, in one sentence. Guaranteed present by a coverage test in the BFF
+  // (test_every_threshold_has_an_operator_description), so this never falls back to an id.
+  description: string;
 };
 
 type AnalysisView = {
@@ -113,17 +122,22 @@ export default async function AnalysesPage() {
                   <tr key={t.name} className="border-b border-border align-baseline last:border-b-0">
                     <td className="py-3 pr-4">
                       <p className="text-body font-mono">{t.name}</p>
-                      {!t.fitted && (
-                        /* RENDERED VERBATIM, NEVER SUMMARISED. Each sentence names
-                           what the number substitutes for and why that cannot be
-                           known — one cites a declined capability, another a
-                           telemetry column that is NULL in Phase A. Summarising
-                           turns a checkable statement into a shrug, and the honesty
-                           is the only thing making these constants defensible. */
-                        <p className="text-caption mt-1 text-measure leading-relaxed text-foreground-subtle">
-                          {t.stands_in_for}
-                        </p>
-                      )}
+                      {/* WHAT THE NUMBER DOES, not what it stands in for.
+                          This rendered `stands_in_for` until B2b-2, and that field
+                          is a REVIEWER's argument: analysis.py refuses to construct
+                          an unfitted threshold without one, so it exists to make
+                          somebody justify a constant. It reads like it, up to 1302
+                          characters naming PERCENTILE_CONT, a declined capability
+                          and two NULL telemetry columns. Correct where it is
+                          declared, wrong on a screen an operator opens at 09:00.
+
+                          The field is unchanged and still served; only the audience
+                          is fixed. The "a convention" pill beside this already says
+                          the number is a choice rather than a measurement, which is
+                          the honest part; this says what the choice does. */}
+                      <p className="text-caption mt-1 text-measure leading-relaxed text-foreground-subtle">
+                        {t.description}
+                      </p>
                     </td>
                     <td className="py-3 text-right align-top whitespace-nowrap">
                       <span className="text-body font-mono">{t.days} days</span>

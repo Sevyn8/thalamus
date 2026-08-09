@@ -128,3 +128,97 @@ def test_thresholds_are_not_summarised_or_reformatted() -> None:
         declared = {t.name: t.stands_in_for for t in declaration.thresholds}
         for threshold in analysis.thresholds:
             assert threshold.stands_in_for == declared[threshold.name]
+
+
+# ===========================================================================================
+# OPERATOR-FACING COPY, AND THE AUDIENCE MISTAKE IT EXISTS TO STOP REPEATING
+# ===========================================================================================
+#
+# The console rendered ``Threshold.stands_in_for`` under every threshold and ``_DECLINED``'s
+# reason under every declined capability. Both are correctly written and correctly placed; both
+# are aimed at whoever REVIEWS a declaration. One names PERCENTILE_CONT and reasons about
+# capability slices, the other cites dis_validation.provenance and records a grep audit. Neither
+# is copy for somebody reading a screen at 09:00.
+#
+# The fields stay exactly as declared and are still served. What changed is which of them the UI
+# draws, and the tests below are what stop a NEW threshold or a NEW declined capability arriving
+# with no operator-facing line, because a new one arrives in a Python deploy and nothing else
+# would notice.
+
+
+def test_every_threshold_has_an_operator_description() -> None:
+    """THE COVERAGE GATE. Modelled on test_every_rendered_capability_has_a_plain_language_name,
+    with the vacuity guard those two do not have: iterating an empty catalogue would pass while
+    checking nothing, which is the failure this repository keeps writing tests about.
+
+    Falls back to the bare threshold name in catalog._view, so an undescribed threshold renders
+    its identifier rather than crashing the request. This is where that gets refused.
+    """
+    seen = 0
+    for analysis in catalog.analyses():
+        for threshold in analysis.thresholds:
+            seen += 1
+            assert threshold.description != threshold.name, (
+                f"{analysis.analysis_id}.{threshold.name} has no operator description; "
+                "add one to _THRESHOLD_DESCRIPTIONS keyed on (analysis_id, name)"
+            )
+    assert seen >= 6, f"expected at least the six declared thresholds, saw {seen}"
+
+
+def test_threshold_descriptions_are_keyed_per_analysis() -> None:
+    """THE COLLISION THAT MAKES A NAME-ONLY KEY WRONG. ``stale_after_days`` is 90 days of no sale
+    in dead_stock and 3 days of stale data in stockout_risk; ``expires_after_days`` is 30 against
+    7. Four of the six rows share a name with a different meaning, so a flat map would render the
+    wrong sentence on each. Asserted here rather than trusted to the reader of the map.
+    """
+    by_name: dict[str, set[str]] = {}
+    for analysis in catalog.analyses():
+        for threshold in analysis.thresholds:
+            by_name.setdefault(threshold.name, set()).add(threshold.description)
+    shared = {name: texts for name, texts in by_name.items() if len(texts) > 1}
+    assert "stale_after_days" in shared, (
+        "stale_after_days no longer differs between analyses; the compound key may have "
+        "silently stopped mattering, or a description has been copied across two meanings"
+    )
+    for name, texts in shared.items():
+        assert len(texts) > 1, f"{name} renders one sentence for two different meanings"
+
+
+def test_every_declined_capability_has_an_operator_summary() -> None:
+    """The same gate for _DECLINED. A capability declared unresolvable without a plain sentence
+    would leave the page saying only that something is unavailable, with the audit note as the
+    sole explanation available to render.
+    """
+    seen = 0
+    for row in catalog.capabilities():
+        if row.resolves:
+            assert row.declined_summary is None, (
+                f"{row.capability_id} resolves but carries a declined summary"
+            )
+            continue
+        seen += 1
+        assert row.declined_summary, (
+            f"{row.capability_id} is declined with no operator summary; add one to _DECLINED_SUMMARIES"
+        )
+    assert seen >= 1, "no declined capability was seen; this test proved nothing"
+
+
+def test_the_reviewer_fields_are_still_served_unchanged() -> None:
+    """UNRENDERED IS NOT UNSERVED. Nothing in this service forbids serving a field the console
+    does not draw, and these two are the only machine-readable record of WHY a number or a
+    refusal is what it is. Dropping them from the view would move that record out of the API and
+    into a git history nobody queries. Asserted by identity against the declaration so a future
+    edit cannot quietly summarise them into the thing they were rescued from being.
+    """
+    from synapse.registry import _DECLINED, declaration_for
+
+    for analysis in catalog.analyses():
+        declaration = declaration_for(analysis.analysis_id)
+        assert declaration is not None
+        declared = {t.name: t.stands_in_for for t in declaration.thresholds}
+        for threshold in analysis.thresholds:
+            assert threshold.stands_in_for == declared[threshold.name]
+
+    for row in catalog.capabilities():
+        if not row.resolves:
+            assert row.declined_reason == _DECLINED[row.capability_id]
