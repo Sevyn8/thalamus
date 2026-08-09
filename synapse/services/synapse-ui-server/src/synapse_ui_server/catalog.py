@@ -56,6 +56,63 @@ _ANALYSIS_NAMES: Final[Mapping[str, str]] = {
 }
 
 
+# WHAT EACH NUMBER MEANS, for the person reading the screen at 09:00.
+#
+# WHY THIS EXISTS AT ALL. The console used to render ``Threshold.stands_in_for`` under each
+# number, and that field is not a description. Its name says what it is: the FITTED THING the
+# constant substitutes for. ``analysis.py``'s ``__post_init__`` refuses to construct an unfitted
+# threshold without one, so it is a gate on whoever writes a declaration, and it reads like one:
+# the six values run from 232 to 1302 characters and name PERCENTILE_CONT, ``_DECLINED``,
+# ``telemetry.connector_health``, ``missed_intervals`` and ``config.sources.schedule``. That is a
+# reviewer's argument, correctly placed and genuinely valuable, rendered to an operator.
+#
+# stands_in_for IS UNCHANGED AND STILL SERVED. It is not the enemy; it was in the wrong audience.
+#
+# KEYED ON (analysis_id, name), NOT name. ``stale_after_days`` exists in BOTH analyses and means
+# different things: 90 days of no sale before a product is dead, versus 3 days before sales data
+# is too stale to divide into stock. ``expires_after_days`` collides the same way, 30 against 7.
+# A name-only key would render the wrong sentence on four of the six rows.
+#
+# THE REGISTER IS "Flags products with stock on hand but no recent sales" -- one sentence, no
+# internal identifiers, no reasoning about why the number is what it is. The "a convention" pill
+# beside it already says the number is a choice rather than a measurement, which is the honest
+# part an operator needs; this says what the choice DOES.
+_THRESHOLD_DESCRIPTIONS: Final[Mapping[tuple[str, str], str]] = {
+    ("dead_stock", "stale_after_days"): (
+        "A product with stock but no sale for this long is treated as dead."
+    ),
+    ("dead_stock", "expires_after_days"): (
+        "How long a dead-stock alert stays worth acting on before it is retired."
+    ),
+    ("stockout_risk", "window_days"): ("How far back sales are read to work out how fast a product sells."),
+    ("stockout_risk", "at_risk_below_days"): ("Less cover than this at the current rate counts as at risk."),
+    ("stockout_risk", "stale_after_days"): (
+        "Sales data older than this is too stale to estimate a rate from."
+    ),
+    ("stockout_risk", "expires_after_days"): (
+        "How long a stockout warning stays worth acting on before it is retired."
+    ),
+}
+
+
+# WHY A CAPABILITY CANNOT BE READ, in one line.
+#
+# THE SAME DEFECT AS stands_in_for, FOUND WHILE FIXING IT. ``_DECLINED``'s reason is a verified
+# audit note: it cites ``dis_validation.provenance``, classifies a column as a MAPPING-PRODUCED
+# declared scalar, and records that a RECEIPT subtype was "verified by grep across services,
+# libs, mappings and connectors". Every word earns its place in the registry and none of it
+# belongs on a console. An operator needs to know THAT a capability cannot be read and roughly
+# why; the grep trail is for whoever revisits the decision.
+#
+# declined_reason IS UNCHANGED AND STILL SERVED, same as stands_in_for.
+_DECLINED_SUMMARIES: Final[Mapping[str, str]] = {
+    "lead_time_distribution": (
+        "Nothing records when an order was placed or when it arrived, so how long "
+        "a delivery takes cannot be measured from what the platform holds."
+    ),
+}
+
+
 @dataclass(frozen=True)
 class CapabilityView:
     """One row of E1.
@@ -69,7 +126,12 @@ class CapabilityView:
     capability_id: str
     name: str
     resolves: bool
+    # THE AUDIT NOTE. Still served, deliberately, and no longer rendered: no test in this
+    # service forbids serving a field the console does not draw, and dropping it would remove
+    # the only machine-readable record of WHY from the API. See _DECLINED_SUMMARIES.
     declined_reason: str | None
+    # The one-line operator-facing version of the same fact. None when the capability resolves.
+    declined_summary: str | None
     used_by: tuple[str, ...]
 
 
@@ -87,7 +149,12 @@ class ThresholdView:
     name: str
     days: int
     fitted: bool
+    # THE REVIEWER'S ARGUMENT. Still served, deliberately, and no longer rendered. See
+    # _THRESHOLD_DESCRIPTIONS for what replaced it on screen and why.
     stands_in_for: str | None
+    # What the number DOES, for an operator. Always present: the coverage test refuses a
+    # threshold that has no entry in _THRESHOLD_DESCRIPTIONS, so this is never a bare name.
+    description: str
 
 
 @dataclass(frozen=True)
@@ -127,6 +194,7 @@ def capabilities() -> tuple[CapabilityView, ...]:
             name=_CAPABILITY_NAMES.get(capability_id, capability_id),
             resolves=True,
             declined_reason=None,
+            declined_summary=None,
             used_by=_used_by(capability_id),
         )
         for capability_id in registered_ids()
@@ -137,6 +205,7 @@ def capabilities() -> tuple[CapabilityView, ...]:
             name=_CAPABILITY_NAMES.get(capability_id, capability_id),
             resolves=False,
             declined_reason=_DECLINED[capability_id],
+            declined_summary=_DECLINED_SUMMARIES.get(capability_id),
             used_by=_used_by(capability_id),
         )
         for capability_id in declined_ids()
@@ -152,7 +221,17 @@ def _view(declaration: AnalysisDeclaration) -> AnalysisView:
         requires=tuple(r.capability_id for r in declaration.requires),
         max_rung=declaration.max_rung.value,
         thresholds=tuple(
-            ThresholdView(name=t.name, days=t.days, fitted=t.fitted, stands_in_for=t.stands_in_for)
+            ThresholdView(
+                name=t.name,
+                days=t.days,
+                fitted=t.fitted,
+                stands_in_for=t.stands_in_for,
+                # FALLS BACK TO THE BARE NAME, and the coverage test is what stops that ever
+                # being what an operator sees. A KeyError here would take the whole catalogue
+                # down for one missing sentence; a test that fails the build is the right place
+                # to refuse, not the request path.
+                description=_THRESHOLD_DESCRIPTIONS.get((declaration.id, t.name), t.name),
+            )
             for t in declaration.thresholds
         ),
         holdout_percent=declaration.holdout.holdout_percent if declaration.holdout else None,
