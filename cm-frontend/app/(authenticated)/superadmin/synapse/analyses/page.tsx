@@ -3,6 +3,7 @@ import {
   Column,
   Footnote,
   SectionHead,
+  SubNav,
   SynapseDown,
   Tag,
 } from "@/components/synapse/primitives";
@@ -53,6 +54,7 @@ export default async function AnalysesPage() {
         <div>
           <PageHeader title="Monitors" subtitle="What Synapse watches for." />
           <Column>
+            <SubNav current="analyses" />
             <SynapseDown message={error.message} />
           </Column>
         </div>
@@ -69,6 +71,7 @@ export default async function AnalysesPage() {
       />
 
       <Column>
+        <SubNav current="analyses" />
         {analyses.map((a) => (
           <section key={a.analysis_id}>
             <SectionHead>{a.name}</SectionHead>

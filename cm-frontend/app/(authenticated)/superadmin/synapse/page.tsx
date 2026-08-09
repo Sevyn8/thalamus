@@ -7,6 +7,7 @@ import {
   SilentModePill,
   Stat,
   StatStrip,
+  SubNav,
   SynapseDown,
   Tag,
   daysSince,
@@ -110,6 +111,7 @@ export default async function SynapseFleetPage() {
         <div>
           <PageHeader title="Synapse" subtitle={SUBTITLE} rightSlot={<SilentModePill />} />
           <Column>
+            <SubNav current="overview" />
             <SynapseDown message={error.message} />
           </Column>
         </div>
@@ -132,6 +134,7 @@ export default async function SynapseFleetPage() {
       <PageHeader title="Synapse" subtitle={SUBTITLE} rightSlot={<SilentModePill />} />
 
       <Column>
+        <SubNav current="overview" />
         {/* THE THING NEEDING A PERSON IS A BANNER, NOT A ROW THAT LOOKS LIKE THE
             OTHERS. It also comes before the stats: a count of problems is less
             useful than the problem, and "needs a person: 1" as a tile was the

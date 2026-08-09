@@ -10,6 +10,7 @@ import {
   SilentModePill,
   Stat,
   StatStrip,
+  SubNav,
   SynapseDown,
   isOpen,
   plural,
@@ -191,6 +192,7 @@ export default async function AlertsInboxPage({
       <div>
         <PageHeader title="Alerts" subtitle={SUBTITLE} rightSlot={<SilentModePill />} />
         <Column>
+          <SubNav current="alerts" />
           <SynapseDown message={error.message} />
         </Column>
       </div>
@@ -228,6 +230,7 @@ export default async function AlertsInboxPage({
       <PageHeader title="Alerts" subtitle={SUBTITLE} rightSlot={<SilentModePill />} />
 
       <Column>
+        <SubNav current="alerts" />
         <StatStrip>
           {STATES.map((state) => (
             <Stat
@@ -257,6 +260,22 @@ export default async function AlertsInboxPage({
                 href={chipHref(state)}
               />
             ))}
+            {/* THE CHIPS ARE FLEET-WIDE AND SAY SO WHILE A FILTER IS ON.
+                /alerts/state-counts takes no parameters: the counts are of the
+                whole fleet by construction, deliberately, because deriving them
+                from the returned page would understate every number the moment
+                the limit bites. That is right and it READS as a bug when the
+                list beside them is filtered to nothing, so the qualifier appears
+                exactly when the two can disagree.
+
+                A FILTERED COUNT IS NOT AVAILABLE. There is no per-filter count
+                endpoint, and counting the returned rows would produce a floor
+                capped at the list limit, which is the class of claim B2a removed
+                from the tenant page. The screen states the number it has and
+                names its scope rather than implying a narrower one. */}
+            {filtered ? (
+              <span className="text-micro text-foreground-subtle">counts are fleet-wide</span>
+            ) : null}
           </div>
 
           {filters.state ? <input type="hidden" name="state" value={filters.state} /> : null}
@@ -329,9 +348,21 @@ export default async function AlertsInboxPage({
           </SectionHead>
 
           {alerts.length === 0 ? (
+            /* THE EMPTY STATE CARRIES THE FLEET-WIDE NUMBER, which is what makes
+               "Open 6" beside an empty list stop reading as a contradiction. Both
+               statements were already true and the screen only made one of them:
+               the chip said how many exist anywhere, the list said none match
+               here, and nothing on the page connected the two. Now the sentence
+               that explains the emptiness is the one that names the other number.
+
+               Uses the counts already fetched for the chips, so this costs no
+               request and cannot disagree with them. */
             <p className="text-body text-foreground-muted">
               {filtered
-                ? "No alerts match these filters."
+                ? `No alerts match these filters. Across all monitors and clients, ${plural(
+                    counts.open ?? 0,
+                    "alert",
+                  )} ${(counts.open ?? 0) === 1 ? "is" : "are"} open.`
                 : "No alerts have been raised yet, by any monitor, for any client."}
             </p>
           ) : (

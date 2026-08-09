@@ -226,6 +226,135 @@ export function Breadcrumb({
   );
 }
 
+// ---------------------------------------------------------------------------
+// SECTION NAVIGATION: the mockups' left rail, as a strip inside the section
+// ---------------------------------------------------------------------------
+//
+// THE MOCKUPS' RAIL IS NOT THIS APP'S SIDEBAR. Each mockup draws a dark rail
+// listing Overview / Monitors / Alerts / Tenants / Runs and then Capabilities /
+// Analyses, because each mockup is a standalone Synapse app whose entire
+// navigation that rail is. cm-frontend already has a product-wide sidebar with
+// five groups, of which Synapse is ONE ENTRY under Modules. Copying the rail
+// into it would make Synapse's surfaces permanently as prominent as the whole of
+// Governance, from every page in the product, so the rail maps to SECTION
+// navigation instead.
+//
+// PASSES `current` RATHER THAN READING THE PATH. usePathname would make this a
+// client component, and this file is server-safe on purpose: every Synapse page
+// is a server component so the BFF stays unreachable from a browser. Each page
+// naming itself is also how Breadcrumb already works here.
+//
+// FIVE ENTRIES, NOT SEVEN, AND BOTH ABSENCES ARE DELIBERATE. "Monitors" would
+// point at a catalog page that does not exist yet, and "Tenants" at a roster
+// that lives on Overview. A nav entry pointing at nothing is a dead control, and
+// two entries pointing at one page is worse than five honest ones. Both arrive
+// with their pages.
+export type SynapseSection =
+  | "overview"
+  | "alerts"
+  | "runs"
+  | "capabilities"
+  | "analyses";
+
+const SECTIONS: ReadonlyArray<{ key: SynapseSection; label: string; href: string; group: string }> = [
+  { key: "overview", label: "Overview", href: "/superadmin/synapse", group: "Synapse" },
+  { key: "alerts", label: "Alerts", href: "/superadmin/synapse/alerts", group: "Synapse" },
+  { key: "runs", label: "Runs", href: "/superadmin/synapse/runs", group: "Synapse" },
+  {
+    key: "capabilities",
+    label: "Capabilities",
+    href: "/superadmin/synapse/capabilities",
+    group: "Platform",
+  },
+  { key: "analyses", label: "Analyses", href: "/superadmin/synapse/analyses", group: "Platform" },
+];
+
+export function SubNav({ current }: { current: SynapseSection }) {
+  return (
+    <nav aria-label="Synapse sections" className="flex flex-wrap items-center gap-x-1 gap-y-2">
+      {SECTIONS.map((section, index) => {
+        // The mockups' rail splits Synapse from Platform with a group label. A
+        // horizontal strip has no room for two headings, so the boundary is a
+        // rule: the same information, in the space available.
+        //
+        // READS THE PREVIOUS ENTRY BY INDEX rather than carrying a running
+        // variable. SECTIONS is a module constant, so the comparison is pure;
+        // a `let` reassigned inside the map is a mutation during render, which
+        // React's immutability rule refuses and which would be wrong under any
+        // future re-render or reordering.
+        const boundary = index > 0 && SECTIONS[index - 1]!.group !== section.group;
+        const active = section.key === current;
+        return (
+          <span key={section.key} className="flex items-center">
+            {boundary ? (
+              <span aria-hidden="true" className="mx-2 h-4 w-px shrink-0 bg-border" />
+            ) : null}
+            <a
+              href={section.href}
+              aria-current={active ? "page" : undefined}
+              className={`text-caption rounded px-2.5 py-1.5 transition-colors duration-150 ease-out ${
+                active
+                  ? "bg-surface-raised text-foreground font-medium"
+                  : "text-foreground-muted hover:bg-surface-raised hover:text-foreground"
+              }`}
+            >
+              {section.label}
+            </a>
+          </span>
+        );
+      })}
+    </nav>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TABS: one route, one fetch set, the tab in the query string
+// ---------------------------------------------------------------------------
+//
+// PLAIN LINKS, NOT components/ui/tabs.tsx. That one is base-ui, client-side, with
+// a sliding indicator and its own state machine; adopting it would turn the
+// tenant page into a client island purely to switch sections, and the whole
+// reason these pages are server components is that the BFF is not reachable from
+// a browser. The state lives in the URL, which also makes a tab linkable and
+// survives a refresh. Same argument the capabilities page made for <details>.
+//
+// COUNT IS OPTIONAL AND RENDERS ONLY WHEN GIVEN. A tab showing "0" where the
+// number is simply unknown would be a claim; absence is not.
+export function Tabs({
+  tabs,
+  current,
+}: {
+  tabs: ReadonlyArray<{ key: string; label: string; href: string; count?: number }>;
+  current: string;
+}) {
+  return (
+    <nav aria-label="Sections" className="flex flex-wrap gap-x-1 border-b border-border">
+      {tabs.map((tab) => {
+        const active = tab.key === current;
+        return (
+          <a
+            key={tab.key}
+            href={tab.href}
+            aria-current={active ? "page" : undefined}
+            className={`text-body -mb-px border-b-2 px-3.5 py-2.5 transition-colors duration-150 ease-out ${
+              active
+                ? "border-primary text-foreground font-semibold"
+                : "border-transparent text-foreground-muted hover:text-foreground"
+            }`}
+          >
+            {tab.label}
+            {tab.count !== undefined ? (
+              <span className="text-micro ml-1.5 rounded-full bg-[var(--info-bg)] px-1.5 py-0.5 font-semibold tabular-nums text-info">
+                {tab.count}
+              </span>
+            ) : null}
+          </a>
+        );
+      })}
+    </nav>
+  );
+}
+
 export function SectionHead({ children }: { children: ReactNode }) {
   return (
     <h2 className="text-label mt-6 mb-3 border-b border-border pb-1.5 text-foreground-subtle first:mt-0">
@@ -496,6 +625,27 @@ export function skipChips(refusals: Refusals): Array<[string, number]> {
 //
 // NULL FOR AN UNPARSEABLE INSTANT, so a caller omits the time rather than printing "Invalid
 // Date" at an operator.
+//
+// THE LOCALE IS en-IN, AND IT IS LOAD-BEARING RATHER THAN COSMETIC. `timeZoneName: "short"`
+// resolves through CLDR PER LOCALE, so the same zone renders differently depending on who is
+// asking. Measured:
+//
+//                        en-GB        en-IN
+//     Asia/Kolkata       GMT+5:30     IST
+//     Europe/London      BST          GMT+1
+//     Europe/Warsaw      CEST         GMT+2
+//     America/New_York   GMT-4        GMT-4
+//
+// NO LOCALE GIVES AN ABBREVIATION EVERYWHERE, so this is a choice about which zones read well
+// rather than a bug with a correct fix. Every production tenant is Asia/Kolkata, so en-IN is
+// the one that serves the fleet that exists; elsewhere it degrades to a UTC offset, which is
+// less friendly and never wrong. It was en-GB, which rendered the sweep as "03:00 GMT+5:30".
+//
+// THIS BECOMES A REAL SETTING IF THE FLEET SPANS REGIONS. At that point a console-wide constant
+// is the wrong shape: the honest answer is the viewer's own locale, or the tenant's, and either
+// is a decision rather than a default.
+const CONSOLE_LOCALE = "en-IN";
+
 export function wallClock(
   iso: string,
   timeZone: string,
@@ -515,7 +665,10 @@ export function wallClock(
   for (const zone of [timeZone, "UTC"]) {
     let parts: Intl.DateTimeFormatPart[];
     try {
-      parts = new Intl.DateTimeFormat("en-GB", { ...options, timeZone: zone }).formatToParts(at);
+      parts = new Intl.DateTimeFormat(CONSOLE_LOCALE, {
+        ...options,
+        timeZone: zone,
+      }).formatToParts(at);
     } catch {
       continue;
     }

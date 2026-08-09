@@ -6,6 +6,7 @@ import {
   Footnote,
   Row,
   SectionHead,
+  SubNav,
   SynapseDown,
   Tag,
 } from "@/components/synapse/primitives";
@@ -51,6 +52,7 @@ export default async function CapabilitiesPage() {
         <div>
           <PageHeader title="Capabilities" subtitle="What Synapse can read." />
           <Column>
+            <SubNav current="capabilities" />
             <SynapseDown message={error.message} />
           </Column>
         </div>
@@ -70,6 +72,7 @@ export default async function CapabilitiesPage() {
       />
 
       <Column>
+        <SubNav current="capabilities" />
         <section>
           <SectionHead>Working</SectionHead>
           {working.map((c) => (

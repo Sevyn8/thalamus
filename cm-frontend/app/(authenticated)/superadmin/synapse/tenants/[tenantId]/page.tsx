@@ -1,12 +1,16 @@
 import { notFound } from "next/navigation";
 
 import { PageHeader } from "@/components/shared/PageHeader";
+import { RunHistory, type RunHistoryRow } from "@/components/synapse/RunHistory";
 import {
   AlertStateTag,
   Attention,
   Breadcrumb,
   Column,
+  Fact,
+  Facts,
   Footnote,
+  MonoChip,
   type Refusals,
   Row,
   SectionHead,
@@ -14,6 +18,7 @@ import {
   Stat,
   StatStrip,
   SynapseDown,
+  Tabs,
   Tag,
   UnknownStateTag,
   asAlertState,
@@ -96,32 +101,55 @@ type TenantDetail = {
 // fleet page. A tenant staler than this has every rate-based monitor finding nothing.
 const STALE_AFTER_DAYS = 3;
 
-// OUTCOMES ARE RENDERED, NOT TRANSLATED, with one exception. 'satisfied' is engineering voice
-// for "the run completed", so it reads "completed". 'blocked', 'undeclared' and 'failed' are
-// rendered as-is and muted: each names a real distinct state, none has an agreed plain-English
-// equivalent, and inventing one would put a word on screen that no log or run row contains.
-function outcomeLabel(outcome: string | null): string {
-  if (outcome === null) return "unfinished";
-  return outcome === "satisfied" ? "completed" : outcome;
-}
+// outcomeLabel WAS HERE AND IS DELETED. It rendered 'satisfied' as "completed" for this page's
+// own flat run list, which is precisely the uniform label B1 replaced on the fleet page: a run
+// that assessed nothing and a run that raised six alerts both read "completed". The Runs tab now
+// calls RunHistory, whose outcome ladder derives what the run actually came to, so a second
+// vocabulary for the same column no longer exists here.
 
 // The BFF bounds this at _MAX_ROWS = 500 and floors it at 1. Asking for the maximum is now a
 // per-client maximum rather than a share of a fleet-wide one.
 const RUNS_LIMIT = 500;
 
-type RunRow = {
-  run_id: string;
-  tenant_id: string;
-  tenant_name: string;
-  analysis_id: string;
-  slot: string;
-  outcome: string | null;
-  actions_proposed: number | null;
-  actions_appended: number | null;
-  started_at: string;
-  finished_at: string | null;
-  refusals: Refusals | undefined;
+// THE SAME SHAPE THE FLEET RUNS PAGE READS, imported rather than restated. This file used to
+// declare its own narrower RunRow and draw plain rows from it; the Runs tab now calls the one
+// RunHistory component, so a second description of the same table would only be a way to
+// disagree with it.
+type RunRow = RunHistoryRow;
+
+// THRESHOLDS COME FROM /analyses, which is the registry rather than anything per-tenant. The
+// Monitors tab shows what each monitor's numbers ARE; synapse.actions freezes the values in
+// force at detection onto each action, so this is the current declaration and is labelled as
+// such rather than as what produced any particular alert.
+type ThresholdView = {
+  name: string;
+  days: number;
+  fitted: boolean;
+  stands_in_for: string | null;
 };
+
+type AnalysisCatalogRow = {
+  analysis_id: string;
+  name: string;
+  version: string;
+  requires: string[];
+  max_rung: string;
+  thresholds: ThresholdView[];
+  holdout_percent: number | null;
+};
+
+// THE FIVE TABS, and what each is allowed to claim.
+//
+// ?tab= ON ONE ROUTE rather than five nested routes. One route means one set of fetches and one
+// entry in MUST_BE_DYNAMIC; five would mean four more of each, and four more chances for one to
+// be added without its guard. The inbox already keeps its filter state in the query string for
+// the same reason, and a tab stays linkable and survives a refresh.
+const TABS = ["overview", "monitors", "alerts", "runs", "data"] as const;
+type TabKey = (typeof TABS)[number];
+
+function asTab(raw: string | undefined): TabKey {
+  return TABS.includes(raw as TabKey) ? (raw as TabKey) : "overview";
+}
 
 // "Last ran 2026-08-07 · 12 series refused — sales data too old". The full
 // sentence rather than the fleet table's terse chip: this is the screen where an
@@ -134,10 +162,13 @@ function monitorNote(state: AnalysisState): string {
 
 export default async function TenantPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ tenantId: string }>;
+  searchParams: Promise<{ tab?: string }>;
 }) {
   const { tenantId } = await params;
+  const tab = asTab((await searchParams).tab);
 
   let detail: TenantDetail;
   try {
@@ -187,10 +218,38 @@ export default async function TenantPage({
     if (!(error instanceof SynapseUnavailable)) throw error;
   }
 
+  // THE DECLARATIONS, for the Monitors tab's thresholds. Degrades to an empty catalogue like
+  // every other secondary fetch here: the monitor rows are worth showing without their numbers,
+  // and a registry read failing must not blank a page about one client's data.
+  let catalogue: AnalysisCatalogRow[] = [];
+  try {
+    ({ analyses: catalogue } = await synapseGet<{ analyses: AnalysisCatalogRow[] }>("/analyses"));
+  } catch (error) {
+    if (!(error instanceof SynapseUnavailable)) throw error;
+  }
+  const thresholdsFor = new Map(catalogue.map((a) => [a.analysis_id, a.thresholds]));
+
   const staleDays = daysSince(detail.latest_sale);
   const isStale = staleDays === null || staleDays > STALE_AFTER_DAYS;
   const alerting = detail.analyses.filter((a) => (a.actions_proposed ?? 0) > 0);
   const openAlerts = detail.open_alerts;
+
+  const tabHref = (key: TabKey) =>
+    key === "overview"
+      ? `/superadmin/synapse/tenants/${tenantId}`
+      : `/superadmin/synapse/tenants/${tenantId}?tab=${key}`;
+
+  // THE COUNT ON THE ALERTS TAB IS THE SERVER'S open_alerts, not alerts.length. The list is
+  // capped at ALERTS_LIMIT and the tab makes a claim about the CLIENT, which is the distinction
+  // B2a spent a whole slice separating. No other tab carries a count, because no other number
+  // here is a property of the tenant rather than of the page.
+  const tabs = [
+    { key: "overview", label: "Overview", href: tabHref("overview") },
+    { key: "monitors", label: "Monitors", href: tabHref("monitors") },
+    { key: "alerts", label: "Alerts", href: tabHref("alerts"), count: openAlerts },
+    { key: "runs", label: "Runs", href: tabHref("runs") },
+    { key: "data", label: "Data", href: tabHref("data") },
+  ];
 
   return (
     <div>
@@ -203,7 +262,9 @@ export default async function TenantPage({
       <Column>
         <Breadcrumb tenant={detail.name} />
 
-        {isStale && (
+        <Tabs tabs={tabs} current={tab} />
+
+        {tab === "overview" && isStale && (
           <Attention
             title={
               staleDays === null
@@ -218,6 +279,7 @@ export default async function TenantPage({
           />
         )}
 
+        {tab === "overview" && (
         <StatStrip>
           <Stat n={detail.products} label={detail.products === 1 ? "product watched" : "products watched"} />
           <Stat n={detail.sales_seen} label={detail.sales_seen === 1 ? "sale ingested" : "sales ingested"} />
@@ -244,7 +306,9 @@ export default async function TenantPage({
             }
           />
         </StatStrip>
+        )}
 
+        {tab === "alerts" && (
         <section>
           <SectionHead>Latest alerts</SectionHead>
           {/* LISTS THE ALERTS THEMSELVES NOW, not a per-monitor count. The count was all
@@ -312,8 +376,19 @@ export default async function TenantPage({
               );
             })
           )}
-        </section>
 
+          {/* MOVED HERE FROM THE FOOT OF THE PAGE, unchanged. It explains the alert
+              list and nothing else, so under tabs it belongs with what it explains. */}
+          <div className="mt-4">
+            <Footnote>
+              Duplicate alerts for the same product are suppressed. Monitors re-check
+              automatically when fresh data arrives.
+            </Footnote>
+          </div>
+        </section>
+        )}
+
+        {tab === "monitors" && (
         <section>
           <SectionHead>Monitors</SectionHead>
           {detail.analyses.length === 0 ? (
@@ -335,6 +410,21 @@ export default async function TenantPage({
                       <span className="text-micro mt-1 block font-mono text-foreground-subtle">
                         {state.analysis_id} · {state.cadence} · {state.timezone}
                       </span>
+                      {/* THE DECLARED NUMBERS, from /analyses. THE CURRENT declaration, not
+                          the one that produced any particular alert: synapse.actions freezes
+                          the thresholds in force at detection onto each action, which is why
+                          the alert detail page shows its own frozen copy and this does not
+                          claim to be it. Absent entirely when the registry read failed,
+                          rather than rendered as an empty row implying no thresholds. */}
+                      {(thresholdsFor.get(state.analysis_id) ?? []).length > 0 ? (
+                        <span className="mt-1.5 flex flex-wrap gap-1.5">
+                          {(thresholdsFor.get(state.analysis_id) ?? []).map((t) => (
+                            <MonoChip key={t.name}>
+                              {t.name} {t.days}d
+                            </MonoChip>
+                          ))}
+                        </span>
+                      ) : null}
                     </>
                   }
                   right={
@@ -351,32 +441,85 @@ export default async function TenantPage({
               );
             })
           )}
-        </section>
 
+          {/* NO ENABLE BUTTONS, and their absence is the slice boundary rather than an
+              oversight. The mockup's Monitors tab is also the proposed provisioning surface
+              (5e): Enable and Configure would write synapse.provision through a scoped role.
+              Nothing here writes anything, so rendering a button that does nothing would be a
+              dead control, and rendering one that writes would be a slice nobody approved. */}
+          <div className="mt-4">
+            <Footnote>
+              Monitors are enabled in the repository, not here. Thresholds shown are the current
+              declaration; each alert carries its own frozen copy of the numbers in force when it
+              was raised.
+            </Footnote>
+          </div>
+        </section>
+        )}
+
+        {tab === "runs" && (
         <section>
           <SectionHead>Run history</SectionHead>
+          {/* THE SAME COMPONENT THE FLEET RUNS PAGE USES. This was a flat list of rows
+              carrying slot, outcome and a raised count, which was a second rendering of
+              synapse.run with its own vocabulary: it said "completed" for every satisfied
+              run, including ones that assessed nothing, which is exactly the uniform green
+              pill B1 removed from the fleet page. One table, one rendering.
+
+              showTenant is off because every row here is the same client, and repeating the
+              name down the column pushes the monitor off its own line. */}
           {tenantRuns.length === 0 ? (
             <p className="text-body text-foreground-muted">No runs recorded for this client yet.</p>
           ) : (
-            tenantRuns.map((run) => (
-              <Row
-                key={run.run_id}
-                title={ANALYSIS_NAMES[run.analysis_id] ?? run.analysis_id}
-                meta={
-                  <>
-                    {run.slot} · {outcomeLabel(run.outcome)} ·{" "}
-                    {plural(run.actions_proposed ?? 0, "alert")} raised
-                  </>
-                }
-              />
-            ))
+            <RunHistory
+              runs={tenantRuns}
+              truncated={tenantRuns.length >= RUNS_LIMIT}
+              limit={RUNS_LIMIT}
+              showTenant={false}
+            />
           )}
         </section>
+        )}
 
-        <Footnote>
-          Duplicate alerts for the same product are suppressed. Monitors re-check automatically
-          when fresh data arrives.
-        </Footnote>
+        {tab === "data" && (
+        <section>
+          <SectionHead>Data</SectionHead>
+          {/* WHAT THIS CLIENT HAS SENT, which is the question the other four tabs keep
+              running into. Every figure is one the BFF already serves on /tenants/{id}:
+              nothing here is derived, and nothing the mockup showed but the endpoint does
+              not carry appears at all. */}
+          <Facts>
+            <Fact
+              label="Last sale ingested"
+              value={detail.latest_sale ?? "never"}
+              note={
+                detail.latest_sale === null
+                  ? "no sale has ever arrived"
+                  : staleDays === null
+                    ? undefined
+                    : `${plural(staleDays, "day")} ago`
+              }
+            />
+            <Fact label="Sales ingested" value={detail.sales_seen.toLocaleString()} />
+            <Fact label="Products watched" value={detail.products.toLocaleString()} />
+            <Fact label="Stores" value={detail.stores.toLocaleString()} />
+            <Fact
+              label="Alerts recorded"
+              value={detail.actions_recorded.toLocaleString()}
+              note="all time"
+            />
+          </Facts>
+
+          <div className="mt-4">
+            <Footnote>
+              Freshness is judged against the strictest window any monitor declares, currently{" "}
+              {plural(STALE_AFTER_DAYS, "day")}. A client staler than that has every rate-based
+              monitor finding nothing, and the run history says so per run rather than leaving it
+              to be inferred from an empty alert list.
+            </Footnote>
+          </div>
+        </section>
+        )}
       </Column>
     </div>
   );
