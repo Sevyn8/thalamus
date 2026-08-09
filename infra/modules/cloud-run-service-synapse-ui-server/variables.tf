@@ -22,7 +22,7 @@ variable "image" {
 
 variable "service_account_id" {
   type        = string
-  description = "Account id for this service's DEDICATED runtime identity. Holds secretAccessor on TWO secrets: the synapse_reader DSN and, since slice 5d, the synapse_lifecycle DSN. Not the writer. The lifecycle grant is INSERT on synapse.action_events and nothing else, so the console can record a snooze, dismissal or acknowledgement WITHOUT being able to write synapse.actions, which is the orchestrator's table via synapse_writer."
+  description = "Account id for this service's DEDICATED runtime identity. Holds secretAccessor on THREE secrets: the synapse_reader DSN, the synapse_lifecycle DSN (slice 5d) and the synapse_provisioner DSN (slice 5e). NOT the writer, which is the orchestrator's identity and holds INSERT on synapse.actions. Each write credential is one verb on one table: lifecycle appends to synapse.action_events so the console can record a snooze, dismissal or acknowledgement, and provisioner inserts into synapse.provision so the console can enable a monitor. Neither can UPDATE anything, so neither can edit or undo what it wrote."
   default     = "synapse-ui-server"
 }
 
@@ -46,6 +46,17 @@ variable "secret_lifecycle_url" {
   type        = string
   description = "Secret Manager id of the synapse_lifecycle DSN. INSERT on synapse.action_events and nothing else. Arrived with slice 5d; the service refuses to start without it."
   default     = "synapse-lifecycle-database-url"
+}
+
+variable "secret_provisioner_url" {
+  type        = string
+  description = "Secret Manager id of the synapse_provisioner DSN. INSERT on synapse.provision, plus SELECT on identity_mirror.tenants and canonical.store_sku_current_position because the enablement pre-flight runs in the same transaction as the insert and cannot execute without them. No UPDATE, so the console can enable a monitor and cannot disable one or edit a timezone. Not synapse_writer and not synapse_lifecycle. Created OUT OF BAND like the other two DSN secrets; grants come from infra/db-setup/sql/05_synapse_provisioner_grant.sql. Arrived with slice 5e; the service refuses to start without it."
+  default     = "synapse-provisioner-database-url"
+}
+
+variable "cm_api_base_url" {
+  type        = string
+  description = "CM_API_BASE_URL - Customer Master's origin, called SERVER-SIDE by the provisioning gate. Provisioning is authorized by asking CM's /api/v1/me/can-do whether the caller holds ADMIN.TENANTS.CONFIGURE.GLOBAL, forwarding the caller's own Auth0 token; the gate denies on any failure including a CM outage. Synapse defines no permission of its own and holds no copy of CM's model. Pass module.cm_service.service_url by reference rather than a copied literal, so the two cannot drift. No trailing slash: config.py strips one anyway, because a doubled slash produces a 404 that reads like a missing endpoint. The service refuses to start without it, because a service that cannot evaluate its own authorization must not serve the route."
 }
 
 variable "dis_expected_database" {

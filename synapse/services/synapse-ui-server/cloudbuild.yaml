@@ -28,12 +28,15 @@
 #   grep -rn "synapse-ui-server:" infra/envs/
 #
 # NO BUILD ARGS. Everything the service needs is RUNTIME env supplied by Cloud Run
-# (SYNAPSE_READER_URL, SYNAPSE_LIFECYCLE_URL, SYNAPSE_JWT_ISSUER,
-# SYNAPSE_JWT_AUDIENCE, DIS_EXPECTED_DATABASE), so one image is promotable across
-# environments unchanged. SYNAPSE_LIFECYCLE_URL arrived in slice 5d and the service
-# REFUSES TO START without it — a v6 revision deployed against a module that does
-# not set it will fail readiness, not degrade
-# and no credential is ever baked in.
+# (SYNAPSE_READER_URL, SYNAPSE_LIFECYCLE_URL, SYNAPSE_PROVISION_URL, CM_API_BASE_URL,
+# SYNAPSE_JWT_ISSUER, SYNAPSE_JWT_AUDIENCE, DIS_EXPECTED_DATABASE), so one image is
+# promotable across environments unchanged, and no credential is ever baked in.
+#
+# EVERY ONE OF THOSE IS REQUIRED AND THE SERVICE REFUSES TO START WITHOUT IT, which is
+# a deploy hazard rather than a degradation: SYNAPSE_LIFECYCLE_URL arrived in slice 5d
+# against a terraform module that did not set it, and v6 and v7 both failed readiness
+# while staging kept serving v5 behind a passing apply. Slice 5e adds two more, so the
+# module change and the image bump are one commit or they are an outage.
 #
 # NO DOCKER_BUILDKIT=1: this Dockerfile uses neither a `# syntax=` directive nor
 # heredoc COPYs, so enabling it would imply a requirement that does not exist.

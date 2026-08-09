@@ -1,7 +1,7 @@
 [project]
 name = "synapse-ui-server"
 version = "0.0.0"
-description = "Synapse's read-only backend-for-frontend (slice 8a). Serves the SUPERADMIN console in cm-frontend: fleet, one tenant, runs, capabilities and analyses. PLATFORM-only, reader credential only, no write path of any kind."
+description = "Synapse's backend-for-frontend. Serves the SUPERADMIN console in cm-frontend: fleet, one tenant, runs, alerts, capabilities and analyses. PLATFORM-only. Reads as synapse_reader; writes exactly two tables through two narrow roles, synapse.action_events as synapse_lifecycle (5d) and synapse.provision as synapse_provisioner (5e). Never synapse_writer, which is the orchestrator's."
 requires-python = ">=3.12"
 dependencies = [
   # The registry, the declarations and the resolvers. THE REASON THIS SERVICE
@@ -26,6 +26,12 @@ dependencies = [
   "sqlalchemy[asyncio]>=2.0.36",
   "psycopg[binary]>=3.2",
   "pydantic>=2.9",
+  # THE PROVISIONING GATE'S ONE OUTBOUND CALL (5e). Customer Master owns the
+  # permission model, so provisioning asks CM's /me/can-do rather than defining
+  # a Synapse-local answer. Async because this sits on a request path: a
+  # blocking client here would hold the event loop for the whole round trip.
+  # Already in dis/uv.lock as a dis root dependency, so this pins no new version.
+  "httpx>=0.27",
 ]
 
 [build-system]

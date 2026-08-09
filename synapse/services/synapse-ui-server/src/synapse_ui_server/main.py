@@ -1,4 +1,9 @@
-"""The app. Six read-only PLATFORM routes, one reader engine, no write path.
+"""The app. PLATFORM routes over one reader engine, plus two narrow write paths.
+
+TWO WRITES, TWO CREDENTIALS, AND NEITHER CAN DO THE OTHER'S JOB. ``lifecycle`` appends an operator
+decision to ``synapse.action_events`` as ``synapse_lifecycle`` (5d); ``provision`` enables one
+analysis for one tenant in ``synapse.provision`` as ``synapse_provisioner`` (5e). Three engines,
+three roles, and the reader serves every GET.
 
 WHAT ``/readyz`` PROVES, and it is deliberately more than "the process is up": it opens a real
 PLATFORM session, which exercises dis-rls's first-use guard — the target database is the expected
@@ -23,6 +28,7 @@ from dis_core.logging import configure_logging, get_logger
 from dis_rls import create_rls_engine, rls_platform_session
 from synapse_ui_server import catalog, reads
 from synapse_ui_server.auth import Auth0Verifier, AuthError, Identity, require_platform
+from synapse_ui_server.cm_permissions import require_tenant_configure
 from synapse_ui_server.config import Config, load_config
 from synapse_ui_server.lifecycle import (
     Decision,
@@ -30,6 +36,16 @@ from synapse_ui_server.lifecycle import (
     LifecycleVerb,
     record_decision,
 )
+from synapse_ui_server.provision import (
+    CADENCE,
+    RUNG,
+    EnablementRefusedError,
+    enable_analysis,
+)
+
+# RE-EXPORTED so tests can patch the name THIS module calls. A test that patched
+# provision.enable_analysis instead would pass against a main.py that had stopped calling it.
+__all__ = ["EnableBody", "create_app", "enable_analysis"]
 
 
 class DecisionBody(BaseModel):
@@ -42,33 +58,87 @@ class DecisionBody(BaseModel):
     snoozed_until: date | None = None
 
 
+class EnableBody(BaseModel):
+    """What the console posts to enable a monitor. ONE FIELD, AND THE OMISSIONS ARE THE CONTRACT.
+
+    THERE IS NO ``cadence`` AND NO ``rung`` HERE, and adding either would be the defect. They are
+    constants in provision.py, and the reason is blast radius rather than tidiness: the envelope
+    check runs when the ORCHESTRATOR LOADS the table and refuses the WHOLE ENUMERATION, so one
+    wrong rung stops the 04:00 sweep for every tenant. The DDL permits 'suggest' and nothing
+    implements it, so a field here backed by the CHECK constraint would accept a fleet-breaking
+    value that passes every database constraint.
+
+    THERE IS NO ``tenant_id`` AND NO ``analysis_id`` EITHER. Both are path parameters, and both
+    reach the path from a LIST rather than a text field: the tenant from the fleet roster, the
+    analysis from the registry catalogue the same page already renders. An unknown tenant produces
+    a healthy run with zero actions for ever, and an undeclared analysis stops the whole sweep;
+    neither should be typeable.
+
+    THERE IS NO WAY TO CHANGE AN EXISTING TIMEZONE. This body is only read on the enable path, and
+    that path refuses a pair that already exists. The zone feeds every action's ``as_of``, which
+    sits inside an append-only idempotency index that cannot be re-keyed.
+    """
+
+    timezone: str
+
+
 _log = get_logger("synapse-ui-server")
 
 _REASON_STATUS = {"missing": 401, "invalid": 401, "forbidden": 403}
+
+# EnablementRefusedError.reason to HTTP status. A MAPPING RATHER THAN A CHAIN OF ifs, so a reason added
+# to provision.py without a decision here fails loudly on the .get() default rather than being
+# filed under 422 by accident.
+#
+#   unknown_tenant   404. The tenant is not in the mirror, which is the same answer every other
+#                    route here gives for an id it cannot resolve.
+#   unknown_analysis 404. The path named an analysis that does not exist. Not 422: the id is a
+#                    path segment naming a resource, and a client that reached it from the
+#                    catalogue cannot produce this.
+#   bad_timezone     422. The request was understood and refused, and the message names why.
+_PROVISION_REFUSAL_STATUS = {
+    "unknown_tenant": 404,
+    "unknown_analysis": 404,
+    "bad_timezone": 422,
+}
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
     config: Config = app.state.config
-    # TWO ENGINES, TWO CREDENTIALS, AND THE SPLIT IS THE SAFETY. The reader serves every GET;
-    # the lifecycle engine exists only for lifecycle.record_decision and connects as a role
-    # holding INSERT on synapse.action_events and nothing else. Neither can do the other's job:
-    # the reader cannot write anywhere, and the lifecycle role cannot read a single row.
+    # THREE ENGINES, THREE CREDENTIALS, AND THE SPLIT IS THE SAFETY. The reader serves every GET.
+    # The lifecycle engine exists only for lifecycle.record_decision and connects as a role holding
+    # INSERT on synapse.action_events and nothing else. The provision engine exists only for
+    # provision.enable_analysis and connects as a role holding INSERT on synapse.provision plus the
+    # two SELECTs its pre-flight cannot run without.
+    #
+    # NONE CAN DO ANOTHER'S JOB. The reader cannot write anywhere. The lifecycle role cannot read
+    # a single row. The provisioner cannot read the action log, cannot read back its own table,
+    # and holds no UPDATE, so it cannot disable a tenant or edit a timezone.
+    #
+    # THREE IS NOT A TREND TOWARD ONE WIDE ROLE. Each is one verb on one table because that is the
+    # only shape in which "what this service can do" is a fact about the database rather than a
+    # claim about the code.
     app.state.engine = create_rls_engine(config.reader_url)
     app.state.lifecycle_engine = create_rls_engine(config.lifecycle_url)
+    app.state.provision_engine = create_rls_engine(config.provision_url)
     app.state.verifier = getattr(app.state, "verifier", None) or Auth0Verifier(
         jwks_url=config.jwks_url, issuer=config.jwt_issuer, audience=config.jwt_audience
     )
     _log.info(
         "synapse-ui-server ready",
-        extra={"read_only": False, "write_surface": "synapse.action_events (insert only)"},
+        extra={
+            "read_only": False,
+            "write_surface": ("synapse.action_events (insert only), synapse.provision (insert only)"),
+        },
     )
     try:
         yield
     finally:
         await app.state.engine.dispose()
         await app.state.lifecycle_engine.dispose()
+        await app.state.provision_engine.dispose()
 
 
 def create_app(config: Config | None = None) -> FastAPI:
@@ -278,6 +348,140 @@ def create_app(config: Config | None = None) -> FastAPI:
             request.app.state.lifecycle_engine, decision, recorded_at=datetime.now(UTC)
         )
         return {"lifecycle_event_id": str(lifecycle_event_id)}
+
+    @app.post("/tenants/{tenant_id}/analyses/{analysis_id}/enable", status_code=201)
+    async def enable_monitor(
+        tenant_id: UUID,
+        analysis_id: str,
+        body: EnableBody,
+        request: Request,
+        identity: Annotated[Identity, Depends(require_tenant_configure)],
+    ) -> dict[str, object]:
+        """Enable one analysis for one tenant. THE SECOND WRITE THIS SERVICE MAKES.
+
+        GATED ON A CUSTOMER MASTER PERMISSION, not on anything defined here. ``require_tenant_
+        configure`` asks CM whether this caller holds ADMIN.TENANTS.CONFIGURE.GLOBAL and denies on
+        any doubt, including a CM outage. Read that module before changing this line: the
+        permission is KNOWN-BROADER than the act, deliberately, and 5e must not reach a production
+        tenant until CM's enums carry a Synapse-specific one.
+
+        ENABLE ONLY. There is no disable route and no re-enable route, and the absence is enforced
+        three deep: no function in provision.py, no UPDATE in the synapse_provisioner grant, and
+        the 409 below. ``synapse.provision`` holds ONE window per (tenant, analysis), so clearing
+        ``disabled_at`` would lose the fact that there was a gap and the attribution denominator
+        for that period would silently become wrong.
+
+        THE STATE IS ESTABLISHED THROUGH THE READER FIRST, and that is forced rather than chosen.
+        The provisioner credential holds no SELECT on the table it writes, so this handler
+        physically cannot ask "is it already on" on the connection it writes with. The same split
+        as the decisions route above, for the same reason.
+
+        THREE STATES, THREE ANSWERS. Active is 409 "already enabled". Disabled is 409 naming the
+        window and saying re-enabling is deliberately unavailable. Never provisioned proceeds. The
+        third is not the default: treating disabled as never-provisioned would send an ON CONFLICT
+        DO NOTHING at the database, get no error, and report success while changing nothing.
+        """
+        detail = await reads.tenant_detail(request.app.state.engine, tenant_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail=f"{tenant_id} is not in identity_mirror.tenants")
+
+        if any(state.analysis_id == analysis_id for state in detail.analyses):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"{analysis_id} is already enabled for {detail.name}. Enabling is idempotent "
+                    "at the database, so this changes nothing either way; it is reported rather "
+                    "than swallowed so the console never shows a success that did nothing"
+                ),
+            )
+
+        disabled = next((row for row in detail.disabled_analyses if row.analysis_id == analysis_id), None)
+        if disabled is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"{analysis_id} was enabled for {detail.name} on "
+                    f"{disabled.enabled_at.date()} and disabled on {disabled.disabled_at.date()}. "
+                    "Re-enabling is deliberately not available: this table holds one window per "
+                    "tenant and analysis, so re-enabling would overwrite that window and the "
+                    "attribution denominator for the gap would silently become wrong. Building "
+                    "the append-only enablement history is the fix, and the first disable is its "
+                    "trigger"
+                ),
+            )
+
+        try:
+            outcome = await enable_analysis(
+                request.app.state.provision_engine,
+                tenant_id=tenant_id,
+                analysis_id=analysis_id,
+                timezone=body.timezone,
+                # THE START OF THE ATTRIBUTION WINDOW, stamped once here and never edited. Passed
+                # in rather than defaulted in SQL so the value is the caller's observed instant
+                # and the function stays testable at a boundary.
+                enabled_at=datetime.now(UTC),
+            )
+        except EnablementRefusedError as exc:
+            # .get WITH NO FALLBACK STATUS. A reason added to provision.py and not decided here
+            # raises KeyError into the 500 handler, which is louder than quietly calling it a 422.
+            raise HTTPException(status_code=_PROVISION_REFUSAL_STATUS[exc.reason], detail=str(exc)) from exc
+
+        # ================================================================================
+        # THE AUDIT RECORD FOR SLICE 5e, AND IT IS A LOG LINE, WHICH IS NOT ENOUGH
+        # ================================================================================
+        # WHAT IS RECORDED: who (the Auth0 subject, the only honest identity in the session),
+        # which tenant, which analysis, which timezone, and what became true. synapse.provision
+        # itself records WHEN via enabled_at and records nobody.
+        #
+        # WHY IT IS ONLY A LOG LINE. The right home is synapse.provision_events: append-only,
+        # closed vocabulary, actor_subject, the same shape as synapse.action_events. That table IS
+        # the append-only enablement history in disguise, and provision.sql names the first
+        # DISABLE as its trigger rather than the first enable. Building it here would pre-empt a
+        # deliberate deferral and would ship a second table for a case that has not happened.
+        #
+        # A 30-DAY LOG LINE IS NOT AN AUDIT RECORD. Cloud Logging's default retention is the
+        # ceiling and the entry is not queryable as a record: nothing can answer "who enabled this
+        # monitor" from the database, and after thirty days nothing can answer it at all.
+        # Provisioning is a heavier decision than snoozing an alert and snoozing has a real row.
+        #
+        # SO THIS CARRIES THE SAME STANDING CONDITION AS THE KNOWN-BROADER PERMISSION:
+        # 5e must not reach a production tenant until synapse.provision_events exists.
+        # Staging is where a log line is an acceptable stand-in.
+        #
+        # `severity` NOTICE, never `levelname`. Cloud Logging files anything else at DEFAULT and
+        # no alert can match it.
+        _log.info(
+            "analysis enabled",
+            extra={
+                "severity": "NOTICE",
+                "event": "synapse.provision.enabled",
+                "actor_subject": identity.subject,
+                "tenant_id": str(tenant_id),
+                "tenant_name": outcome.tenant_name,
+                "analysis_id": outcome.analysis_id,
+                "timezone": body.timezone,
+                "cadence": CADENCE,
+                "rung": RUNG,
+                "canonical_positions": outcome.canonical_positions,
+                "warned_no_positions": outcome.warning is not None,
+            },
+        )
+
+        # THE CONFIGURATION IS ECHOED SO THE OPERATOR SEES WHAT THEY DID NOT CHOOSE. cadence and
+        # rung were never theirs to set, and a response that omitted them would leave the console
+        # unable to say "silent mode, daily" without restating a constant it cannot see.
+        return {
+            "analysis_id": outcome.analysis_id,
+            "tenant_name": outcome.tenant_name,
+            "timezone": body.timezone,
+            "cadence": CADENCE,
+            "rung": RUNG,
+            "canonical_positions": outcome.canonical_positions,
+            # NOT AN ERROR. Enabling ahead of ingestion is legitimate; the reason to say it is
+            # that a monitor producing nothing for a week is otherwise indistinguishable from one
+            # that is working and finding nothing.
+            "warning": outcome.warning,
+        }
 
     @app.get("/alerts/state-counts")
     async def get_alert_state_counts(

@@ -13,9 +13,22 @@ runs — it REPLACES ``user_type`` with something that answers the whole questio
 join it.
 
 ``tenant_id`` COMES FROM THE VERIFIED TOKEN ONLY, never a path parameter, a query string or a
-body. Slice 8a has no tenant-scoped route, so today it is unused — but the rule is enforced by
-``Identity`` carrying it and nothing else reading it, so 8b starts from the right shape rather
-than adding it under pressure.
+body. It is still unused, because every route here serves PLATFORM callers, for whom Customer
+Master omits the claim entirely. The rule is enforced by ``Identity`` carrying it and nothing
+else reading it, so a tenant-scoped route starts from the right shape rather than adding one
+under pressure.
+
+WHAT ``Identity`` DELIBERATELY DOES NOT CARRY IS THE TOKEN. ``cm_permissions.py`` forwards the
+caller's bearer to Customer Master and re-reads it from the request header to do so, rather than
+threading it through here. A credential that cannot be reached from the object every handler
+holds cannot end up in a log line or a response by accident.
+
+AND THE ONE-DISCRIMINATOR RULE ABOVE IS ABOUT *WHO MAY REACH THESE ROUTES*. Slice 5e added a
+permission check on the single route that changes a customer's configuration, delegated to CM's
+``/me/can-do``. That is not a second answer to the same question: ``require_platform`` answers
+"is this an operator" and the permission answers "may this operator configure a tenant". It
+defines nothing locally and duplicates no part of CM's model, which is the property the ledger
+item was about. See ``cm_permissions.py``.
 
 WHAT IS NOT COPIED FROM dis-ui-server: its dev-stub HS256 verifier. A second verification path
 through the only thing standing between a caller and every tenant's data is a second thing that
@@ -157,7 +170,11 @@ async def current_identity(request: Request) -> Identity:
 async def require_platform(
     identity: Annotated[Identity, Depends(current_identity)],
 ) -> Identity:
-    """Every route in slice 8a. PLATFORM only, on the ``user_type`` claim alone.
+    """Every route in this service. PLATFORM only, on the ``user_type`` claim alone.
+
+    THE ENABLEMENT ROUTE DEPENDS ON THIS ONE RATHER THAN REPLACING IT, so a TENANT token is
+    refused here before any outbound call to Customer Master is made and a token that could never
+    pass cannot cost a request to another service.
 
     A TENANT caller reaching a superadmin route is refused here rather than filtered later: the
     fleet read runs under ``rls_platform_session``, which sees every tenant, so there is no

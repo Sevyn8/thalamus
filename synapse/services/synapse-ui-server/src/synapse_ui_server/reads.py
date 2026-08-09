@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from dis_rls import rls_platform_session
 
 __all__ = [
+    "DisabledAnalysis",
     "FleetRow",
     "RunRow",
     "TenantDetail",
@@ -85,6 +86,10 @@ class TenantDetail:
     # was counting its own LIMIT-100 page and calling the result a property of the tenant.
     open_alerts: int
     analyses: tuple[AnalysisState, ...]
+    # THE THIRD STATE, ADDED BY 5e. See DisabledAnalysis: without it a disabled pair is
+    # indistinguishable from one that was never provisioned, and the Enable control would offer
+    # to do something that silently does nothing.
+    disabled_analyses: tuple[DisabledAnalysis, ...]
 
 
 @dataclass(frozen=True)
@@ -131,6 +136,37 @@ class AnalysisState:
     # Optional only because a monitor may have NO last run at all, in which case the whole
     # LEFT JOIN row is absent rather than empty. See RunRow.refusals.
     refusals: Mapping[str, int] | None
+
+
+@dataclass(frozen=True)
+class DisabledAnalysis:
+    """A pair that WAS provisioned and is now switched off. The state 5e had to make visible.
+
+    WHY THIS EXISTS AT ALL. ``_TENANT_ANALYSES`` filters ``disabled_at IS NULL``, which was right
+    while nothing could enable anything: a disabled monitor is not running, and a read-only screen
+    listing running monitors correctly omitted it. The moment an Enable control exists, that
+    filter turns a disabled pair into one that looks NEVER PROVISIONED, and the console offers to
+    enable it. ``ON CONFLICT DO NOTHING`` then suppresses the insert and the request succeeds.
+
+    A CONTROL THAT REPORTS SUCCESS AND CHANGES NOTHING IS WORSE THAN A DEAD ONE. A dead control is
+    visibly inert; this one would tell an operator a monitor is on, the page would re-render from
+    the database showing it off, and the honest reading of that is "the console is broken" rather
+    than "re-enabling is deliberately not available".
+
+    So there are three states and the console renders three: ACTIVE (in ``analyses``), DISABLED
+    (here, with no control and a note), NEVER PROVISIONED (in the registry catalogue and in
+    neither list, with the Enable control).
+
+    RE-ENABLING IS NOT AN OVERSIGHT. The table holds ONE window per (tenant, analysis), so
+    clearing ``disabled_at`` loses the fact that there was a gap and the attribution denominator
+    for that period silently becomes wrong. provision.sql names the append-only enablement
+    history as the fix and names its trigger: the first disable. Both dates are carried here so
+    the console can state the window it would be overwriting.
+    """
+
+    analysis_id: str
+    enabled_at: datetime
+    disabled_at: datetime
 
 
 @dataclass(frozen=True)
@@ -413,6 +449,27 @@ _TENANT_ANALYSES = text(
     """
 )
 
+# THE COMPLEMENT OF THE QUERY ABOVE, and the pair is the point: `disabled_at IS NULL` there and
+# `IS NOT NULL` here partition the tenant's provision rows, so a pair is in exactly one list and
+# anything in neither has genuinely never been provisioned. See DisabledAnalysis.
+#
+# A SECOND STATEMENT RATHER THAN RELAXING THE FIRST. Dropping the filter from _TENANT_ANALYSES
+# would have been fewer lines and would have changed what four existing surfaces mean: the
+# Monitors tab would list disabled monitors among the running ones, and the overview tab's
+# `alerting` filter counts actions_proposed off that same list, so a monitor switched off months
+# ago would start contributing to "alerts raised". Additive keeps every existing claim true.
+#
+# NO RUN JOIN. A disabled monitor's last run is history the Runs tab already carries; repeating it
+# beside a disabled badge would invite reading it as current.
+_TENANT_DISABLED_ANALYSES = text(
+    """
+    SELECT p.analysis_id, p.enabled_at, p.disabled_at
+      FROM synapse.provision p
+     WHERE p.tenant_id = CAST(:tenant AS uuid) AND p.disabled_at IS NOT NULL
+     ORDER BY p.analysis_id
+    """
+)
+
 
 async def tenant_detail(engine: AsyncEngine, tenant_id: UUID) -> TenantDetail | None:
     """One tenant. ``None`` when the id is not in the mirror at all.
@@ -426,6 +483,12 @@ async def tenant_detail(engine: AsyncEngine, tenant_id: UUID) -> TenantDetail | 
         if header is None:
             return None
         analyses = (await conn.execute(_TENANT_ANALYSES, {"tenant": str(tenant_id)})).mappings().all()
+        # THE SAME CONNECTION AND THE SAME TRANSACTION as the query above, so the two halves of
+        # the partition are read from one snapshot. Two transactions could observe a pair in
+        # neither list (disabled between them) and the console would render it as available.
+        disabled = (
+            (await conn.execute(_TENANT_DISABLED_ANALYSES, {"tenant": str(tenant_id)})).mappings().all()
+        )
 
     return TenantDetail(
         tenant_id=_as_uuid(header["tenant_id"]),
@@ -451,6 +514,14 @@ async def tenant_detail(engine: AsyncEngine, tenant_id: UUID) -> TenantDetail | 
                 detail=row["detail"],
             )
             for row in analyses
+        ),
+        disabled_analyses=tuple(
+            DisabledAnalysis(
+                analysis_id=row["analysis_id"],
+                enabled_at=row["enabled_at"],
+                disabled_at=row["disabled_at"],
+            )
+            for row in disabled
         ),
     )
 

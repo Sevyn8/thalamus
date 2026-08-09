@@ -22,23 +22,40 @@ CLAIM_NAMESPACE: Final[str] = "https://sevyn8.com/"
 class Config:
     """What the service needs to serve a request. Frozen: nothing rereads the environment.
 
-    THIS SERVICE WAS READ-ONLY UNTIL SLICE 5d, AND THE CHANGE WAS A DELIBERATE ACT — which is
-    exactly what the old comment here demanded ("Slice 8b adds one deliberately"). The contract
-    was never "never write"; it was "cannot write by accident", and it is still that.
+    THIS SERVICE WAS READ-ONLY UNTIL SLICE 5d, AND EACH WRITE PATH HAS BEEN A DELIBERATE ACT,
+    which is exactly what the old comment here demanded ("Slice 8b adds one deliberately"). Two
+    have now arrived, 5d and 5e, and each cost an edit to this file. The contract was never
+    "never write"; it was "cannot write by accident", and it is still that.
 
-    WHAT KEEPS IT NARROW IS THE GRANT, NOT THE CODE. ``lifecycle_url`` is a THIRD role,
-    ``synapse_lifecycle``, holding INSERT on ``synapse.action_events`` and nothing else — no
-    SELECT, no UPDATE, no DELETE, no other table. So the blast radius of this service being
-    wrong is one append to one table, enforced by Postgres rather than by review.
+    WHAT KEEPS IT NARROW IS THE GRANT, NOT THE CODE. There are now TWO write credentials and
+    each is one verb on one table:
+
+      ``lifecycle_url``    ``synapse_lifecycle``: INSERT on ``synapse.action_events``. Alert
+                           decisions. Slice 5d.
+      ``provision_url``    ``synapse_provisioner``: INSERT on ``synapse.provision``, plus the two
+                           SELECTs its pre-flight cannot run without (identity_mirror.tenants and
+                           canonical.store_sku_current_position). Enablement. Slice 5e.
+
+    NEITHER CAN DO THE OTHER'S JOB, and neither can UPDATE or DELETE anything. The provisioner
+    in particular has no UPDATE on its own table, so the console cannot disable a tenant or edit
+    a timezone: enablement is one direction at the database, not by convention. See
+    infra/db-setup/sql/05_synapse_provisioner_grant.sql.
 
     ``SYNAPSE_WRITER_URL`` IS STILL REFUSED AT STARTUP. That is the ORCHESTRATOR's credential
     (INSERT on synapse.actions), and a console holding it could append to the action log — which
     would make every row ambiguous about whether a human or the 04:00 sweep produced it. The
-    refusal did not go away; it got more specific.
+    refusal did not go away; it got more specific, twice.
+
+    ``cm_api_base_url`` IS NOT A DATABASE THING and it is required all the same. Provisioning is
+    gated on a Customer Master permission checked server-side against CM's ``/me/can-do``, so a
+    revision without it could not evaluate the gate. A service that cannot check its own
+    authorization must not start; the alternative is one that fails open or 500s on every enable.
     """
 
     reader_url: str
     lifecycle_url: str
+    provision_url: str
+    cm_api_base_url: str
     jwt_issuer: str
     jwt_audience: str
     expected_database: str
@@ -62,6 +79,13 @@ def load_config() -> Config:
         "SYNAPSE_LIFECYCLE_URL": "the synapse_lifecycle DSN — INSERT on "
         "synapse.action_events and NOTHING else; not synapse_writer, which is the "
         "orchestrator's and is refused below",
+        "SYNAPSE_PROVISION_URL": "the synapse_provisioner DSN: INSERT on "
+        "synapse.provision plus SELECT on identity_mirror.tenants and "
+        "canonical.store_sku_current_position for the pre-flight, and nothing else. No "
+        "UPDATE, so the console cannot disable a tenant or edit a timezone",
+        "CM_API_BASE_URL": "Customer Master's origin, e.g. https://cm-backend-<hash>.run.app. "
+        "Provisioning is gated on ADMIN.TENANTS.CONFIGURE.GLOBAL, checked against CM's "
+        "/api/v1/me/can-do. No trailing slash",
         "SYNAPSE_JWT_ISSUER": "the Auth0 issuer, e.g. https://<tenant>.auth0.com/",
         "SYNAPSE_JWT_AUDIENCE": "the API identifier this service accepts tokens for",
     }
@@ -74,25 +98,36 @@ def load_config() -> Config:
         )
 
     if os.environ.get("SYNAPSE_WRITER_URL"):
-        # STILL REFUSED, AND NOW FOR A SHARPER REASON. This is the orchestrator's credential:
-        # INSERT on synapse.actions. Slice 5d gave this service a write path, but a DIFFERENT
-        # and much smaller one — synapse_lifecycle, INSERT on synapse.action_events alone. A
-        # console holding the orchestrator's identity could append to the action log itself,
+        # STILL REFUSED, AND THE REASON SHARPENS EACH TIME A WRITE PATH ARRIVES. This is the
+        # orchestrator's credential: INSERT on synapse.actions. Slice 5d gave this service a
+        # write path and slice 5e gave it a second, but both are SMALL and NAMED:
+        # synapse_lifecycle on synapse.action_events, synapse_provisioner on synapse.provision.
+        # A console holding the orchestrator's identity could append to the action log itself,
         # and every row would stop being attributable to the process that caused it.
+        #
+        # THE NUMBER OF WRITE CREDENTIALS GOING FROM ONE TO TWO IS NOT AN ARGUMENT FOR RELAXING
+        # THIS. It is the argument for keeping it: each credential is one verb on one table, and
+        # the writer is neither.
         #
         # Kept as a startup refusal rather than left to the grant because it is cheap and it
         # names the mistake. The grant is the wall; this is the sign on it.
         raise RuntimeError(
             "SYNAPSE_WRITER_URL is set on synapse-ui-server. That is the ORCHESTRATOR's "
             "credential (INSERT on synapse.actions); this service writes only "
-            "synapse.action_events and does so as synapse_lifecycle via SYNAPSE_LIFECYCLE_URL. "
+            "synapse.action_events as synapse_lifecycle and synapse.provision as "
+            "synapse_provisioner, via SYNAPSE_LIFECYCLE_URL and SYNAPSE_PROVISION_URL. "
             "Either the wrong variable was configured, or somebody reached for the writer when "
-            "the lifecycle role is what the console is allowed to be"
+            "one of the two narrow roles is what the console is allowed to be"
         )
 
     return Config(
         reader_url=str(found["SYNAPSE_READER_URL"]),
         lifecycle_url=str(found["SYNAPSE_LIFECYCLE_URL"]),
+        provision_url=str(found["SYNAPSE_PROVISION_URL"]),
+        # rstrip("/") HERE, ONCE, rather than at the call site. The variable is written by hand
+        # into terraform and a trailing slash would produce "…//api/v1/me/can-do", which Cloud
+        # Run answers with a 404 that reads like a missing endpoint rather than a typo.
+        cm_api_base_url=str(found["CM_API_BASE_URL"]).rstrip("/"),
         jwt_issuer=str(found["SYNAPSE_JWT_ISSUER"]),
         jwt_audience=str(found["SYNAPSE_JWT_AUDIENCE"]),
         # dis-rls refuses any database but its expected one, defaulting to the pre-consolidation

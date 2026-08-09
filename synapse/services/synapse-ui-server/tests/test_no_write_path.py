@@ -1,37 +1,54 @@
-"""This service writes ONE table through ONE credential, and these are what keep it there.
+"""This service writes TWO tables through TWO credentials, and these are what keep it there.
 
-IT WAS READ-ONLY UNTIL SLICE 5d, and the change was the deliberate act this file demanded. The
-old header said "Slice 8b needs a writer for provisioning. It must add one DELIBERATELY — which
-is what these tests turn into a visible act rather than a discovery that it was already wired."
-The write that arrived was the alert lifecycle instead, and the mechanism worked as designed:
-adding it meant editing this file, in the open, with the reasoning attached.
+IT WAS READ-ONLY UNTIL SLICE 5d, and every write path since has been the deliberate act this file
+demanded. The original header said "Slice 8b needs a writer for provisioning. It must add one
+DELIBERATELY, which is what these tests turn into a visible act rather than a discovery that it
+was already wired." The mechanism has now worked twice: 5d added the alert lifecycle and 5e added
+provisioning, and each meant editing this file, in the open, with the reasoning attached.
 
-WHAT THE CONTRACT IS NOW. Not "cannot write" — "cannot write anything except an append to
-synapse.action_events, as a role that can do nothing else". The distinction is still a property
-rather than an intention, and the property is enforced in three places, only one of which is
-Python:
+WHAT THE CONTRACT IS NOW. Not "cannot write", and not a blanket "the service may write" either.
+It is an enumeration:
 
-  - THE GRANT. synapse_lifecycle holds INSERT on synapse.action_events. No SELECT, no UPDATE,
-    no DELETE, no other table (migration 0006). Postgres refuses everything else whatever this
-    code says.
-  - THE TRIGGER. That table is append-only and binds the owner too.
-  - THE MODULE BOUNDARY. lifecycle.py is the only file here allowed to contain a write, which
-    is what test_no_module_outside_lifecycle_issues_a_write asserts.
+    lifecycle.py   INSERT on synapse.action_events, as synapse_lifecycle    (5d)
+    provision.py   INSERT on synapse.provision, as synapse_provisioner      (5e)
 
-SYNAPSE_WRITER_URL IS STILL REFUSED. That is the ORCHESTRATOR's credential and it can append to
-the action log itself; a console holding it would make every row ambiguous about whether a human
-or the 04:00 sweep produced it.
+TWO NAMES, NOT A PERMISSION. The counted tests below go from "exactly one" to "exactly two" and
+each exemption is spelled out by filename, so a THIRD write surface fails here and has to be
+argued for. Widening these into "any module may write" would be the real weakening, and it is the
+easy edit to make when a test goes red, which is why the reasoning sits above the assertion.
+
+THE PROPERTIES, AND ONLY THE LAST IS PYTHON:
+
+  - THE GRANTS. synapse_lifecycle holds INSERT on synapse.action_events and nothing else
+    (migration 0006). synapse_provisioner holds INSERT on synapse.provision plus SELECT on
+    identity_mirror.tenants and canonical.store_sku_current_position, which its enablement
+    pre-flight cannot run without, and nothing else
+    (infra/db-setup/sql/05_synapse_provisioner_grant.sql). NEITHER HOLDS UPDATE ANYWHERE, so
+    neither can edit or undo what it wrote. Postgres refuses everything else whatever this code
+    says.
+  - THE TRIGGERS. action_events is append-only and binds the owner too; provision refuses an
+    unresolvable timezone the same way.
+  - THE POLICIES. Both tables are FORCE ROW LEVEL SECURITY with a WITH CHECK on app.tenant_id,
+    so both writes must open a TENANT-scoped session and a PLATFORM one can write neither.
+  - THE MODULE BOUNDARY. Exactly two files here may contain a write, which is what
+    test_no_module_outside_the_two_write_modules_issues_a_write asserts.
+
+SYNAPSE_WRITER_URL IS STILL REFUSED, and going from one write credential to two is the argument
+FOR that rather than against it. Each of these is one verb on one table; the writer is the
+ORCHESTRATOR's identity and can append to the action log itself, so a console holding it would
+make every row ambiguous about whether a human or the 04:00 sweep produced it.
 
 THE ARGUMENT, one layer up from slice 5. ``synapse_writer`` holds INSERT and no SELECT, so
-"resolvers never write" is a runtime fact rather than a grep. The same reasoning applies to a
-read-only service: one that merely CHOOSES not to write is equivalent in behaviour and not in
-property. A service with no writer credential cannot be made to write by a bug, a merge, or a
+"resolvers never write" is a runtime fact rather than a grep. The same reasoning applies here: a
+service that merely CHOOSES not to write outside two files is equivalent in behaviour and not in
+property. A credential that cannot do a thing cannot be made to do it by a bug, a merge, or a
 contributor in a hurry.
 
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import fields
 from pathlib import Path
 
@@ -43,12 +60,14 @@ from synapse_ui_server.config import Config, load_config
 def test_the_config_has_no_orchestrator_writer_field() -> None:
     """A field that does not exist cannot be populated by a stray environment variable.
 
-    ``lifecycle_url`` exists now; ``writer_url`` still must not. The two are different
-    credentials with different blast radii, and the console is only entitled to the smaller.
+    ``lifecycle_url`` and ``provision_url`` exist now; ``writer_url`` still must not. All three
+    are different credentials with different blast radii, and the console is entitled to the two
+    small ones and never to the orchestrator's.
     """
     names = {field.name for field in fields(Config)}
     assert "writer_url" not in names
     assert "lifecycle_url" in names, "the lifecycle DSN is required; slice 5d writes with it"
+    assert "provision_url" in names, "the provisioner DSN is required; slice 5e writes with it"
 
 
 def test_a_writer_dsn_in_the_environment_is_a_startup_failure(
@@ -64,27 +83,51 @@ def test_a_writer_dsn_in_the_environment_is_a_startup_failure(
         load_config()
 
 
-def test_the_config_loads_with_the_lifecycle_dsn_and_no_writer(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_config_loads_with_both_write_dsns_and_no_writer(monkeypatch: pytest.MonkeyPatch) -> None:
     """The baseline. Without it the test above would pass against a loader that always raised."""
     _base_env(monkeypatch)
     config = load_config()
     assert config.reader_url.endswith("/db")
     assert config.lifecycle_url.endswith("/db")
+    assert config.provision_url.endswith("/db")
 
 
-def test_the_lifecycle_dsn_is_required(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    "name",
+    ["SYNAPSE_LIFECYCLE_URL", "SYNAPSE_PROVISION_URL", "CM_API_BASE_URL"],
+)
+def test_every_write_path_variable_is_required(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
     """A service that cannot write is not the goal any more — a service that SILENTLY cannot
-    write is worse than one that refuses to start. Every lifecycle POST would 500 at runtime."""
+    write is worse than one that refuses to start. Every POST on the affected path would 500 at
+    runtime instead, on a revision whose deploy was green.
+
+    CM_API_BASE_URL IS IN THIS LIST AND IT IS NOT A CREDENTIAL. Without it the provisioning gate
+    cannot ask Customer Master whether the caller may configure a tenant, and because that gate
+    fails closed the endpoint would deny every request. A service that cannot evaluate its own
+    authorization must not start: the failure would otherwise read as "nobody has the permission"
+    rather than "the service is misconfigured".
+    """
     _base_env(monkeypatch)
-    monkeypatch.delenv("SYNAPSE_LIFECYCLE_URL", raising=False)
-    with pytest.raises(RuntimeError, match="SYNAPSE_LIFECYCLE_URL"):
+    monkeypatch.delenv(name, raising=False)
+    with pytest.raises(RuntimeError, match=name):
         load_config()
+
+
+def test_a_trailing_slash_on_the_cm_origin_is_stripped(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hand-written into terraform, so it will eventually arrive with one. A doubled slash makes
+    the can-do URL 404, and a 404 from a fail-closed gate denies every enable while reading like
+    a missing endpoint rather than a typo."""
+    _base_env(monkeypatch)
+    monkeypatch.setenv("CM_API_BASE_URL", "https://cm.example.run.app/")
+    assert load_config().cm_api_base_url == "https://cm.example.run.app"
 
 
 def _base_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SYNAPSE_WRITER_URL", raising=False)
     monkeypatch.setenv("SYNAPSE_READER_URL", "postgresql+psycopg://r@localhost/db")
     monkeypatch.setenv("SYNAPSE_LIFECYCLE_URL", "postgresql+psycopg://l@localhost/db")
+    monkeypatch.setenv("SYNAPSE_PROVISION_URL", "postgresql+psycopg://p@localhost/db")
+    monkeypatch.setenv("CM_API_BASE_URL", "https://cm.example.run.app")
     monkeypatch.setenv("SYNAPSE_JWT_ISSUER", "https://example.auth0.com/")
     monkeypatch.setenv("SYNAPSE_JWT_AUDIENCE", "https://api.example")
 
@@ -103,17 +146,25 @@ def test_missing_variables_are_reported_together(monkeypatch: pytest.MonkeyPatch
         assert name in message
 
 
-def test_no_module_outside_lifecycle_issues_a_write() -> None:
+# THE EXEMPTION LIST, AS DATA. Two files, each named, each with its credential and its table
+# beside it. A third entry is the diff that has to be argued for, and having it be a list rather
+# than a chain of `if path.name == ...` is what makes adding one visible in a review.
+_WRITE_MODULES = {
+    "lifecycle.py": "synapse.action_events as synapse_lifecycle (5d)",
+    "provision.py": "synapse.provision as synapse_provisioner (5e)",
+}
+
+
+def test_no_module_outside_the_two_write_modules_issues_a_write() -> None:
     """GREPPED, because the claim is about every statement this service can execute.
 
-    RESHAPED IN 5d, NOT WEAKENED. It used to allow no write anywhere; it now allows exactly one
-    file. A blanket exemption ("the service may write") would have been the weakening — this
-    names the single module, so a second write surface fails here and has to be argued for.
+    RESHAPED TWICE, NOT WEAKENED. It used to allow no write anywhere; 5d allowed exactly one file
+    and 5e allows exactly two, BY NAME. A blanket exemption ("the service may write") would be
+    the weakening, and it is the easy edit when this goes red, which is why the list above is
+    explicit and this docstring says so.
 
-    RECURSIVE NOW (rglob, not glob). The old version globbed the package's top level only, so a
-    subpackage could have carried a write with nothing to say so. Nothing exploited that; it was
-    a hole in the guard rather than in the service, and it is closed here because this is the
-    slice that made writes possible at all.
+    RECURSIVE (rglob, not glob). The old version globbed the package's top level only, so a
+    subpackage could have carried a write with nothing to say so.
 
     The check is crude on purpose: it does not parse SQL, it refuses the keywords outright, so a
     write cannot arrive disguised as a clever construction.
@@ -121,7 +172,7 @@ def test_no_module_outside_lifecycle_issues_a_write() -> None:
     package = Path(reads_module.__file__).parent
     offenders: list[str] = []
     for path in sorted(package.rglob("*.py")):
-        if path.name == "lifecycle.py":
+        if path.name in _WRITE_MODULES:
             continue
         code = "\n".join(
             line for line in path.read_text(encoding="utf-8").splitlines() if not line.strip().startswith("#")
@@ -132,8 +183,9 @@ def test_no_module_outside_lifecycle_issues_a_write() -> None:
             if keyword in body.upper():
                 offenders.append(f"{path.name} contains {keyword!r}")
     assert offenders == [], (
-        "synapse-ui-server writes ONLY through lifecycle.py, which is the single INSERT the "
-        f"synapse_lifecycle grant permits. Found writes elsewhere: {offenders}"
+        "synapse-ui-server writes ONLY through "
+        + ", ".join(f"{name} ({what})" for name, what in sorted(_WRITE_MODULES.items()))
+        + f". Found writes elsewhere: {offenders}"
     )
 
 
@@ -159,17 +211,105 @@ def test_the_lifecycle_module_holds_exactly_one_sql_statement() -> None:
         assert keyword not in sql.upper(), f"the lifecycle statement contains {keyword!r}"
 
 
-def test_the_lifecycle_write_is_tenant_scoped_not_platform() -> None:
-    """FORCED BY THE POLICY, not chosen. action_events' WITH CHECK compares app.tenant_id, and
-    rls_platform_session sets that GUC to '' — so a PLATFORM session matches no row and the
-    insert is refused. This is the one place in the service where the tenant-scoped helper is
-    correct, and reads.py must never acquire it."""
-    import synapse_ui_server.lifecycle as lifecycle_module
+def test_the_provision_module_holds_exactly_three_statements_and_writes_with_one() -> None:
+    """THE SECOND EXEMPTION IS BOUNDED TOO, and its bound is three rather than one.
 
-    source = Path(lifecycle_module.__file__).read_text(encoding="utf-8")
-    body = "".join(source.split('"""')[::2])
-    assert "rls_session(" in body
-    assert "rls_platform_session(" not in body
+    WHY THREE AND NOT ONE. The two extra statements ARE the pre-flight, and the pre-flight is the
+    point of the write: an unknown tenant UUID inserts fine, enumerates fine, and produces a
+    healthy run with zero actions every day for ever with nothing going red. Both checks have to
+    run in the SAME TRANSACTION as the insert or they are advice, which is why the credential
+    holds two SELECTs at all.
+
+    SO THIS ASSERTS THE SHAPE, NOT THE COUNT ALONE. Three statements, exactly one of which is a
+    write, and the two reads are the two the grant permits and no others. A fourth statement, or
+    a second write, or a read of a third table, fails here.
+    """
+    import synapse_ui_server.provision as provision_module
+    from sqlalchemy import TextClause
+
+    statements = {
+        name: str(value) for name, value in vars(provision_module).items() if isinstance(value, TextClause)
+    }
+    assert len(statements) == 3, f"the provisioning surface changed size: {sorted(statements)}"
+
+    writes = [sql for sql in statements.values() if "INSERT INTO" in sql.upper()]
+    assert len(writes) == 1, "provision.py must contain exactly one write"
+    (insert,) = writes
+    assert "INSERT INTO synapse.provision" in insert
+    for keyword in ("UPDATE ", "DELETE ", "TRUNCATE", "ALTER TABLE", "RETURNING"):
+        assert keyword not in insert.upper(), f"the provisioning statement contains {keyword!r}"
+
+    # THE PRE-FLIGHT READS EXACTLY THE TWO TABLES THE GRANT COVERS. A read of anything else is
+    # both a permission error at runtime and a widening of the credential in
+    # 05_synapse_provisioner_grant.sql that nobody asked for.
+    read_tables = {
+        table
+        for sql in statements.values()
+        for table in re.findall(r"\bFROM\s+([a-z_]+\.[a-z_]+)", sql, re.I)
+    }
+    assert read_tables == {
+        "identity_mirror.tenants",
+        "canonical.store_sku_current_position",
+    }, f"the provisioning pre-flight reads something the grant does not cover: {sorted(read_tables)}"
+
+
+def test_cadence_and_rung_are_constants_not_parameters() -> None:
+    """THE FLEET-BREAKING ONE. A wrong rung does not break the tenant it was set on.
+
+    check_envelope runs when the ORCHESTRATOR LOADS synapse.provision and raises for the WHOLE
+    list, so one provision naming a rung above its analysis's declared max_rung stops the 04:00
+    sweep for EVERY tenant. The DDL's ck_provision_rung permits 'suggest' because Rung declares
+    it, and NOTHING IMPLEMENTS 'suggest', so a dropdown built by reading the CHECK constraint
+    would offer a one-click fleet outage that passes every database constraint.
+
+    ASSERTED ON THE SIGNATURE, because that is the thing that would change. A value that cannot
+    be passed cannot be mistyped, and this fails the moment either becomes reachable from a
+    caller.
+    """
+    import inspect
+
+    from synapse_ui_server.main import EnableBody
+    from synapse_ui_server.provision import CADENCE, RUNG, enable_analysis
+
+    assert CADENCE == "daily"
+    assert RUNG == "shadow"
+
+    parameters = set(inspect.signature(enable_analysis).parameters)
+    for forbidden in ("cadence", "rung"):
+        assert forbidden not in parameters, (
+            f"{forbidden} became a parameter of enable_analysis. It is hardcoded because the "
+            "envelope check refuses the whole enumeration rather than one row"
+        )
+
+    # AND NOT REACHABLE FROM THE WIRE EITHER. A field here would be settable by anything that can
+    # post to the endpoint, whatever the function signature says.
+    assert set(EnableBody.model_fields) == {"timezone"}, (
+        "the enable request body grew a field. cadence, rung, tenant and analysis are all "
+        "deliberately not settable; see EnableBody"
+    )
+
+
+def test_the_writes_are_tenant_scoped_not_platform() -> None:
+    """FORCED BY THE POLICY, not chosen, and true of BOTH write modules.
+
+    action_events and provision both carry WITH CHECK (tenant_id = app.tenant_id), and
+    rls_platform_session sets that GUC to '' — so a PLATFORM session matches no row and the
+    insert is refused. These are the only two places in the service where the tenant-scoped
+    helper is correct, and reads.py must never acquire it.
+    """
+    import synapse_ui_server.lifecycle as lifecycle_module
+    import synapse_ui_server.provision as provision_module
+
+    for module in (lifecycle_module, provision_module):
+        # __file__ is Optional on ModuleType. A None here would mean a namespace package,
+        # which these are not, and asserting says so rather than silencing the checker.
+        assert module.__file__ is not None
+        source = Path(module.__file__).read_text(encoding="utf-8")
+        body = "".join(source.split('"""')[::2])
+        assert "rls_session(" in body, f"{module.__name__} does not open a tenant-scoped session"
+        assert "rls_platform_session(" not in body, (
+            f"{module.__name__} opened a PLATFORM session; its WITH CHECK would refuse the write"
+        )
 
 
 def test_the_only_session_helper_used_is_the_platform_one() -> None:
@@ -200,6 +340,8 @@ def test_the_service_exposes_no_schema_endpoints() -> None:
         Config(
             reader_url="postgresql+psycopg://u@h/d",
             lifecycle_url="postgresql+psycopg://l@h/d",
+            provision_url="postgresql+psycopg://p@h/d",
+            cm_api_base_url="https://cm.example",
             jwt_issuer="https://x/",
             jwt_audience="a",
             expected_database="thalamus",

@@ -24,8 +24,8 @@ and the evaluator's output is checked against it at import; now a declaration de
 ``max_rung`` and a provision binds the rung. Declare the shape in code, bind the value as data,
 check the binding at the boundary.
 
-WHY THE TABLE WAS NEEDED BEFORE THERE WAS A CONSOLE (slice 8a built the read-only one, and 8b
-adds the write path): ``enabled_at`` cannot
+WHY THE TABLE WAS NEEDED BEFORE THERE WAS A CONSOLE (slice 8a built the read-only one, and 5e
+added the enablement write path): ``enabled_at`` cannot
 be reconstructed. An attribution study asks "how many tenant-days did we observe", and a system
 that records only "enabled" has thrown the denominator away. That is the same argument the
 holdout arm won in slice 4 — a fact that is free to record today and impossible to recover

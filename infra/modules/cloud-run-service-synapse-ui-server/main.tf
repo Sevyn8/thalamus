@@ -4,16 +4,31 @@
 # Called SERVER-SIDE by cm-frontend's Next.js server components. The browser
 # never reaches it, so it needs no public invoker binding and no CORS.
 #
-# READS AS synapse_reader, AND WRITES EXACTLY ONE TABLE AS synapse_lifecycle.
+# READS AS synapse_reader, AND WRITES EXACTLY TWO TABLES AS TWO OTHER ROLES.
+#
 # This paragraph said "the synapse_reader DSN and nothing else" until slice 5d
-# falsified it: the console records operator decisions now, so it holds a SECOND
-# credential whose entire grant is INSERT on synapse.action_events. The console
-# can therefore record a snooze, dismissal or acknowledgement WITHOUT being able
-# to write synapse.actions, which is the orchestrator's table via synapse_writer.
-# No writer secret is granted, no writer env var is set, and the
-# service refuses to START if SYNAPSE_WRITER_URL is present. Slice 8b needs a
-# writer for provisioning and must add it deliberately rather than find it
-# already wired.
+# falsified it, and then named ONE write credential until 5e falsified that. The
+# posture is now three DSNs and the shape is what matters: each write credential
+# is ONE VERB ON ONE TABLE.
+#
+#   synapse_reader      every GET.
+#   synapse_lifecycle   INSERT on synapse.action_events. The console records a
+#                       snooze, dismissal or acknowledgement (slice 5d).
+#   synapse_provisioner INSERT on synapse.provision, plus the two SELECTs its
+#                       pre-flight cannot run without. The console enables a
+#                       monitor for a tenant (slice 5e). NO UPDATE, so it cannot
+#                       disable one or edit a timezone: enablement is one
+#                       direction at the database, not by convention.
+#
+# NONE OF THEM IS synapse_writer, which is the ORCHESTRATOR's identity and holds
+# INSERT on synapse.actions. No writer secret is granted, no writer env var is
+# set, and the service refuses to START if SYNAPSE_WRITER_URL is present. That
+# refusal is what made "8b must add a writer deliberately" happen twice as a
+# visible act rather than as the discovery that one was already wired.
+#
+# AND THERE IS A NON-DATABASE ENV VAR NOW. CM_API_BASE_URL: provisioning is gated
+# on a Customer Master permission, checked server-side against CM's /me/can-do
+# with the caller's own Auth0 token. Synapse defines no permission of its own.
 #
 # ==========================================================================
 # THE INVOKER BINDING: WHAT IT ACHIEVES, AND WHAT IT DOES NOT
@@ -87,6 +102,28 @@ data "google_secret_manager_secret" "lifecycle_url" {
 resource "google_secret_manager_secret_iam_member" "lifecycle_url" {
   project   = var.project_id
   secret_id = data.google_secret_manager_secret.lifecycle_url.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.synapse_ui_server.email}"
+}
+
+# The provisioner DSN (slice 5e). Created out of band like the other two.
+#
+# ALL FOUR PIECES LAND IN THIS SLICE, DELIBERATELY: this data source, the IAM
+# member below it, the env block in the container, and the depends_on entry.
+# Slice 5d shipped the config change and the env var without the wiring, and the
+# write path sat dead in staging for two days behind a passing apply, because
+# terraform validated a module that was internally consistent and simply did not
+# set a variable the image required. The apply was green; the revision failed its
+# health check; staging kept serving the previous one. Nothing in a plan says
+# "the container needs an env var you did not write".
+data "google_secret_manager_secret" "provisioner_url" {
+  project   = var.project_id
+  secret_id = var.secret_provisioner_url
+}
+
+resource "google_secret_manager_secret_iam_member" "provisioner_url" {
+  project   = var.project_id
+  secret_id = data.google_secret_manager_secret.provisioner_url.secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.synapse_ui_server.email}"
 }
@@ -183,9 +220,16 @@ resource "google_cloud_run_v2_service" "synapse_ui_server" {
   # edge at all to the iam_member, so it is free to create the revision before the
   # grant exists or propagates, and the container fails to read its own credential.
   # The reader has never hit this only because its grant predated this resource.
+  #
+  # EVERY iam_member IN THIS MODULE MUST BE LISTED, and the list is checked by
+  # tests/test_deployment_posture.py::test_every_secret_iam_member_is_a_depends_on
+  # rather than by a reader remembering. A secret added with its grant and without
+  # this line produces a revision that starts before it can read its own DSN,
+  # which on this service means a failed health check rather than a degradation.
   depends_on = [
     google_secret_manager_secret_iam_member.reader_url,
     google_secret_manager_secret_iam_member.lifecycle_url,
+    google_secret_manager_secret_iam_member.provisioner_url,
   ]
 
   template {
@@ -243,12 +287,16 @@ resource "google_cloud_run_v2_service" "synapse_ui_server" {
         }
       }
 
-      # The SECOND and last, added by slice 5d and UNWIRED UNTIL NOW: the service
-      # has refused to start without it since that slice, which is why v6 and v7
-      # both failed health check and staging has been serving v5. synapse_lifecycle
-      # can INSERT on synapse.action_events and nothing else, so the console can
+      # The SECOND, added by slice 5d and UNWIRED FOR TWO DAYS: the service has
+      # refused to start without it since that slice, which is why v6 and v7 both
+      # failed health check and staging kept serving v5. synapse_lifecycle can
+      # INSERT on synapse.action_events and nothing else, so the console can
       # record a snooze, dismissal or acknowledgement WITHOUT being able to write
       # synapse.actions, which is the orchestrator's table via synapse_writer.
+      #
+      # THIS COMMENT SAID "The SECOND and last". It was wrong within one slice, and
+      # it is left corrected rather than deleted: "and last" was a prediction about
+      # future slices dressed as a fact about this file.
       env {
         name = "SYNAPSE_LIFECYCLE_URL"
         value_source {
@@ -257,6 +305,46 @@ resource "google_cloud_run_v2_service" "synapse_ui_server" {
             version = "latest"
           }
         }
+      }
+
+      # The THIRD (slice 5e). synapse_provisioner can INSERT on synapse.provision
+      # and SELECT the two tables the enablement pre-flight reads, and nothing
+      # else. NO UPDATE anywhere, which is what makes "the console cannot disable a
+      # tenant or edit a timezone" a property of the grant rather than of the code:
+      # synapse.provision holds one enablement window per (tenant, analysis), so
+      # re-enabling would overwrite it and silently corrupt the attribution
+      # denominator for the gap.
+      #
+      # The service refuses to start without this, like the two above.
+      env {
+        name = "SYNAPSE_PROVISION_URL"
+        value_source {
+          secret_key_ref {
+            secret  = data.google_secret_manager_secret.provisioner_url.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      # NOT A CREDENTIAL, AND STILL REQUIRED (slice 5e). Provisioning is gated on
+      # the Customer Master permission ADMIN.TENANTS.CONFIGURE.GLOBAL, checked
+      # server-side against CM's /api/v1/me/can-do with the CALLER'S OWN Auth0
+      # token forwarded. Synapse defines no permission, stores no grant and holds
+      # no copy of CM's model; it asks the system that owns the question.
+      #
+      # THE GATE FAILS CLOSED, so an unreachable or misconfigured CM denies every
+      # enable rather than allowing them. That makes a wrong value here a visible
+      # refusal instead of an open door, which is the right direction, but it also
+      # means the value is load-bearing: staging passes module.cm_service.service_url
+      # BY REFERENCE so it cannot drift from the service it names.
+      #
+      # THIS SERVICE REACHES CM OVER THE PUBLIC INTERNET, and that is already how it
+      # works rather than something new: vpc_access egress is PRIVATE_RANGES_ONLY,
+      # so only RFC1918 traffic takes the connector and everything else goes direct.
+      # The Auth0 JWKS fetch on every cold start proves the path.
+      env {
+        name  = "CM_API_BASE_URL"
+        value = var.cm_api_base_url
       }
     }
   }

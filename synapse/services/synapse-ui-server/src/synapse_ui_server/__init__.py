@@ -24,9 +24,23 @@ in slice 5 — ``synapse_writer`` holding INSERT and no SELECT, so "resolvers ne
 runtime fact rather than a grep — applies one layer up. A service that CANNOT write cannot be
 made to write by a bug, a merge, or a future contributor in a hurry.
 
-**Slice 8b must add the writer deliberately.** It will need one for provisioning (R3/R4/R5), and
-adding it should be a visible act with its own review, not the discovery that it was already
-wired and unused.
+**THE HEADING ABOVE IS NOW HISTORY, AND THE MECHANISM IT DEMANDED WORKED TWICE.** This paragraph
+read "Slice 8b must add the writer deliberately. It will need one for provisioning (R3/R4/R5),
+and adding it should be a visible act with its own review, not the discovery that it was already
+wired and unused." Two write paths have since arrived and each was that visible act: adding one
+meant editing this file, ``config.py``, ``test_no_write_path.py`` and the terraform module, in
+the open, with the reasoning attached.
+
+  slice 5d  ``synapse_lifecycle``   INSERT on ``synapse.action_events``. Alert decisions.
+  slice 5e  ``synapse_provisioner`` INSERT on ``synapse.provision``, plus the two SELECTs its
+            enablement pre-flight cannot run without. NO UPDATE, so the console can enable a
+            monitor and cannot disable one or edit a timezone.
+
+**THE CONTRACT WAS NEVER "NEVER WRITE"; IT WAS "CANNOT WRITE BY ACCIDENT", and it is still that.**
+Each credential is one verb on one table, bounded by a GRANT rather than by a code path, and
+``SYNAPSE_WRITER_URL`` is still refused at startup because that is the ORCHESTRATOR's identity.
+Two narrow roles are only narrower than one wide role while they stay distinct, so a third write
+surface has to come here and argue for itself the same way.
 
 ==============================================================================
 ONE DISCRIMINATOR: ``user_type``. THERE WILL BE NO SYNAPSE EQUIVALENT OF ``dis:ops``.
@@ -57,8 +71,17 @@ identity, which dis-ui-ver2 also runs as. The precise consequence is stated ther
 ==============================================================================
 SCOPE, AND WHAT IS DELIBERATELY ABSENT
 ==============================================================================
-IN  : fleet, one tenant, runs, capabilities, analyses. All PLATFORM, all read.
-OUT : provisioning (needs a grant nothing holds), and the TENANT-facing view.
+IN  : fleet, one tenant, runs, alerts, capabilities, analyses, all PLATFORM reads; alert
+      decisions (5d); and enabling an analysis for a tenant (5e).
+OUT : DISABLING or re-enabling an analysis, and the TENANT-facing view.
+
+      "provisioning (needs a grant nothing holds)" was the entry here until 5e, and the grant
+      now exists: ``synapse_provisioner``. What replaced it on this line is narrower and is not
+      a backlog item. ``synapse.provision`` holds ONE enablement window per (tenant, analysis),
+      so re-enabling overwrites the first window and the attribution denominator for the gap
+      silently becomes wrong. The fix is an append-only enablement history, and
+      ``schemas/postgres/provision.sql`` names ITS trigger: the first disable. Building either
+      half early would describe behaviour the system has not had.
 
 THE TENANT VIEW IS 8b's, AND ITS CONSTRAINT IS RECORDED IN ``tenant_view_contract`` IN THIS
 PACKAGE rather than left to be rediscovered. It is the thing most likely to be got wrong under

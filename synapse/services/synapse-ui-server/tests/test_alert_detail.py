@@ -307,6 +307,8 @@ def _client(monkeypatch: pytest.MonkeyPatch, *, listing: object, detail: object)
         Config(
             reader_url="postgresql+psycopg://u@h/d",
             lifecycle_url="postgresql+psycopg://l@h/d",
+            provision_url="postgresql+psycopg://p@h/d",
+            cm_api_base_url="https://cm.example",
             jwt_issuer="https://x/",
             jwt_audience="a",
             expected_database="thalamus",
@@ -424,16 +426,39 @@ def test_every_route_in_this_service_requires_platform() -> None:
     """THE ONE THAT BITES TODAY. The alert endpoints cannot leak to a tenant because no route
     here serves a tenant: every non-health route depends on require_platform. A new route added
     without it fails here rather than at review.
+
+    THE SEARCH IS RECURSIVE, AND SLICE 5e IS WHY. It used to read the route's TOP-LEVEL
+    dependencies only, which was exactly right while every route declared
+    ``Depends(require_platform)`` itself. 5e's enable route declares
+    ``Depends(require_tenant_configure)``, which in turn declares ``Depends(require_platform)``,
+    so the PLATFORM check still runs first and a TENANT token is still refused before anything
+    else happens. A flat search would have reported that route as unguarded.
+
+    RECURSING RATHER THAN EXEMPTING THE ROUTE, deliberately. An exemption list would make this
+    test's claim smaller than its name, and the one route it exempted would be the only route in
+    the service that writes a customer's configuration. Recursion keeps the claim exactly as
+    stated and makes it true through composition: a route reachable without require_platform
+    anywhere in its dependency tree still fails.
     """
     from fastapi.routing import APIRoute
     from synapse_ui_server.auth import require_platform
     from synapse_ui_server.config import Config
     from synapse_ui_server.main import create_app
 
+    def gates(dependant: object) -> set[object]:
+        """Every dependency on the route's tree, at any depth."""
+        found: set[object] = set()
+        for dependency in dependant.dependencies:  # type: ignore[attr-defined]
+            found.add(dependency.call)
+            found |= gates(dependency)
+        return found
+
     app = create_app(
         Config(
             reader_url="postgresql+psycopg://u@h/d",
             lifecycle_url="postgresql+psycopg://l@h/d",
+            provision_url="postgresql+psycopg://p@h/d",
+            cm_api_base_url="https://cm.example",
             jwt_issuer="https://x/",
             jwt_audience="a",
             expected_database="thalamus",
@@ -443,7 +468,17 @@ def test_every_route_in_this_service_requires_platform() -> None:
     for route in app.routes:
         if not isinstance(route, APIRoute) or route.path in {"/healthz", "/readyz"}:
             continue
-        dependencies = {d.call for d in route.dependant.dependencies}
-        if require_platform not in dependencies:
+        if require_platform not in gates(route.dependant):
             unguarded.append(route.path)
     assert not unguarded, f"routes without require_platform: {unguarded}"
+    # THE VACUITY GUARD. A `gates` that returned an empty set for everything would make the loop
+    # above find nothing to complain about only if the membership test also passed, so this pins
+    # that the traversal actually reaches the transitive case 5e introduced.
+    enable = next(
+        r for r in app.routes if isinstance(r, APIRoute) and r.path.endswith("/analyses/{analysis_id}/enable")
+    )
+    assert require_platform not in {d.call for d in enable.dependant.dependencies}, (
+        "the enable route now declares require_platform directly; the recursion above is no "
+        "longer exercised by any route and this test has stopped proving what it claims"
+    )
+    assert require_platform in gates(enable.dependant)

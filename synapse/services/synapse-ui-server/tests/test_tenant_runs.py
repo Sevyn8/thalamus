@@ -222,6 +222,8 @@ def _client(monkeypatch: pytest.MonkeyPatch, result: object) -> Any:
         Config(
             reader_url="postgresql+psycopg://u@h/d",
             lifecycle_url="postgresql+psycopg://l@h/d",
+            provision_url="postgresql+psycopg://p@h/d",
+            cm_api_base_url="https://cm.example",
             jwt_issuer="https://x/",
             jwt_audience="a",
             expected_database="thalamus",

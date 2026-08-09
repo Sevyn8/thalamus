@@ -74,8 +74,37 @@
 // customer's configuration with nobody's name on it, and enabled_at is a
 // denominator.
 //
-// THE TRIGGER IS UNCHANGED: THE FIRST SYNAPSE ROUTE THAT WRITES, which is 8b. The
-// work is then to RECORD the identity that is already in hand, not to obtain one.
+// ============================================================================
+// THE TRIGGER HAS FIRED, TWICE, AND THIS PARAGRAPH SAID IT HAD NOT
+// ============================================================================
+// It read "THE TRIGGER IS UNCHANGED: THE FIRST SYNAPSE ROUTE THAT WRITES, which
+// is 8b." That was already false when 5d shipped the alert-decision POST, and it
+// stayed on the page while a second write landed in 5e. A comment naming its own
+// falsification condition is worth more than one that is merely correct today,
+// and it still goes stale silently, because nothing re-reads it when the
+// condition fires. This is the second instance of that exact failure in this
+// console; the other is in the ingress paragraph of the BFF's terraform module.
+//
+// WHERE THE TWO WRITES STAND NOW:
+//
+//   5d, alert decisions -> synapse.action_events carries actor_subject on every
+//        row. The decision and its attribution are the same row, so this one is
+//        genuinely closed.
+//   5e, provisioning    -> NOT CLOSED. synapse.provision records enabled_at and
+//        records NOBODY. The BFF emits a structured log line carrying the Auth0
+//        subject, the tenant, the analysis and the timezone, and a log line is
+//        not an audit record: Cloud Logging's retention is the ceiling and
+//        nothing can answer "who enabled this monitor" from the database at all.
+//
+// THE REAL HOME is synapse.provision_events, append-only, the same shape as
+// synapse.action_events. It is deferred because it IS the append-only enablement
+// history in disguise and synapse/schemas/postgres/provision.sql names the first
+// DISABLE as that table's trigger, not the first enable. Both get built together
+// when a disable arrives.
+//
+// UNTIL THEN 5e MUST NOT REACH A PRODUCTION TENANT. Same standing condition as
+// the provisioning permission being known-broader than the act; see
+// synapse_ui_server/cm_permissions.py.
 //
 // LOCALLY there is no metadata server, so SYNAPSE_BFF_TOKEN (a token minted by
 // hand) is used if present. Absent both, the call fails loudly rather than going

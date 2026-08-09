@@ -160,8 +160,25 @@ def _resolve_constants(source: str) -> str:
 
 
 def _grant_sources() -> dict[str, str]:
-    """Every file that can change this role's privileges, hand-run and migrated alike."""
-    sources = {p.name: p.read_text(encoding="utf-8") for p in sorted(_SQL_DIR.glob("*.sql"))}
+    """Every file that can change this role's privileges, hand-run and migrated alike.
+
+    SQL LINE COMMENTS ARE STRIPPED FROM THE HAND-RUN FILES, and slice 5e is why. These files
+    document each other at length: sql/05's header explains the sql/04 pairing defect by QUOTING
+    sql/04's ``REVOKE ALL ON ALL TABLES IN SCHEMA synapse FROM synapse_reader``, and the
+    hazard regex below matched the quotation. It reported sql/05 as stripping six tables it does
+    not mention, in a paragraph whose entire subject is not doing that.
+
+    A COMMENT CANNOT REVOKE ANYTHING, so reading one as a revoke is the same error as reading one
+    as a grant, which ``required_objects`` already strips comments to avoid. This is that fix
+    applied to the other half of the file.
+
+    THE CHECKER STILL ERRS TOWARD REPORTING. This removes a class of FALSE POSITIVE that comes
+    from prose, not a class of true finding: nothing that acts on the database is inside a
+    ``--``.
+    """
+    sources = {
+        p.name: re.sub(r"--[^\n]*", "", p.read_text(encoding="utf-8")) for p in sorted(_SQL_DIR.glob("*.sql"))
+    }
     for path in _MIGRATIONS:
         sources[f"alembic/{path.name}"] = _resolve_constants(path.read_text(encoding="utf-8"))
     return sources

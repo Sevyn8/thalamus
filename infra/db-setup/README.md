@@ -39,8 +39,28 @@ instance-create.
    those tables). NOT as `postgres`: Cloud SQL's cloudsqlsuperuser does not own
    core and cannot GRANT on it (fails with 'permission denied for schema core').
 
+6. **`sql/05_synapse_provisioner_grant.sql`** as the owner of the `synapse`
+   schema (`postgres` in staging, `ithina_dis_admin` locally), connected to the
+   shared database: grants `synapse_provisioner` INSERT on `synapse.provision`
+   plus SELECT on `identity_mirror.tenants` and
+   `canonical.store_sku_current_position`, and revokes everything else from that
+   role. Arrived with slice 5e, when the console gained an Enable control.
+   MUST run after Synapse's Alembic has reached 0003 (it names
+   `synapse.provision`) and after step 4 (it names the canonical and mirror
+   tables). The ROLE itself is created out of band first, like
+   `synapse_lifecycle`; the file's header carries the exact `CREATE ROLE`.
+
 Steps 3 and 4 are independent of each other and can run in either order once
-step 2 is done. Step 5 depends only on step 3.
+step 2 is done. Step 5 depends only on step 3. Step 6 depends on step 4 and on
+Synapse's own Alembic chain.
+
+`sql/03` and `sql/04` are the sibling grant files for `synapse_reader` and
+`synapse_writer`. Note that `sql/04` is the one with the re-run hazard: its
+blanket `REVOKE ALL ON ALL TABLES IN SCHEMA synapse` has twice stripped grants a
+later migration made, which is why
+`synapse/services/synapse-ui-server/tests/test_grants_cover_reads.py` compares
+the two artifacts. `sql/05` deliberately revokes from its own role only, so it
+can never do that to anybody.
 
 **Status (2026-07-20, against the shared `thalamus` DB):** steps 1-5 completed.
 sql/01 ran as `postgres`; CM Alembic as `user_admin_backend` (core + 15 tables);

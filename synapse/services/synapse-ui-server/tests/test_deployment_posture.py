@@ -140,6 +140,44 @@ def test_the_terraform_precondition_still_exists() -> None:
     )
 
 
+def test_every_secret_iam_member_is_listed_in_the_services_depends_on() -> None:
+    """PAIR #14, AND SLICE 5d PAID FOR IT IN TWO DAYS OF A DEAD WRITE PATH.
+
+    THE FAILURE THIS CATCHES. The env blocks reference
+    ``data.google_secret_manager_secret.*.secret_id``, which is the DATA SOURCE. Terraform sees an
+    edge to the data source and NO EDGE AT ALL to the ``secret_iam_member``, so it is free to
+    create the revision before the grant exists or propagates. The container then cannot read its
+    own credential, and on this service every DSN is required at startup, so the result is a
+    failed health check while the previous revision keeps serving. The apply is green. Nothing in
+    the plan says a thing.
+
+    ``depends_on`` is the fix and it is invisible: it is a list somebody has to remember to extend
+    when they add a secret, in a file where the addition looks complete without it. That is
+    exactly the shape of an inter-artifact pair, so it gets a checker rather than a convention.
+
+    PARSED FROM THE MODULE rather than hardcoded, so a fourth secret is covered the day it lands.
+    """
+    code = _terraform_code()
+
+    declared = set(re.findall(r'resource\s+"google_secret_manager_secret_iam_member"\s+"([a-z0-9_]+)"', code))
+    assert declared, "parsed zero secret iam_members; the regex has stopped biting"
+
+    depends_block = re.search(r"depends_on\s*=\s*\[(.*?)\]", code, re.DOTALL)
+    assert depends_block is not None, (
+        "the Cloud Run service has no depends_on at all. Every secret grant in this module must "
+        "be listed there, or a revision can be created before it can read its own DSN."
+    )
+    listed = set(re.findall(r"google_secret_manager_secret_iam_member\.([a-z0-9_]+)", depends_block.group(1)))
+
+    missing = sorted(declared - listed)
+    assert not missing, (
+        f"these secret grants are not in the service's depends_on: {missing}. Terraform will not "
+        "infer the ordering, because the env blocks reference the DATA SOURCE and not the grant. "
+        "The revision can be created before the grant propagates, the container cannot read its "
+        "own credential, and it fails readiness behind an apply that reported success."
+    )
+
+
 def test_the_guard_is_required_because_ingress_is_open() -> None:
     """THE COUPLING, MADE EXPLICIT. These tests replace a specific thing: ingress failing closed.
 

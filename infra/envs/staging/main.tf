@@ -184,6 +184,19 @@ module "synapse_ui_server" {
   # would reject every token the console can obtain.
   jwt_issuer   = "https://sevyn8.us.auth0.com/"
   jwt_audience = "https://api.sevyn8.com"
+
+  # WHERE THE PROVISIONING GATE ASKS ITS QUESTION (slice 5e). The BFF forwards the
+  # caller's own Auth0 token to CM's /api/v1/me/can-do and denies unless CM says
+  # the caller holds ADMIN.TENANTS.CONFIGURE.GLOBAL. Synapse holds no copy of CM's
+  # permission model.
+  #
+  # A RESOURCE REFERENCE, NOT A COPIED STRING, for the same reason synapse_bff_url
+  # is one below: a hand-copied URL that drifts from the service produces a gate
+  # that denies every enable, and since the gate fails closed the symptom is
+  # "provisioning is broken for everyone" rather than anything naming a URL. The
+  # reference also gives terraform the edge, so CM exists before the revision that
+  # points at it.
+  cm_api_base_url = module.cm_service.service_url
 }
 
 module "cm_frontend_service" {

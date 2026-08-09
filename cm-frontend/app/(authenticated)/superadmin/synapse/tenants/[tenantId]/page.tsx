@@ -30,6 +30,8 @@ import {
 import { ANALYSIS_NAMES, MONITOR_DESCRIPTIONS } from "@/lib/synapse/names";
 import { SynapseUnavailable, synapseGet } from "@/lib/synapse/server-client";
 
+import { EnableMonitor } from "./EnableMonitor";
+
 // NEVER PRERENDER THIS PAGE. It reads SYNAPSE_BFF_URL and the caller's session at
 // request time; prerendering executes it during `next build`, where neither
 // exists, and bakes the resulting error notice into static HTML that the
@@ -56,6 +58,23 @@ type AnalysisState = {
   // migration 0005. Restores what Phase A's item 5a wanted and could not have:
   // null = the last run never reached its plan; {} = it ran and refused nothing.
   refusals: Refusals | undefined;
+};
+
+// THE THIRD STATE (slice 5e). A pair that WAS provisioned and is now switched off.
+//
+// WITHOUT THIS THE ENABLE CONTROL IS A LIE. The BFF's active-monitor query filters
+// `disabled_at IS NULL`, so before 5e a disabled pair simply did not appear and that
+// was correct on a read-only screen. The moment an Enable control exists, an absent
+// pair reads as "never provisioned" and the console offers to enable it; the insert
+// is then suppressed by ON CONFLICT DO NOTHING, the request succeeds, and the page
+// re-renders still showing it off. A control that reports success and changes nothing
+// is worse than a dead one, because the honest reading is "the console is broken".
+//
+// So the BFF returns both halves of the partition and this tab renders three states.
+type DisabledAnalysis = {
+  analysis_id: string;
+  enabled_at: string;
+  disabled_at: string;
 };
 
 // 5c. The tenant page listed alerts AGGREGATED PER MONITOR ("3 alerts raised") because
@@ -95,6 +114,7 @@ type TenantDetail = {
   // was DISPLAYED and called it a property of the tenant.
   open_alerts: number;
   analyses: AnalysisState[];
+  disabled_analyses: DisabledAnalysis[];
 };
 
 // The strictest freshness threshold any monitor declares — same constant, same reason, as the
@@ -228,6 +248,25 @@ export default async function TenantPage({
     if (!(error instanceof SynapseUnavailable)) throw error;
   }
   const thresholdsFor = new Map(catalogue.map((a) => [a.analysis_id, a.thresholds]));
+
+  // THE THREE ENABLEMENT STATES, PARTITIONED HERE ONCE (slice 5e).
+  //
+  //   active            detail.analyses            renders as today, no control
+  //   disabled          detail.disabled_analyses   renders as disabled, NO control
+  //   never provisioned the rest of the catalogue  renders with the Enable control
+  //
+  // DERIVED FROM THE CATALOGUE, NOT FROM A LIST OF NAMES. `catalogue` is /analyses,
+  // which is synapse.registry's declared_analysis_ids() served as objects. An
+  // analysis that exists in the registry is exactly one that can be provisioned
+  // without breaking the sweep, so the available list cannot offer an id the
+  // orchestrator would refuse. If the registry read failed, `catalogue` is empty and
+  // nothing is offered, which is the correct degradation: no controls beats controls
+  // built from a list we could not load.
+  const enabledIds = new Set(detail.analyses.map((a) => a.analysis_id));
+  const disabledById = new Map(detail.disabled_analyses.map((a) => [a.analysis_id, a]));
+  const available = catalogue.filter(
+    (a) => !enabledIds.has(a.analysis_id) && !disabledById.has(a.analysis_id),
+  );
 
   const staleDays = daysSince(detail.latest_sale);
   const isStale = staleDays === null || staleDays > STALE_AFTER_DAYS;
@@ -462,16 +501,96 @@ export default async function TenantPage({
             })
           )}
 
-          {/* NO ENABLE BUTTONS, and their absence is the slice boundary rather than an
-              oversight. The mockup's Monitors tab is also the proposed provisioning surface
-              (5e): Enable and Configure would write synapse.provision through a scoped role.
-              Nothing here writes anything, so rendering a button that does nothing would be a
-              dead control, and rendering one that writes would be a slice nobody approved. */}
+          {/* DISABLED MONITORS, WITH NO CONTROL, AND THE ABSENCE IS THE FEATURE.
+              Rendered at all because the alternative is invisibility, and an invisible
+              disabled pair looks available: the Enable control below would offer it, the
+              database would suppress the insert with ON CONFLICT DO NOTHING, and the
+              request would succeed having changed nothing.
+
+              RE-ENABLING IS NOT MISSING, IT IS REFUSED. synapse.provision holds ONE
+              window per (tenant, analysis), so clearing disabled_at loses the fact that
+              there was a gap and the attribution denominator for that period silently
+              becomes wrong. The fix is an append-only enablement history, and the first
+              disable is its trigger. The BFF answers 409 with the same explanation, and
+              the grant has no UPDATE, so this is the third layer rather than the only
+              one. */}
+          {detail.disabled_analyses.length > 0 && (
+            <div className="mt-6">
+              <SectionHead>Switched off</SectionHead>
+              {detail.disabled_analyses.map((row) => (
+                <Row
+                  key={row.analysis_id}
+                  title={ANALYSIS_NAMES[row.analysis_id] ?? row.analysis_id}
+                  meta={
+                    <>
+                      {MONITOR_DESCRIPTIONS[row.analysis_id] ?? null}
+                      <span className="text-micro mt-1 block font-mono text-foreground-subtle">
+                        {row.analysis_id}
+                      </span>
+                    </>
+                  }
+                  right={<Tag tone="mute">Disabled</Tag>}
+                  note={`Ran from ${row.enabled_at.slice(0, 10)} to ${row.disabled_at.slice(0, 10)}`}
+                />
+              ))}
+              <div className="mt-3">
+                <Footnote>
+                  Switching a monitor back on is deliberately not available here. This client has
+                  one recorded window per monitor, so re-enabling would overwrite the dates above
+                  and the measure of how long each monitor was watching would quietly stop being
+                  right. Ask an engineer if a monitor needs to run again.
+                </Footnote>
+              </div>
+            </div>
+          )}
+
+          {/* AVAILABLE MONITORS, WITH THE ENABLE CONTROL. The first write surface on this
+              page (5e), and every input it does not offer is a safety property: cadence
+              and rung are constants in the BFF, the client comes from the route, and the
+              monitor comes from this list. The only choice is the reporting timezone, and
+              it is chosen once. */}
+          {available.length > 0 && (
+            <div className="mt-6">
+              <SectionHead>Available</SectionHead>
+              {available.map((row) => (
+                <Row
+                  key={row.analysis_id}
+                  title={ANALYSIS_NAMES[row.analysis_id] ?? row.name}
+                  meta={
+                    <>
+                      {MONITOR_DESCRIPTIONS[row.analysis_id] ?? null}
+                      <span className="text-micro mt-1 block font-mono text-foreground-subtle">
+                        {row.analysis_id}
+                      </span>
+                      {row.thresholds.length > 0 ? (
+                        <span className="mt-1.5 flex flex-wrap gap-1.5">
+                          {row.thresholds.map((t) => (
+                            <MonoChip key={t.name}>
+                              {t.name} {t.days}d
+                            </MonoChip>
+                          ))}
+                        </span>
+                      ) : null}
+                    </>
+                  }
+                  right={
+                    <EnableMonitor
+                      tenantId={tenantId}
+                      analysisId={row.analysis_id}
+                      analysisName={ANALYSIS_NAMES[row.analysis_id] ?? row.name}
+                    />
+                  }
+                />
+              ))}
+            </div>
+          )}
+
           <div className="mt-4">
             <Footnote>
-              Monitors are enabled in the repository, not here. Thresholds shown are the current
-              declaration; each alert carries its own frozen copy of the numbers in force when it
-              was raised.
+              Enabling a monitor starts it watching this client at the next daily sweep, in silent
+              mode: it records what it finds here and sends the client nothing. Thresholds shown
+              are the current declaration; each alert carries its own frozen copy of the numbers in
+              force when it was raised.
             </Footnote>
           </div>
         </section>

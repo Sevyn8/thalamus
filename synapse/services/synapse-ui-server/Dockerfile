@@ -1,8 +1,10 @@
 # synapse-ui-server — Synapse's BFF, run as a Cloud Run SERVICE.
 #
 # READ-ONLY UNTIL SLICE 5d, and nearly so still: every GET reads through
-# synapse_reader, and the single POST appends to synapse.action_events as
-# synapse_lifecycle — a role holding INSERT on that one table and nothing else.
+# synapse_reader, and the two POSTs write one table each through a role that can do
+# nothing else. synapse_lifecycle appends to synapse.action_events (5d);
+# synapse_provisioner inserts into synapse.provision (5e) and holds no UPDATE, so the
+# console cannot disable a tenant or edit a timezone.
 #
 # A SECOND DOCKERFILE RATHER THAN A PARAMETERISED ONE, and the reasoning matters
 # because this project has paid three times for duplication (the Pub/Sub poll
@@ -125,11 +127,19 @@ ENV ASGI_TARGET="synapse_ui_server.main:create_app"
 # right and the check was stale. A variable added to load_config() must be added
 # here in the same commit, or the next build fails at step 15 instead of the review.
 #
+# SLICE 5e ADDED TWO MORE, both required and both here in the same commit as the
+# load_config change that demands them: SYNAPSE_PROVISION_URL (the synapse_provisioner
+# DSN) and CM_API_BASE_URL (Customer Master's origin, which the provisioning gate
+# calls). CM_API_BASE_URL is deliberately unreachable at build time for the same
+# reason the DSNs are: it is syntactically valid and nothing dials it here.
+#
 # SYNAPSE_WRITER_URL IS DELIBERATELY ABSENT and must stay absent: load_config refuses
 # to start when it is set, because that is the ORCHESTRATOR's credential. Setting it
 # here to "make the check pass" would break every real revision.
 RUN SYNAPSE_READER_URL="postgresql+psycopg://u@h/d" \
     SYNAPSE_LIFECYCLE_URL="postgresql+psycopg://l@h/d" \
+    SYNAPSE_PROVISION_URL="postgresql+psycopg://p@h/d" \
+    CM_API_BASE_URL="https://build.invalid" \
     SYNAPSE_JWT_ISSUER="https://build.invalid/" \
     SYNAPSE_JWT_AUDIENCE="build-check" \
     python -c "\
@@ -146,6 +156,7 @@ required = { \
     ('/tenants/{tenant_id}/alerts', 'GET'), \
     ('/tenants/{tenant_id}/alerts/{event_id}', 'GET'), \
     ('/tenants/{tenant_id}/alerts/{event_id}/decisions', 'POST'), \
+    ('/tenants/{tenant_id}/analyses/{analysis_id}/enable', 'POST'), \
 }; \
 missing = required - routes; \
 assert not missing, f'routes did not register: {sorted(missing)}'; \
