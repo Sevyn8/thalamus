@@ -39,3 +39,6 @@ tfplan
 # The UI build spec that produced slice 8a lived here; three of its capability
 # rows were wrong, and a committed copy would outlive the correction.
 scratchpad/
+
+# Claude Code worktrees (local scratch, never committed)
+.claude/worktrees/
