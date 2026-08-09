@@ -25,11 +25,12 @@ import pytest
 from synapse_ui_server import main as main_module
 from synapse_ui_server import provision as provision_module
 from synapse_ui_server import reads
-from synapse_ui_server.auth import Identity, UserType
+from synapse_ui_server.auth import Identity, UserType, require_platform
 from synapse_ui_server.cm_permissions import require_tenant_configure
 from synapse_ui_server.config import Config
 from synapse_ui_server.main import create_app
 from synapse_ui_server.provision import EnablementRefusedError, EnableOutcome
+from synapse_ui_server.timezones import OfferedZones
 
 TENANT = UUID("019fb16b-e402-7dce-b026-6fa9f4919242")
 OPERATOR = Identity(subject="auth0|operator", user_type=UserType.PLATFORM, tenant_id=None)
@@ -97,13 +98,30 @@ def gated_app(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
         *,
         detail: reads.TenantDetail | None,
         outcome: EnableOutcome | Exception | None = None,
+        offered: tuple[str, ...] = ("Asia/Kolkata",),
+        source: str = "intersection",
     ) -> tuple[httpx.AsyncClient, list[dict[str, Any]]]:
         app = create_app(_CONFIG)
         # NO LIFESPAN, so nothing tries to open a pool. The handlers only ever pass these to the
         # two functions stubbed below, which ignore them.
         app.state.engine = object()
         app.state.provision_engine = object()
+        # THE OFFERED SET, which the lifespan would normally compute against the real database.
+        # A REAL OfferedZones rather than a stub, so the route exercises the real `offers`; a
+        # duck-typed fake could answer True to everything and every refusal test would pass
+        # vacuously. Defaults to the one zone every other test in this file posts.
+        app.state.timezones = OfferedZones(
+            names=offered,
+            source=source,  # type: ignore[arg-type]
+            python_count=len(offered),
+            postgres_count=len(offered) if source == "intersection" else None,
+        )
         app.dependency_overrides[require_tenant_configure] = lambda: OPERATOR
+        # AND require_platform, which the GET routes depend on DIRECTLY. Without it /timezones
+        # reaches Auth0Verifier and dies on app.state.verifier, which no lifespan set here. The
+        # enable route is unaffected either way: its gate is require_tenant_configure, overridden
+        # above, and the real dependency chain is asserted separately below.
+        app.dependency_overrides[require_platform] = lambda: OPERATOR
 
         async def fake_tenant_detail(engine: object, tenant_id: UUID) -> reads.TenantDetail | None:
             return detail
@@ -265,22 +283,113 @@ async def test_an_undeclared_analysis_is_404(gated_app) -> None:  # type: ignore
     assert response.status_code == 404
 
 
-async def test_an_unresolvable_timezone_is_422_carrying_the_message(gated_app) -> None:  # type: ignore[no-untyped-def]
-    """422: the request was understood and refused. THE MESSAGE IS THE PAYLOAD, because for a
-    timezone it is the trigger's own sentence naming the value and the consequence, and the zone
-    cannot be changed after the fact."""
+async def test_a_timezone_refusal_is_422_carrying_the_message_verbatim(gated_app) -> None:  # type: ignore[no-untyped-def]
+    """422: the request was understood and refused. THE MESSAGE IS THE PAYLOAD, because the zone
+    cannot be changed after the fact and the sentence is the only thing the operator can act on.
+
+    THE DOCSTRING HERE USED TO SAY the message "is the trigger's own sentence", which was the
+    conflation the 5e timezone fix removed. TWO DIFFERENT REFUSALS reach this handler as the same
+    exception type and they are NOT the same claim:
+
+      the TRIGGER's, on the DBAPIError path in enable_analysis, where Postgres really did refuse
+      the VALIDATOR's, from _validate, which is this service's own zoneinfo and reaches neither
+        Postgres nor the trigger
+
+    Both must pass through untouched, which is what this asserts by injecting an opaque marker
+    rather than a plausible sentence: a handler that recognised and reworded either one would
+    fail here. Which sentence each source produces is asserted where it is produced,
+    test_provision.py, not restated in this file.
+
+    THE ZONE IS IN THE OFFERED SET ON PURPOSE. The route's own membership check runs first and
+    would otherwise answer with ITS message, and this test would then be asserting the wrong
+    refusal while looking green. Offered-and-still-refused is also the real case it stands for:
+    a degraded list, or a trigger that disagrees with what startup measured.
+    """
     client, _ = gated_app(
         detail=_detail(),
+        offered=("Mars/Olympus_Mons",),
         outcome=EnablementRefusedError(
-            'synapse.provision.timezone "Mars/Olympus_Mons" does not resolve. Every slot ...',
-            reason="bad_timezone",
+            "REFUSAL-TEXT-FROM-BELOW, passed through unchanged", reason="bad_timezone"
         ),
     )
     async with client:
         response = await client.post(_url(), json={"timezone": "Mars/Olympus_Mons"})
 
     assert response.status_code == 422
-    assert "does not resolve" in response.json()["detail"]
+    assert response.json()["detail"] == "REFUSAL-TEXT-FROM-BELOW, passed through unchanged"
+
+
+async def test_a_zone_outside_the_offered_set_is_422_before_the_write(gated_app) -> None:  # type: ignore[no-untyped-def]
+    """THE SECOND REFUSAL, AND IT IS THE ROUTE'S OWN.
+
+    The offered set is the intersection of what this service resolves and what this Postgres
+    accepts, read at startup and held on app.state. It is runtime environment state, so the write
+    module cannot see it and the check lives here.
+
+    THE DIRECTION THIS CLOSES is the one _validate cannot: a name this process resolves happily
+    and the database refuses. Without it that reaches the INSERT and is refused by the trigger
+    AFTER the operator has committed, which is a dead control that fails late.
+
+    REFUSED, NOT TRANSLATED. The message says so, because the column is immutable and storing a
+    value nobody typed is worse than refusing one.
+    """
+    client, calls = gated_app(detail=_detail(), offered=("Asia/Kolkata",))
+    async with client:
+        response = await client.post(_url(), json={"timezone": "Etc/UTC"})
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert "not one this console offers" in detail
+    assert "INTERSECTION" in detail
+    assert "refused rather than translated" in detail
+    assert calls == [], "a zone outside the offered set reached the write"
+
+
+async def test_a_zone_inside_the_offered_set_proceeds(gated_app) -> None:  # type: ignore[no-untyped-def]
+    """THE BASELINE. Without it the test above passes against a route that refuses every zone,
+    which is exactly the shape of the bug being fixed."""
+    client, calls = gated_app(
+        detail=_detail(),
+        offered=("Asia/Kolkata",),
+        outcome=EnableOutcome(
+            analysis_id="dead_stock", tenant_name="TestCo", canonical_positions=15, warning=None
+        ),
+    )
+    async with client:
+        response = await client.post(_url(), json={"timezone": "Asia/Kolkata"})
+
+    assert response.status_code == 201
+    assert len(calls) == 1
+
+
+async def test_the_degraded_list_says_so_in_the_refusal(gated_app) -> None:  # type: ignore[no-untyped-def]
+    """WHEN THE LIST IS PYTHON-ONLY, THE REFUSAL SAYS THE LIST MIGHT BE WRONG.
+
+    A degraded set can both refuse a name the database would accept and offer one it would not.
+    An operator hitting the first case against a silently degraded list would conclude the zone
+    does not exist. Saying it is degraded is the difference between a refusal and a lie.
+    """
+    client, _ = gated_app(detail=_detail(), offered=("Asia/Kolkata",), source="python_only")
+    async with client:
+        response = await client.post(_url(), json={"timezone": "Etc/UTC"})
+
+    assert response.status_code == 422
+    assert "DEGRADED" in response.json()["detail"]
+
+
+async def test_the_timezones_endpoint_serves_the_offered_set_and_its_source(gated_app) -> None:  # type: ignore[no-untyped-def]
+    """WHAT THE CONSOLE READS. `source` is part of the payload rather than a diagnostic: the page
+    renders a note when it is python_only, because a fallback nobody can see is the dead-control
+    class in the opposite direction."""
+    client, _ = gated_app(detail=_detail(), offered=("Africa/Djibouti", "Asia/Kolkata"))
+    async with client:
+        response = await client.get("/timezones")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["timezones"] == ["Africa/Djibouti", "Asia/Kolkata"]
+    assert body["source"] == "intersection"
+    assert body["count"] == 2
 
 
 async def test_a_reason_with_no_status_mapping_is_not_silently_a_422(gated_app) -> None:  # type: ignore[no-untyped-def]

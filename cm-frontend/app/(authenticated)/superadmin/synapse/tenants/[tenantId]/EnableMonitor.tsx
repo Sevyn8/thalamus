@@ -43,46 +43,104 @@ import { type EnableResult, enableMonitor } from "./actions";
 // default would make the commonest value the one nobody meant.
 const NO_ZONE = "";
 
-// THE BROWSER'S OWN IANA LIST, not a curated one. A short list would be a second
-// source of truth for what zones exist and would be wrong for the first customer
-// outside it.
+// ============================================================================
+// THE LIST COMES FROM THE BFF. THE COMMENT THAT USED TO BE HERE IS WHY.
+// ============================================================================
+// This block held a zoneOptions() reading Intl.supportedValuesOf("timeZone"),
+// under a comment that said:
 //
-// THE BROWSER'S TZ DATABASE CAN BE NEWER THAN POSTGRES'S, so this can offer a zone
-// the database refuses. That is handled rather than prevented: the BFF validates with
-// Python's tzdata and the provision table's BEFORE INSERT trigger validates against
-// the server's own catalogue, and the trigger's message is surfaced verbatim. Three
-// tz databases, and the only one that can speak for the row is the one in the
-// database the row lands in.
-function zoneOptions(): string[] {
-  const supported = (
-    Intl as unknown as { supportedValuesOf?: (key: string) => string[] }
-  ).supportedValuesOf;
-  if (typeof supported !== "function") return [];
-  try {
-    return supported("timeZone");
-  } catch {
-    return [];
+//   "THE BROWSER'S TZ DATABASE CAN BE NEWER THAN POSTGRES'S, so this can offer a
+//    zone the database refuses. That is handled rather than prevented."
+//
+// BOTH HALVES WERE WRONG, and the comment is corrected here rather than deleted
+// with the code, because it is the artifact that caused the outage and its
+// correction is the lesson.
+//
+//   WRONG ABOUT WHO DISAGREED. The disagreement that bit was the browser versus
+//   PYTHON, not the browser versus Postgres. The BFF runs on python:3.12-slim,
+//   whose Debian tzdata carries the canonical IANA names and OMITS the
+//   backward-compatibility links.
+//
+//   WRONG ABOUT WHICH WAY IT WOULD FAIL. Postgres would have ACCEPTED the value.
+//   The browser resolves identifiers through CLDR/ICU, which treats
+//   Asia/Calcutta as canonical and Asia/Kolkata as the alias, the reverse of
+//   IANA. So the picker offered Asia/Calcutta, did not offer Asia/Kolkata at
+//   all, and every enable was refused by the BFF at validation. Every tenant in
+//   production is Asia/Kolkata. The control could not emit the only value
+//   anybody needed.
+//
+//   AND "HANDLED RATHER THAN PREVENTED" WAS THE ACTUAL MISTAKE. It named a real
+//   hazard and then chose to catch it downstream. Downstream is after the
+//   operator has committed, on a column that is immutable.
+//
+// THE INTERSECTION REVERSES ALL THREE. The BFF serves the names that BOTH its
+// own zoneinfo and the Postgres it writes to accept, computed at startup. An
+// intersection cannot contain a name either side rejects, so "offered" and
+// "writable" are the same set by construction rather than by review. See
+// synapse_ui_server/timezones.py, which also records why this defect does not
+// reproduce on a devbox.
+//
+// SO THIS COMPONENT NO LONGER TOUCHES Intl, AND MUST NOT AGAIN. It renders the
+// list it is given. A browser-derived list is a fourth timezone database that
+// nobody validates against.
+
+// GROUPED BY THE PREFIX BEFORE THE SLASH, which is derived mechanically from the
+// name and so invents nothing. Roughly 486 entries in one flat alphabetical list is
+// a control designed to be got wrong, especially when a deprecated-looking alias can
+// sort near the answer.
+//
+// DELIBERATELY NOT A "COMMON ZONES" GROUP PINNED AT THE TOP. That needs a hardcoded
+// list, which is the second source of truth this file's original comment correctly
+// argued against; "every tenant is Asia/Kolkata" is a fact about today's customers
+// rather than a property of the system; and putting the likely answer under the
+// operator's thumb is one edit away from re-creating the default that NO_ZONE exists
+// to prevent.
+function byRegion(zones: string[]): Array<[string, string[]]> {
+  const groups = new Map<string, string[]>();
+  for (const name of zones) {
+    const slash = name.indexOf("/");
+    const region = slash === -1 ? "Other" : name.slice(0, slash);
+    const existing = groups.get(region);
+    if (existing) existing.push(name);
+    else groups.set(region, [name]);
   }
+  return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
 }
 
 export function EnableMonitor({
   tenantId,
   analysisId,
   analysisName,
+  zones,
+  zoneSource,
 }: {
   tenantId: string;
   analysisId: string;
   analysisName: string;
+  // Served by the BFF, never derived here. Empty means the list could not be loaded,
+  // and the page does not render this component at all in that case.
+  zones: string[];
+  // "intersection" or "python_only". See the degraded note below.
+  zoneSource: string;
 }) {
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
   const [zone, setZone] = useState<string>(NO_ZONE);
+  const [filter, setFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
 
-  // COMPUTED ON FIRST RENDER OF THE OPEN STATE, not at module scope: Intl is a client
-  // API and this file is imported by a server component's module graph.
-  const zones = open ? zoneOptions() : [];
+  // SUBSTRING ON THE WHOLE NAME, case-insensitive, so "kol", "asia/kol" and "kolkata"
+  // all find Asia/Kolkata. Filtering rather than a combobox because a native select
+  // stays keyboard- and screen-reader-correct without a dependency.
+  const needle = filter.trim().toLowerCase();
+  const matching = needle ? zones.filter((n) => n.toLowerCase().includes(needle)) : zones;
+  const grouped = byRegion(matching);
+
+  // THE FILTER MUST NOT SILENTLY DROP A CHOSEN ZONE. Typing on after picking one would
+  // otherwise leave `zone` set to something no longer in the list, and Enable would
+  // stay armed against an option the operator can no longer see.
+  const chosenIsVisible = zone === NO_ZONE || matching.includes(zone);
 
   function send() {
     setError(null);
@@ -114,20 +172,70 @@ export function EnableMonitor({
         <div className="flex flex-col items-end gap-2">
           <label className="text-caption flex flex-col items-end gap-1 text-foreground-muted">
             Reporting timezone for this client
+            <input
+              type="text"
+              value={filter}
+              disabled={pending}
+              onChange={(event) => setFilter(event.target.value)}
+              placeholder="Search, e.g. Kolkata"
+              className="text-caption w-64 rounded-md border border-border bg-surface px-2 py-1.5 text-foreground"
+            />
+          </label>
+
+          {matching.length === 0 ? (
+            /* THE EMPTY STATE CARRIES THE ALIAS EXPLANATION, because "no results" for
+               a real city name is otherwise inexplicable. It says the shape of the
+               problem without a mapping table: naming Calcutta-to-Kolkata here would
+               be the same second source of truth, and one step from translating. */
+            <p className="text-micro max-w-xs text-right text-foreground-subtle">
+              No timezone matches &quot;{filter}&quot;. Deprecated IANA aliases, including some
+              older city spellings, are deliberately not offered. Try the current name, or search
+              by a nearby city.
+            </p>
+          ) : (
             <select
-              value={zone}
+              // NAMED EXPLICITLY. The visible label above now belongs to the search
+              // input that precedes it, so without this the select is an unnamed
+              // control to a screen reader: the one input on the whole enable flow,
+              // announced as nothing.
+              aria-label="Reporting timezone for this client"
+              value={chosenIsVisible ? zone : NO_ZONE}
               disabled={pending}
               onChange={(event) => setZone(event.target.value)}
-              className="text-caption rounded-md border border-border bg-surface px-2 py-1.5 text-foreground"
+              className="text-caption w-64 rounded-md border border-border bg-surface px-2 py-1.5 text-foreground"
             >
               <option value={NO_ZONE}>Choose a timezone...</option>
-              {zones.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
+              {grouped.map(([region, names]) => (
+                <optgroup key={region} label={region}>
+                  {names.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
-          </label>
+          )}
+
+          {/* THE COUNT, so the operator can see the filter biting rather than
+              wondering whether the list is short or the search is wrong. */}
+          <p className="text-micro text-right text-foreground-subtle">
+            {needle
+              ? `${matching.length} of ${zones.length} zones`
+              : `${zones.length} zones offered`}
+          </p>
+
+          {/* THE DEGRADED PATH, SAID PLAINLY AND QUIETLY. python_only means the BFF
+              could not read Postgres at startup, so this list is its own names alone
+              and a zone on it may still be refused by the table's trigger, after the
+              operator has committed. A console that knows that and stays silent is
+              worse than one that says it. */}
+          {zoneSource === "python_only" && (
+            <p className="text-micro max-w-xs text-right text-foreground-subtle">
+              This list could not be checked against the database and may offer a zone the
+              database refuses. If enabling fails on the timezone, that is why.
+            </p>
+          )}
 
           {/* SAID BEFORE THE CLICK, NOT AFTER. The zone cannot be changed once a
               monitor is enabled, and an operator who learns that from an error
@@ -145,6 +253,7 @@ export function EnableMonitor({
               onClick={() => {
                 setOpen(false);
                 setZone(NO_ZONE);
+                setFilter("");
                 setError(null);
               }}
               className="text-caption rounded-md border border-border px-3 py-1.5 text-foreground-muted hover:bg-surface-2 disabled:opacity-50"
@@ -153,8 +262,9 @@ export function EnableMonitor({
             </button>
             <button
               type="button"
-              // Disabled until a zone is chosen. See NO_ZONE above.
-              disabled={pending || zone === NO_ZONE}
+              // Disabled until a zone is chosen, and disabled again if the filter has
+              // since hidden it. See NO_ZONE above.
+              disabled={pending || zone === NO_ZONE || !chosenIsVisible}
               onClick={send}
               className="text-caption rounded-md border border-border px-3 py-1.5 text-foreground hover:bg-surface-2 disabled:opacity-50"
             >

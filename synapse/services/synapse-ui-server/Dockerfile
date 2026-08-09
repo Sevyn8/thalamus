@@ -151,7 +151,7 @@ app = factory(); \
 routes = {(r.path, m) for r in app.routes if hasattr(r, 'path') for m in (getattr(r, 'methods', None) or {'GET'})}; \
 required = { \
     ('/healthz', 'GET'), ('/readyz', 'GET'), ('/fleet', 'GET'), ('/runs', 'GET'), \
-    ('/capabilities', 'GET'), ('/analyses', 'GET'), \
+    ('/capabilities', 'GET'), ('/analyses', 'GET'), ('/timezones', 'GET'), \
     ('/tenants/{tenant_id}', 'GET'), ('/tenants/{tenant_id}/runs', 'GET'), \
     ('/tenants/{tenant_id}/alerts', 'GET'), \
     ('/tenants/{tenant_id}/alerts/{event_id}', 'GET'), \

@@ -232,12 +232,26 @@ def _validate(analysis_id: str, timezone: str) -> None:
     catch this: the CHECK constraint only requires a non-empty string, and the table cannot see a
     Python declaration.
 
-    THE TIMEZONE, against ZoneInfo. The database refuses an unresolvable zone too, via
-    trg_provision_timezone_resolves, and that trigger is the wall. This is the sign on it: it
-    fails without a round trip and without opening a transaction, and it mirrors
-    ``Provision.__post_init__``, which validates the same thing for rows built without touching
-    the table. Both are kept. This one explains; the trigger guarantees, for every role including
-    the owner.
+    THE TIMEZONE, against ZoneInfo, AND THE MESSAGE MUST SAY SO. This check runs against THIS
+    PROCESS's copy of the IANA database, which is one of three in play and is not the one that
+    speaks for the row. It is the last line of defence rather than the primary gate: the route
+    checks the offered set first, and the offered set is built so that a name reaching here has
+    already passed both databases. This still validates, because a module callable from anywhere
+    validates its own inputs.
+
+    THE MESSAGE USED TO BE A NEAR-COPY OF THE TRIGGER'S, AND THAT WAS THE THIRD DEFECT IN THIS
+    CONTROL. It read "timezone 'X' does not resolve. Every slot, and therefore every action's
+    as_of, is computed in this zone", which is the sentence synapse.provision's BEFORE INSERT
+    trigger raises. On staging that 422 was produced HERE, by Python's tzdata, for
+    ``Asia/Calcutta`` -- a name Postgres would have ACCEPTED. So the console attributed a refusal
+    to a database that never saw the value and would not have objected to it, in a module whose
+    own comments argue the trigger is the only authority that speaks for the database the row
+    lands in.
+
+    The wording below names which of the three databases refused, says the other two were not
+    reached, and names the deprecated-alias cause without translating anything. The trigger's own
+    message still passes through verbatim on the DBAPIError path in ``enable_analysis``; that one
+    really is the database speaking.
     """
     declared = declared_analysis_ids()
     if analysis_id not in declared:
@@ -252,9 +266,14 @@ def _validate(analysis_id: str, timezone: str) -> None:
         ZoneInfo(timezone)
     except (ZoneInfoNotFoundError, ValueError) as exc:
         raise EnablementRefusedError(
-            f"timezone {timezone!r} does not resolve. Every slot, and therefore every action's "
-            "as_of, is computed in this zone, and it is chosen once and never edited: an "
-            "unresolvable one would shift them silently rather than fail",
+            f"timezone {timezone!r} was refused by THIS SERVICE's copy of the IANA database "
+            "(Python's zoneinfo). It was not refused by Postgres and not by synapse.provision's "
+            "trigger: neither was reached, and Postgres may well accept this name. The likeliest "
+            "cause is a DEPRECATED IANA ALIAS, which this service's tzdata omits while other tz "
+            "databases still carry it; the same zone almost always has a current name that is "
+            "offered. Pick from the list this service serves at /timezones, which is the "
+            "intersection of what this service and this database both accept. That list is the "
+            "only set of names guaranteed to write",
             reason="bad_timezone",
         ) from exc
 

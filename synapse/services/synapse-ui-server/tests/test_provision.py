@@ -318,15 +318,49 @@ async def test_the_declared_ids_come_from_the_registry_not_a_list_here(patched) 
 
 
 async def test_an_unresolvable_timezone_is_refused_before_any_connection_opens(patched) -> None:  # type: ignore[no-untyped-def]
-    """THE CHEAP HALF. Python's tzdata answers without a round trip, and this is the sign on the
-    wall rather than the wall: the trigger below is what binds every role including the owner."""
+    """THE LAST LINE OF DEFENCE, not the primary gate. The route checks the offered set first;
+    this validates anyway, because a module callable from anywhere validates its own inputs."""
     conn = patched(_RecordingConn(tenant_name="TestCo", positions=15))
 
-    with pytest.raises(EnablementRefusedError, match="does not resolve") as caught:
+    with pytest.raises(EnablementRefusedError, match="THIS SERVICE") as caught:
         await _enable(conn, timezone="Mars/Olympus_Mons")
 
     assert caught.value.reason == "bad_timezone"
     assert conn.calls == []
+
+
+async def test_the_message_says_which_timezone_database_refused(patched) -> None:  # type: ignore[no-untyped-def]
+    """DEFECT 3 OF THE 5e TIMEZONE FIX, PINNED SO IT CANNOT COME BACK.
+
+    This message used to be a near-copy of the trigger's: "timezone 'X' does not resolve. Every
+    slot, and therefore every action's as_of, is computed in this zone". On staging that 422 was
+    produced HERE, by Python's tzdata, for Asia/Calcutta, which POSTGRES WOULD HAVE ACCEPTED. So
+    the console attributed a refusal to a database that never saw the value, in a module whose own
+    comments argue the trigger is the only authority that speaks for the database the row lands in.
+
+    THREE THINGS ARE ASSERTED and each is one of the message's jobs: name which of the three tz
+    databases refused, say the other two were not reached, and name the deprecated-alias cause so
+    an operator staring at a real city name knows why it is missing.
+
+    AND ONE THING IS ASSERTED ABSENT: the trigger's own sentence. That text is still passed
+    through verbatim on the DBAPIError path, where the database really did speak, and having two
+    sources produce the same words is what made the misattribution invisible.
+    """
+    conn = patched(_RecordingConn(tenant_name="TestCo", positions=15))
+
+    with pytest.raises(EnablementRefusedError) as caught:
+        await _enable(conn, timezone="Mars/Olympus_Mons")
+
+    message = str(caught.value)
+    assert "THIS SERVICE's copy of the IANA database" in message
+    assert "Python's zoneinfo" in message
+    assert "not refused by Postgres" in message
+    assert "DEPRECATED IANA ALIAS" in message
+    assert "/timezones" in message
+    assert "Every slot" not in message, (
+        "the validator is again wearing the trigger's sentence. The trigger says that, this does "
+        "not, and the whole defect was that an operator could not tell them apart"
+    )
 
 
 async def test_the_triggers_own_message_is_surfaced_not_swallowed(patched) -> None:  # type: ignore[no-untyped-def]

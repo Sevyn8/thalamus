@@ -42,6 +42,7 @@ from synapse_ui_server.provision import (
     EnablementRefusedError,
     enable_analysis,
 )
+from synapse_ui_server.timezones import load_offered
 
 # RE-EXPORTED so tests can patch the name THIS module calls. A test that patched
 # provision.enable_analysis instead would pass against a main.py that had stopped calling it.
@@ -126,6 +127,16 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.verifier = getattr(app.state, "verifier", None) or Auth0Verifier(
         jwks_url=config.jwks_url, issuer=config.jwt_issuer, audience=config.jwt_audience
     )
+
+    # THE TIMEZONE PICKER'S LIST, computed ONCE, here, against the database this service actually
+    # writes to. See timezones.py: it is the intersection of what this process can resolve and
+    # what this Postgres accepts, so a name the console offers cannot be one either side refuses.
+    #
+    # THIS MAKES STARTUP TOUCH THE DATABASE, which is a new failure mode on a path that had none.
+    # load_offered never raises: it falls back to Python's set alone and logs at WARNING. A broken
+    # picker beats a dead console, and /readyz below keeps its own independent session so a
+    # genuinely dead database still fails readiness through the check that exists for it.
+    app.state.timezones = await load_offered(app.state.engine)
     _log.info(
         "synapse-ui-server ready",
         extra={
@@ -410,6 +421,38 @@ def create_app(config: Config | None = None) -> FastAPI:
                 ),
             )
 
+        # THE OFFERED SET IS THE AUTHORITY ON WHAT CAN BE WRITTEN, and it is checked HERE rather
+        # than in provision.py because it is runtime environment state: the intersection of two
+        # tzdata builds, read at startup, held on app.state. A write module cannot see that and
+        # should not import it.
+        #
+        # TWO CHECKS, IN THIS ORDER, AND THE ORDER IS THE MESSAGE. enable_analysis runs its own
+        # ZoneInfo check as the last line of defence, because a module callable from anywhere
+        # validates its own inputs; that one fires first for a DEPRECATED ALIAS like
+        # Asia/Calcutta, which is the observed case, and its message explains which of the three
+        # timezone databases refused. This check catches the remainder: a name this process can
+        # resolve that Postgres will not, which is the direction the intersection exists to close.
+        offered = request.app.state.timezones
+        if not offered.offers(body.timezone):
+            degraded = (
+                " This list is DEGRADED: Postgres could not be read at startup, so it is this "
+                "service's names alone and a zone on it may still be refused by the database."
+                if offered.source == "python_only"
+                else ""
+            )
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"timezone {body.timezone!r} is not one this console offers. The offered list "
+                    f"is the INTERSECTION of the names this service can resolve and the names "
+                    f"this Postgres accepts, currently {len(offered.names)} of them, and it is "
+                    "the only set guaranteed to write. A name outside it is refused rather than "
+                    "translated: this column is immutable and feeds every action's as_of, so "
+                    "silently storing a value nobody typed would be worse than refusing one. Pick "
+                    f"from GET /timezones.{degraded}"
+                ),
+            )
+
         try:
             outcome = await enable_analysis(
                 request.app.state.provision_engine,
@@ -547,6 +590,35 @@ def create_app(config: Config | None = None) -> FastAPI:
     ) -> dict[str, object]:
         """In-process. No database, no probe — coverage per tenant is a separate lazy call."""
         return {"capabilities": [row.__dict__ for row in catalog.capabilities()]}
+
+    @app.get("/timezones")
+    async def get_timezones(
+        request: Request, _: Annotated[Identity, Depends(require_platform)]
+    ) -> dict[str, object]:
+        """Every timezone name the console may offer for an enablement.
+
+        THE INTERSECTION OF THIS SERVICE AND THIS DATABASE, computed once at startup. Slice 5e
+        populated this picker from the BROWSER, whose list resolves through CLDR/ICU and so
+        offered ``Asia/Calcutta`` while omitting ``Asia/Kolkata`` entirely: every enable was
+        refused at validation and nothing could be provisioned. An intersection cannot contain a
+        name either side rejects, which turns that from a thing to be careful about into a thing
+        that cannot happen.
+
+        NOT COMPUTED PER REQUEST. It is a property of the two tzdata builds in play, which do not
+        change without a deploy or a database upgrade, and a per-request query would put a
+        database round trip in front of opening a dropdown.
+
+        ``source`` IS SERVED, not just logged. ``python_only`` means the Postgres half could not
+        be read at startup, so a name here MIGHT still be refused by the trigger. The console
+        renders that plainly rather than looking healthy: a fallback nobody can see is the same
+        dead-control class in the opposite direction.
+        """
+        offered = request.app.state.timezones
+        return {
+            "timezones": list(offered.names),
+            "source": offered.source,
+            "count": len(offered.names),
+        }
 
     @app.get("/analyses")
     async def get_analyses(

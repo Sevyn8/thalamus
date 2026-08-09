@@ -249,6 +249,26 @@ export default async function TenantPage({
   }
   const thresholdsFor = new Map(catalogue.map((a) => [a.analysis_id, a.thresholds]));
 
+  // THE TIMEZONE LIST, FROM THE BFF (5e timezone fix). Fetched here rather than derived
+  // in the client component, because it is the intersection of what the BFF's own
+  // zoneinfo and the Postgres it writes to both accept, and no browser can compute that.
+  // The 5e picker read Intl.supportedValuesOf, which offered Asia/Calcutta, omitted
+  // Asia/Kolkata, and made the control unable to emit the only value in production use.
+  //
+  // DEGRADES TO AN EMPTY LIST like every other secondary fetch on this page, and the
+  // consequence is deliberate: with no list there is no Enable control at all. An Enable
+  // button over an empty select is a dead control, and this page's whole rule is that a
+  // control either does something or is not rendered.
+  let zones: string[] = [];
+  let zoneSource = "";
+  try {
+    const served = await synapseGet<{ timezones: string[]; source: string }>("/timezones");
+    zones = served.timezones;
+    zoneSource = served.source;
+  } catch (error) {
+    if (!(error instanceof SynapseUnavailable)) throw error;
+  }
+
   // THE THREE ENABLEMENT STATES, PARTITIONED HERE ONCE (slice 5e).
   //
   //   active            detail.analyses            renders as today, no control
@@ -574,11 +594,22 @@ export default async function TenantPage({
                     </>
                   }
                   right={
-                    <EnableMonitor
-                      tenantId={tenantId}
-                      analysisId={row.analysis_id}
-                      analysisName={ANALYSIS_NAMES[row.analysis_id] ?? row.name}
-                    />
+                    // NO LIST, NO CONTROL. The only input an enable takes is the
+                    // timezone, so a component with nothing to offer could render a
+                    // button that opens an empty select and an Enable that can never
+                    // arm. Rendering the reason instead is the same call the Monitors
+                    // tab makes everywhere else.
+                    zones.length === 0 ? (
+                      <Tag tone="mute">Timezone list unavailable</Tag>
+                    ) : (
+                      <EnableMonitor
+                        tenantId={tenantId}
+                        analysisId={row.analysis_id}
+                        analysisName={ANALYSIS_NAMES[row.analysis_id] ?? row.name}
+                        zones={zones}
+                        zoneSource={zoneSource}
+                      />
+                    )
                   }
                 />
               ))}
