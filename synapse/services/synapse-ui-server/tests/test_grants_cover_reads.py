@@ -99,14 +99,34 @@ ROLE = "synapse_reader"
 def required_objects() -> set[tuple[str, str]]:
     """Every ``schema.table`` reached by a FROM or JOIN in reads.py's SQL.
 
-    Scoped to ``text(\"\"\"...\"\"\")`` literals so prose in a docstring — which discusses these
-    tables at length — cannot manufacture a requirement.
+    READS THE COMPILED STATEMENTS, NOT THE SOURCE TEXT, and B2a is why. This used to regex the
+    file for ``text(\"\"\"...\"\"\")`` literals. When the fleet and tenant statements became
+    f-strings so they could interpolate the ONE shared lifecycle construct, the regex stopped
+    matching them: it required a ``\"\"\"`` immediately after ``text(`` and an ``f`` now sat
+    between. The parser silently fell from nine objects to four, and the only thing that
+    noticed was the vacuity guard below.
+
+    Source-scraping could not have been repaired by widening the pattern either. The shared
+    constructs are interpolated, so ``_FLEET``'s source contains ``{_OPEN_ALERTS_BY_TENANT}``
+    and never the words ``synapse.actions_analytical``: the table this slice moved the open
+    count ONTO would have stayed invisible to the grant check. Compiled statements carry the
+    resolved SQL, so a construct is checked wherever it is used rather than where it is
+    written.
+
+    SQL line comments are stripped first. The statements now carry prose about which tables a
+    deleted copy used to read, and a comment must not manufacture a grant requirement -- the
+    same reason the old version scoped itself to literals.
     """
-    source = _READS.read_text(encoding="utf-8")
-    statements = re.findall(r'text\(\s*"""(.*?)"""\s*\)', source, re.S)
+    from sqlalchemy.sql.elements import TextClause
+    from synapse_ui_server import reads as reads_module
+
     found: set[tuple[str, str]] = set()
-    for statement in statements:
-        for schema, table in re.findall(r"\b(?:FROM|JOIN)\s+([a-z_]+)\.([a-z_]+)", statement, re.I):
+    for name in dir(reads_module):
+        statement = getattr(reads_module, name)
+        if not isinstance(statement, TextClause):
+            continue
+        body = re.sub(r"--[^\n]*", "", str(statement))
+        for schema, table in re.findall(r"\b(?:FROM|JOIN)\s+([a-z_]+)\.([a-z_]+)", body, re.I):
             found.add((schema.lower(), table.lower()))
     return found
 

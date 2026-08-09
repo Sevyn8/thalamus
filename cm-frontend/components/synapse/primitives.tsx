@@ -621,34 +621,39 @@ export function runDetail(run: RunOutcomeFacts): string | null {
 // Alert lifecycle (synapse.action_events, migration 0006)
 // ---------------------------------------------------------------------------
 //
-// PER TARGET, NOT PER ALERT. The BFF resolves the latest decision for
-// (declaration_id, target), so a snooze taken yesterday covers today's new
-// detection of the same product at the same store. That is what an operator
-// means by "snooze"; a per-row state would evaporate on the next detection.
+// THIS FILE NO LONGER DERIVES A LIFECYCLE STATE, AND THAT IS THE POINT OF B2a.
 //
-// A SNOOZE EXPIRES; A DISMISSAL DOES NOT. So "snoozed" is a function of the
-// date and has to be recomputed on every render rather than stored.
-export type Lifecycle = {
-  lifecycle_verb: string | null;
-  lifecycle_reason: string | null;
-  lifecycle_snoozed_until: string | null;
-};
-
+// `alertState()` used to live here and recompute the state from the raw
+// lifecycle columns. It was one of THREE derivations: this one, the SQL CASE the
+// inbox uses, and a third inline copy inside the fleet roster's open-alert
+// count. Three copies of one rule is three chances to disagree, and they did:
+// the inbox read "Open 6, Acknowledged 5" while the fleet and tenant pages both
+// read 11.
+//
+// SQL IS THE SINGLE AUTHORITY, because only SQL can filter and count fleet-wide,
+// and a count that disagrees with the list it heads is worse than no count. So
+// the server derives `lifecycle_state` once (reads.py `_LIFECYCLE_STATE`) and
+// every statement that returns an alert carries it. This module RENDERS that
+// value and never computes one.
+//
+// PER TARGET, NOT PER ALERT, which is what the server's join encodes. An
+// operator who snoozes means "stop showing me this product at this store", so
+// tomorrow's detection of the same thing inherits the decision rather than
+// arriving fresh.
 export type AlertState = "open" | "snoozed" | "dismissed" | "acknowledged";
 
-// `today` is injected rather than read here so a caller can pin it. Compared as
-// ISO date strings: both sides are date-only, and Date parsing would drag a
-// timezone into a comparison that has none.
-export function alertState(row: Lifecycle, today: string): AlertState {
-  if (row.lifecycle_verb === "dismissed" || row.lifecycle_verb === "dismiss") return "dismissed";
-  if (row.lifecycle_verb === "snooze") {
-    // A LAPSED SNOOZE IS OPEN AGAIN, and the row says so without anything having
-    // written a second event. Nothing expires it in the database on purpose:
-    // the decision was "quiet until this date", not "quiet, then noisy".
-    return row.lifecycle_snoozed_until && row.lifecycle_snoozed_until >= today ? "snoozed" : "open";
-  }
-  if (row.lifecycle_verb === "acknowledge") return "acknowledged";
-  return "open";
+const ALERT_STATES: readonly AlertState[] = ["open", "snoozed", "dismissed", "acknowledged"];
+
+// THE ONE NARROWING POINT, called once per page where JSON enters.
+//
+// The wire carries a string, and this build cannot promise the server will never
+// grow a fifth state. Rather than typing the row field as AlertState and lying,
+// the row keeps `string` and this converts, returning null for anything
+// unrecognised so the caller can render the raw word instead of filing it under
+// a state it does not mean. Everything downstream of this call is typed, so a
+// renamed or mistyped state is a compile error rather than a silent miscount.
+export function asAlertState(raw: string): AlertState | null {
+  return (ALERT_STATES as readonly string[]).includes(raw) ? (raw as AlertState) : null;
 }
 
 const STATE_TONE: Record<AlertState, Tone> = {
@@ -669,23 +674,29 @@ const DISMISS_REASON_LABEL: Record<string, string> = {
   wrong_data: "wrong data",
 };
 
-// ACKNOWLEDGED IS NOT CLOSED. It says somebody has seen this and left it
-// standing — the difference between an unread queue and a handled one — so it
-// still counts as open everywhere a count is taken.
+// ACKNOWLEDGED IS NOT OPEN, and B2a reversed this. It previously returned true
+// for acknowledged on the grounds that acknowledging leaves an alert standing.
 //
-// TAKES A STRING, not AlertState, so the fleet inbox can pass the state the BFF
-// derived without a cast. An unrecognised value is NOT open: a state this build
-// does not know about is one it cannot claim needs attention.
-export function isOpen(state: string): boolean {
-  return state === "open" || state === "acknowledged";
+// THE FOUR STATES ARE MUTUALLY EXCLUSIVE. If acknowledged also counted as open,
+// the inbox chips would sum above the total number of rows and no arrangement of
+// them could be made to add up. Open means "needs a decision"; snoozed,
+// acknowledged and dismissed are all decisions, and all three are excluded.
+//
+// If "seen, still working" is ever wanted it is a NEW VERB, not a
+// reinterpretation of this one.
+//
+// TAKES AlertState, NOT string. That is the type-level half of the same defect:
+// the union is narrow so a renamed or mistyped state fails to compile rather
+// than quietly falling through to false. Callers narrow at the wire with
+// asAlertState.
+export function isOpen(state: AlertState): boolean {
+  return state === "open";
 }
 
-// ONE RENDERING, TWO SOURCES OF THE STATE. The tenant-scoped screens derive the
-// state here from the raw lifecycle columns (alertState); the fleet inbox is
-// handed a state the BFF already derived in SQL, because the list is FILTERED on
-// it and a chip disagreeing with the filter that selected the row is worse than
-// no chip. Both paths land on this function, so the tone map, the word and the
-// suffixes stay one thing. Unifying the two derivations is Phase B.
+// ONE RENDERING, ONE SOURCE OF THE STATE. Every alert-bearing endpoint now
+// serves `lifecycle_state`, so this is handed a state rather than deriving one.
+// The tone map, the word and the suffixes are one thing because there is only
+// one path through here.
 function stateTag(state: AlertState, reason: string | null, snoozedUntil: string | null) {
   const suffix =
     state === "snoozed" && snoozedUntil
@@ -701,23 +712,30 @@ function stateTag(state: AlertState, reason: string | null, snoozedUntil: string
   );
 }
 
-export function AlertStateTag({ row, today }: { row: Lifecycle; today: string }) {
-  return stateTag(alertState(row, today), row.lifecycle_reason, row.lifecycle_snoozed_until);
-}
-
-// The fleet inbox's tag. `state` arrives as a plain string from JSON rather than
-// as AlertState, so an unrecognised value is rendered AS ITSELF in the neutral
-// tone rather than coerced into one of the four: if the BFF ever grows a fifth
-// state, a reader should see the word, not silently see it filed as "open".
-export function ServerStateTag({
+// THE ONE STATE TAG. `ServerStateTag` was its twin and is deleted: with the
+// state served rather than derived, two components rendering identically from
+// one field would be a worse version of the duplication B2a exists to remove.
+//
+// TAKES AlertState. A caller holding a raw wire string narrows it with
+// asAlertState first and renders the raw word itself when that returns null, so
+// a fifth server state shows up as the word rather than being filed under one of
+// the four. See UnknownStateTag.
+export function AlertStateTag({
   state,
   reason,
   snoozedUntil,
 }: {
-  state: string;
+  state: AlertState;
   reason: string | null;
   snoozedUntil: string | null;
 }) {
-  if (!(state in STATE_TONE)) return <Tag tone="mute">{state}</Tag>;
-  return stateTag(state as AlertState, reason, snoozedUntil);
+  return stateTag(state, reason, snoozedUntil);
+}
+
+// A state this build does not know about, rendered AS ITSELF in the neutral
+// tone. Separate from AlertStateTag rather than a branch inside it, because the
+// two have genuinely different contracts: one is exhaustive over a closed union,
+// this one is the escape hatch for a wire value that escaped it.
+export function UnknownStateTag({ state }: { state: string }) {
+  return <Tag tone="mute">{state}</Tag>;
 }

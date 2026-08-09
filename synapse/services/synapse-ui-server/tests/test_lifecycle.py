@@ -165,7 +165,14 @@ def test_every_alert_query_carries_the_lifecycle_state() -> None:
     alert is worse than one showing no state at all."""
     for statement in (reads._ALERT_DETAIL, reads._TENANT_ALERTS):
         sql = str(statement)
-        for column in ("lifecycle_verb", "lifecycle_reason", "lifecycle_snoozed_until"):
+        for column in (
+            "lifecycle_verb",
+            "lifecycle_reason",
+            "lifecycle_snoozed_until",
+            # B2a. The DERIVED state, not just the raw columns. The console no longer computes
+            # one, so a statement that omits this serves a row nothing can render a chip from.
+            "lifecycle_state",
+        ):
             assert column in sql, f"{column} missing"
 
 
@@ -196,5 +203,6 @@ def test_an_untouched_alert_carries_no_lifecycle_state() -> None:
         lifecycle_snoozed_until=None,
         lifecycle_recorded_at=None,
         lifecycle_actor=None,
+        lifecycle_state="open",
     )
     assert row.lifecycle_verb is None

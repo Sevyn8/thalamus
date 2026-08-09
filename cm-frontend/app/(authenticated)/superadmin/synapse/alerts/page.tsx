@@ -4,7 +4,9 @@ import {
   Footnote,
   Row,
   SectionHead,
-  ServerStateTag,
+  AlertStateTag,
+  UnknownStateTag,
+  asAlertState,
   SilentModePill,
   Stat,
   StatStrip,
@@ -31,13 +33,17 @@ export const dynamic = "force-dynamic";
 // answered "what needs a person right now, anywhere". The two endpoints behind
 // this page (GET /alerts, GET /alerts/state-counts) are new for the same reason.
 //
-// THE STATE IS THE SERVER'S, NOT THIS FILE'S. Every other Synapse screen derives
-// the lifecycle state in the browser from the raw columns (alertState). Here the
-// list is FILTERED on the state in SQL, so recomputing it would create a second
-// opinion that can disagree with the query that selected the row: a row returned
-// as snoozed could render as open, one day either side of the boundary. The BFF's
-// derivation evaluates expiry in UTC, matching what the TypeScript side compares
-// against. Collapsing the two derivations into one is Phase B.
+// THE STATE IS THE SERVER'S, AND NOW IT IS THE SERVER'S EVERYWHERE. This comment
+// used to say every OTHER Synapse screen derived the state in the browser, and
+// that collapsing the derivations was Phase B. B2a did it: the TypeScript
+// deriver is deleted, every alert-bearing endpoint serves lifecycle_state from
+// one SQL CASE, and this page is no longer the exception.
+//
+// It mattered most here first because this list is FILTERED on the state in SQL,
+// so recomputing it would create a second opinion that can disagree with the
+// query that selected the row: a row returned as snoozed could render as open,
+// one day either side of the boundary. That argument turned out to apply to the
+// counts on the fleet and tenant pages too, which is what B2a fixed.
 
 type FleetAlert = {
   event_id: string;
@@ -329,13 +335,16 @@ export default async function AlertsInboxPage({
                 : "No alerts have been raised yet, by any monitor, for any client."}
             </p>
           ) : (
-            alerts.map((alert) => (
+            alerts.map((alert) => {
+              // Narrowed once, here, at the wire boundary. See asAlertState.
+              const state = asAlertState(alert.lifecycle_state);
+              return (
               <Row
                 key={alert.event_id}
                 // ATTENTION ONLY WHILE IT IS OPEN, matching the tenant page. A
-                // dismissed alert is still a recorded finding and stays on the
-                // list, but it stops shouting.
-                attention={isOpen(alert.lifecycle_state)}
+                // snoozed, acknowledged or dismissed alert is still a recorded
+                // finding and stays on the list, but it stops shouting.
+                attention={state !== null && isOpen(state)}
                 title={
                   <a
                     className="text-primary underline-offset-2 hover:underline"
@@ -356,15 +365,20 @@ export default async function AlertsInboxPage({
                   </>
                 }
                 right={
-                  <ServerStateTag
-                    state={alert.lifecycle_state}
-                    reason={alert.lifecycle_reason}
-                    snoozedUntil={alert.lifecycle_snoozed_until}
-                  />
+                  state === null ? (
+                    <UnknownStateTag state={alert.lifecycle_state} />
+                  ) : (
+                    <AlertStateTag
+                      state={state}
+                      reason={alert.lifecycle_reason}
+                      snoozedUntil={alert.lifecycle_snoozed_until}
+                    />
+                  )
                 }
                 note={lifecycleNote(alert) ?? undefined}
               />
-            ))
+              );
+            })
           )}
 
           <div className="mt-3 space-y-2">

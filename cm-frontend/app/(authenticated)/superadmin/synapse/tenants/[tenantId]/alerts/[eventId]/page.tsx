@@ -14,6 +14,8 @@ import {
   StatStrip,
   SynapseDown,
   Tag,
+  UnknownStateTag,
+  asAlertState,
 } from "@/components/synapse/primitives";
 import { ANALYSIS_NAMES } from "@/lib/synapse/names";
 import { SynapseUnavailable, synapseGet } from "@/lib/synapse/server-client";
@@ -53,6 +55,10 @@ type Alert = {
   lifecycle_snoozed_until: string | null;
   lifecycle_recorded_at: string | null;
   lifecycle_actor: string | null;
+  // B2a. Derived by the BFF from the same CASE the inbox and the roster use, so this page
+  // cannot disagree with them about what state an alert is in. The raw columns above stay:
+  // they carry WHO decided and WHEN, which the single word cannot.
+  lifecycle_state: string;
 };
 
 type HistoryRow = {
@@ -137,10 +143,10 @@ export default async function AlertDetailPage({
 
   const { alert, history } = detail;
   const product = alert.product_name ?? alert.sku_id ?? "Unknown product";
-  // COMPUTED ONCE PER RENDER and passed down, so every chip on the page agrees
-  // about what "today" is. A snooze that lapses mid-render would otherwise show
-  // as snoozed in one place and open in another.
-  const today = new Date().toISOString().slice(0, 10);
+  // THE SERVER'S STATE, narrowed once. This used to be a `today` computed here and handed to
+  // a client-side deriver so every chip on the page agreed about the date. The date now lives
+  // in one SQL CASE anchored to UTC, so there is nothing left to keep in agreement.
+  const state = asAlertState(alert.lifecycle_state);
   const atDetection = units(alert.quantity_at_stake);
   const current = units(alert.current_stock_qty);
 
@@ -173,7 +179,15 @@ export default async function AlertDetailPage({
             }
             right={
               <div className="flex flex-col items-end gap-1">
-                <AlertStateTag row={alert} today={today} />
+                {state === null ? (
+                  <UnknownStateTag state={alert.lifecycle_state} />
+                ) : (
+                  <AlertStateTag
+                    state={state}
+                    reason={alert.lifecycle_reason}
+                    snoozedUntil={alert.lifecycle_snoozed_until}
+                  />
+                )}
                 <Tag tone="mute">not sent to client (silent mode)</Tag>
               </div>
             }

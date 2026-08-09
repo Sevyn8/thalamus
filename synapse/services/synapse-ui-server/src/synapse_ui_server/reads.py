@@ -59,7 +59,9 @@ class FleetRow:
     name: str
     analyses_running: int
     actions_recorded: int
-    # Open = nobody has closed it. See _FLEET's LATERAL for what "closed" means.
+    # ALERTS AWAITING A DECISION. Open means no decision recorded, or a snooze that has lapsed;
+    # snoozed, acknowledged and dismissed are all decisions and none of them counts. From
+    # _OPEN_ALERTS_BY_TENANT, the same construct the tenant header and the inbox chips use.
     open_alerts: int
     last_run_slot: date | None
     # None when the tenant has no sale events at all, which is different from stale.
@@ -79,6 +81,9 @@ class TenantDetail:
     sales_seen: int
     latest_sale: date | None
     actions_recorded: int
+    # ALERTS AWAITING A DECISION, from _OPEN_ALERTS_BY_TENANT. Server-side because the console
+    # was counting its own LIMIT-100 page and calling the result a property of the tenant.
+    open_alerts: int
     analyses: tuple[AnalysisState, ...]
 
 
@@ -153,6 +158,114 @@ class RunRow:
     refusals: Mapping[str, int] | None
 
 
+# ===========================================================================================
+# THE LIFECYCLE STATE OF AN ALERT. ONE JOIN, ONE CASE, DEFINED HERE AND NOWHERE ELSE.
+# ===========================================================================================
+#
+# DEFINED AT THE TOP OF THE MODULE ON PURPOSE. These two strings are interpolated into every
+# statement that has an opinion about whether an alert is open: the fleet roster, the tenant
+# header, the tenant alert list, the alert detail, the fleet inbox and its chips. Python
+# evaluates module level top down, so anything below can reference them and nothing above can
+# define a competing copy without the duplication being obvious.
+#
+# WHY THIS BLOCK EXISTS AT ALL. Until B2a there were THREE derivations of "open" and they
+# disagreed three separate ways:
+#
+#   1. This CASE, used by the fleet inbox and its chips. Correct.
+#   2. An INLINE COPY of the lateral plus its own WHERE inside _FLEET, which counted
+#      acknowledged as open, read synapse.actions rather than the analytical view, and
+#      anchored the snooze comparison on CURRENT_DATE.
+#   3. alertState() in the console's TypeScript, whose isOpen() also counted acknowledged.
+#
+# The observable symptom was an inbox reading "Open 6, Acknowledged 5" beside a fleet page and
+# a tenant page both reading 11. Two of the three divergences never showed up in that number
+# and were waiting for the first snoozed alert and the first quarantined-tenant row.
+#
+# ACKNOWLEDGED IS NOT OPEN. The four states are MUTUALLY EXCLUSIVE, so if acknowledged also
+# counted as open the chips would sum above the total row count and no arrangement of them
+# could be made to add up. Open means "needs a decision"; snoozed, acknowledged and dismissed
+# are all decisions. Acknowledge does not mean "seen, still working" -- if that state is ever
+# wanted it is a new VERB, not a reinterpretation of this one.
+#
+# PER TARGET, NOT PER EVENT, and that is the whole semantic. An operator who snoozes means
+# "stop showing me this product at this store" -- tomorrow's detection of the same thing is a
+# NEW row with a new event_id, so a per-event match would evaporate on exactly the alert the
+# snooze was meant to silence. The event records (declaration_id, target), the same key the
+# actions idempotency index uses, and this joins on it.
+#
+# DISTINCT ON takes the LATEST event for the target: a dismissal after a snooze wins, and so
+# does a fresh snooze after a lapsed one. Ties broken by lifecycle_event_id so the answer is
+# stable rather than whichever row the planner reached first.
+#
+# NOTHING HERE SUPPRESSES A DETECTION. This is a JOIN on a read; the orchestrator does not
+# read this table and keeps recording every slot. A snoozed target still accumulates rows in
+# synapse.actions, which is what makes the post-expiry history complete.
+#
+# BINDS TO ALIAS `a`. Every statement below aliases the alert relation `a` so this can be
+# dropped in unchanged. _FLEET's own subquery does the same, which is why its unrelated
+# actions_recorded join was renamed to `ar`: relying on an inner scope to shadow an outer
+# alias of the same name is a correctness argument nobody should have to re-derive.
+_LIFECYCLE_JOIN = """
+      LEFT JOIN LATERAL (
+          SELECT DISTINCT ON (e.tenant_id, e.declaration_id, e.target)
+                 e.verb, e.reason, e.snoozed_until, e.recorded_at, e.actor_subject
+            FROM synapse.action_events e
+           WHERE e.tenant_id = a.tenant_id
+             AND e.declaration_id = a.declaration_id
+             AND e.target = a.target
+           ORDER BY e.tenant_id, e.declaration_id, e.target,
+                    e.recorded_at DESC, e.lifecycle_event_id DESC
+      ) le ON TRUE
+"""
+
+# TIMEZONE: EXPLICIT UTC, never CURRENT_DATE. CURRENT_DATE resolves in the DB session's
+# timezone, which is configuration rather than contract. The console mints a snooze expiry with
+# `new Date().toISOString().slice(0, 10)` (DecisionControls.tsx), which is UTC by definition.
+# Anchoring here to UTC explicitly makes the two sides agree by construction instead of by both
+# happening to sit in the same zone. The deleted _FLEET copy used CURRENT_DATE and was the
+# living example of why that distinction is worth the extra clause.
+#
+# A LAPSED SNOOZE FALLS THROUGH TO 'open' via the ELSE, without anything having written a
+# second event. Nothing expires it in the database on purpose: the decision was "quiet until
+# this date", not "quiet, then noisy".
+_LIFECYCLE_STATE = """
+        CASE WHEN le.verb IS NULL                 THEN 'open'
+             WHEN le.verb = 'dismiss'             THEN 'dismissed'
+             WHEN le.verb = 'acknowledge'         THEN 'acknowledged'
+             WHEN le.verb = 'snooze'
+              AND le.snoozed_until >= (now() AT TIME ZONE 'UTC')::date THEN 'snoozed'
+             ELSE 'open'
+        END
+"""
+
+# Every state the derivation can produce. Exported so a caller can return zeros rather than
+# omitting a state: a missing key and a zero look identical to a chip, and only one is true.
+ALERT_STATES: tuple[str, ...] = ("open", "snoozed", "acknowledged", "dismissed")
+
+# THE OPEN COUNT, per tenant, from the one construct above. Interpolated by both _FLEET and
+# _TENANT so the roster, the tenant header and the inbox chips cannot disagree about a number
+# they all label "open alerts".
+#
+# READS synapse.actions_analytical, NOT synapse.actions. Migration 0007 built that view to keep
+# the quarantined fixture tenant's thirteen immortal rows out of analytical surfaces, and a
+# count an operator reads is exactly that. The inbox already reads the view, so this is also
+# what makes the roster and the chips agree on the same data.
+#
+# ALONGSIDE actions_recorded, NOT INSTEAD OF IT. That count stays on synapse.actions because it
+# is the attribution denominator D1 protects; redefining it under the same name would silently
+# change what an older screenshot meant.
+_OPEN_ALERTS_BY_TENANT = f"""
+      SELECT x.tenant_id, count(*) AS open_alerts
+        FROM (
+          SELECT a.tenant_id, {_LIFECYCLE_STATE} AS lifecycle_state
+            FROM synapse.actions_analytical a
+            {_LIFECYCLE_JOIN}
+        ) x
+       WHERE x.lifecycle_state = 'open'
+       GROUP BY x.tenant_id
+"""
+
+
 # ---------------------------------------------------------------------------
 # The one cross-tenant query
 # ---------------------------------------------------------------------------
@@ -161,11 +274,11 @@ class RunRow:
 # produces a row. Aggregated in SQL rather than in Python: pulling every action and counting
 # them here would hold every sku_id in memory for a screen that renders none of them.
 _FLEET = text(
-    """
+    f"""
     SELECT t.tenant_id,
            t.name,
            COALESCE(p.analyses_running, 0)  AS analyses_running,
-           COALESCE(a.actions_recorded, 0)  AS actions_recorded,
+           COALESCE(ar.actions_recorded, 0) AS actions_recorded,
            COALESCE(o.open_alerts, 0)       AS open_alerts,
            r.last_run_slot,
            s.latest_sale,
@@ -175,33 +288,19 @@ _FLEET = text(
       LEFT JOIN (SELECT tenant_id, count(*) AS analyses_running
                    FROM synapse.provision WHERE disabled_at IS NULL
                   GROUP BY tenant_id) p  ON p.tenant_id = t.tenant_id
+      -- RENAMED FROM `a` TO `ar`. _OPEN_ALERTS_BY_TENANT below aliases the alert relation `a`
+      -- because _LIFECYCLE_JOIN binds to that name; an outer `a` here would be shadowed inside
+      -- that subquery rather than conflicting, which is correct and is exactly the kind of
+      -- reasoning a reader should not have to do to be sure.
       LEFT JOIN (SELECT tenant_id, count(*) AS actions_recorded
-                   FROM synapse.actions GROUP BY tenant_id) a ON a.tenant_id = t.tenant_id
-      -- OPEN ALERTS, resolved per TARGET like every other lifecycle read (slice 5d).
-      -- An alert is open unless its target's LATEST decision is a dismissal or a snooze
-      -- that has not lapsed. Acknowledged still counts as open: it says somebody has
-      -- seen it and left it standing, which is not the same as closing it.
-      --
-      -- ALONGSIDE actions_recorded, NOT INSTEAD OF IT. That count is the attribution
-      -- denominator D1 protects; redefining it under the same name would silently change
-      -- what an older screenshot meant.
+                   FROM synapse.actions GROUP BY tenant_id) ar ON ar.tenant_id = t.tenant_id
+      -- OPEN ALERTS, from the one shared construct. This was an inline copy of the lifecycle
+      -- lateral with its own WHERE, and it disagreed with the inbox three ways: it counted
+      -- acknowledged as open, it read the unfiltered actions table rather than the analytical
+      -- view, and it anchored the snooze comparison on the session date rather than on UTC.
+      -- See the block at the top of this file.
       LEFT JOIN (
-          SELECT act.tenant_id, count(*) AS open_alerts
-            FROM synapse.actions act
-            LEFT JOIN LATERAL (
-                SELECT DISTINCT ON (e.tenant_id, e.declaration_id, e.target)
-                       e.verb, e.snoozed_until
-                  FROM synapse.action_events e
-                 WHERE e.tenant_id = act.tenant_id
-                   AND e.declaration_id = act.declaration_id
-                   AND e.target = act.target
-                 ORDER BY e.tenant_id, e.declaration_id, e.target,
-                          e.recorded_at DESC, e.lifecycle_event_id DESC
-            ) le ON TRUE
-           WHERE le.verb IS NULL
-              OR le.verb = 'acknowledge'
-              OR (le.verb = 'snooze' AND le.snoozed_until < CURRENT_DATE)
-           GROUP BY act.tenant_id
+        {_OPEN_ALERTS_BY_TENANT}
       ) o ON o.tenant_id = t.tenant_id
       LEFT JOIN (SELECT tenant_id, max(slot) AS last_run_slot
                    FROM synapse.run GROUP BY tenant_id) r  ON r.tenant_id = t.tenant_id
@@ -247,13 +346,19 @@ async def fleet(engine: AsyncEngine) -> tuple[FleetRow, ...]:
 
 
 _TENANT = text(
-    """
+    f"""
     SELECT t.tenant_id, t.name,
-           COALESCE(cp.products, 0) AS products,
-           COALESCE(st.stores, 0)   AS stores,
-           COALESCE(se.sales, 0)    AS sales_seen,
+           COALESCE(cp.products, 0)   AS products,
+           COALESCE(st.stores, 0)     AS stores,
+           COALESCE(se.sales, 0)      AS sales_seen,
            se.latest_sale,
-           COALESCE(a.actions, 0)   AS actions_recorded
+           COALESCE(ar.actions, 0)    AS actions_recorded,
+           -- THE SAME CONSTRUCT THE ROSTER AND THE CHIPS USE. This was a client-side count
+           -- over the tenant page's own alert list, which is LIMIT 100: it counted what was
+           -- DISPLAYED while the stat strip asserts a fact about the TENANT, so above a
+           -- hundred alerts the strip was silently wrong. Two different statements wearing
+           -- one label is how the fleet lateral this slice deletes came to exist.
+           COALESCE(o.open_alerts, 0) AS open_alerts
       FROM identity_mirror.tenants t
       LEFT JOIN (SELECT tenant_id, count(*) AS products
                    FROM canonical.store_sku_current_position GROUP BY tenant_id) cp
@@ -264,7 +369,10 @@ _TENANT = text(
                    FROM canonical.store_sku_sale_events GROUP BY tenant_id) se
              ON se.tenant_id = t.tenant_id
       LEFT JOIN (SELECT tenant_id, count(*) AS actions
-                   FROM synapse.actions GROUP BY tenant_id) a ON a.tenant_id = t.tenant_id
+                   FROM synapse.actions GROUP BY tenant_id) ar ON ar.tenant_id = t.tenant_id
+      LEFT JOIN (
+        {_OPEN_ALERTS_BY_TENANT}
+      ) o ON o.tenant_id = t.tenant_id
      WHERE t.tenant_id = CAST(:tenant AS uuid)
     """
 )
@@ -311,6 +419,7 @@ async def tenant_detail(engine: AsyncEngine, tenant_id: UUID) -> TenantDetail | 
         sales_seen=int(header["sales_seen"]),
         latest_sale=header["latest_sale"],
         actions_recorded=int(header["actions_recorded"]),
+        open_alerts=int(header["open_alerts"]),
         analyses=tuple(
             AnalysisState(
                 analysis_id=row["analysis_id"],
@@ -469,7 +578,7 @@ def _as_uuid(value: Any) -> UUID:
 # store_id / sku_id ARE STORED GENERATED COLUMNS off `target` (actions.sql:148-156), so neither
 # query extracts JSONB to join.
 
-_ALERT_COLUMNS = """
+_ALERT_COLUMNS = f"""
            a.event_id, a.as_of, a.recorded_at, a.declaration_id, a.declaration_version,
            a.verb, a.arm, a.expires_on, a.quantity_at_stake,
            a.days_since_last_sale, a.days_of_cover, a.thresholds,
@@ -481,35 +590,13 @@ _ALERT_COLUMNS = """
            le.reason AS lifecycle_reason,
            le.snoozed_until AS lifecycle_snoozed_until,
            le.recorded_at AS lifecycle_recorded_at,
-           le.actor_subject AS lifecycle_actor
-"""
-
-# LIFECYCLE STATE IS DERIVED AT READ TIME, PER TARGET (slice 5d).
-#
-# PER TARGET, NOT PER EVENT, and that is the whole semantic. An operator who snoozes means
-# "stop showing me this product at this store" — tomorrow's detection of the same thing is a
-# NEW row with a new event_id, so a per-event match would evaporate on exactly the alert the
-# snooze was meant to silence. The event records (declaration_id, target), the same key the
-# actions idempotency index uses, and this joins on it.
-#
-# DISTINCT ON takes the LATEST event for the target: a dismissal after a snooze wins, and so
-# does a fresh snooze after a lapsed one. Ties broken by lifecycle_event_id so the answer is
-# stable rather than whichever row the planner reached first.
-#
-# NOTHING HERE SUPPRESSES A DETECTION. This is a JOIN on a read; the orchestrator does not
-# read this table and keeps recording every slot. A snoozed target still accumulates rows in
-# synapse.actions, which is what makes the post-expiry history complete.
-_LIFECYCLE_JOIN = """
-      LEFT JOIN LATERAL (
-          SELECT DISTINCT ON (e.tenant_id, e.declaration_id, e.target)
-                 e.verb, e.reason, e.snoozed_until, e.recorded_at, e.actor_subject
-            FROM synapse.action_events e
-           WHERE e.tenant_id = a.tenant_id
-             AND e.declaration_id = a.declaration_id
-             AND e.target = a.target
-           ORDER BY e.tenant_id, e.declaration_id, e.target,
-                    e.recorded_at DESC, e.lifecycle_event_id DESC
-      ) le ON TRUE
+           le.actor_subject AS lifecycle_actor,
+           -- THE DERIVED STATE, SERVED RATHER THAN RECOMPUTED. Every alert-bearing statement
+           -- carries it, so the console renders a state instead of deriving one: there is no
+           -- longer a TypeScript copy of this CASE to drift from it. The raw lifecycle_*
+           -- columns stay because the detail page shows WHO decided and WHEN, which the
+           -- single word cannot carry.
+           {_LIFECYCLE_STATE} AS lifecycle_state
 """
 
 _ALERT_JOINS = f"""
@@ -609,6 +696,10 @@ class AlertRow:
     lifecycle_snoozed_until: date | None
     lifecycle_recorded_at: datetime | None
     lifecycle_actor: str | None
+    # THE DERIVED STATE, one of ALERT_STATES, from _LIFECYCLE_STATE. Carried so the console
+    # renders a state rather than deriving one: the TypeScript copy of this CASE is deleted,
+    # and a second derivation cannot drift from a single served value.
+    lifecycle_state: str
 
 
 @dataclass(frozen=True)
@@ -656,6 +747,7 @@ def _alert_row(row: Any) -> AlertRow:
         lifecycle_snoozed_until=row["lifecycle_snoozed_until"],
         lifecycle_recorded_at=row["lifecycle_recorded_at"],
         lifecycle_actor=row["lifecycle_actor"],
+        lifecycle_state=row["lifecycle_state"],
     )
 
 
@@ -738,30 +830,6 @@ async def alert_detail(
 #
 # The view is SELECT a.* over the same table, so every column reference below is unchanged.
 
-# THE ONE LIFECYCLE-STATE DERIVATION for both fleet endpoints. The list filters on it and the
-# chips group by it; two copies would drift and the chips would stop matching the list.
-#
-# TIMEZONE: EXPLICIT UTC, never CURRENT_DATE. CURRENT_DATE resolves in the DB session's timezone,
-# which is configuration rather than contract. The TypeScript side compares against
-# `new Date().toISOString().slice(0, 10)`, which is UTC by definition, and the snooze expiry is
-# minted the same way (DecisionControls.tsx). Anchoring here to UTC explicitly makes the two
-# sides agree by construction instead of by both happening to sit in the same zone; the local
-# devbox reports Etc/UTC today, which is exactly the kind of coincidence that hides a defect
-# until an environment differs.
-#
-# PHASE B: there are two state derivations, this and primitives.tsx alertState(). Filtering has
-# to be SQL, so this one exists of necessity; consolidating to one authority is Phase B, along
-# with having the tenant page read the server's state instead of recomputing it.
-_LIFECYCLE_STATE = """
-        CASE WHEN le.verb IS NULL                 THEN 'open'
-             WHEN le.verb = 'dismiss'             THEN 'dismissed'
-             WHEN le.verb = 'acknowledge'         THEN 'acknowledged'
-             WHEN le.verb = 'snooze'
-              AND le.snoozed_until >= (now() AT TIME ZONE 'UTC')::date THEN 'snoozed'
-             ELSE 'open'
-        END
-"""
-
 _FLEET_ALERT_JOINS = f"""
       FROM synapse.actions_analytical a
       LEFT JOIN identity_mirror.tenants t
@@ -783,8 +851,7 @@ _FLEET_ALERTS = text(
     SELECT * FROM (
         SELECT {_ALERT_COLUMNS},
                a.tenant_id,
-               COALESCE(t.name, '(not in the tenant mirror)') AS tenant_name,
-               {_LIFECYCLE_STATE} AS lifecycle_state
+               COALESCE(t.name, '(not in the tenant mirror)') AS tenant_name
         {_FLEET_ALERT_JOINS}
     ) x
      WHERE (CAST(:tenant AS uuid)   IS NULL OR x.tenant_id      = CAST(:tenant AS uuid))
@@ -809,10 +876,6 @@ _FLEET_ALERT_STATE_COUNTS = text(
      GROUP BY x.lifecycle_state
     """
 )
-
-# Every state the derivation can produce. Exported so the route can return zeros rather than
-# omitting a state: a missing key and a zero look identical to a chip, and only one is true.
-ALERT_STATES: tuple[str, ...] = ("open", "snoozed", "acknowledged", "dismissed")
 
 
 @dataclass(frozen=True)

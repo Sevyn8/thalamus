@@ -69,6 +69,10 @@ def _alert(**overrides: Any) -> dict[str, Any]:
         "lifecycle_snoozed_until": None,
         "lifecycle_recorded_at": None,
         "lifecycle_actor": None,
+        # B2a widened _ALERT_COLUMNS with the SERVER-DERIVED state, so this fixture carries the
+        # new row shape. The 5c page's BEHAVIOUR is unchanged: it renders the state it is given
+        # rather than deriving one, and for an untouched target that state is 'open' either way.
+        "lifecycle_state": "open",
     }
     base.update(overrides)
     return base

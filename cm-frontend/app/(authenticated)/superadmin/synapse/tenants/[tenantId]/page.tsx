@@ -15,7 +15,8 @@ import {
   StatStrip,
   SynapseDown,
   Tag,
-  alertState,
+  UnknownStateTag,
+  asAlertState,
   daysSince,
   isOpen,
   plural,
@@ -69,6 +70,9 @@ type AlertRow = {
   lifecycle_verb: string | null;
   lifecycle_reason: string | null;
   lifecycle_snoozed_until: string | null;
+  // Derived by the BFF, never here. Typed `string` because it crosses the wire;
+  // asAlertState narrows it once at the render site.
+  lifecycle_state: string;
 };
 
 const ALERTS_LIMIT = 50;
@@ -81,6 +85,10 @@ type TenantDetail = {
   sales_seen: number;
   latest_sale: string | null;
   actions_recorded: number;
+  // COUNTED BY THE SERVER, on the same construct as the fleet roster and the inbox chips.
+  // This page used to count open rows out of its own LIMIT-50 alert list, which counted what
+  // was DISPLAYED and called it a property of the tenant.
+  open_alerts: number;
   analyses: AnalysisState[];
 };
 
@@ -182,9 +190,7 @@ export default async function TenantPage({
   const staleDays = daysSince(detail.latest_sale);
   const isStale = staleDays === null || staleDays > STALE_AFTER_DAYS;
   const alerting = detail.analyses.filter((a) => (a.actions_proposed ?? 0) > 0);
-  // One "today" for every chip and count on the page; see the detail page's note.
-  const today = new Date().toISOString().slice(0, 10);
-  const openAlerts = alerts.filter((a) => isOpen(alertState(a, today))).length;
+  const openAlerts = detail.open_alerts;
 
   return (
     <div>
@@ -261,13 +267,29 @@ export default async function TenantPage({
               </p>
             )
           ) : (
-            alerts.map((a) => (
+            alerts.map((a) => {
+              // NARROWED ONCE, HERE, at the wire boundary. Everything downstream is typed,
+              // so a state this build does not know about renders as the word itself rather
+              // than being filed under one of the four.
+              const state = asAlertState(a.lifecycle_state);
+              return (
               <Row
                 key={a.event_id}
-                // ATTENTION ONLY WHILE IT IS OPEN. A dismissed or snoozed alert stays
-                // on the list — it is still a recorded finding — but it stops shouting.
-                attention={isOpen(alertState(a, today))}
-                right={<AlertStateTag row={a} today={today} />}
+                // ATTENTION ONLY WHILE IT IS OPEN. A snoozed, acknowledged or dismissed
+                // alert stays on the list, it is still a recorded finding, but it stops
+                // shouting: all three are decisions, and open means "needs a decision".
+                attention={state !== null && isOpen(state)}
+                right={
+                  state === null ? (
+                    <UnknownStateTag state={a.lifecycle_state} />
+                  ) : (
+                    <AlertStateTag
+                      state={state}
+                      reason={a.lifecycle_reason}
+                      snoozedUntil={a.lifecycle_snoozed_until}
+                    />
+                  )
+                }
                 title={
                   <a
                     className="text-primary underline-offset-2 hover:underline"
@@ -287,7 +309,8 @@ export default async function TenantPage({
                   </>
                 }
               />
-            ))
+              );
+            })
           )}
         </section>
 
