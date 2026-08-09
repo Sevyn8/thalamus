@@ -43,14 +43,21 @@ const TONE_CLASSES: Record<Tone, string> = {
   grey: "bg-muted text-foreground-muted ring-border",
 };
 
+// `dot` IS ADDITIVE AND DEFAULTS TO TRUE, so every existing call site renders exactly what it
+// rendered before. It exists because the Synapse console mockups draw a status pill with a
+// border and NO leading dot, and the dot is the one part of this recipe that carries no
+// information: the tone already says the same thing in colour. Opting out per call site rather
+// than forking the recipe keeps one source of truth for what a chip looks like.
 export function Chip({
   tone,
   children,
   className,
+  dot = true,
 }: {
   tone: Tone;
   children: ReactNode;
   className?: string;
+  dot?: boolean;
 }) {
   return (
     <span
@@ -60,7 +67,9 @@ export function Chip({
         className,
       )}
     >
-      <span aria-hidden="true" className={cn("h-1.5 w-1.5 rounded-full", DOT_CLASSES[tone])} />
+      {dot ? (
+        <span aria-hidden="true" className={cn("h-1.5 w-1.5 rounded-full", DOT_CLASSES[tone])} />
+      ) : null}
       {children}
     </span>
   );

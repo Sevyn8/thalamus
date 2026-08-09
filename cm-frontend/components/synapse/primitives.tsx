@@ -265,8 +265,86 @@ const TONE_TO_CHIP: Record<Tone, ChipTone> = {
   stop: "red",
 };
 
-export function Tag({ tone, children }: { tone: Tone; children: ReactNode }) {
-  return <Chip tone={TONE_TO_CHIP[tone]}>{children}</Chip>;
+// `dot` FORWARDS TO Chip AND DEFAULTS TO TRUE, so every existing Synapse call site is unchanged.
+// The mockups' status pills carry no dot; the runs page opts out, and the rest of the console
+// follows in Phase B2 rather than being restyled from underneath 5c here.
+export function Tag({
+  tone,
+  children,
+  dot,
+}: {
+  tone: Tone;
+  children: ReactNode;
+  dot?: boolean;
+}) {
+  return (
+    <Chip tone={TONE_TO_CHIP[tone]} dot={dot}>
+      {children}
+    </Chip>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// THE PANEL: the mockups' one card treatment, as five parts
+// ---------------------------------------------------------------------------
+//
+// Every mockup builds its content from the same object: a white surface on the page
+// background, a hairline border, a raised header strip, ruled rows, and an optional
+// quieter note along the bottom. It was hand-rolled on the runs page and nowhere else,
+// which is why the runs page and the alerts inbox did not look like one product.
+//
+// RADIUS IS rounded-md (10px), NOT THE MOCKUPS' 14px, and this is a deliberate override.
+// ver2's own index.css calls 10px the card radius; cm-frontend encodes that as --radius-md
+// and uses `rounded-md` on 135 call sites against 2 for `rounded-lg`. Taking the mockups'
+// 14px here would make Synapse the only surface in the product with a different card, which
+// is the "odd ones out" failure the Column comment above exists to describe. The mockups are
+// overruled on radius, as they are on monitor names.
+export function Panel({ children }: { children: ReactNode }) {
+  return (
+    <div className="overflow-hidden rounded-md border border-border bg-surface">{children}</div>
+  );
+}
+
+// The raised strip: a title, a summary, and a right-aligned meta rail. `items-baseline`
+// rather than `items-center` so the mono date and the sentence beside it sit on one line
+// of type instead of being centred against each other.
+export function PanelHeader({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border bg-surface-raised px-4 py-3">
+      {children}
+    </div>
+  );
+}
+
+// One ruled row. `items-start` because a row's detail column can wrap to several lines and
+// its name and status must stay pinned to the top rather than floating to the middle of it.
+export function PanelRow({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-start gap-x-4 gap-y-2 border-b border-border px-4 py-3 transition-colors duration-150 ease-out last:border-b-0 hover:bg-surface-raised">
+      {children}
+    </div>
+  );
+}
+
+// The quiet line along the bottom of a panel: a caveat about the rows above it, styled so it
+// reads as an annotation on the panel rather than as one more row of data.
+export function PanelNote({ children }: { children: ReactNode }) {
+  return (
+    <p className="text-micro border-t border-border bg-surface-raised px-4 py-2.5 text-foreground-subtle">
+      {children}
+    </p>
+  );
+}
+
+// The mockups' mono tag: a machine value shown as itself. Used for refusal reasons here, and
+// for thresholds, capability ids and the refusal vocabulary on the Phase B2 pages.
+// NO DOT AND NO TONE. It is not a status, so giving it one would say something false.
+export function MonoChip({ children }: { children: ReactNode }) {
+  return (
+    <span className="text-micro rounded-sm border border-border bg-muted px-2 py-0.5 font-mono text-foreground-muted">
+      {children}
+    </span>
+  );
 }
 
 // NameWithId WAS HERE AND IS DELETED. It stacked a plain name over its internal
@@ -385,6 +463,158 @@ export function refusalSentence(refusals: Refusals): string | null {
   const head = `${plural(summary.count, "series")} refused — ${reasonLabel(summary.top)}`;
   const rest = summary.total - summary.count;
   return rest > 0 ? `${head}, and ${rest} for other reasons` : head;
+}
+
+// One entry per stored reason, biggest first, ties broken on the key so the order is stable
+// across renders. This is the WHOLE breakdown rather than refusalSummary's dominant reason: a
+// fleet table's status cell had room for one, a run row has room for all of them, and the reason
+// a monitor stayed quiet is the question the runs screen is most often opened to answer.
+//
+// LIVES HERE RATHER THAN ON THE RUNS PAGE because the outcome ladder below reads it, and Phase
+// B2's tenant Runs tab renders the same chips from the same rows.
+export function skipChips(refusals: Refusals): Array<[string, number]> {
+  if (!refusals) return [];
+  return Object.entries(refusals)
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+
+// ---------------------------------------------------------------------------
+// A run's wall clock, in the zone the run itself recorded
+// ---------------------------------------------------------------------------
+//
+// started_at IS AN INSTANT AND A CLOCK TIME IS NOT. synapse.run.timezone is snapshotted onto
+// each run by the orchestrator, and Phase B1 projects it precisely so this can be rendered
+// without guessing: a 03:00 Asia/Kolkata sweep is 21:30 UTC on the PREVIOUS day, so rendering
+// the instant in UTC under a slot date of the 9th would show 21:30 beside "2026-08-09" and read
+// as a bug. The zone is not decoration.
+//
+// AN UNUSABLE ZONE FALLS BACK TO UTC AND SAYS SO. The column is TEXT with only a non-empty
+// CHECK, so nothing in the database guarantees an IANA name; Intl throws RangeError on a bad
+// one, which would take the whole page down. The fallback labels itself, so a reader is never
+// shown a time in a zone they were not told about.
+//
+// NULL FOR AN UNPARSEABLE INSTANT, so a caller omits the time rather than printing "Invalid
+// Date" at an operator.
+export function wallClock(
+  iso: string,
+  timeZone: string,
+  { seconds = false }: { seconds?: boolean } = {},
+): { time: string; zone: string } | null {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+
+  const options: Intl.DateTimeFormatOptions = {
+    hour: "2-digit",
+    minute: "2-digit",
+    ...(seconds ? { second: "2-digit" } : {}),
+    hourCycle: "h23",
+    timeZoneName: "short",
+  };
+
+  for (const zone of [timeZone, "UTC"]) {
+    let parts: Intl.DateTimeFormatPart[];
+    try {
+      parts = new Intl.DateTimeFormat("en-GB", { ...options, timeZone: zone }).formatToParts(at);
+    } catch {
+      continue;
+    }
+    const time = parts
+      .filter((part) => part.type === "hour" || part.type === "minute" || part.type === "second")
+      .map((part) => part.value)
+      .join(":");
+    const named = parts.find((part) => part.type === "timeZoneName");
+    return { time, zone: named ? named.value : zone };
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// WHAT A RUN CAME TO: the outcome ladder
+// ---------------------------------------------------------------------------
+//
+// REPLACES A UNIFORM GREEN "completed" ON EVERY ROW, which was the raw `outcome` column shown
+// as itself. 'satisfied' means the DECLARATION resolved and the analysis ran; it says nothing
+// about whether anything was found, so every row wore the same green pill whether it raised six
+// alerts, suppressed one as a repeat, or could not assess a single series.
+//
+// FOUR INPUTS AND NO INFERENCE: outcome, actions_proposed, actions_appended and the stored
+// refusal breakdown. Nothing here is derived from a count the database does not hold.
+//
+// THE dead_stock TRAP, and it is the reason row 10 exists. synapse.registry._plan_dead_stock
+// returns `refusals={}` on every run: dead_stock has NO refusal concept, and registry.py says
+// so directly, that "the run row's breakdown being empty must never be rendered as 'nothing was
+// refused today' for an analysis that has no refusal concept". So an empty map cannot be read as
+// "it looked and refused nothing", and a zero-action dead_stock run gets a neutral statement of
+// the count rather than a diagnosis the data cannot support.
+export type RunOutcomeFacts = {
+  outcome: string | null;
+  actions_proposed: number | null;
+  actions_appended: number | null;
+  refusals: Refusals | undefined;
+};
+
+export function runOutcomeTag(run: RunOutcomeFacts): { label: string; tone: Tone } {
+  // 1. Claimed and never completed. The next run for the slot adopts and finishes it.
+  if (run.outcome === null) return { label: "unfinished", tone: "mute" };
+  // 2. An exception during the run.
+  if (run.outcome === "failed") return { label: "run failed", tone: "stop" };
+  // 3. No analysis is declared under this id at all.
+  if (run.outcome === "undeclared") return { label: "no such monitor", tone: "mute" };
+  // 4. At least one capability requirement did not resolve, so the monitor never assessed
+  //    anything. NOT "found nothing", which would claim it looked. Matches the wording the
+  //    tenant surfaces already use for this condition.
+  if (run.outcome === "blocked") return { label: "waiting for data", tone: "unknown" };
+  // An outcome this build does not know renders AS ITSELF rather than being filed under one of
+  // the four. The BFF passes the column through and the vocabulary can grow ahead of this app.
+  if (run.outcome !== "satisfied") return { label: run.outcome, tone: "mute" };
+
+  const proposed = run.actions_proposed;
+  const appended = run.actions_appended;
+
+  // 5. Satisfied with no counts. The constraint permits it; the screen states it.
+  if (proposed === null || appended === null) return { label: "no result recorded", tone: "mute" };
+
+  if (proposed > 0) {
+    // 6. Something was recorded. COUNTS appended, not proposed: the tag says how many alerts
+    //    now exist for someone to act on, and the detail line carries both numbers.
+    if (appended > 0) return { label: `${plural(appended, "alert")} raised`, tone: "stop" };
+    // 7. Every proposal was a repeat of a finding already recorded for this slot, so the
+    //    idempotency index suppressed it. That is the system working, not a quiet failure.
+    return { label: "no new alerts", tone: "good" };
+  }
+
+  const skips = skipChips(run.refusals ?? null);
+  // 8. KEYED ON PRESENCE, NOT DOMINANCE, and the mockup's own example is why: a run refusing 3
+  //    series as stale and 63 for no observations reads as "data too old". Staleness is the more
+  //    specific and more actionable diagnosis, so it wins wherever it appears at all.
+  if (skips.some(([reason, n]) => reason === "series_too_stale" && n > 0)) {
+    return { label: "found nothing - data too old", tone: "unknown" };
+  }
+  // 9. Refused everything for some other stored reason.
+  if (skips.length > 0) return { label: "found nothing - no data", tone: "unknown" };
+  // 10. Zero proposed and nothing recorded as refused. See the dead_stock note above: this is a
+  //     statement of the count and deliberately not a diagnosis.
+  return { label: "no alerts raised", tone: "mute" };
+}
+
+// PROPOSED AND RECORDED, SHOWN SEPARATELY WHENEVER THERE WAS ANYTHING TO PROPOSE. They differ
+// with nothing wrong: a repeat of a finding already recorded for the same slot is suppressed by
+// the idempotency index rather than duplicated, so "1 proposed" and "0 recorded" is the index
+// doing its job. Collapsing them when equal was considered and rejected: the pair is the point,
+// and a line that changes shape depending on whether two numbers happen to match is harder to
+// read than one that always says the same thing.
+//
+// NULL WHEN NOTHING WAS PROPOSED. The tag already carries that case, and repeating it here as
+// "0 proposed" would be a second, quieter statement of the same fact.
+export function runDetail(run: RunOutcomeFacts): string | null {
+  const proposed = run.actions_proposed;
+  const appended = run.actions_appended;
+  if (proposed === null || proposed === 0) return null;
+  if (appended === null) return `${proposed} proposed, no record of what was kept`;
+  return appended === 0
+    ? `${proposed} proposed - suppressed as repeat (already recorded)`
+    : `${proposed} proposed - ${appended} recorded`;
 }
 
 // ---------------------------------------------------------------------------
