@@ -4,8 +4,13 @@
 # Called SERVER-SIDE by cm-frontend's Next.js server components. The browser
 # never reaches it, so it needs no public invoker binding and no CORS.
 #
-# READ-ONLY, AND THE CREDENTIAL SAYS SO. It is given the synapse_reader DSN and
-# nothing else — no writer secret is granted, no writer env var is set, and the
+# READS AS synapse_reader, AND WRITES EXACTLY ONE TABLE AS synapse_lifecycle.
+# This paragraph said "the synapse_reader DSN and nothing else" until slice 5d
+# falsified it: the console records operator decisions now, so it holds a SECOND
+# credential whose entire grant is INSERT on synapse.action_events. The console
+# can therefore record a snooze, dismissal or acknowledgement WITHOUT being able
+# to write synapse.actions, which is the orchestrator's table via synapse_writer.
+# No writer secret is granted, no writer env var is set, and the
 # service refuses to START if SYNAPSE_WRITER_URL is present. Slice 8b needs a
 # writer for provisioning and must add it deliberately rather than find it
 # already wired.
@@ -41,7 +46,8 @@
 # comment.
 #
 # NOT granted here, by design:
-#   - No secretAccessor on any writer DSN. There is no write path to serve.
+#   - No secretAccessor on the WRITER DSN. The write path this service has is
+#     synapse_lifecycle, INSERT on synapse.action_events alone.
 #   - No roles/cloudsql.client: Cloud SQL is reached over the private IP through
 #     the VPC connector, at the TCP layer, as the orchestrator does.
 #   - No Artifact Registry reader: image pulls use the Cloud Run service agent.
@@ -66,6 +72,21 @@ data "google_secret_manager_secret" "reader_url" {
 resource "google_secret_manager_secret_iam_member" "reader_url" {
   project   = var.project_id
   secret_id = data.google_secret_manager_secret.reader_url.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.synapse_ui_server.email}"
+}
+
+# The lifecycle DSN, created out of band like the reader. UNLIKE the reader, its
+# IAM policy was EMPTY: the secret existed and nothing could read it, so v6 and v7
+# would have failed on the grant even had the env var been wired.
+data "google_secret_manager_secret" "lifecycle_url" {
+  project   = var.project_id
+  secret_id = var.secret_lifecycle_url
+}
+
+resource "google_secret_manager_secret_iam_member" "lifecycle_url" {
+  project   = var.project_id
+  secret_id = data.google_secret_manager_secret.lifecycle_url.secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.synapse_ui_server.email}"
 }
@@ -156,6 +177,17 @@ resource "google_cloud_run_v2_service" "synapse_ui_server" {
     ignore_changes = [scaling]
   }
 
+  # THE ORDERING IS NOT INFERRED, BECAUSE NOTHING HERE REFERENCES THE GRANT.
+  # The env blocks below read data.google_secret_manager_secret.*.secret_id, which
+  # is the DATA SOURCE. Terraform therefore sees an edge to the data source and no
+  # edge at all to the iam_member, so it is free to create the revision before the
+  # grant exists or propagates, and the container fails to read its own credential.
+  # The reader has never hit this only because its grant predated this resource.
+  depends_on = [
+    google_secret_manager_secret_iam_member.reader_url,
+    google_secret_manager_secret_iam_member.lifecycle_url,
+  ]
+
   template {
     service_account = google_service_account.synapse_ui_server.email
 
@@ -196,13 +228,32 @@ resource "google_cloud_run_v2_service" "synapse_ui_server" {
         value = var.jwt_audience
       }
 
-      # The ONLY database credential this service is given. There is deliberately
-      # no SYNAPSE_WRITER_URL block; the service refuses to start if one appears.
+      # THE FIRST OF TWO database credentials. This said "the ONLY database
+      # credential this service is given" until slice 5d added the lifecycle DSN
+      # below, which would have made it false the moment the block landed. There
+      # is still deliberately no SYNAPSE_WRITER_URL block; the service refuses to
+      # start if one appears.
       env {
         name = "SYNAPSE_READER_URL"
         value_source {
           secret_key_ref {
             secret  = data.google_secret_manager_secret.reader_url.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      # The SECOND and last, added by slice 5d and UNWIRED UNTIL NOW: the service
+      # has refused to start without it since that slice, which is why v6 and v7
+      # both failed health check and staging has been serving v5. synapse_lifecycle
+      # can INSERT on synapse.action_events and nothing else, so the console can
+      # record a snooze, dismissal or acknowledgement WITHOUT being able to write
+      # synapse.actions, which is the orchestrator's table via synapse_writer.
+      env {
+        name = "SYNAPSE_LIFECYCLE_URL"
+        value_source {
+          secret_key_ref {
+            secret  = data.google_secret_manager_secret.lifecycle_url.secret_id
             version = "latest"
           }
         }

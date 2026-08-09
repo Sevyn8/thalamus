@@ -22,7 +22,7 @@ variable "image" {
 
 variable "service_account_id" {
   type        = string
-  description = "Account id for this service's DEDICATED runtime identity. Holds secretAccessor on the synapse_reader DSN and nothing else — no writer secret, because there is no write path in slice 8a."
+  description = "Account id for this service's DEDICATED runtime identity. Holds secretAccessor on TWO secrets: the synapse_reader DSN and, since slice 5d, the synapse_lifecycle DSN. Not the writer. The lifecycle grant is INSERT on synapse.action_events and nothing else, so the console can record a snooze, dismissal or acknowledgement WITHOUT being able to write synapse.actions, which is the orchestrator's table via synapse_writer."
   default     = "synapse-ui-server"
 }
 
@@ -40,6 +40,12 @@ variable "secret_reader_url" {
   type        = string
   description = "Secret Manager id of the synapse_reader DSN. Read-only on two canonical tables plus synapse.actions, provision and run."
   default     = "synapse-reader-database-url"
+}
+
+variable "secret_lifecycle_url" {
+  type        = string
+  description = "Secret Manager id of the synapse_lifecycle DSN. INSERT on synapse.action_events and nothing else. Arrived with slice 5d; the service refuses to start without it."
+  default     = "synapse-lifecycle-database-url"
 }
 
 variable "dis_expected_database" {
