@@ -7,12 +7,13 @@ import {
   Breadcrumb,
   Column,
   Footnote,
+  ItemCard,
   Panel,
   PanelRow,
   SectionHead,
   SilentModePill,
-  Stat,
-  StatStrip,
+  StatCard,
+  StatCards,
   SynapseDown,
   Tag,
   UnknownStateTag,
@@ -205,17 +206,17 @@ export default async function AlertDetailPage({
           {/* TWO TIMEFRAMES, LABELLED. "At detection" is frozen on the alert; "current"
               is today's position. A product that has since sold out must read as
               recovered rather than as this page contradicting itself. */}
-          <StatStrip>
+          <StatCards columns={3}>
             {/* "not recorded" RATHER THAN A DASH, AND IT IS ACCURATE RATHER THAN CONVENIENT.
                 units() returns null ONLY when the underlying column is null: a zero quantity
                 parses to 0 and renders as "0". So the fallback fires exactly when nothing was
                 recorded, never when the recorded value happens to be zero. The footnote below
                 has always drawn that distinction; the dash was the one thing on screen that
                 blurred it. */}
-            <Stat n={atDetection ?? "not recorded"} label="units at detection" />
-            <Stat n={current ?? "not recorded"} label="units in stock now" />
-            <Stat n={alert.as_of} label="raised (slot)" />
-          </StatStrip>
+            <StatCard value={atDetection ?? "not recorded"} label="units at detection" />
+            <StatCard value={current ?? "not recorded"} label="units in stock now" />
+            <StatCard value={alert.as_of} label="raised (slot)" />
+          </StatCards>
           {atDetection === null && (
             <Footnote>
               The monitor recorded no quantity for this position, which is not the same as
@@ -226,7 +227,12 @@ export default async function AlertDetailPage({
 
         <section>
           <SectionHead>What to do about it</SectionHead>
-          <DecisionControls tenantId={tenantId} eventId={eventId} />
+          {/* THE CONTROLS GET A SURFACE (B3). Every other section on this page is a card now,
+              and these buttons sat straight on the page background. ItemCard because this is
+              one block of controls, not a list of them. */}
+          <ItemCard>
+            <DecisionControls tenantId={tenantId} eventId={eventId} />
+          </ItemCard>
           {alert.lifecycle_recorded_at && (
             <Footnote>
               Last decision recorded {alert.lifecycle_recorded_at.slice(0, 10)}
@@ -245,7 +251,14 @@ export default async function AlertDetailPage({
           {/* THE MEASURE, NOT THE CONTAINER. This is the one genuinely prose-heavy
               element on the page: a full sentence explaining a judgement. At the
               container's 1240px it would run far past a comfortable line length,
-              which is exactly what ver2 caps `.pagehead .sub` at 720px to avoid. */}
+              which is exactly what ver2 caps `.pagehead .sub` at 720px to avoid.
+
+              AND DELIBERATELY NOT IN A CARD, WHICH IS THE ONE EXCEPTION ON THIS PAGE (B3).
+              Every other section here was given a surface in the same slice. This one is PROSE,
+              and the four content treatments exist for structured content: a list, a table, a
+              set of figures, a repeating item. Wrapping a single explanatory paragraph in a
+              card would buy tidiness at the cost of the system meaning anything. If you are
+              here to "finish" this section, that is what it already is. */}
           <p className="text-body text-measure text-foreground">{whyFlagged(alert)}</p>
           <Footnote>
             Judged against the thresholds recorded with this alert, not against the monitor&apos;s
@@ -256,9 +269,11 @@ export default async function AlertDetailPage({
         <section>
           <SectionHead>History</SectionHead>
           {history.length === 0 ? (
-            <p className="text-body text-foreground-muted">
-              This is the only time this alert has been recorded.
-            </p>
+            <ItemCard>
+              <p className="text-body text-foreground-muted">
+                This is the only time this alert has been recorded.
+              </p>
+            </ItemCard>
           ) : (
             <Panel>
               {history.map((row) => (

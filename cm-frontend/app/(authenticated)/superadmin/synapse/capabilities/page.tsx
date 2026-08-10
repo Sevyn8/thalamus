@@ -4,6 +4,8 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import {
   Column,
   Footnote,
+  Panel,
+  PanelRow,
   SectionHead,
   SubNav,
   SynapseDown,
@@ -161,35 +163,44 @@ export default async function CapabilitiesPage() {
               <ChevronRight className="h-3 w-3 transition-transform duration-150 ease-out group-open:rotate-90" />
               {declined.length} of {capabilities.length} not available yet
             </summary>
-            {declined.map((c) => (
-              <div key={c.capability_id} className="border-b border-border py-3 last:border-b-0">
-                <div className="flex items-start gap-4">
+            {/* ROWS IN ONE CARD (B3). These were hand-rolled ruled rows on the page background,
+                directly beneath a Working section that became a TableCard in B2, which left the
+                two halves of one page in two different languages. Panel and PanelRow rather than
+                a second TableCard because each of these carries a WRAPPED SENTENCE, and a
+                sentence that wraps is a row rather than a cell. */}
+            <Panel>
+              {declined.map((c) => (
+                <PanelRow key={c.capability_id}>
                   <div className="min-w-0 flex-1">
-                    <p className="text-body-strong">{c.name}</p>
-                    <p className="text-caption font-mono text-foreground-muted">
-                      {c.capability_id}
+                    <div className="flex items-start gap-4">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-body-strong">{c.name}</p>
+                        <p className="text-caption font-mono text-foreground-muted">
+                          {c.capability_id}
+                        </p>
+                      </div>
+                      <span className="shrink-0">
+                        <Tag tone="stop">no data exists</Tag>
+                      </span>
+                    </div>
+                    {/* THE REASON, IN ONE SENTENCE. Saying only "not available"
+                        flattens "nobody has written this" into "this cannot be
+                        written": the first is a work item, the second is a fact about
+                        the data that no amount of code changes, and an operator needs
+                        to know which.
+
+                        THIS RENDERED declined_reason VERBATIM UNTIL B2b-2. That value
+                        is an audit note citing dis_validation.provenance and a grep
+                        across four package trees, written for whoever revisits the
+                        decision. It is unchanged and still served; the console now
+                        draws the operator-facing summary beside it. */}
+                    <p className="text-caption mt-2 text-measure leading-relaxed text-foreground-muted">
+                      {c.declined_summary ?? "No reason has been recorded for this capability."}
                     </p>
                   </div>
-                  <span className="shrink-0">
-                    <Tag tone="stop">no data exists</Tag>
-                  </span>
-                </div>
-                {/* THE REASON, IN ONE SENTENCE. Saying only "not available"
-                    flattens "nobody has written this" into "this cannot be
-                    written": the first is a work item, the second is a fact about
-                    the data that no amount of code changes, and an operator needs
-                    to know which.
-
-                    THIS RENDERED declined_reason VERBATIM UNTIL B2b-2. That value
-                    is an audit note citing dis_validation.provenance and a grep
-                    across four package trees, written for whoever revisits the
-                    decision. It is unchanged and still served; the console now
-                    draws the operator-facing summary beside it. */}
-                <p className="text-caption mt-2 text-measure leading-relaxed text-foreground-muted">
-                  {c.declined_summary ?? "No reason has been recorded for this capability."}
-                </p>
-              </div>
-            ))}
+                </PanelRow>
+              ))}
+            </Panel>
           </details>
         )}
 

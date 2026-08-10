@@ -2,6 +2,12 @@
 
 import { useState, useTransition } from "react";
 
+import {
+  BUTTON_CLASS,
+  BUTTON_PRIMARY_CLASS,
+  CONTROL_CLASS,
+} from "@/components/synapse/primitives";
+
 import { type EnableResult, enableMonitor } from "./actions";
 
 // THE SECOND INTERACTIVE COMPONENT IN THE SYNAPSE CONSOLE (slice 5e). Everything else
@@ -158,20 +164,23 @@ export function EnableMonitor({
     });
   }
 
-  // hover:bg-surface-raised, NOT hover:bg-surface-2, AND THAT WAS A REAL DEFECT. Every button
-  // in this file carried `hover:bg-surface-2` and had NO hover feedback at all: there is no
-  // --color-surface-2 in globals.css, so Tailwind generated no rule and the class was inert.
-  // Verified against the compiled CSS rather than reasoned about: the built stylesheet contains
-  // zero occurrences of surface-2 and one of surface-raised. A class that silently does nothing
-  // is the same failure class as a comment that is silently false, which is why it is fixed in
-  // a visual slice rather than filed.
+  // THE SHARED RECIPES (B3). The inputs take CONTROL_CLASS, the buttons take BUTTON_CLASS, and
+  // ENABLE TAKES BUTTON_PRIMARY_CLASS because the mockup puts `.btn.primary` on exactly this
+  // control and because it is the one action here that writes a value nothing can change
+  // afterwards. All three lived as hand-rolled copies in this file before.
+  //
+  // THE HOVER ON THOSE COPIES WAS DEAD UNTIL B2, and the history is worth keeping: every button
+  // carried `hover:bg-surface-2`, which has no --color-surface-2 behind it, so Tailwind emitted
+  // no rule and there was no hover at all. Verified then against the compiled CSS and
+  // re-verified in B3. A class that silently does nothing is the same failure class as a comment
+  // that is silently false.
   return (
     <div className="text-right">
       {!open ? (
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="text-caption rounded border border-border px-3 py-1.5 text-foreground hover:bg-surface-raised"
+          className={BUTTON_PRIMARY_CLASS}
         >
           Enable
         </button>
@@ -185,7 +194,7 @@ export function EnableMonitor({
               disabled={pending}
               onChange={(event) => setFilter(event.target.value)}
               placeholder="Search, e.g. Kolkata"
-              className="text-caption w-64 rounded border border-border bg-surface px-2 py-1.5 text-foreground"
+              className={`${CONTROL_CLASS} w-64`}
             />
           </label>
 
@@ -209,7 +218,7 @@ export function EnableMonitor({
               value={chosenIsVisible ? zone : NO_ZONE}
               disabled={pending}
               onChange={(event) => setZone(event.target.value)}
-              className="text-caption w-64 rounded border border-border bg-surface px-2 py-1.5 text-foreground"
+              className={`${CONTROL_CLASS} w-64`}
             >
               <option value={NO_ZONE}>Choose a timezone...</option>
               {grouped.map(([region, names]) => (
@@ -263,7 +272,7 @@ export function EnableMonitor({
                 setFilter("");
                 setError(null);
               }}
-              className="text-caption rounded border border-border px-3 py-1.5 text-foreground-muted hover:bg-surface-raised disabled:opacity-50"
+              className={BUTTON_CLASS}
             >
               Cancel
             </button>
@@ -273,7 +282,7 @@ export function EnableMonitor({
               // since hidden it. See NO_ZONE above.
               disabled={pending || zone === NO_ZONE || !chosenIsVisible}
               onClick={send}
-              className="text-caption rounded border border-border px-3 py-1.5 text-foreground hover:bg-surface-raised disabled:opacity-50"
+              className={BUTTON_PRIMARY_CLASS}
             >
               {pending ? "Enabling..." : "Enable in silent mode"}
             </button>

@@ -6,6 +6,7 @@ import {
   FilterChip,
   FilterGroup,
   Footnote,
+  ItemCard,
   Panel,
   PanelRow,
   SectionHead,
@@ -333,14 +334,16 @@ export default async function AlertsInboxPage({
 
                Uses the counts already fetched for the chips, so this costs no
                request and cannot disagree with them. */
-            <p className="text-body text-foreground-muted">
-              {filtered
-                ? `No alerts match these filters. Across all monitors and clients, ${plural(
-                    counts.open ?? 0,
-                    "alert",
-                  )} ${(counts.open ?? 0) === 1 ? "is" : "are"} open.`
-                : "No alerts have been raised yet, by any monitor, for any client."}
-            </p>
+            <ItemCard>
+              <p className="text-body text-foreground-muted">
+                {filtered
+                  ? `No alerts match these filters. Across all monitors and clients, ${plural(
+                      counts.open ?? 0,
+                      "alert",
+                    )} ${(counts.open ?? 0) === 1 ? "is" : "are"} open.`
+                  : "No alerts have been raised yet, by any monitor, for any client."}
+              </p>
+            </ItemCard>
           ) : (
             /* ONE CARD, ROWS INSIDE IT (B2). The mockup's inbox is a single surface whose
                children are ruled rows, which is the third of the four treatments and needs no

@@ -3,6 +3,7 @@ import { RunHistory, type RunHistoryRow } from "@/components/synapse/RunHistory"
 import {
   Column,
   Footnote,
+  ItemCard,
   SubNav,
   SynapseDown,
 } from "@/components/synapse/primitives";
@@ -85,10 +86,12 @@ export default async function RunsPage() {
         <SubNav current="runs" />
         <section>
           {runs.length === 0 ? (
-            <p className="text-body text-foreground-muted">
-              Nothing has run yet. The orchestrator fires daily in each tenant&apos;s own timezone,
-              and only for monitors that are enabled.
-            </p>
+            <ItemCard>
+              <p className="text-body text-foreground-muted">
+                Nothing has run yet. The orchestrator fires daily in each tenant&apos;s own
+                timezone, and only for monitors that are enabled.
+              </p>
+            </ItemCard>
           ) : (
             <RunHistory runs={runs} truncated={runs.length >= LIMIT} limit={LIMIT} />
           )}

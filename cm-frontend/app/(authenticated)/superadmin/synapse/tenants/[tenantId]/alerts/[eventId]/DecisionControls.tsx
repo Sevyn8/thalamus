@@ -2,6 +2,8 @@
 
 import { useState, useTransition } from "react";
 
+import { BUTTON_CLASS } from "@/components/synapse/primitives";
+
 import { type DecisionResult, recordDecision } from "./actions";
 
 // THE ONLY INTERACTIVE COMPONENT IN THE SYNAPSE CONSOLE. Everything else is a
@@ -57,12 +59,16 @@ export function DecisionControls({
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2">
-        {/* hover:bg-surface-raised, NOT hover:bg-surface-2, AND THAT WAS A REAL DEFECT. All six
-            buttons across this file and EnableMonitor.tsx carried `hover:bg-surface-2` and had
-            NO hover feedback at all: there is no --color-surface-2 in globals.css, so Tailwind
-            generated no rule and the class was inert. Verified against the compiled CSS rather
-            than reasoned about: the built stylesheet contains zero occurrences of surface-2 and
-            one of surface-raised. A class that silently does nothing is the same failure class
+        {/* BUTTON_CLASS, THE SHARED RECIPE (B3). Every button here hand-rolled its own
+            `rounded border border-border ... hover:bg-surface-raised`, which matched neither of
+            the two control recipes the mockups define: it moved a BACKGROUND where `.btn` moves
+            a border and an accent, on a plain border where `.btn` uses the strong one. Two files
+            agreeing by coincidence is how a recipe drifts, so there is now one.
+
+            THAT HOVER WAS DEAD BEFORE B2, and the history is worth keeping: these buttons
+            carried `hover:bg-surface-2`, which has no --color-surface-2 behind it, so Tailwind
+            emitted no rule and they had no hover at all. Verified then against the compiled CSS
+            and re-verified in B3. A class that silently does nothing is the same failure class
             as a comment that is silently false. */}
         {SNOOZE_DAYS.map((days) => (
           <button
@@ -70,7 +76,7 @@ export function DecisionControls({
             type="button"
             disabled={pending}
             onClick={() => send({ verb: "snooze", snoozed_until: isoInDays(days) })}
-            className="text-caption rounded border border-border px-3 py-1.5 text-foreground hover:bg-surface-raised disabled:opacity-50"
+            className={BUTTON_CLASS}
           >
             Snooze {days}d
           </button>
@@ -79,7 +85,7 @@ export function DecisionControls({
           type="button"
           disabled={pending}
           onClick={() => send({ verb: "acknowledge" })}
-          className="text-caption rounded border border-border px-3 py-1.5 text-foreground hover:bg-surface-raised disabled:opacity-50"
+          className={BUTTON_CLASS}
         >
           Acknowledge
         </button>
@@ -121,7 +127,7 @@ export function DecisionControls({
             // default would make the commonest label the one nobody meant.
             disabled={pending || reason === null}
             onClick={() => send({ verb: "dismiss", reason })}
-            className="text-caption mt-3 rounded border border-border px-3 py-1.5 text-foreground hover:bg-surface-raised disabled:opacity-50"
+            className={`${BUTTON_CLASS} mt-3`}
           >
             Dismiss
           </button>

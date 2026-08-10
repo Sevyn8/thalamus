@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import {
   Attention,
   Column,
+  ItemCard,
   SectionHead,
   SilentModePill,
   StatCard,
@@ -220,9 +221,11 @@ export default async function SynapseFleetPage() {
           {tenants.length === 0 ? (
             // A REAL STATE, rendered as itself. D6: no placeholder content to make
             // the screen look finished.
-            <p className="text-body text-foreground-muted">
-              No tenants are mirrored yet, so there is nothing for Synapse to watch.
-            </p>
+            <ItemCard>
+              <p className="text-body text-foreground-muted">
+                No tenants are mirrored yet, so there is nothing for Synapse to watch.
+              </p>
+            </ItemCard>
           ) : (
             /* THE ROSTER IS A TABLE NOW (B2), which is the mockups' treatment for this screen
                and for the tenants list. Every fact was already on the page: stores, products and

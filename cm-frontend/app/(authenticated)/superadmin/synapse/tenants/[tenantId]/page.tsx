@@ -17,8 +17,8 @@ import {
   type Refusals,
   SectionHead,
   SilentModePill,
-  Stat,
-  StatStrip,
+  StatCard,
+  StatCards,
   SynapseDown,
   Tabs,
   Tag,
@@ -341,15 +341,23 @@ export default async function TenantPage({
           />
         )}
 
+        {/* STAT CARDS (B3). This tab kept the inline strip through B2 because no mockup defines
+            a tenant stat treatment, and the result was one untreated tab inside a page whose
+            other four are cards, a table and panels. Stat cards are this system's treatment for
+            stats, so a stat surface gets them; choosing an established treatment is not the
+            uniformity error, which was making every page look like runs.
+
+            FIVE COLUMNS, because there are five figures and a four-column grid would leave the
+            fifth dangling on its own row. Dropping one would be content. */}
         {tab === "overview" && (
-        <StatStrip>
-          <Stat n={detail.products} label={detail.products === 1 ? "product watched" : "products watched"} />
-          <Stat n={detail.sales_seen} label={detail.sales_seen === 1 ? "sale ingested" : "sales ingested"} />
+        <StatCards columns={5}>
+          <StatCard value={detail.products} label={detail.products === 1 ? "product watched" : "products watched"} />
+          <StatCard value={detail.sales_seen} label={detail.sales_seen === 1 ? "sale ingested" : "sales ingested"} />
           {/* "never" RATHER THAN A DASH. latest_sale is null only when no sale has ever
               been ingested for this client, which is a fact worth stating; a dash makes
               the reader work out whether it means none, unknown, or not loaded. There is
               no zero case for a date, so one word covers it. */}
-          <Stat n={detail.latest_sale ?? "never"} label="last sale" warn={isStale} />
+          <StatCard value={detail.latest_sale ?? "never"} label="last sale" warn={isStale} />
           {/* "OPEN" IS SAYABLE NOW. This read "alerts raised (all time)" because
               synapse.actions had no lifecycle column and "open" would have named a
               state the system could not represent. Migration 0006 gives it one, so
@@ -362,16 +370,16 @@ export default async function TenantPage({
               attribution denominator D1 exists to protect, and redefining the
               number under the same label would silently change what an old
               screenshot means. */}
-          <Stat n={openAlerts} label={openAlerts === 1 ? "open alert" : "open alerts"} warn={openAlerts > 0} />
-          <Stat
-            n={detail.actions_recorded}
+          <StatCard value={openAlerts} label={openAlerts === 1 ? "open alert" : "open alerts"} warn={openAlerts > 0} />
+          <StatCard
+            value={detail.actions_recorded}
             label={
               detail.actions_recorded === 1
                 ? "alert raised (all time)"
                 : "alerts raised (all time)"
             }
           />
-        </StatStrip>
+        </StatCards>
         )}
 
         {tab === "alerts" && (
@@ -383,19 +391,21 @@ export default async function TenantPage({
               the monitors say alerts exist — showing nothing there would claim a quiet
               client when the truth is a broken section. */}
           {alerts.length === 0 ? (
-            alerting.length === 0 ? (
-              <p className="text-body text-foreground-muted">
-                No alerts from the most recent run of any monitor.
-              </p>
-            ) : (
-              <p className="text-body text-foreground-muted">
-                {plural(
-                  alerting.reduce((n, a) => n + (a.actions_proposed ?? 0), 0),
-                  "alert",
-                )}{" "}
-                raised, but the alert list could not be loaded.
-              </p>
-            )
+            <ItemCard>
+              {alerting.length === 0 ? (
+                <p className="text-body text-foreground-muted">
+                  No alerts from the most recent run of any monitor.
+                </p>
+              ) : (
+                <p className="text-body text-foreground-muted">
+                  {plural(
+                    alerting.reduce((n, a) => n + (a.actions_proposed ?? 0), 0),
+                    "alert",
+                  )}{" "}
+                  raised, but the alert list could not be loaded.
+                </p>
+              )}
+            </ItemCard>
           ) : (
             /* ONE CARD, ROWS INSIDE IT, the same treatment as the fleet inbox so the two alert
                lists read as one thing seen at two scopes. */
@@ -465,9 +475,11 @@ export default async function TenantPage({
         <section>
           <SectionHead>Monitors</SectionHead>
           {detail.analyses.length === 0 ? (
-            <p className="text-body text-foreground-muted">
-              No monitors are enabled for this client yet.
-            </p>
+            <ItemCard>
+              <p className="text-body text-foreground-muted">
+                No monitors are enabled for this client yet.
+              </p>
+            </ItemCard>
           ) : (
             /* CARD PER ITEM (B2), the mockups' fourth treatment and the right one here: each
                monitor carries a BLOCK of facts, its description, its machine id, its declared
@@ -712,7 +724,11 @@ export default async function TenantPage({
               showTenant is off because every row here is the same client, and repeating the
               name down the column pushes the monitor off its own line. */}
           {tenantRuns.length === 0 ? (
-            <p className="text-body text-foreground-muted">No runs recorded for this client yet.</p>
+            <ItemCard>
+              <p className="text-body text-foreground-muted">
+                No runs recorded for this client yet.
+              </p>
+            </ItemCard>
           ) : (
             <RunHistory
               runs={tenantRuns}
@@ -731,31 +747,36 @@ export default async function TenantPage({
               running into. Every figure is one the BFF already serves on /tenants/{id}:
               nothing here is derived, and nothing the mockup showed but the endpoint does
               not carry appears at all. */}
-          {/* THE FACTS GO IN A CARD (B2), the same object as every other list surface here:
-              white surface, hairline, 14px radius. The table inside is unchanged. */}
-          <div className="overflow-hidden rounded-lg border border-border bg-surface px-4">
-            <Facts>
-              <Fact
-                label="Last sale ingested"
-                value={detail.latest_sale ?? "never"}
-                note={
-                  detail.latest_sale === null
-                    ? "no sale has ever arrived"
-                    : staleDays === null
-                      ? undefined
-                      : `${plural(staleDays, "day")} ago`
-                }
-              />
-              <Fact label="Sales ingested" value={detail.sales_seen.toLocaleString()} />
-              <Fact label="Products watched" value={detail.products.toLocaleString()} />
-              <Fact label="Stores" value={detail.stores.toLocaleString()} />
-              <Fact
-                label="Alerts recorded"
-                value={detail.actions_recorded.toLocaleString()}
-                note="all time"
-              />
-            </Facts>
-          </div>
+          {/* THE FACTS GO IN A CARD (B2), the same object as every other list surface here.
+              PANEL RATHER THAN A HAND-ROLLED div (B3): this was the only card in Synapse not
+              produced by a named component, which made the card recipe two sources of truth.
+              The inner padding stays here because Panel deliberately has none, so that its rows
+              can carry their own. */}
+          <Panel>
+            <div className="px-4">
+              <Facts>
+                <Fact
+                  label="Last sale ingested"
+                  value={detail.latest_sale ?? "never"}
+                  note={
+                    detail.latest_sale === null
+                      ? "no sale has ever arrived"
+                      : staleDays === null
+                        ? undefined
+                        : `${plural(staleDays, "day")} ago`
+                  }
+                />
+                <Fact label="Sales ingested" value={detail.sales_seen.toLocaleString()} />
+                <Fact label="Products watched" value={detail.products.toLocaleString()} />
+                <Fact label="Stores" value={detail.stores.toLocaleString()} />
+                <Fact
+                  label="Alerts recorded"
+                  value={detail.actions_recorded.toLocaleString()}
+                  note="all time"
+                />
+              </Facts>
+            </div>
+          </Panel>
 
           <div className="mt-4">
             <Footnote>

@@ -66,26 +66,16 @@ export function Column({ children }: { children: ReactNode }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Stats: a strip, not four billboards
-// ---------------------------------------------------------------------------
+// StatStrip AND Stat WERE HERE AND ARE DELETED (B3). They were the inline strip: a
+// `text-heading` figure over a caption, laid straight on the page background. Both are
+// REPLACED BY StatCards AND StatCard below, which is the mockups' own treatment for stats and
+// is now used on all three stat surfaces (the fleet overview, the tenant Overview tab and the
+// alert detail page).
 //
-// These are CONTEXT, not the point of the page. As `text-display` numbers in
-// filled cards they outweighed the data they were describing. Inline, quiet, and
-// only the one that means something carries colour — a page where four figures
-// are all emphasised has emphasised nothing.
-export function StatStrip({ children }: { children: ReactNode }) {
-  return <div className="flex flex-wrap gap-x-8 gap-y-3">{children}</div>;
-}
-
-export function Stat({ n, label, warn }: { n: ReactNode; label: string; warn?: boolean }) {
-  return (
-    <div>
-      <p className={`text-heading ${warn ? "text-warning" : "text-foreground"}`}>{n}</p>
-      <p className="text-caption text-foreground-muted">{label}</p>
-    </div>
-  );
-}
+// THE ARGUMENT THEY SHIPPED WITH IS WORTH KEEPING, because it is still true of the thing that
+// replaced them: stats are CONTEXT rather than the point of a page, and a screen where four
+// figures are all emphasised has emphasised nothing. StatCard carries that by giving only the
+// figure that means something the `warn` colour, not by being quiet everywhere.
 
 // ---------------------------------------------------------------------------
 // Two facts, two columns
@@ -131,52 +121,19 @@ export function Fact({
   );
 }
 
-// ---------------------------------------------------------------------------
-// A list row: metadata WITH its subject, status alone on the right
-// ---------------------------------------------------------------------------
+// Row WAS HERE AND IS DELETED (B3). It was the pre-restyle list primitive: a ruled row laid
+// straight on the page background, with a title, a metadata line, a right-hand slot and an
+// `attention` flag that turned the title amber.
 //
-// `daily · Asia/Kolkata · shadow` belongs under the name it describes, not at the
-// far edge of the screen. Only the status goes right, because it is the only
-// thing a reader scans a column of.
+// EVERY CALL SITE MOVED IN B2 AND NOTHING REPLACED IT ONE FOR ONE, which is why it went from
+// eleven uses to zero without anyone noticing. The four treatments each took a share: alert
+// lists became PanelRow inside a Panel, the fleet roster became Tr inside a TableCard, the
+// tenant monitors became ItemCard, and the capabilities list became a TableCard too. The
+// `attention` amber survives as the same two classes applied at the two alert list sites.
 //
-// `attention` carries the amber. Two analyses where one works and one has never
-// run must not look identical — the hierarchy IS the information.
-export function Row({
-  title,
-  meta,
-  right,
-  note,
-  attention,
-}: {
-  title: ReactNode;
-  meta?: ReactNode;
-  right?: ReactNode;
-  note?: string;
-  attention?: boolean;
-}) {
-  return (
-    <div className="flex items-start gap-4 border-b border-border py-3 last:border-b-0">
-      <div className="min-w-0 flex-1">
-        <div
-          className={
-            attention ? "text-body-strong text-warning" : "text-body-strong"
-          }
-        >
-          {title}
-        </div>
-        {meta ? <p className="text-caption mt-0.5 text-foreground-muted">{meta}</p> : null}
-      </div>
-      {right || note ? (
-        <div className="shrink-0 text-right">
-          {right}
-          {note ? (
-            <p className="text-micro mt-1 text-foreground-subtle">{note}</p>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
+// A DEAD EXPORT IS THE SAME CLASS OF ARTIFACT AS A FALSE COMMENT: it tells the next reader this
+// is how a list is built here, and it is not. Recorded rather than silently removed, the same
+// way NameWithId and Unavailable are recorded below.
 
 // ---------------------------------------------------------------------------
 // The footnote: teaching copy, once, quieter than the data
@@ -195,9 +152,19 @@ export function Footnote({ children }: { children: ReactNode }) {
 // The amber banner for the thing that needs a person. NOT a row that looks like
 // the others — that was the R1 failure: the one item requiring action was styled
 // identically to the three that did not.
+//
+// =========================================================================================
+// A BANNER IS NOT A CARD, AND THIS RADIUS IS 9px ON PURPOSE. DO NOT RAISE IT TO rounded-lg.
+// =========================================================================================
+// B2 raised both banners here to the 14px card radius on the reasoning that they are
+// card-level objects. That reasoning is wrong and the mockups settle it: the only banner
+// they draw is mockup-overview's `.banner`, and it is `border-radius: var(--r-md)`, which is
+// 9px, the same step as a filter control. The 14px slot is for the four content treatments
+// (Panel, TableCard, ItemCard, StatCard); a banner is a notice laid over the page, not one of
+// the objects the page is built from. Corrected in B3 by whoever raised it.
 export function Attention({ title, detail }: { title: string; detail: string }) {
   return (
-    <div className="rounded-lg border border-[var(--warning-line)] bg-[var(--warning-bg)] p-4">
+    <div className="rounded border border-[var(--warning-line)] bg-[var(--warning-bg)] p-4">
       <p className="text-body-strong text-warning">{title}</p>
       <p className="text-caption mt-1 text-measure text-warning/80">
         {detail}
@@ -677,6 +644,29 @@ export const CONTROL_CLASS =
   "text-caption rounded border border-border bg-surface px-3 py-2 text-foreground transition-colors duration-150 ease-out hover:border-border-strong disabled:text-foreground-subtle disabled:hover:border-border";
 
 // ---------------------------------------------------------------------------
+// THE BUTTON, which is a DIFFERENT recipe from the control above
+// ---------------------------------------------------------------------------
+//
+// A SECOND CONSTANT RATHER THAN A REUSE OF CONTROL_CLASS, because the mockups draw two different
+// things and collapsing them would lose the distinction. `.fdrop` is a filter: hairline border,
+// muted text, hover moves the border one step (mockup-runs :39, mockup-alerts-inbox :52).
+// `.btn` is an action: the STRONGER border to begin with, and hover moves the border AND the text
+// to the accent (mockup-tenant-monitors :69-70). A filter narrows a list; a button writes a row.
+//
+// THIS REPLACES TEN HAND-ROLLED COPIES. EnableMonitor and DecisionControls each carried their own
+// `rounded border border-border ... hover:bg-surface-raised`, which was neither of the mockups'
+// two recipes: a background hover where the mockups move a border, on a plain border where the
+// mockups use the strong one. Two files agreeing by coincidence is how a recipe drifts.
+export const BUTTON_CLASS =
+  "text-caption rounded border border-border-strong bg-surface px-3.5 py-1.5 font-medium text-foreground-muted transition-colors duration-150 ease-out hover:border-primary hover:text-primary disabled:opacity-50 disabled:hover:border-border-strong disabled:hover:text-foreground-muted";
+
+// `.btn.primary`: solid accent, and it is reserved for the action a surface exists to perform.
+// Today that is Enable, which writes an IMMUTABLE reporting timezone, so being unmistakable is
+// worth more here than restraint. Anything that is merely available stays on BUTTON_CLASS.
+export const BUTTON_PRIMARY_CLASS =
+  "text-caption rounded border border-primary bg-primary px-3.5 py-1.5 font-medium text-primary-foreground transition-colors duration-150 ease-out hover:opacity-90 disabled:opacity-50";
+
+// ---------------------------------------------------------------------------
 // THE STAT CARDS: the fleet overview's treatment, and ONLY the fleet overview's
 // ---------------------------------------------------------------------------
 //
@@ -688,10 +678,41 @@ export const CONTROL_CLASS =
 // is the ONLY mockup with stats of any kind: the alerts inbox puts its counts in the filter
 // chips, and the tenant page's mockup carries a meta line and a freshness pill instead. Giving
 // every page stat cards because one page has them is the same error as giving every page the
-// runs panel, in the other direction. The tenant Overview tab and the alert detail page keep the
-// inline strip.
-export function StatCards({ children }: { children: ReactNode }) {
-  return <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{children}</div>;
+// runs panel, in the other direction.
+//
+// B3 EXTENDED THIS TO EVERY STAT SURFACE, and the earlier sentence here said the opposite: it
+// reserved the cards for the fleet overview and kept the inline strip on the tenant Overview tab
+// and the alert detail page. That was right about not inventing a treatment and wrong about what
+// it produced. One untreated tab inside a page whose other four are cards, tables and panels
+// reads as unfinished, and the uniformity error worth avoiding was making every page look like
+// runs, not leaving gaps. Stat cards ARE this system's treatment for stats, so a stat surface
+// gets them. StatStrip and Stat are deleted; see the note where they used to live.
+//
+// `columns` EXISTS BECAUSE THE THREE SURFACES CARRY THREE, FOUR AND FIVE FIGURES. At a fixed
+// four the tenant Overview's five stats render as four plus a dangling card and the alert
+// detail's three leave a hole, and the alternative was dropping a figure, which is content
+// rather than layout. A parameter on an established component is not a new treatment.
+//
+// THE CLASS NAMES ARE WRITTEN OUT, NOT INTERPOLATED. Tailwind scans source text for complete
+// class names, so `lg:grid-cols-${columns}` would emit nothing at all and every grid would
+// silently fall back to the two-column breakpoint. That is the same class of defect as
+// hover:bg-surface-2, which is why this is a lookup rather than a template string.
+const STAT_COLUMNS: Record<3 | 4 | 5, string> = {
+  3: "lg:grid-cols-3",
+  4: "lg:grid-cols-4",
+  5: "lg:grid-cols-5",
+};
+
+export function StatCards({
+  children,
+  columns = 4,
+}: {
+  children: ReactNode;
+  columns?: 3 | 4 | 5;
+}) {
+  return (
+    <div className={`grid gap-3 sm:grid-cols-2 ${STAT_COLUMNS[columns]}`}>{children}</div>
+  );
 }
 
 export function StatCard({
@@ -737,9 +758,16 @@ export function MonoChip({ children }: { children: ReactNode }) {
 
 // Rendered when the BFF cannot be reached. NAMES the service, because "something
 // went wrong" sends an operator to the wrong system.
+// The service-down notice, which is a banner for the same reason Attention is: it is laid over
+// a page rather than being one of the objects the page is built from. Same 9px, same rule.
+//
+// THIS IS THE ONLY ERROR STATE IN THE CONSOLE, AND THERE IS NO LOADING STATE AT ALL. No
+// loading.tsx exists anywhere under the Synapse tree, so every page blocks on its fetches and
+// renders nothing until the BFF answers. That is a structural change rather than a visual one,
+// which is why B3 did not add one while restyling everything around it.
 export function SynapseDown({ message }: { message: string }) {
   return (
-    <div className="rounded-lg border border-[var(--warning-line)] bg-[var(--warning-bg)] p-4">
+    <div className="rounded border border-[var(--warning-line)] bg-[var(--warning-bg)] p-4">
       <p className="text-body-strong text-warning">
         The Synapse service is not reachable.
       </p>
