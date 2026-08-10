@@ -146,7 +146,9 @@ class DisabledAnalysis:
     while nothing could enable anything: a disabled monitor is not running, and a read-only screen
     listing running monitors correctly omitted it. The moment an Enable control exists, that
     filter turns a disabled pair into one that looks NEVER PROVISIONED, and the console offers to
-    enable it. ``ON CONFLICT DO NOTHING`` then suppresses the insert and the request succeeds.
+    enable it. The insert then hits ``pk_provision``, and all the endpoint can honestly say is
+    "a row already existed": the write credential holds no SELECT here, so it cannot tell the
+    operator whether that row is active or switched off. This read is what can.
 
     A CONTROL THAT REPORTS SUCCESS AND CHANGES NOTHING IS WORSE THAN A DEAD ONE. A dead control is
     visibly inert; this one would tell an operator a monitor is on, the page would re-render from

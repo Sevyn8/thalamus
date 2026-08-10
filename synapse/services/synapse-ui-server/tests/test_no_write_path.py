@@ -236,7 +236,11 @@ def test_the_provision_module_holds_exactly_three_statements_and_writes_with_one
     assert len(writes) == 1, "provision.py must contain exactly one write"
     (insert,) = writes
     assert "INSERT INTO synapse.provision" in insert
-    for keyword in ("UPDATE ", "DELETE ", "TRUNCATE", "ALTER TABLE", "RETURNING"):
+    # ON CONFLICT IS IN THIS LIST FOR THE SAME REASON RETURNING IS: both need SELECT on
+    # synapse.provision, which this credential deliberately does not hold. The clause was here
+    # once and every enable in production failed with `permission denied for table provision`
+    # until 2026-08-10. A duplicate is reported from SQLSTATE 23505 instead.
+    for keyword in ("UPDATE ", "DELETE ", "TRUNCATE", "ALTER TABLE", "RETURNING", "ON CONFLICT"):
         assert keyword not in insert.upper(), f"the provisioning statement contains {keyword!r}"
 
     # THE PRE-FLIGHT READS EXACTLY THE TWO TABLES THE GRANT COVERS. A read of anything else is

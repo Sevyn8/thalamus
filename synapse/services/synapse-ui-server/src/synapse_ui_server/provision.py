@@ -81,11 +81,23 @@ WHAT KEEPS IT NARROW, AND ONLY THE LAST IS CODE
   4. THE VOCABULARY. Cadence and rung are constants and the analysis id is checked against the
      registry, so a bad value is refused at the boundary with a message naming the legal set.
 
-THE ROLE CANNOT SEE WHETHER ITS OWN INSERT WAS SUPPRESSED, and that is correct rather than a gap.
-``ON CONFLICT DO NOTHING`` needs no SELECT privilege; ``RETURNING`` would, and granting SELECT to
-find out would let the enablement credential read every customer's configuration back. The
-console answers "what is true now" through ``synapse_reader``, before and after, which is the same
-division 5d uses for the alert it is about to act on.
+THE ROLE CANNOT READ THE TABLE IT WRITES, AND THAT SHAPES THE STATEMENT ITSELF. This write carried
+``ON CONFLICT ON CONSTRAINT pk_provision DO NOTHING`` until 2026-08-10, and every enable in
+production failed with ``permission denied for table provision``. ON CONFLICT has to READ the
+arbiter index to detect a conflict and that read needs SELECT, which this credential deliberately
+does not hold; the same INSERT without the clause succeeds as the same role in the same session.
+``RETURNING`` needs SELECT for the same reason and is absent for the same reason.
+
+SO A DUPLICATE IS AN EXCEPTION NOW, WHICH IS MORE INFORMATION THAN THE CLAUSE GAVE. pk_provision
+still enforces uniqueness, so re-running still never resurrects a disabled pair; only the
+mechanism that REPORTS a duplicate moved, from SQL to SQLSTATE 23505 caught in ``enable_analysis``.
+Granting SELECT to keep the clause would have falsified the property
+05_synapse_provisioner_grant.sql spends its header arguing for.
+
+WHAT THE EXCEPTION STILL CANNOT SAY IS WHICH STATE THE EXISTING ROW IS IN. An ACTIVE pair and a
+DISABLED one raise the identical error. The console answers "what is true now" through
+``synapse_reader``, before and after, which is the same division 5d uses for the alert it is about
+to act on.
 """
 
 from __future__ import annotations
@@ -161,17 +173,26 @@ class EnableOutcome:
     monitor producing nothing for a week is otherwise indistinguishable from a monitor that is
     working and finding nothing.
 
-    THERE IS NO ``created`` FLAG, and its absence is the grant showing through. The credential
-    holds no SELECT on synapse.provision, so this module genuinely cannot tell an insert from a
-    suppressed one. Inventing the field would mean asserting something unmeasured, which is the
-    class of defect this console has a standing rule against. The route establishes the three
-    enablement states through synapse_reader BEFORE calling here, and re-reads afterwards.
+    ``already_provisioned`` IS THE ONE BIT THIS CREDENTIAL CAN HONESTLY REPORT, AND IT IS MEASURED
+    RATHER THAN INFERRED. The role still holds no SELECT on synapse.provision, so this module
+    cannot read a row back. What it CAN observe is the database refusing its own insert:
+    pk_provision raising SQLSTATE 23505. True means a row for this pair already existed and this
+    request wrote nothing.
+
+    IT DOES NOT SAY WHICH STATE THAT ROW IS IN. An ACTIVE pair and a DISABLED one raise the
+    identical error and nothing here can look. The route establishes the three enablement states
+    through synapse_reader BEFORE calling here, and re-reads afterwards.
+
+    THE FIELD HAS NO DEFAULT, deliberately. A default would let a future construction site claim a
+    fresh insert by omitting it, which is the unmeasured assertion this docstring argued against
+    back when the field did not exist at all.
     """
 
     analysis_id: str
     tenant_name: str
     canonical_positions: int
     warning: str | None
+    already_provisioned: bool
 
 
 # -------------------------------------------------------------------------------------------------
@@ -208,10 +229,23 @@ _POSITION_COUNT = text(
 # so the parameter list of this statement is the same shape as every other and a future reader
 # cannot mistake them for caller input.
 #
-# ON CONFLICT DO NOTHING makes re-enabling idempotent and, critically, makes it a NO-OP against a
-# pair that was deliberately DISABLED: re-running never resurrects one. That is the same guarantee
-# provision_analysis.sql gives, and it is why the console must establish the three states through
-# the reader instead of treating a 201 as evidence.
+# NO ON CONFLICT, AND THAT IS A PERMISSION FACT RATHER THAN A STYLE CHOICE. This statement ended
+# with `ON CONFLICT ON CONSTRAINT pk_provision DO NOTHING` until 2026-08-10 and EVERY enable in
+# production failed with `permission denied for table provision` from the day it deployed.
+# Isolated against the live role: the INSERT alone SUCCEEDS, the INSERT plus the clause is DENIED,
+# with can_insert true and can_select false on has_table_privilege. ON CONFLICT has to read the
+# arbiter index to detect a conflict, and that read needs SELECT.
+#
+# THE UNIQUENESS IS UNCHANGED, ONLY THE REPORTING MOVED. pk_provision still refuses a second row
+# for a pair, so enabling stays a NO-OP against a pair that was deliberately DISABLED and
+# re-running still never resurrects one: that is the same guarantee provision_analysis.sql gives,
+# and it is still why the console must establish the three states through the reader instead of
+# treating a 201 as evidence. What changed is that a duplicate now arrives as SQLSTATE 23505 and
+# enable_analysis CATCHES it, so this path knows something the suppressed version could not.
+#
+# GRANTING SELECT TO KEEP THE CLAUSE WAS THE OTHER FIX AND IT WAS REFUSED. It would falsify the
+# property 05_synapse_provisioner_grant.sql spends its header arguing for, so a syntax choice
+# would have widened a credential. RETURNING is absent for exactly the same reason.
 _ENABLE = text(
     """
     INSERT INTO synapse.provision (
@@ -219,8 +253,40 @@ _ENABLE = text(
     ) VALUES (
         CAST(:tenant_id AS uuid), :analysis_id, :cadence, :rung, :timezone, :enabled_at
     )
-    ON CONFLICT ON CONSTRAINT pk_provision DO NOTHING
     """
+)
+
+
+class _AlreadyProvisionedError(Exception):
+    """A duplicate, signalled OUT of the session rather than handled inside it. Never escapes.
+
+    THE `Error` SUFFIX IS THE LINTER'S (N818), NOT A CLAIM. This is a control signal: it travels
+    from the insert to the handler outside the session and is never seen by a caller.
+
+    PRIVATE AND NOT AN EnablementRefusedError. A duplicate is not a refusal: the request was
+    legitimate, the vocabulary was legal, and the pre-flight passed. It is a fact about the table
+    that this credential can only learn by being refused, and ``enable_analysis`` converts it into
+    an outcome rather than an error. See the catch in ``enable_analysis`` for why it has to travel
+    this far to be handled.
+    """
+
+
+# THE OPERATOR-FACING HALF OF THE DUPLICATE, and every clause in it is load-bearing.
+#
+# IT MUST NOT SAY THE MONITOR IS ON. 23505 is raised identically by an ACTIVE pair and by a
+# DISABLED one, and this credential cannot look; claiming either would be the console asserting a
+# state nothing measured.
+#
+# IT MUST SAY THE CHOSEN TIMEZONE DID NOT LAND. The operator picked an IMMUTABLE value on purpose.
+# The existing row's zone stands, nothing in this console can edit it, and a message that reported
+# only "already provisioned" would leave them believing their choice took effect.
+_ALREADY_PROVISIONED_WARNING = (
+    "A provision row for this tenant and analysis ALREADY EXISTED, so this request WROTE NOTHING "
+    "and THE TIMEZONE YOU CHOSE WAS NOT APPLIED: the existing row's zone stands, and that column "
+    "is immutable, so no path in this console can change it. This credential holds no SELECT on "
+    "synapse.provision, so this service cannot tell you from here whether that row is ACTIVE or "
+    "SWITCHED OFF; the page re-reads through synapse_reader and is the only thing that can say. "
+    "The likeliest cause is a second enable landing between this page's read and this write."
 )
 
 
@@ -302,66 +368,127 @@ async def enable_analysis(
     ``enabled_at`` IS INJECTED, never read from a clock here. It is the start of the attribution
     window, stamped once and never edited, and a function that reads the clock cannot be tested
     at a boundary. Same rule as ``lifecycle.record_decision``'s ``recorded_at``.
+
+    A DUPLICATE RETURNS RATHER THAN RAISES, and that is the one judgement in this function. The
+    pre-flight refusals are refusals: the request named something that does not exist or a value
+    this service will not write. A duplicate is neither. The request was legal, the pair simply
+    already has a row, and the outcome says so through ``already_provisioned``. Reaching it means
+    the route's reader-side check was STALE, because that check refuses both states it can see, so
+    the realistic cause is a second enable landing in between.
     """
     _validate(analysis_id, timezone)
 
-    async with rls_session(engine, tenant_id) as conn:
-        name = (await conn.execute(_TENANT_NAME, {"tenant_id": str(tenant_id)})).scalar_one_or_none()
-        if name is None:
-            # FATAL. Raising inside the context manager rolls the transaction back, so this is
-            # the same guarantee the psql file gets from RAISE inside BEGIN.
-            raise EnablementRefusedError(
-                f"tenant {tenant_id} is not in identity_mirror.tenants. Either the tenant has "
-                "not been mirrored yet, or this request did not come from the fleet list. NOT "
-                "provisioning: an unknown tenant produces a healthy-looking run with zero "
-                "actions every day and never goes red",
-                reason="unknown_tenant",
-            )
-
-        positions = int((await conn.execute(_POSITION_COUNT, {"tenant_id": str(tenant_id)})).scalar_one())
-
-        try:
-            await conn.execute(
-                _ENABLE,
-                {
-                    "tenant_id": str(tenant_id),
-                    "analysis_id": analysis_id,
-                    "cadence": CADENCE,
-                    "rung": RUNG,
-                    "timezone": timezone,
-                    "enabled_at": enabled_at,
-                },
-            )
-        except DBAPIError as exc:
-            # THE TRIGGER'S OWN MESSAGE, PASSED THROUGH. It names the column, the value and the
-            # consequence ("Every slot, and therefore every action as_of, is computed in this
-            # zone"), which is more than this module knows. Replacing it with a generic sentence
-            # would be the console telling an operator less than the database told it.
-            #
-            # REACHED WHEN THE TWO TIMEZONE DATABASES DISAGREE, which is not hypothetical: the
-            # browser offering the choice can carry a newer IANA release than the Postgres server,
-            # so a zone can be offerable and unresolvable at the same time. _validate above uses
-            # Python's tzdata, which is a third. The trigger is the only one that speaks for the
-            # database the row lands in.
-            if _is_unresolvable_timezone(exc):
+    # WHY THE DUPLICATE IS CAUGHT OUT HERE, AND NOT AT THE `except DBAPIError` BELOW WHERE IT
+    # OBVIOUSLY BELONGS. DO NOT SIMPLIFY THIS BACK INTO ONE except CLAUSE INSIDE THE SESSION.
+    #
+    # rls_session wraps `async with conn.begin()`, which COMMITS on clean exit. Swallowing the
+    # 23505 inside that block and falling out normally would therefore send a COMMIT down a
+    # connection whose transaction the SERVER has already aborted.
+    #
+    # THAT DOES NOT RAISE TODAY, AND THE FIRST DRAFT OF THIS COMMENT SAID IT DID. SQLAlchemy
+    # deactivates a transaction only on a DISCONNECT (engine/base.py, _handle_dbapi_exception
+    # sets _is_disconnect from dialect.is_disconnect), and a unique violation is not one, so there
+    # is no PendingRollbackError: a swallow-then-exit against sqlite commits clean. The reason to
+    # jump out is the two below, not an exception that does not happen.
+    #
+    #   1. WHAT THE BLOCK MEANS. Raising takes the context manager's EXCEPTION path, which issues
+    #      an explicit ROLLBACK. The alternative leans on a COMMIT that commits nothing, because
+    #      Postgres executes COMMIT in an aborted block as a rollback. Correct, and it reads as
+    #      the opposite of what it does.
+    #   2. WHAT A LATER STATEMENT WOULD DO. Every statement issued after an error in an aborted
+    #      block fails with 25P02, "current transaction is aborted". A swallow leaves the rest of
+    #      this block running on a connection that can no longer do anything, and the next person
+    #      to add a line after the insert would debug an error naming neither. Jumping out cannot
+    #      have that failure.
+    #
+    # BOTH POSTGRES BEHAVIOURS ABOVE ARE DOCUMENTED AND NEITHER IS EXERCISED HERE: the unit path
+    # has no Postgres, and the SQLAlchemy half was checked against sqlite and against SQLAlchemy's
+    # own source. Nothing in this module depends on either being true.
+    #
+    # `name` and `positions` are bound BEFORE the insert, so they are still bound when this
+    # handler runs.
+    already_provisioned = False
+    try:
+        async with rls_session(engine, tenant_id) as conn:
+            name = (await conn.execute(_TENANT_NAME, {"tenant_id": str(tenant_id)})).scalar_one_or_none()
+            if name is None:
+                # FATAL. Raising inside the context manager rolls the transaction back, so this is
+                # the same guarantee the psql file gets from RAISE inside BEGIN.
                 raise EnablementRefusedError(
-                    str(getattr(exc, "orig", exc)).strip(), reason="bad_timezone"
-                ) from exc
-            raise
+                    f"tenant {tenant_id} is not in identity_mirror.tenants. Either the tenant has "
+                    "not been mirrored yet, or this request did not come from the fleet list. NOT "
+                    "provisioning: an unknown tenant produces a healthy-looking run with zero "
+                    "actions every day and never goes red",
+                    reason="unknown_tenant",
+                )
 
-    warning = None
+            positions = int((await conn.execute(_POSITION_COUNT, {"tenant_id": str(tenant_id)})).scalar_one())
+
+            try:
+                await conn.execute(
+                    _ENABLE,
+                    {
+                        "tenant_id": str(tenant_id),
+                        "analysis_id": analysis_id,
+                        "cadence": CADENCE,
+                        "rung": RUNG,
+                        "timezone": timezone,
+                        "enabled_at": enabled_at,
+                    },
+                )
+            except DBAPIError as exc:
+                # THE TRIGGER'S OWN MESSAGE, PASSED THROUGH. It names the column, the value and the
+                # consequence ("Every slot, and therefore every action as_of, is computed in this
+                # zone"), which is more than this module knows. Replacing it with a generic sentence
+                # would be the console telling an operator less than the database told it.
+                #
+                # REACHED WHEN THE TWO TIMEZONE DATABASES DISAGREE, which is not hypothetical: the
+                # browser offering the choice can carry a newer IANA release than the Postgres
+                # server, so a zone can be offerable and unresolvable at the same time. _validate
+                # above uses Python's tzdata, which is a third. The trigger is the only one that
+                # speaks for the database the row lands in.
+                if _is_unresolvable_timezone(exc):
+                    raise EnablementRefusedError(
+                        str(getattr(exc, "orig", exc)).strip(), reason="bad_timezone"
+                    ) from exc
+                # THE DUPLICATE. Signalled, not handled: see the comment above the `try`.
+                if _is_duplicate_provision(exc):
+                    raise _AlreadyProvisionedError from exc
+                # ANYTHING ELSE IS UNTOUCHED, which is the whole reason both matchers above are
+                # narrow. An RLS violation, a CHECK failure or a 23505 from some other constraint
+                # dressed up as one of these two would send an operator to fix the wrong thing.
+                raise
+    except _AlreadyProvisionedError:
+        already_provisioned = True
+
+    warnings: list[str] = []
+    if already_provisioned:
+        warnings.append(_ALREADY_PROVISIONED_WARNING)
     if positions == 0:
-        warning = (
-            f'"{name}" has no canonical positions. Enabled anyway, which is correct if ingestion '
-            "is still to come: every run until then will legitimately produce nothing. If you "
-            "expected data, check ingestion before trusting the runs"
-        )
+        # SAID ON BOTH PATHS, IN TWO WORDINGS, AND THE SECOND IS NOT A FLOURISH. The zero is a fact
+        # about the TENANT rather than about this request, so dropping it because the write was a
+        # no-op would hide it from the one operator looking at this screen. But "Enabled anyway" is
+        # a claim about THIS request, and on the duplicate path this request enabled nothing; the
+        # two sentences would contradict each other in the same string.
+        if already_provisioned:
+            warnings.append(
+                f'"{name}" also has no canonical positions, so whatever is provisioned for it '
+                "will legitimately produce nothing until ingestion arrives. If you expected data, "
+                "check ingestion before trusting the runs"
+            )
+        else:
+            warnings.append(
+                f'"{name}" has no canonical positions. Enabled anyway, which is correct if '
+                "ingestion is still to come: every run until then will legitimately produce "
+                "nothing. If you expected data, check ingestion before trusting the runs"
+            )
 
     return EnableOutcome(
         analysis_id=analysis_id,
         tenant_name=str(name),
         canonical_positions=positions,
-        warning=warning,
+        warning=" ".join(warnings) if warnings else None,
+        already_provisioned=already_provisioned,
     )
 
 
@@ -377,3 +504,28 @@ def _is_unresolvable_timezone(exc: DBAPIError) -> bool:
     not this, and dressing them up as a bad timezone would send an operator to fix the wrong thing.
     """
     return getattr(getattr(exc, "orig", None), "sqlstate", None) == "22023"
+
+
+def _is_duplicate_provision(exc: DBAPIError) -> bool:
+    """Is this pk_provision refusing a second row for this pair, or some other integrity failure?
+
+    TWO CONDITIONS, BOTH REQUIRED, AND NEITHER IS MESSAGE TEXT. The SQLSTATE says "unique
+    violation" and nothing more: 23505 is raised by EVERY unique constraint and every unique index
+    in the database, including any this table grows later. The CONSTRAINT NAME is what says WHICH,
+    and Postgres sends it in the error's constraint field for integrity-constraint violations, so
+    psycopg exposes it on ``.orig.diag.constraint_name``.
+
+    WHY THE PAIR MATTERS MORE THAN EITHER HALF. A broad `except` on 23505 alone would turn an
+    unrelated integrity failure into "already provisioned", which the route reports as a 200. That
+    is a failed write rendered as a success, in the one place this console cannot read back to
+    notice. Matching the name alone is not available: nothing else in the DBAPI error identifies
+    the class of failure.
+
+    FALSE IS THE SAFE ANSWER AND IS THE DEFAULT HERE. An error with no ``orig``, no ``diag``, or a
+    constraint field Postgres did not populate re-raises and surfaces as a 500. A 500 on a genuine
+    duplicate would be a visible bug; a silent success on a genuine failure would not be.
+    """
+    orig = getattr(exc, "orig", None)
+    if getattr(orig, "sqlstate", None) != "23505":
+        return False
+    return getattr(getattr(orig, "diag", None), "constraint_name", None) == "pk_provision"

@@ -66,9 +66,10 @@ type AnalysisState = {
 // `disabled_at IS NULL`, so before 5e a disabled pair simply did not appear and that
 // was correct on a read-only screen. The moment an Enable control exists, an absent
 // pair reads as "never provisioned" and the console offers to enable it; the insert
-// is then suppressed by ON CONFLICT DO NOTHING, the request succeeds, and the page
-// re-renders still showing it off. A control that reports success and changes nothing
-// is worse than a dead one, because the honest reading is "the console is broken".
+// is then refused by the primary key, and the BFF can only say "a row already
+// existed" because the write credential cannot read the table to see whether that row
+// is active or switched off. A control that offers an action the database will refuse,
+// for a reason the page had the data to explain first, is worse than a dead one.
 //
 // So the BFF returns both halves of the partition and this tab renders three states.
 type DisabledAnalysis = {
@@ -523,9 +524,10 @@ export default async function TenantPage({
 
           {/* DISABLED MONITORS, WITH NO CONTROL, AND THE ABSENCE IS THE FEATURE.
               Rendered at all because the alternative is invisibility, and an invisible
-              disabled pair looks available: the Enable control below would offer it, the
-              database would suppress the insert with ON CONFLICT DO NOTHING, and the
-              request would succeed having changed nothing.
+              disabled pair looks available: the Enable control below would offer it and
+              the database would refuse the insert on the primary key, leaving the BFF to
+              answer "a row already existed" without being able to say which state it is
+              in. This section is how the page says it instead.
 
               RE-ENABLING IS NOT MISSING, IT IS REFUSED. synapse.provision holds ONE
               window per (tenant, analysis), so clearing disabled_at loses the fact that

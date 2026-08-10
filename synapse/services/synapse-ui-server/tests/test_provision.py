@@ -420,12 +420,38 @@ async def test_a_database_error_that_is_not_the_timezone_trigger_is_re_raised(pa
     )
 
 
-def _dbapi_error(message: str, *, sqlstate: str) -> Exception:
-    """A DBAPIError shaped like the ones psycopg raises, carrying a real sqlstate.
+def _dbapi_error(message: str, *, sqlstate: str, constraint: str | None = None) -> Exception:
+    """A DBAPIError shaped like the ones psycopg raises, carrying a real sqlstate and diag.
 
-    BUILT RATHER THAN MOCKED so the code under test unwraps `.orig` and reads `.sqlstate` exactly
-    as it does in production. A Mock would answer any attribute and would pass against an
-    implementation that read the wrong one.
+    BUILT RATHER THAN MOCKED so the code under test unwraps `.orig` and reads `.sqlstate` and
+    `.diag.constraint_name` exactly as it does in production. A Mock would answer any attribute
+    and would pass against an implementation that read the wrong one, which for the duplicate
+    matcher is the difference between "already provisioned" and swallowing an unrelated failure.
+
+    `constraint=None` gives a diag whose constraint_name is None, which is what Postgres sends for
+    a failure that names no constraint. See `_dbapi_error_without_diag` for the other shape.
+    """
+    from sqlalchemy.exc import DBAPIError
+
+    class _Diag:
+        def __init__(self) -> None:
+            self.constraint_name = constraint
+
+    class _OrigError(Exception):
+        def __init__(self) -> None:
+            super().__init__(message)
+            self.sqlstate = sqlstate
+            self.diag = _Diag()
+
+    return DBAPIError("INSERT INTO synapse.provision", {}, _OrigError())
+
+
+def _dbapi_error_without_diag(message: str, *, sqlstate: str) -> Exception:
+    """The same thing with NO `diag` attribute at all, which the getattr chain must survive.
+
+    Not hypothetical enough to skip: DBAPIError wraps whatever the driver raised, and a wrapper,
+    a connection-level failure or a different driver can produce an `orig` with no diagnostics.
+    The matcher must answer False there rather than raising AttributeError inside an except block.
     """
     from sqlalchemy.exc import DBAPIError
 
@@ -442,25 +468,182 @@ def _dbapi_error(message: str, *, sqlstate: str) -> Exception:
 # ---------------------------------------------------------------------------
 
 
-def test_the_insert_is_idempotent_and_cannot_resurrect_a_disabled_pair() -> None:
-    """ON CONFLICT DO NOTHING, PINNED ON THE SQL, and it does two jobs at once.
+def test_the_insert_has_no_on_conflict_and_reads_nothing_back() -> None:
+    """THE PRODUCTION FAILURE, PINNED ON THE SQL SO IT CANNOT BE REINTRODUCED.
 
-    RE-ENABLING IS A NO-OP AT THE DATABASE. A pair that was deliberately disabled has a row, so
-    the conflict fires and the insert is suppressed: re-running never resurrects one. That is the
-    same guarantee provision_analysis.sql gives, and it is why the console must establish the
-    three states through the reader rather than treating a 201 as evidence a row appeared.
+    This statement carried `ON CONFLICT ON CONSTRAINT pk_provision DO NOTHING` and EVERY enable in
+    production failed with `permission denied for table provision` from the day 5e deployed.
+    ON CONFLICT has to READ the arbiter index to detect the conflict, and that read needs SELECT,
+    which synapse_provisioner deliberately does not hold. Isolated as the live role: the INSERT
+    alone succeeds, the INSERT plus the clause is denied.
 
-    AND THERE IS NO DO UPDATE. `ON CONFLICT DO UPDATE` is one word away and would silently
+    THE OBVIOUS FIX IS THE WRONG ONE AND IS ASSERTED AGAINST SEPARATELY. Granting SELECT would buy
+    the clause back by falsifying the property 05_synapse_provisioner_grant.sql argues for; the
+    test below reads the grant file and fails if anyone does it.
+
+    AND THERE IS STILL NO DO UPDATE AND NO RETURNING. `ON CONFLICT DO UPDATE` would silently
     re-enable a disabled pair, overwriting the enablement window and corrupting the attribution
-    denominator for the gap with no error anywhere. That is the single most dangerous edit
-    available in this file, so it is asserted rather than trusted.
+    denominator for the gap with no error anywhere; RETURNING needs the same SELECT the clause
+    needed. Both are asserted rather than trusted.
     """
     sql = str(provision_module._ENABLE)
-    assert "ON CONFLICT ON CONSTRAINT pk_provision DO NOTHING" in sql
+    assert "ON CONFLICT" not in sql.upper(), (
+        "ON CONFLICT is back. It needs SELECT on the arbiter index, this credential holds none, "
+        "and the result is `permission denied for table provision` on every enable"
+    )
     assert "DO UPDATE" not in sql.upper(), (
         "the insert became an upsert. That silently re-enables a disabled pair and overwrites "
         "its enablement window; the denominator for the gap becomes wrong with no error"
     )
+    assert "RETURNING" not in sql.upper(), "RETURNING needs SELECT, which this role does not hold"
+
+
+async def test_a_fresh_enable_inserts_and_reports_a_fresh_insert(patched) -> None:  # type: ignore[no-untyped-def]
+    """THE BASELINE FOR THE DUPLICATE TESTS BELOW, and without it they pass against an
+    implementation that reports every enable as already provisioned."""
+    conn = patched(_RecordingConn(tenant_name="TestCo", positions=15))
+
+    outcome = await _enable(conn)
+
+    assert outcome.already_provisioned is False
+    assert outcome.warning is None
+    assert any("INSERT INTO synapse.provision" in sql for sql, _ in conn.calls)
+
+
+async def test_a_duplicate_is_reported_as_already_provisioned_not_as_an_error(patched) -> None:  # type: ignore[no-untyped-def]
+    """THE REPLACEMENT FOR THE CLAUSE, AND IT REPORTS MORE THAN THE CLAUSE DID.
+
+    pk_provision still enforces uniqueness, so re-running still cannot resurrect a disabled pair.
+    What changed is that the suppression used to be SILENT and is now an exception this module
+    catches, so the path knows a duplicate happened and can say so.
+
+    NOT AN EnablementRefusedError. A duplicate is not a refusal: the request was legal, the
+    vocabulary was legal, and the pre-flight passed. Raising here would make the route map it to a
+    status through _PROVISION_REFUSAL_STATUS, which is the table for things this service will not
+    write rather than for things the database already has.
+    """
+    conn = patched(
+        _RecordingConn(
+            tenant_name="TestCo",
+            positions=15,
+            on_insert=_dbapi_error(
+                'duplicate key value violates unique constraint "pk_provision"',
+                sqlstate="23505",
+                constraint="pk_provision",
+            ),
+        )
+    )
+
+    outcome = await _enable(conn)
+
+    assert outcome.already_provisioned is True
+    assert outcome.tenant_name == "TestCo"
+
+
+async def test_the_duplicate_warning_says_nothing_was_written_and_the_timezone_did_not_land(  # type: ignore[no-untyped-def]
+    patched,
+) -> None:
+    """THE TWO THINGS THE OPERATOR CANNOT SEE, AND ONE OF THEM IS IRREVERSIBLE.
+
+    NOTHING WAS WRITTEN is the first. THE CHOSEN TIMEZONE DID NOT LAND is the second and it is the
+    one that matters: they picked an IMMUTABLE value on purpose, the existing row's zone stands,
+    and no path in this console can change it. A message reporting only "already provisioned"
+    would leave them believing their choice took effect on a column nobody can correct.
+
+    AND IT MUST NOT CLAIM THE MONITOR IS ON. An ACTIVE pair and a DISABLED one raise the identical
+    23505 and this credential cannot look, so saying either would be the console asserting a state
+    nothing measured.
+    """
+    conn = patched(
+        _RecordingConn(
+            tenant_name="TestCo",
+            positions=15,
+            on_insert=_dbapi_error("duplicate key", sqlstate="23505", constraint="pk_provision"),
+        )
+    )
+
+    outcome = await _enable(conn)
+
+    assert outcome.warning is not None
+    assert "WROTE NOTHING" in outcome.warning
+    assert "TIMEZONE YOU CHOSE WAS NOT APPLIED" in outcome.warning
+    assert "immutable" in outcome.warning
+    assert "ACTIVE or SWITCHED OFF" in outcome.warning, (
+        "the message picked one of the two states. 23505 does not distinguish them and this "
+        "credential cannot look, so naming either is an unmeasured claim"
+    )
+
+
+async def test_a_23505_from_a_different_constraint_is_not_swallowed(patched) -> None:  # type: ignore[no-untyped-def]
+    """THE ONE THAT MATTERS, AND THE REASON THE MATCH IS TWO CONDITIONS RATHER THAN ONE.
+
+    23505 is raised by EVERY unique constraint and every unique index in the database, including
+    any this table grows later. A broad `except DBAPIError` on the SQLSTATE alone would turn an
+    unrelated integrity failure into "already provisioned", which the route answers 200 to: a
+    FAILED WRITE RENDERED AS A SUCCESS, in the one place this console cannot read back to notice.
+
+    So the constraint name is matched too, and anything else re-raises and surfaces as a 500. A
+    500 on a genuine duplicate would be a visible bug; a silent success on a genuine failure is
+    not visible at all.
+    """
+    from sqlalchemy.exc import DBAPIError
+
+    other = _dbapi_error(
+        'duplicate key value violates unique constraint "uq_provision_something_later"',
+        sqlstate="23505",
+        constraint="uq_provision_something_later",
+    )
+    conn = patched(_RecordingConn(tenant_name="TestCo", positions=15, on_insert=other))
+
+    with pytest.raises(DBAPIError):
+        await _enable(conn)
+
+
+async def test_a_23505_naming_no_constraint_at_all_is_not_swallowed(patched) -> None:  # type: ignore[no-untyped-def]
+    """FALSE IS THE SAFE ANSWER, ASSERTED ON BOTH SHAPES THAT PRODUCE IT.
+
+    One error carries a diag whose constraint_name is None; the other has no `diag` attribute at
+    all, which is what a wrapper or a different driver can hand back. Neither is evidence that
+    pk_provision fired, and the matcher must answer False rather than assume or raise
+    AttributeError from inside an except block.
+    """
+    from sqlalchemy.exc import DBAPIError
+
+    for error in (
+        _dbapi_error("duplicate key", sqlstate="23505", constraint=None),
+        _dbapi_error_without_diag("duplicate key", sqlstate="23505"),
+    ):
+        conn = patched(_RecordingConn(tenant_name="TestCo", positions=15, on_insert=error))
+        with pytest.raises(DBAPIError):
+            await _enable(conn)
+
+
+async def test_the_duplicate_path_still_reads_nothing_from_synapse_provision(patched) -> None:  # type: ignore[no-untyped-def]
+    """THE GRANT IS UNCHANGED AND THE FIX DID NOT REACH FOR IT.
+
+    The whole point of catching the exception instead of keeping the clause was to avoid granting
+    SELECT on synapse.provision. So the duplicate path must issue the SAME three statements as the
+    happy path and must not have acquired a read of the table it writes, whether as a pre-check, a
+    RETURNING, or a second connection through the reader engine. A pre-check would also reopen the
+    race between check and insert that the single transaction exists to close.
+    """
+    conn = patched(
+        _RecordingConn(
+            tenant_name="TestCo",
+            positions=15,
+            on_insert=_dbapi_error("duplicate key", sqlstate="23505", constraint="pk_provision"),
+        )
+    )
+
+    await _enable(conn)
+
+    issued = [sql for sql, _ in conn.calls]
+    assert len(issued) == 3, f"the duplicate path changed the statement count: {issued}"
+    for sql in issued:
+        assert "SELECT" not in sql.upper() or "synapse.provision" not in sql, (
+            "the write path acquired a read of synapse.provision, which the credential cannot do "
+            "and which the grant deliberately does not permit"
+        )
 
 
 def test_the_module_offers_no_way_to_disable_or_re_enable() -> None:

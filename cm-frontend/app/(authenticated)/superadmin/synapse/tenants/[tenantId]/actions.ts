@@ -10,11 +10,15 @@ import { synapsePost } from "@/lib/synapse/server-client";
 // metadata server; a browser has neither, and SYNAPSE_BFF_URL is not NEXT_PUBLIC_.
 //
 // READ-BACK, NOT OPTIMISM, and here it is load-bearing rather than stylistic. The
-// provisioning credential holds no SELECT on the table it writes, so the BFF cannot
-// tell an insert from an ON CONFLICT suppression; a 201 means "the statement ran",
-// never "a row appeared". revalidatePath re-renders the page from the reader, which
-// is the only thing that can say what is actually true. An optimistic chip here
-// would be the page asserting a state nothing measured.
+// BFF CAN now tell an insert from a duplicate: the ON CONFLICT clause is gone (it
+// needed a SELECT the provisioning credential deliberately does not hold, and every
+// enable failed with `permission denied for table provision` until 2026-08-10), so a
+// duplicate arrives as a caught SQLSTATE 23505 and comes back as 200 with
+// already_provisioned. What the BFF still CANNOT tell is active from switched off:
+// both raise the identical error, and that credential holds no SELECT on the table it
+// writes. revalidatePath re-renders the page from the reader, which is the only thing
+// that can say which of the two is true. An optimistic chip here would still be the
+// page asserting a state nothing measured.
 //
 // ENABLE ONLY. There is deliberately no disable action and no re-enable action in
 // this file. synapse.provision holds ONE window per (tenant, analysis), so clearing

@@ -20,7 +20,7 @@ from datetime import UTC, date, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -366,6 +366,7 @@ def create_app(config: Config | None = None) -> FastAPI:
         analysis_id: str,
         body: EnableBody,
         request: Request,
+        response: Response,
         identity: Annotated[Identity, Depends(require_tenant_configure)],
     ) -> dict[str, object]:
         """Enable one analysis for one tenant. THE SECOND WRITE THIS SERVICE MAKES.
@@ -389,8 +390,15 @@ def create_app(config: Config | None = None) -> FastAPI:
 
         THREE STATES, THREE ANSWERS. Active is 409 "already enabled". Disabled is 409 naming the
         window and saying re-enabling is deliberately unavailable. Never provisioned proceeds. The
-        third is not the default: treating disabled as never-provisioned would send an ON CONFLICT
-        DO NOTHING at the database, get no error, and report success while changing nothing.
+        third is not the default: treating disabled as never-provisioned would send the insert at
+        a pair that already has a row, and before the operator ever sees an error the database has
+        refused it on pk_provision for a reason the console had the information to explain first.
+
+        AND A FOURTH ANSWER FOR THE RACE, which is 200 rather than 201 and is NOT a fourth state.
+        The two checks above run on the READER; the write runs on a different credential in a
+        different transaction, so between them a second operator can enable the same pair. The
+        write module reports that as ``already_provisioned`` and this handler answers 200. See the
+        status-code comment below for why not 409.
         """
         detail = await reads.tenant_detail(request.app.state.engine, tenant_id)
         if detail is None:
@@ -470,6 +478,28 @@ def create_app(config: Config | None = None) -> FastAPI:
             raise HTTPException(status_code=_PROVISION_REFUSAL_STATUS[exc.reason], detail=str(exc)) from exc
 
         # ================================================================================
+        # THE DUPLICATE: 200, AND THE CONSOLE IS THE ARGUMENT RATHER THAN HTTP SEMANTICS
+        # ================================================================================
+        # The row already existed, so this request created nothing. 201 would be a lie about a
+        # resource this request did not create, which leaves 200 and 409.
+        #
+        # 409 IS THE STRONGER SEMANTIC ANSWER AND IT LOSES ON WHAT IT DOES TO THE PAGE. The same
+        # fact detected one step earlier IS a 409 above, so symmetry argues for it, and it is true
+        # that the operator did not get what they asked for: the timezone they chose was not
+        # applied and that column is immutable. But cm-frontend's synapsePost THROWS on any
+        # non-2xx, so the server action returns {ok:false} and SKIPS BOTH revalidatePath CALLS.
+        # The page would then keep rendering the Enable control for a pair that now has a row:
+        # a console asserting a state the database contradicts, which is the exact defect slice 5e
+        # exists to remove. 200 revalidates, the page re-reads through synapse_reader, and the
+        # operator sees whichever of ACTIVE or SWITCHED OFF is actually true.
+        #
+        # THE BODY CARRIES BOTH HALVES. `already_provisioned` is the machine-readable fact, and
+        # the warning is the sentence: nothing was written, and the timezone you chose was not
+        # applied. A 200 with a body that said only "enabled" would be worse than the 409.
+        if outcome.already_provisioned:
+            response.status_code = 200
+
+        # ================================================================================
         # THE AUDIT RECORD FOR SLICE 5e, AND IT IS A LOG LINE, WHICH IS NOT ENOUGH
         # ================================================================================
         # WHAT IS RECORDED: who (the Auth0 subject, the only honest identity in the session),
@@ -493,11 +523,20 @@ def create_app(config: Config | None = None) -> FastAPI:
         #
         # `severity` NOTICE, never `levelname`. Cloud Logging files anything else at DEFAULT and
         # no alert can match it.
+        #
+        # TWO EVENT VALUES, BECAUSE ONE OF THESE PATHS ENABLED NOTHING. Logging "analysis enabled"
+        # for a duplicate would put a false record in the only artifact that connects this change
+        # to a person, which is the same class of defect as a comment describing a clause that is
+        # gone. The actor fields are identical on both: somebody did press the button.
         _log.info(
-            "analysis enabled",
+            "analysis already provisioned" if outcome.already_provisioned else "analysis enabled",
             extra={
                 "severity": "NOTICE",
-                "event": "synapse.provision.enabled",
+                "event": (
+                    "synapse.provision.already_provisioned"
+                    if outcome.already_provisioned
+                    else "synapse.provision.enabled"
+                ),
                 "actor_subject": identity.subject,
                 "tenant_id": str(tenant_id),
                 "tenant_name": outcome.tenant_name,
@@ -506,7 +545,10 @@ def create_app(config: Config | None = None) -> FastAPI:
                 "cadence": CADENCE,
                 "rung": RUNG,
                 "canonical_positions": outcome.canonical_positions,
-                "warned_no_positions": outcome.warning is not None,
+                "warned_no_positions": outcome.canonical_positions == 0,
+                # THE ONE BIT THE WRITE CREDENTIAL CAN MEASURE. False means this request's INSERT
+                # landed; true means pk_provision refused it because a row was already there.
+                "already_provisioned": outcome.already_provisioned,
             },
         )
 
@@ -522,8 +564,13 @@ def create_app(config: Config | None = None) -> FastAPI:
             "canonical_positions": outcome.canonical_positions,
             # NOT AN ERROR. Enabling ahead of ingestion is legitimate; the reason to say it is
             # that a monitor producing nothing for a week is otherwise indistinguishable from one
-            # that is working and finding nothing.
+            # that is working and finding nothing. On the duplicate path it also carries the two
+            # things the operator cannot see: nothing was written, and their timezone did not land.
             "warning": outcome.warning,
+            # ECHOED EVEN WHEN FALSE. A field that appears only in the unusual case is one a
+            # client learns to ignore, and the console's copy for "enabled" and "was already
+            # enabled" are different sentences that have to be chosen from something.
+            "already_provisioned": outcome.already_provisioned,
         }
 
     @app.get("/alerts/state-counts")

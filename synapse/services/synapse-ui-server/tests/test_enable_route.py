@@ -7,11 +7,14 @@ reader, and it is the thing most likely to be got wrong under time pressure, bec
 version is shorter and passes every test that only checks the happy path.
 
 THE WRONG VERSION, WRITTEN OUT SO IT IS RECOGNISABLE. Ask "is it in detail.analyses"; if not,
-enable. That treats DISABLED as NEVER PROVISIONED, sends the insert, gets ON CONFLICT DO NOTHING,
-receives no error, and answers 201. The page then re-renders from the reader still showing the
-monitor off. A control that reports success and changes nothing is worse than a dead control: a
-dead control is visibly inert, and this one makes the console look broken while behaving exactly
-as designed.
+enable. That treats DISABLED as NEVER PROVISIONED and sends the insert at a pair that already has
+a row. The database refuses it on pk_provision, and all the write module can then say is "a row
+already existed": it holds no SELECT there, so it cannot tell the operator that the monitor was
+deliberately switched off, when it was, or that re-enabling is unavailable by design. The reader
+had every one of those facts before the request was sent. A console that offers an action the
+database will refuse, for a reason it could have explained first, is worse than a dead control:
+a dead control is visibly inert, and this one makes the console look broken while behaving
+exactly as designed.
 """
 
 from __future__ import annotations
@@ -160,7 +163,11 @@ async def test_never_provisioned_enables(gated_app) -> None:  # type: ignore[no-
     client, calls = gated_app(
         detail=_detail(),
         outcome=EnableOutcome(
-            analysis_id="dead_stock", tenant_name="TestCo", canonical_positions=15, warning=None
+            analysis_id="dead_stock",
+            tenant_name="TestCo",
+            canonical_positions=15,
+            warning=None,
+            already_provisioned=False,
         ),
     )
     async with client:
@@ -170,6 +177,9 @@ async def test_never_provisioned_enables(gated_app) -> None:  # type: ignore[no-
     body = response.json()
     assert body["analysis_id"] == "dead_stock"
     assert body["warning"] is None
+    # ECHOED EVEN WHEN FALSE, so the console chooses its copy from a field that is always there
+    # rather than from the absence of one.
+    assert body["already_provisioned"] is False
     # THE CONFIGURATION THE OPERATOR DID NOT CHOOSE IS ECHOED, so the console can say "silent
     # mode, daily" without restating constants it cannot see.
     assert body["cadence"] == "daily"
@@ -180,10 +190,11 @@ async def test_never_provisioned_enables(gated_app) -> None:  # type: ignore[no-
 async def test_an_already_active_pair_is_a_409_and_does_not_write(gated_app) -> None:  # type: ignore[no-untyped-def]
     """IDEMPOTENT AT THE DATABASE, REPORTED AT THE EDGE.
 
-    ON CONFLICT DO NOTHING means a second enable changes nothing either way, so this could
-    silently succeed and be harmless. It is reported instead, because a console that answers "done"
-    to a request that did nothing teaches an operator to trust an answer that is not measuring
-    anything, and the next case in this file is one where that habit is actively wrong.
+    The write is idempotent at the database (pk_provision refuses the second row), so this could
+    be left to the insert and answered as a duplicate. It is caught HERE instead, because the
+    reader knows something the write path cannot: WHICH state the existing row is in. The 200 the
+    duplicate path returns can only say "a row already existed", and the next case in this file is
+    one where that difference is the entire message.
     """
     client, calls = gated_app(detail=_detail(analyses=(_active("dead_stock"),)))
     async with client:
@@ -197,10 +208,11 @@ async def test_an_already_active_pair_is_a_409_and_does_not_write(gated_app) -> 
 async def test_a_disabled_pair_is_a_409_and_never_reaches_the_write(gated_app) -> None:  # type: ignore[no-untyped-def]
     """THE ONE THIS FILE EXISTS FOR, AND THE ONE THAT SILENTLY SUCCEEDS IF IT IS MISSED.
 
-    A disabled pair has a row, so the write would be suppressed by ON CONFLICT DO NOTHING, return
-    no error, and the endpoint would answer 201 having changed nothing. The refusal has to happen
-    BEFORE the write, and it has to be distinguishable from "already enabled" because the operator
-    needs different information: this one says re-enabling is deliberately unavailable and why.
+    A disabled pair has a row, so the write would be refused on pk_provision and the endpoint
+    would answer 200 "a row already existed", which is true and is nearly useless: it does not say
+    the monitor was deliberately switched off, and it does not say re-enabling is unavailable by
+    design. The refusal has to happen BEFORE the write, and it has to be distinguishable from
+    "already enabled" because the operator needs different information in each case.
 
     THE DATES ARE IN THE MESSAGE. The window that would be overwritten is the thing at stake, so
     naming it is what turns a refusal into an explanation.
@@ -215,8 +227,9 @@ async def test_a_disabled_pair_is_a_409_and_never_reaches_the_write(gated_app) -
     assert "2026-06-01" in detail and "2026-07-15" in detail
     assert "denominator" in detail
     assert calls == [], (
-        "the write was attempted against a disabled pair. ON CONFLICT DO NOTHING would have "
-        "suppressed it and the endpoint would have reported success having changed nothing"
+        "the write was attempted against a disabled pair. The database would have refused it on "
+        "pk_provision and the endpoint would have answered 200 'a row already existed', losing "
+        "the only explanation the operator can act on"
     )
 
 
@@ -236,13 +249,75 @@ async def test_a_disabled_pair_and_an_active_pair_answer_differently(gated_app) 
     assert "already enabled" not in disabled["detail"]
 
 
+async def test_a_duplicate_at_the_write_is_200_and_says_so(gated_app) -> None:  # type: ignore[no-untyped-def]
+    """THE RACE, AND THE STATUS CODE IS A DECISION ABOUT THE PAGE RATHER THAN ABOUT HTTP.
+
+    Reaching this means the two reader checks above were STALE: they refuse both states they can
+    see, so the realistic cause is a second operator enabling the same pair in between. The row
+    exists and this request created nothing.
+
+    NOT 201, which would claim a resource this request did not create. NOT 409 either, and that is
+    the interesting half. 409 is the stronger semantic answer and it is what the same fact gets
+    one step earlier, but cm-frontend's synapsePost THROWS on any non-2xx, so the server action
+    returns {ok:false} and skips BOTH revalidatePath calls. The page would keep rendering Enable
+    for a pair that now has a row, which is a console asserting a state the database contradicts:
+    the exact defect this slice exists to remove. 200 revalidates and the page re-reads the truth.
+
+    THE BODY HAS TO CARRY THE HONESTY THAT THE STATUS CODE GIVES UP. A 200 saying only "enabled"
+    would be worse than the 409, so the flag and the warning are both asserted here.
+    """
+    client, calls = gated_app(
+        detail=_detail(),
+        outcome=EnableOutcome(
+            analysis_id="dead_stock",
+            tenant_name="TestCo",
+            canonical_positions=15,
+            warning=provision_module._ALREADY_PROVISIONED_WARNING,
+            already_provisioned=True,
+        ),
+    )
+    async with client:
+        response = await client.post(_url(), json={"timezone": "Asia/Kolkata"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["already_provisioned"] is True
+    assert "WROTE NOTHING" in body["warning"]
+    assert "TIMEZONE YOU CHOSE WAS NOT APPLIED" in body["warning"]
+    assert len(calls) == 1, "the write was not attempted; this path is only reachable through it"
+
+
+async def test_the_duplicate_is_not_logged_as_an_enablement() -> None:
+    """AN "ENABLED" EVENT ON A PATH THAT ENABLED NOTHING IS A FALSE AUDIT RECORD.
+
+    The log line is the only artifact connecting a provisioning change to a person, and Cloud
+    Logging is where an alert or a later question would read it. Filing a duplicate under
+    synapse.provision.enabled would put a claim in that record which the database can disprove,
+    which is the same class of defect as a comment describing a clause that no longer exists.
+
+    ASSERTED ON THE SOURCE, matching the audit test below, because a caplog test passes while the
+    event vocabulary drifts.
+    """
+    from pathlib import Path
+
+    source = Path(main_module.__file__).read_text(encoding="utf-8")
+    assert '"synapse.provision.already_provisioned"' in source, (
+        "the duplicate path has no event value of its own, so it logs as an enablement"
+    )
+    assert '"already_provisioned": outcome.already_provisioned' in source
+
+
 async def test_one_analysis_disabled_does_not_block_enabling_another(gated_app) -> None:  # type: ignore[no-untyped-def]
     """THE STATE IS PER PAIR, NOT PER TENANT. Without this the tests above would pass against a
     handler that refused any tenant with any disabled monitor."""
     client, calls = gated_app(
         detail=_detail(disabled=(_disabled("dead_stock"),)),
         outcome=EnableOutcome(
-            analysis_id="stockout_risk", tenant_name="TestCo", canonical_positions=15, warning=None
+            analysis_id="stockout_risk",
+            tenant_name="TestCo",
+            canonical_positions=15,
+            warning=None,
+            already_provisioned=False,
         ),
     )
     async with client:
@@ -352,7 +427,11 @@ async def test_a_zone_inside_the_offered_set_proceeds(gated_app) -> None:  # typ
         detail=_detail(),
         offered=("Asia/Kolkata",),
         outcome=EnableOutcome(
-            analysis_id="dead_stock", tenant_name="TestCo", canonical_positions=15, warning=None
+            analysis_id="dead_stock",
+            tenant_name="TestCo",
+            canonical_positions=15,
+            warning=None,
+            already_provisioned=False,
         ),
     )
     async with client:
@@ -427,7 +506,11 @@ async def test_cadence_and_rung_in_the_body_are_ignored_not_honoured(gated_app) 
     client, calls = gated_app(
         detail=_detail(),
         outcome=EnableOutcome(
-            analysis_id="dead_stock", tenant_name="TestCo", canonical_positions=15, warning=None
+            analysis_id="dead_stock",
+            tenant_name="TestCo",
+            canonical_positions=15,
+            warning=None,
+            already_provisioned=False,
         ),
     )
     async with client:
@@ -454,6 +537,7 @@ async def test_the_warning_is_returned_and_is_not_an_error(gated_app) -> None:  
             tenant_name="NIBPL",
             canonical_positions=0,
             warning='"NIBPL" has no canonical positions. Enabled anyway ...',
+            already_provisioned=False,
         ),
     )
     async with client:

@@ -43,10 +43,33 @@
 --   - it cannot UPDATE, DELETE or TRUNCATE anything, anywhere, including
 --     synapse.provision itself, so it cannot DISABLE a tenant or edit a
 --     timezone. Enablement is one direction only, at the database.
---   - it cannot SELECT synapse.provision, so it cannot observe whether its own
---     ON CONFLICT DO NOTHING was suppressed. That is the same property sql/04
---     states for synapse_writer, it is correct, and it is why the console reads
---     the three enablement states back through synapse_reader.
+--   - it cannot SELECT synapse.provision, so it cannot read back what it wrote.
+--     That is the same property sql/04 states for synapse_writer, it is correct,
+--     and it is why the console reads the three enablement states back through
+--     synapse_reader.
+--
+-- THAT LAST ONE COST A DAY, AND THE CORRECTION IS THE POINT OF THIS PARAGRAPH.
+-- This header used to say the role "cannot observe whether its own ON CONFLICT
+-- DO NOTHING was suppressed". THERE IS NO LONGER AN ON CONFLICT, and the reason
+-- is this very grant: ON CONFLICT has to READ the arbiter index to detect the
+-- conflict, and that read needs SELECT. Every enable through the console failed
+-- with `permission denied for table provision` from the day 5e deployed until
+-- 2026-08-10. Isolated as this role, with app.user_type='TENANT' set: the plain
+-- INSERT SUCCEEDS, the same INSERT plus ON CONFLICT ON CONSTRAINT pk_provision
+-- DO NOTHING is DENIED.
+--
+-- WHAT REPLACED IT: a plain INSERT, with the duplicate caught in Python on
+-- SQLSTATE 23505 matched together with the constraint name pk_provision. The
+-- PRIMARY KEY still enforces uniqueness, so re-running still cannot resurrect a
+-- disabled pair; only the mechanism that REPORTS a duplicate moved, from SQL to
+-- an exception. The endpoint answers 200 with already_provisioned rather than
+-- pretending a row appeared.
+--
+-- GRANTING SELECT WAS THE OTHER AVAILABLE FIX AND IT WAS REFUSED. It would have
+-- bought back one SQL clause by falsifying the property this file argues for
+-- over four sections, and the role would have gained the ability to read every
+-- customer's enablement configuration. A syntax choice is not worth a widened
+-- credential. The write path now knows MORE than it did before, not less.
 --
 -- ----------------------------------------------------------------------------
 -- THE BETTER POSTURE, RECORDED RATHER THAN BUILT, WITH ITS HAZARD
@@ -168,8 +191,17 @@ GRANT USAGE ON SCHEMA identity_mirror TO synapse_provisioner;
 -- ---------- The write: one table, one verb ------------------------------------
 -- No UPDATE, so disabled_at cannot be set and a timezone cannot be edited. No
 -- DELETE, so a provision cannot be removed. No SELECT, so the role cannot read
--- back what it wrote (ON CONFLICT DO NOTHING needs none; RETURNING would, which
--- is why the write does not use it).
+-- back what it wrote.
+--
+-- THIS COMMENT IS WHERE THE WRONG BELIEF WAS RECORDED, so the correction lives
+-- here rather than only in the header. It used to read "ON CONFLICT DO NOTHING
+-- needs none; RETURNING would, which is why the write does not use it". The
+-- first half is FALSE: ON CONFLICT reads the arbiter index to detect the
+-- conflict and that read needs SELECT, so the console's INSERT failed with
+-- `permission denied for table provision` on every enable from the day 5e
+-- deployed until 2026-08-10. The clause is gone and a duplicate is caught on
+-- SQLSTATE 23505 plus the constraint name pk_provision instead. The claim about
+-- RETURNING was always correct and still holds. The statement uses neither.
 GRANT INSERT ON synapse.provision TO synapse_provisioner;
 
 
