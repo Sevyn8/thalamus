@@ -57,13 +57,20 @@ export function DecisionControls({
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2">
+        {/* hover:bg-surface-raised, NOT hover:bg-surface-2, AND THAT WAS A REAL DEFECT. All six
+            buttons across this file and EnableMonitor.tsx carried `hover:bg-surface-2` and had
+            NO hover feedback at all: there is no --color-surface-2 in globals.css, so Tailwind
+            generated no rule and the class was inert. Verified against the compiled CSS rather
+            than reasoned about: the built stylesheet contains zero occurrences of surface-2 and
+            one of surface-raised. A class that silently does nothing is the same failure class
+            as a comment that is silently false. */}
         {SNOOZE_DAYS.map((days) => (
           <button
             key={days}
             type="button"
             disabled={pending}
             onClick={() => send({ verb: "snooze", snoozed_until: isoInDays(days) })}
-            className="text-caption rounded-md border border-border px-3 py-1.5 text-foreground hover:bg-surface-2 disabled:opacity-50"
+            className="text-caption rounded border border-border px-3 py-1.5 text-foreground hover:bg-surface-raised disabled:opacity-50"
           >
             Snooze {days}d
           </button>
@@ -72,7 +79,7 @@ export function DecisionControls({
           type="button"
           disabled={pending}
           onClick={() => send({ verb: "acknowledge" })}
-          className="text-caption rounded-md border border-border px-3 py-1.5 text-foreground hover:bg-surface-2 disabled:opacity-50"
+          className="text-caption rounded border border-border px-3 py-1.5 text-foreground hover:bg-surface-raised disabled:opacity-50"
         >
           Acknowledge
         </button>
@@ -114,7 +121,7 @@ export function DecisionControls({
             // default would make the commonest label the one nobody meant.
             disabled={pending || reason === null}
             onClick={() => send({ verb: "dismiss", reason })}
-            className="text-caption mt-3 rounded-md border border-border px-3 py-1.5 text-foreground hover:bg-surface-2 disabled:opacity-50"
+            className="text-caption mt-3 rounded border border-border px-3 py-1.5 text-foreground hover:bg-surface-raised disabled:opacity-50"
           >
             Dismiss
           </button>

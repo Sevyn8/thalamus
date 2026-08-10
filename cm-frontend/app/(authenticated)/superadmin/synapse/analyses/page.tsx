@@ -2,7 +2,8 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import {
   Column,
   Footnote,
-  SectionHead,
+  ItemCard,
+  MonoChip,
   SubNav,
   SynapseDown,
   Tag,
@@ -81,22 +82,37 @@ export default async function AnalysesPage() {
 
       <Column>
         <SubNav current="analyses" />
-        {analyses.map((a) => (
-          <section key={a.analysis_id}>
-            <SectionHead>{a.name}</SectionHead>
+        {/* CARD PER ANALYSIS (B2), which is the mockup's treatment: a headed card whose body is
+            a ruled contract grid. The card's own header carries the plain name, the machine id
+            and the status pills, exactly as `.ahead` does.
 
+            THE MOCKUP'S BODY HAS THREE COLUMNS AND THIS HAS TWO, because the third has no
+            source. `Consumes · capabilities` is `requires`, which the BFF serves. The other two
+            are `Emits · finding fields` and `Can refuse · closed vocabulary`, and GET /analyses
+            returns neither: it serves analysis_id, name, version, requires, max_rung, thresholds
+            and holdout_percent. The emitted fields live on the Finding dataclasses and the
+            refusal vocabulary on each analysis's RefusalReason enum, and nothing projects either
+            over the wire. Rendering them would mean hardcoding a copy of two Python enums into
+            this file, which is the duplication that goes stale silently.
+
+            THRESHOLDS TAKE THE THIRD COLUMN INSTEAD. They are the numbers this page already had
+            and the mockup shows them as `.chip` mono tags on the tenant Monitors card, so the
+            vocabulary is the mockups' own. The day /analyses serves emits and refusals, they are
+            two more columns here and nothing else moves. */}
+        <div className="space-y-4">
+        {analyses.map((a) => (
+          <ItemCard key={a.analysis_id}>
             {/* METADATA WITH ITS SUBJECT. The id, version, ceiling and holdout were
                 split across a left block and a right-aligned cluster with the width
                 of the monitor between them. */}
-            <div className="mb-3 flex items-start gap-4">
-              <div className="min-w-0 flex-1">
-                <p className="text-caption font-mono text-foreground-muted">
-                  {a.analysis_id} · {a.version}
-                </p>
-                <p className="text-body mt-1 text-foreground-muted">
-                  Reads {a.requires.map((c) => CAPABILITY_NAMES[c] ?? c).join(" and ")}.
-                </p>
-              </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border pb-3">
+              <span className="text-subheading">{a.name}</span>
+              <span className="text-caption font-mono text-foreground-subtle">
+                {a.analysis_id}
+              </span>
+              <span className="text-caption ml-auto font-mono text-foreground-subtle">
+                {a.version}
+              </span>
               <span className="flex shrink-0 items-center gap-2">
                 {/* THE CEILING. What this analysis is PERMITTED to do, for any
                     tenant, ever — a property of its maturity rather than of any
@@ -114,8 +130,22 @@ export default async function AnalysesPage() {
               </span>
             </div>
 
+            {/* COLUMN 1 OF THE MOCKUP'S GRID: what this analysis consumes. */}
+            <div className="border-b border-border py-3">
+              <h3 className="text-label text-foreground-subtle">Consumes</h3>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {a.requires.map((c) => (
+                  <MonoChip key={c}>{c}</MonoChip>
+                ))}
+              </div>
+              <p className="text-caption mt-2 text-foreground-muted">
+                Reads {a.requires.map((c) => CAPABILITY_NAMES[c] ?? c).join(" and ")}.
+              </p>
+            </div>
+
             {/* TWO COLUMNS. The threshold name and its value are one fact; the
                 explanation sits under them rather than as a third column. */}
+            <h3 className="text-label mt-3 text-foreground-subtle">Thresholds</h3>
             <table className="w-full">
               <tbody>
                 {a.thresholds.map((t) => (
@@ -153,8 +183,9 @@ export default async function AnalysesPage() {
                 ))}
               </tbody>
             </table>
-          </section>
+          </ItemCard>
         ))}
+        </div>
 
         <Footnote>
           Every number on this page is a stated convention. None is derived from any tenant&apos;s

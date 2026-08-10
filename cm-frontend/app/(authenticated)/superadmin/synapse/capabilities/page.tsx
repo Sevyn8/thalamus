@@ -4,11 +4,14 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import {
   Column,
   Footnote,
-  Row,
   SectionHead,
   SubNav,
   SynapseDown,
+  TableCard,
   Tag,
+  Td,
+  Th,
+  Tr,
 } from "@/components/synapse/primitives";
 import { ANALYSIS_NAMES } from "@/lib/synapse/names";
 import { SynapseUnavailable, synapseGet } from "@/lib/synapse/server-client";
@@ -83,22 +86,54 @@ export default async function CapabilitiesPage() {
         <SubNav current="capabilities" />
         <section>
           <SectionHead>Working</SectionHead>
-          {working.map((c) => (
-            <Row
-              key={c.capability_id}
-              title={c.name}
-              meta={
-                <>
-                  <span className="font-mono">{c.capability_id}</span>
-                  {" · "}
+          {/* THE TABLE IN A CARD (B2), which is the mockup's treatment for this page.
+              `Consumed by` is its most useful column and is the reverse index of each
+              analysis's requires list, which the BFF already computes as `used_by`.
+
+              THREE OF THE MOCKUP'S FIVE COLUMNS ARE ABSENT AND THE REASON IS THE SAME EACH
+              TIME: `Kind` (series / point / aggregate), `Grain` (tenant · store · sku) and
+              `Freshness` are properties of the capability DECLARATION, and GET /capabilities
+              serves capability_id, name, resolves, declined_reason, declined_summary and
+              used_by. Nothing projects a kind, a grain or a freshness policy over the wire.
+              Each would be a fourth, fifth and sixth <Th> here the day it is served; until
+              then a column of invented values would be worse than a narrower table.
+
+              NO ROW HOVER, because nothing here opens. The roster's rows are clickable and
+              carry one; a hover that suggests a click which does not exist is a dead
+              affordance. */}
+          <TableCard
+            head={
+              <>
+                <Th className="w-[32%]">Capability</Th>
+                <Th>Consumed by</Th>
+                <Th className="w-[14%]">Status</Th>
+              </>
+            }
+          >
+            {working.map((c) => (
+              <Tr key={c.capability_id}>
+                <Td>
+                  <p className="text-body-strong">{c.name}</p>
+                  <p className="text-micro mt-0.5 font-mono text-foreground-subtle">
+                    {c.capability_id}
+                  </p>
+                </Td>
+                {/* THE PLAIN NAMES, NOT THE MOCKUP'S MONO IDS. It draws this column as
+                    `<span class="tag">stockout_risk</span>`, and swapping the operator-facing
+                    names for wire ids would be a copy change wearing a visual slice's clothes:
+                    D4 is plain language in the UI with the id beside it, never the id alone.
+                    The sentence is exactly the one this cell already carried. */}
+                <Td className="text-caption text-foreground-muted">
                   {c.used_by.length === 0
                     ? "no monitor reads it yet"
                     : `read by ${c.used_by.map((a) => ANALYSIS_NAMES[a] ?? a).join(", ")}`}
-                </>
-              }
-              right={<Tag tone="good">working</Tag>}
-            />
-          ))}
+                </Td>
+                <Td>
+                  <Tag tone="good">working</Tag>
+                </Td>
+              </Tr>
+            ))}
+          </TableCard>
         </section>
 
         {/* WHAT SYNAPSE CANNOT DO WAS DOMINATING THE PAGE — honest today, while two

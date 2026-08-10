@@ -2,14 +2,17 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import {
   Attention,
   Column,
-  Row,
   SectionHead,
   SilentModePill,
-  Stat,
-  StatStrip,
+  StatCard,
+  StatCards,
   SubNav,
   SynapseDown,
+  TableCard,
   Tag,
+  Td,
+  Th,
+  Tr,
   daysSince,
   plural,
 } from "@/components/synapse/primitives";
@@ -99,6 +102,19 @@ function staleness(t: FleetRow): boolean {
   return age === null || age > STALE_AFTER_DAYS;
 }
 
+// THE DATA FRESHNESS COLUMN (B2). Derived from `latest_sale`, which this page already reads for
+// the banner and for fleetStatus above, so the column adds a rendering rather than a claim.
+//
+// ITS PRECEDENCE IS THE MOCKUPS' ONE RULE FOR THIS ROSTER: data health outranks monitor status,
+// so a client with no data says so here before the Status column says anything. The two columns
+// coincide at "Waiting for data" and that is the mockup's own design rather than an accident: the
+// state where they agree is exactly the state where nothing else is worth saying.
+function freshness(t: FleetRow): { label: string; tone: "good" | "unknown" | "mute" } {
+  const age = daysSince(t.latest_sale);
+  if (age === null) return { label: "Waiting for data", tone: "mute" };
+  return { label: `${plural(age, "day")} old`, tone: age > STALE_AFTER_DAYS ? "unknown" : "good" };
+}
+
 export default async function SynapseFleetPage() {
   let tenants: FleetRow[];
   try {
@@ -158,9 +174,17 @@ export default async function SynapseFleetPage() {
           );
         })}
 
-        <StatStrip>
-          <Stat n={live.length} label={live.length === 1 ? "client live" : "clients live"} />
-          <Stat n={monitorsRunning} label={monitorsRunning === 1 ? "monitor running" : "monitors running"} />
+        {/* STAT CARDS HERE AND NOWHERE ELSE (B2). The overview is the only mockup with stats of
+            any kind: the alerts inbox puts its counts inside the filter chips, and the tenant
+            mockup uses a meta line and a freshness pill. Giving every Synapse page cards because
+            one page has them would be the uniformity error in the other direction, so the tenant
+            Overview tab and the alert detail page keep the inline strip. */}
+        <StatCards>
+          <StatCard value={live.length} label={live.length === 1 ? "client live" : "clients live"} />
+          <StatCard
+            value={monitorsRunning}
+            label={monitorsRunning === 1 ? "monitor running" : "monitors running"}
+          />
           {/* "OPEN" IS SAYABLE NOW. This comment used to read: "'Alerts raised', NOT 'open
               alerts'… there is no lifecycle column on synapse.actions and no way to close one,
               so 'open' would name a state the system cannot represent." Migration 0006 gives it
@@ -174,8 +198,8 @@ export default async function SynapseFleetPage() {
               "what needs a person, anywhere", and this figure is the reason
               somebody would want it. Linking the count rather than adding a
               separate button keeps the strip a strip. */}
-          <Stat
-            n={
+          <StatCard
+            value={
               <a
                 className="underline-offset-4 hover:underline"
                 href="/superadmin/synapse/alerts"
@@ -185,8 +209,11 @@ export default async function SynapseFleetPage() {
             }
             label={openAlerts === 1 ? "open alert" : "open alerts"}
           />
-          <Stat n={alertsRaised} label={alertsRaised === 1 ? "alert raised" : "alerts raised"} />
-        </StatStrip>
+          <StatCard
+            value={alertsRaised}
+            label={alertsRaised === 1 ? "alert raised" : "alerts raised"}
+          />
+        </StatCards>
 
         <section>
           <SectionHead>Tenants</SectionHead>
@@ -197,32 +224,69 @@ export default async function SynapseFleetPage() {
               No tenants are mirrored yet, so there is nothing for Synapse to watch.
             </p>
           ) : (
-            tenants.map((t) => (
-              <Row
-                key={t.tenant_id}
-                title={
-                  <a
-                    className="underline-offset-2 hover:underline"
-                    href={`/superadmin/synapse/tenants/${t.tenant_id}`}
-                  >
-                    {t.name}
-                  </a>
-                }
-                meta={
-                  <>
-                    {plural(t.stores, "store")} · {plural(t.products, "product")} ·{" "}
-                    {plural(t.analyses_running, "monitor")}
-                    {t.last_run_slot ? ` · last run ${t.last_run_slot}` : ""}
-                  </>
-                }
-                // THE PILL ENCODES HEALTH, NOT IMPLEMENTATION STATE. It used to read
-                // "2 analyses · watching" in GREEN, which said what the system was doing and
-                // coloured a client's dead stock as good news. An alert is not good news, so
-                // the count leads and the tone is amber; green stays available in Tag for
-                // things that are genuinely good.
-                right={<Tag tone={fleetTone(t)}>{fleetStatus(t)}</Tag>}
-              />
-            ))
+            /* THE ROSTER IS A TABLE NOW (B2), which is the mockups' treatment for this screen
+               and for the tenants list. Every fact was already on the page: stores, products and
+               monitors were a single meta line under the name, the status pill is unchanged, and
+               the last run sat at the end of that line. A column lets a reader compare one fact
+               DOWN the fleet, which is what a roster is opened to do and what a stack of rows
+               cannot support however it is styled.
+
+               NO "LAST SWEEP REFUSALS" COLUMN, which both mockups carry as their last one.
+               GET /fleet serves nine fields and none is a refusal breakdown: the counts live on
+               synapse.run per (tenant, analysis) and reach the console only through /runs and
+               /tenants/{id}. Adding the column would mean either a BFF change, which this slice
+               does not make, or summing something this response does not contain. The day /fleet
+               carries it, the column is one <Td> here.
+
+               NO ADOPTION BAR AND NO "of 5 types", which the tenants-list mockup draws beside the
+               monitor count. The registry declares TWO analyses, so the denominator would be
+               invented and the bar would be a picture of a number nobody stores. */
+            <TableCard
+              head={
+                <>
+                  <Th className="w-[26%]">Tenant</Th>
+                  <Th>Stores</Th>
+                  <Th>Products</Th>
+                  <Th>Data freshness</Th>
+                  <Th>Monitors</Th>
+                  <Th>Status</Th>
+                  <Th>Last run</Th>
+                </>
+              }
+            >
+              {tenants.map((t) => {
+                const fresh = freshness(t);
+                return (
+                  <Tr key={t.tenant_id} interactive>
+                    <Td>
+                      <a
+                        className="text-body-strong underline-offset-2 hover:underline"
+                        href={`/superadmin/synapse/tenants/${t.tenant_id}`}
+                      >
+                        {t.name}
+                      </a>
+                    </Td>
+                    <Td className="text-body tabular-nums">{t.stores}</Td>
+                    <Td className="text-body tabular-nums">{t.products}</Td>
+                    <Td>
+                      <Tag tone={fresh.tone}>{fresh.label}</Tag>
+                    </Td>
+                    <Td className="text-body tabular-nums">{t.analyses_running}</Td>
+                    {/* THE PILL ENCODES HEALTH, NOT IMPLEMENTATION STATE. It used to read
+                        "2 analyses · watching" in GREEN, which said what the system was doing
+                        and coloured a client's dead stock as good news. An alert is not good
+                        news, so the count leads and the tone is amber; green stays available in
+                        Tag for things that are genuinely good. */}
+                    <Td>
+                      <Tag tone={fleetTone(t)}>{fleetStatus(t)}</Tag>
+                    </Td>
+                    <Td className="text-caption font-mono tabular-nums text-foreground-muted">
+                      {t.last_run_slot ?? "never"}
+                    </Td>
+                  </Tr>
+                );
+              })}
+            </TableCard>
           )}
         </section>
       </Column>

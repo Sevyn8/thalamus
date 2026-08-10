@@ -37,6 +37,27 @@ import { Chip, type Tone as ChipTone } from "@/components/shared/Chips";
 // rhythm. The six Synapse screens had no horizontal padding at all before it
 // existed: PageHeader was inset and the body was flush to the sidebar, so a page
 // did not align with its own title.
+//
+// =========================================================================================
+// THE FOUR-LAYER SEAM ABOVE THIS COMPONENT, ACCEPTED IN B2 RATHER THAN UNNOTICED
+// =========================================================================================
+// Everything below this line sits on the page background with white cards on it, which is
+// what the mockups draw. What sits ABOVE it does not match them, and the divergence is
+// deliberate:
+//
+//     white sticky TopBar  ->  white PageHeader band  ->  grey page  ->  white cards
+//
+// The mockups have no header band at all. Their h1 sits INSIDE the content area directly on
+// the page background at 20px, so a reader meets one white-on-grey boundary; here they meet
+// three, and the 14px card radius makes the last one slightly more visible than 10px did.
+// PageHeader also renders text-display at 24px against the mockups' 20px.
+//
+// NEITHER IS FIXED HERE AND BOTH WERE CONSIDERED. PageHeader is shared with every screen in
+// cm-frontend, so restyling it would leave Synapse and restyle Governance, Access Control
+// and the rest, which is exactly what this slice was scoped not to do. Moving the Synapse
+// pages off it is an IA change, and B2b-1 settled the IA. So the seam stays, recorded, and
+// whoever revisits it is changing a shared component on purpose rather than discovering a
+// mismatch nobody had looked at.
 export function Column({ children }: { children: ReactNode }) {
   return (
     <div className="px-6 pt-6">
@@ -176,7 +197,7 @@ export function Footnote({ children }: { children: ReactNode }) {
 // identically to the three that did not.
 export function Attention({ title, detail }: { title: string; detail: string }) {
   return (
-    <div className="rounded-md border border-[var(--warning-line)] bg-[var(--warning-bg)] p-4">
+    <div className="rounded-lg border border-[var(--warning-line)] bg-[var(--warning-bg)] p-4">
       <p className="text-body-strong text-warning">{title}</p>
       <p className="text-caption mt-1 text-measure text-warning/80">
         {detail}
@@ -394,13 +415,19 @@ const TONE_TO_CHIP: Record<Tone, ChipTone> = {
   stop: "red",
 };
 
-// `dot` FORWARDS TO Chip AND DEFAULTS TO TRUE, so every existing Synapse call site is unchanged.
-// The mockups' status pills carry no dot; the runs page opts out, and the rest of the console
-// follows in Phase B2 rather than being restyled from underneath 5c here.
+// `dot` DEFAULTS TO FALSE HERE, AND B2 IS WHERE IT FLIPPED. B1 left it true so that opting out on
+// the runs page changed nothing anywhere else; the sentence it shipped with said the rest of the
+// console follows in Phase B2, and this is that. No mockup draws a dot on any pill: the tone
+// already says what the dot repeats, and eight mockups agreeing is enough.
+//
+// THE DEFAULT MOVES HERE, NOT IN Chips.tsx. That file is the house chip used across Governance,
+// Access Control and the rest, which this slice deliberately does not restyle. Flipping it there
+// would restyle every chip in the product from a Synapse ticket. This wrapper is Synapse's, so
+// the override lives in it, which is the same containment argument as the card radius below.
 export function Tag({
   tone,
   children,
-  dot,
+  dot = false,
 }: {
   tone: Tone;
   children: ReactNode;
@@ -413,24 +440,55 @@ export function Tag({
   );
 }
 
+// =================================================================================================
+// THE CARD RADIUS: rounded-lg, AND THERE WAS NEVER A HOUSE-VERSUS-MOCKUP ARGUMENT TO HAVE
+// =================================================================================================
+// B1 ruled for rounded-md (10px) over the mockups' 14px, on the grounds that 135 call sites to 2
+// made Synapse the odd one out. B2 overturns that ruling, and the reason is not a change of taste:
+// THE PREMISE WAS WRONG.
+//
+// `--radius-lg` IS ALREADY 14px (globals.css:100), ported from dis-ui-ver2's own `--r-lg`
+// (index.css:46) in the same commit that set --radius-md to 10px. The mockups' card radius is
+// --r-xl: 14px. So the mockups were never asking for a value outside the house scale; they were
+// asking for a DIFFERENT SLOT IN IT, and the card was pointed at the wrong existing token.
+//
+// The whole mockup radius vocabulary is already here, one for one:
+//
+//     mockup --r-sm  7px   =  --radius-sm  7px    MonoChip, filter chips     (already correct)
+//     mockup --r-md  9px   =  --radius     9px    selects, buttons, groups   (`rounded`)
+//     mockup --r-xl 14px   =  --radius-lg 14px    cards and panels           (this file)
+//
+// SO NOTHING SHARED MOVES. No token is added, no token is edited, and --radius-md keeps its 10px
+// for the other 134 files that use it. The override is a class choice at Synapse call sites only,
+// which is what "Synapse leads and the rest of the product does not follow" means in practice.
+// DO NOT re-open this as 10 versus 14: the question was which token the card slot points at.
+//
 // ---------------------------------------------------------------------------
-// THE PANEL: the mockups' one card treatment, as five parts
+// THE PANEL: one of FOUR content treatments, not the only one
 // ---------------------------------------------------------------------------
 //
-// Every mockup builds its content from the same object: a white surface on the page
-// background, a hairline border, a raised header strip, ruled rows, and an optional
-// quieter note along the bottom. It was hand-rolled on the runs page and nowhere else,
-// which is why the runs page and the alerts inbox did not look like one product.
+// A white surface on the page background, a hairline border, a raised header strip, ruled rows,
+// and an optional quieter note along the bottom.
 //
-// RADIUS IS rounded-md (10px), NOT THE MOCKUPS' 14px, and this is a deliberate override.
-// ver2's own index.css calls 10px the card radius; cm-frontend encodes that as --radius-md
-// and uses `rounded-md` on 135 call sites against 2 for `rounded-lg`. Taking the mockups'
-// 14px here would make Synapse the only surface in the product with a different card, which
-// is the "odd ones out" failure the Column comment above exists to describe. The mockups are
-// overruled on radius, as they are on monitor names.
+// THE MOCKUPS DO NOT USE THIS EVERYWHERE, and B2's audit turned on that. They carry FOUR content
+// treatments and applying this one uniformly would be as wrong as applying none of it:
+//
+//   1. Panel with grouped rows   RUNS ONLY. One panel per slot, header strip, ruled rows.
+//   2. Table in a card           the fleet roster and capabilities. See TableCard.
+//   3. Rows in one card          the alerts inbox and the tenant alert list. This Panel with
+//                                PanelRow children and no header, which is why that case needs
+//                                no new component.
+//   4. Card per item             tenant Monitors and analyses. See ItemCard.
+//
+// DARK MODE FLATTENS THE HEADER STRIP, and B2 spreads that from the runs page to every surface.
+// In dark, --surface-raised and --muted are both #1b212e (globals.css:218, 227), so PanelHeader
+// and PanelNote sit closer to their rows than the light theme's #fbfcfd against #ffffff. Known
+// consequence of using the token rather than a hand-picked value, recorded here rather than
+// discovered later. Not a defect: the hairline still separates them, and the fix would be a new
+// dark surface step, which is a token decision for the whole product rather than for Synapse.
 export function Panel({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-surface">{children}</div>
+    <div className="overflow-hidden rounded-lg border border-border bg-surface">{children}</div>
   );
 }
 
@@ -465,6 +523,199 @@ export function PanelNote({ children }: { children: ReactNode }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// TREATMENT 2: THE TABLE IN A CARD
+// ---------------------------------------------------------------------------
+//
+// The fleet roster, the tenants list and capabilities are all ONE card containing a real table:
+// an uppercase header strip on the raised surface, ruled body rows, and an optional note along
+// the bottom. Columnar because the reader is comparing rows down a column, which is the thing a
+// list of Row components cannot do however it is styled.
+//
+// A REAL <table>, not a grid of divs. These are tabular data with headers, so the semantics are
+// free and a screen reader gets the column association it would otherwise lose.
+//
+// AUTO LAYOUT, NOT table-fixed. Same reason Facts above says so: fixed layout splits the columns
+// evenly and pushes a short label away from its value, which is the proximity failure the bounded
+// column exists to fix, reproduced one level down. The mockups set border-collapse and no
+// table-layout, which is auto.
+export function TableCard({
+  head,
+  children,
+  foot,
+}: {
+  head: ReactNode;
+  children: ReactNode;
+  foot?: ReactNode;
+}) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-border bg-surface">
+      <table className="w-full border-collapse">
+        <thead>
+          <tr>{head}</tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+      {foot ? <PanelNote>{foot}</PanelNote> : null}
+    </div>
+  );
+}
+
+// The uppercase column label. text-label IS the mockups' rule (11px, .08em, uppercase, weight
+// 500) at the house size, so nothing here is hand-tuned.
+export function Th({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <th
+      scope="col"
+      className={`text-label border-b border-border bg-surface-raised px-4 py-3 text-left align-bottom text-foreground-subtle ${className ?? ""}`}
+    >
+      {children}
+    </th>
+  );
+}
+
+// `interactive` DRAWS THE HOVER, and it is opt-in rather than automatic. The mockups set
+// `cursor:pointer` on roster rows because the whole row opens the tenant, and on capabilities
+// rows they set a hover with no pointer because nothing opens. A hover that suggests a click
+// which does not exist is a dead affordance, so the call site says which it is.
+export function Tr({ children, interactive }: { children: ReactNode; interactive?: boolean }) {
+  return (
+    <tr
+      className={`border-b border-border last:border-b-0 ${
+        interactive ? "transition-colors duration-150 ease-out hover:bg-surface-raised" : ""
+      }`}
+    >
+      {children}
+    </tr>
+  );
+}
+
+export function Td({ children, className }: { children: ReactNode; className?: string }) {
+  return <td className={`px-4 py-3.5 align-top ${className ?? ""}`}>{children}</td>;
+}
+
+// ---------------------------------------------------------------------------
+// TREATMENT 4: THE CARD PER ITEM
+// ---------------------------------------------------------------------------
+//
+// Tenant Monitors and Analyses give each item its own bordered card with internal padding rather
+// than a ruled row, because each item carries a BLOCK of facts (thresholds, a contract grid, a
+// stats rail) instead of a line of them. Ruled rows would put a card's worth of content between
+// two hairlines and the page would read as one long undifferentiated list.
+//
+// `muted` IS THE MOCKUPS' DASHED VARIANT, and it carries meaning rather than decoration: a dashed
+// border on the raised surface is how both mockups draw a monitor that is AVAILABLE but not
+// provisioned for this tenant, and an analysis that is declared but not deployed. Solid means it
+// is running; dashed means it is not. That distinction is the whole point of the Available
+// section, so it is a prop rather than a class the call site remembers.
+export function ItemCard({ children, muted }: { children: ReactNode; muted?: boolean }) {
+  return (
+    <div
+      className={`rounded-lg border p-4 ${
+        muted ? "border-dashed border-border bg-surface-raised" : "border-border bg-surface"
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// THE FILTER BAR: a segmented group, and the chips ARE the counts
+// ---------------------------------------------------------------------------
+//
+// THE MOCKUP DELETES A DUPLICATE RATHER THAN INFORMATION. The alerts inbox has no stat strip: its
+// four lifecycle counts live inside the filter group, so each chip is both the number and the
+// control that filters to it. The console rendered the same four numbers TWICE on one screen, as
+// a StatStrip above and as outline chips below it, and B2 drops the strip.
+//
+// STILL LINKS, NEVER BUTTONS. Unchanged from the outline version: a link works with no
+// JavaScript, its target shows in the status bar before it is clicked, and the active chip links
+// back to the unfiltered list so no chip is ever inert.
+export function FilterBar({ children }: { children: ReactNode }) {
+  return <div className="flex flex-wrap items-center gap-2">{children}</div>;
+}
+
+// The segmented container: the mockups' 9px radius with a 3px inset, which is what makes the
+// active chip read as sitting INSIDE a control rather than floating beside its siblings.
+export function FilterGroup({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex flex-wrap gap-1 rounded border border-border bg-surface p-[3px]">
+      {children}
+    </div>
+  );
+}
+
+export function FilterChip({
+  href,
+  active,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <a
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={`text-caption rounded-sm px-3 py-1.5 font-medium transition-colors duration-150 ease-out ${
+        active
+          ? "bg-primary text-primary-foreground"
+          : "text-foreground-muted hover:bg-muted hover:text-foreground"
+      }`}
+    >
+      {children}
+    </a>
+  );
+}
+
+// The mockups' `.fdrop`: surface, hairline, the 9px interactive radius, muted text. Shared as a
+// STRING rather than a component because it dresses native <select> and <button> elements, which
+// a wrapper would have to forward every attribute to for no gain.
+export const CONTROL_CLASS =
+  "text-caption rounded border border-border bg-surface px-3 py-2 text-foreground transition-colors duration-150 ease-out hover:border-border-strong disabled:text-foreground-subtle disabled:hover:border-border";
+
+// ---------------------------------------------------------------------------
+// THE STAT CARDS: the fleet overview's treatment, and ONLY the fleet overview's
+// ---------------------------------------------------------------------------
+//
+// Four bordered cards in a grid, each a quiet label over a 24px figure with an optional detail
+// line. text-display IS the mockups' `.stat .v` (24px, 600, tabular) at the house token, so the
+// size is not hand-picked.
+//
+// StatStrip ABOVE IS NOT REPLACED, and that is deliberate rather than an oversight. The overview
+// is the ONLY mockup with stats of any kind: the alerts inbox puts its counts in the filter
+// chips, and the tenant page's mockup carries a meta line and a freshness pill instead. Giving
+// every page stat cards because one page has them is the same error as giving every page the
+// runs panel, in the other direction. The tenant Overview tab and the alert detail page keep the
+// inline strip.
+export function StatCards({ children }: { children: ReactNode }) {
+  return <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{children}</div>;
+}
+
+export function StatCard({
+  label,
+  value,
+  detail,
+  warn,
+}: {
+  label: string;
+  value: ReactNode;
+  detail?: ReactNode;
+  warn?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-surface p-4">
+      <p className="text-caption text-foreground-subtle">{label}</p>
+      <p className={`text-display mt-1.5 tabular-nums ${warn ? "text-warning" : "text-foreground"}`}>
+        {value}
+      </p>
+      {detail ? <p className="text-caption mt-1 text-foreground-muted">{detail}</p> : null}
+    </div>
+  );
+}
+
 // The mockups' mono tag: a machine value shown as itself. Used for refusal reasons here, and
 // for thresholds, capability ids and the refusal vocabulary on the Phase B2 pages.
 // NO DOT AND NO TONE. It is not a status, so giving it one would say something false.
@@ -488,7 +739,7 @@ export function MonoChip({ children }: { children: ReactNode }) {
 // went wrong" sends an operator to the wrong system.
 export function SynapseDown({ message }: { message: string }) {
   return (
-    <div className="rounded-md border border-[var(--warning-line)] bg-[var(--warning-bg)] p-4">
+    <div className="rounded-lg border border-[var(--warning-line)] bg-[var(--warning-bg)] p-4">
       <p className="text-body-strong text-warning">
         The Synapse service is not reachable.
       </p>

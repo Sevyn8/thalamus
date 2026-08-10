@@ -1,15 +1,18 @@
 import { PageHeader } from "@/components/shared/PageHeader";
 import {
+  CONTROL_CLASS,
   Column,
+  FilterBar,
+  FilterChip,
+  FilterGroup,
   Footnote,
-  Row,
+  Panel,
+  PanelRow,
   SectionHead,
   AlertStateTag,
   UnknownStateTag,
   asAlertState,
   SilentModePill,
-  Stat,
-  StatStrip,
   SubNav,
   SynapseDown,
   isOpen,
@@ -134,34 +137,16 @@ function lifecycleNote(alert: FleetAlert): string | null {
   return null;
 }
 
-// A filter chip that is a LINK, not a button, so it works with no JavaScript and
-// so its target is visible in the status bar before it is clicked. The active one
-// links back to the unfiltered list, which is what a reader expects a pressed
-// chip to do and means no chip is ever inert.
-function StateChip({
-  state,
-  count,
-  active,
-  href,
-}: {
-  state: string;
-  count: number;
-  active: boolean;
-  href: string;
-}) {
-  return (
-    <a
-      href={href}
-      className={`text-caption rounded-full border px-3 py-1 transition-colors duration-150 ease-out ${
-        active
-          ? "border-border-strong bg-surface-raised text-foreground"
-          : "border-border text-foreground-muted hover:border-border-strong hover:text-foreground"
-      }`}
-    >
-      {STATE_LABEL[state] ?? state} <span className="font-mono">{count}</span>
-    </a>
-  );
-}
+// StateChip WAS HERE AND IS NOW FilterChip IN primitives.tsx (B2). It was an outline pill of its
+// own recipe; the mockup draws a SEGMENTED GROUP whose active chip is solid primary, and that is
+// now a shared component because the same control belongs on any Synapse list that grows filters.
+//
+// THE CHIPS ARE THE COUNTS, WHICH IS WHY THE STAT STRIP IS GONE. This page rendered the same four
+// lifecycle numbers twice: a StatStrip of four figures at the top, and these four chips directly
+// beneath it. The mockup has no strip at all, and it is not withholding anything by leaving it
+// out: each chip is both the number and the control that filters to it. What the strip alone
+// carried was the amber on a non-zero open count, and the segmented group carries emphasis
+// differently, by which chip is filled.
 
 export default async function AlertsInboxPage({
   searchParams,
@@ -231,18 +216,6 @@ export default async function AlertsInboxPage({
 
       <Column>
         <SubNav current="alerts" />
-        <StatStrip>
-          {STATES.map((state) => (
-            <Stat
-              key={state}
-              n={counts[state] ?? 0}
-              label={STATE_LABEL[state] ?? state}
-              // ONLY OPEN CARRIES COLOUR. Three amber figures would emphasise
-              // nothing; open is the one somebody has to do something about.
-              warn={state === "open" && (counts[state] ?? 0) > 0}
-            />
-          ))}
-        </StatStrip>
 
         {/* A PLAIN GET FORM, no JavaScript and no client component. Submitting
             navigates to this same route with the selections in the query string,
@@ -250,16 +223,19 @@ export default async function AlertsInboxPage({
             carried as hidden fields so choosing a monitor does not silently drop
             the state the operator had already picked. */}
         <form method="get" action="/superadmin/synapse/alerts" className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {STATES.map((state) => (
-              <StateChip
-                key={state}
-                state={state}
-                count={counts[state] ?? 0}
-                active={filters.state === state}
-                href={chipHref(state)}
-              />
-            ))}
+          <FilterBar>
+            <FilterGroup>
+              {STATES.map((state) => (
+                <FilterChip
+                  key={state}
+                  active={filters.state === state}
+                  href={chipHref(state)}
+                >
+                  {STATE_LABEL[state] ?? state}{" "}
+                  <span className="tabular-nums">{counts[state] ?? 0}</span>
+                </FilterChip>
+              ))}
+            </FilterGroup>
             {/* THE CHIPS ARE FLEET-WIDE AND SAY SO WHILE A FILTER IS ON.
                 /alerts/state-counts takes no parameters: the counts are of the
                 whole fleet by construction, deliberately, because deriving them
@@ -276,11 +252,11 @@ export default async function AlertsInboxPage({
             {filtered ? (
               <span className="text-micro text-foreground-subtle">counts are fleet-wide</span>
             ) : null}
-          </div>
+          </FilterBar>
 
           {filters.state ? <input type="hidden" name="state" value={filters.state} /> : null}
 
-          <div className="flex flex-wrap items-center gap-2">
+          <FilterBar>
             <label className="text-caption text-foreground-muted" htmlFor="analysis_id">
               Monitor
             </label>
@@ -289,7 +265,7 @@ export default async function AlertsInboxPage({
               name="analysis_id"
               defaultValue={filters.analysis_id ?? ""}
               disabled={analyses.length === 0}
-              className="text-caption rounded border border-border bg-surface px-2 py-1.5 text-foreground disabled:text-foreground-subtle"
+              className={CONTROL_CLASS}
             >
               <option value="">All</option>
               {analyses.map((a) => (
@@ -307,7 +283,7 @@ export default async function AlertsInboxPage({
               name="tenant_id"
               defaultValue={filters.tenant_id ?? ""}
               disabled={tenants.length === 0}
-              className="text-caption rounded border border-border bg-surface px-2 py-1.5 text-foreground disabled:text-foreground-subtle"
+              className={CONTROL_CLASS}
             >
               <option value="">All</option>
               {tenants.map((t) => (
@@ -319,7 +295,7 @@ export default async function AlertsInboxPage({
 
             <button
               type="submit"
-              className="text-caption rounded border border-border-strong bg-surface-raised px-3 py-1.5 text-foreground transition-colors duration-150 ease-out hover:border-border-strong"
+              className={`${CONTROL_CLASS} border-border-strong bg-surface-raised`}
             >
               Apply
             </button>
@@ -331,7 +307,7 @@ export default async function AlertsInboxPage({
                 Clear filters
               </a>
             ) : null}
-          </div>
+          </FilterBar>
         </form>
 
         {/* NO STORE FILTER, and the omission is deliberate rather than forgotten.
@@ -366,50 +342,69 @@ export default async function AlertsInboxPage({
                 : "No alerts have been raised yet, by any monitor, for any client."}
             </p>
           ) : (
-            alerts.map((alert) => {
-              // Narrowed once, here, at the wire boundary. See asAlertState.
-              const state = asAlertState(alert.lifecycle_state);
-              return (
-              <Row
-                key={alert.event_id}
+            /* ONE CARD, ROWS INSIDE IT (B2). The mockup's inbox is a single surface whose
+               children are ruled rows, which is the third of the four treatments and needs no
+               new component: Panel with PanelRow children is exactly it.
+
+               THE ROW'S CONTENT IS UNCHANGED, AND THE MOCKUP IS NOT FOLLOWED ON ITS LAYOUT. It
+               leads each row with a pill naming the MONITOR and demotes the lifecycle state to
+               grey text on the right, then contradicts itself: its snoozed row replaces the
+               monitor pill with a "Snoozed" one, so that row no longer says which monitor raised
+               it. The state is the thing an operator filters and acts on, so it keeps the tag,
+               and the monitor keeps its place in the meta line. Visual slice, and the information
+               architecture stays where B2a and B2b put it. */
+            <Panel>
+              {alerts.map((alert) => {
+                // Narrowed once, here, at the wire boundary. See asAlertState.
+                const state = asAlertState(alert.lifecycle_state);
                 // ATTENTION ONLY WHILE IT IS OPEN, matching the tenant page. A
                 // snoozed, acknowledged or dismissed alert is still a recorded
                 // finding and stays on the list, but it stops shouting.
-                attention={state !== null && isOpen(state)}
-                title={
-                  <a
-                    className="text-primary underline-offset-2 hover:underline"
-                    href={`/superadmin/synapse/tenants/${alert.tenant_id}/alerts/${alert.event_id}`}
-                  >
-                    {alert.product_name ?? alert.sku_id ?? "Unknown product"}
-                  </a>
-                }
-                meta={
-                  <>
-                    {alert.tenant_name}
-                    {alert.store_name ? ` · ${alert.store_name}` : ""} ·{" "}
-                    {ANALYSIS_NAMES[alert.declaration_id] ?? alert.declaration_id}
-                    {evidence(alert) ? ` · ${evidence(alert)}` : ""}
-                    <span className="text-micro mt-1 block font-mono text-foreground-subtle">
-                      {alert.sku_id ?? "no SKU on this alert"} · raised {alert.as_of}
-                    </span>
-                  </>
-                }
-                right={
-                  state === null ? (
-                    <UnknownStateTag state={alert.lifecycle_state} />
-                  ) : (
-                    <AlertStateTag
-                      state={state}
-                      reason={alert.lifecycle_reason}
-                      snoozedUntil={alert.lifecycle_snoozed_until}
-                    />
-                  )
-                }
-                note={lifecycleNote(alert) ?? undefined}
-              />
-              );
-            })
+                const attention = state !== null && isOpen(state);
+                const note = lifecycleNote(alert);
+                return (
+                  <PanelRow key={alert.event_id}>
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={
+                          attention ? "text-body-strong text-warning" : "text-body-strong"
+                        }
+                      >
+                        <a
+                          className="text-primary underline-offset-2 hover:underline"
+                          href={`/superadmin/synapse/tenants/${alert.tenant_id}/alerts/${alert.event_id}`}
+                        >
+                          {alert.product_name ?? alert.sku_id ?? "Unknown product"}
+                        </a>
+                      </p>
+                      <p className="text-caption mt-0.5 text-foreground-muted">
+                        {alert.tenant_name}
+                        {alert.store_name ? ` · ${alert.store_name}` : ""} ·{" "}
+                        {ANALYSIS_NAMES[alert.declaration_id] ?? alert.declaration_id}
+                        {evidence(alert) ? ` · ${evidence(alert)}` : ""}
+                      </p>
+                      <p className="text-micro mt-1 font-mono text-foreground-subtle">
+                        {alert.sku_id ?? "no SKU on this alert"} · raised {alert.as_of}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      {state === null ? (
+                        <UnknownStateTag state={alert.lifecycle_state} />
+                      ) : (
+                        <AlertStateTag
+                          state={state}
+                          reason={alert.lifecycle_reason}
+                          snoozedUntil={alert.lifecycle_snoozed_until}
+                        />
+                      )}
+                      {note ? (
+                        <p className="text-micro mt-1 text-foreground-subtle">{note}</p>
+                      ) : null}
+                    </div>
+                  </PanelRow>
+                );
+              })}
+            </Panel>
           )}
 
           <div className="mt-3 space-y-2">

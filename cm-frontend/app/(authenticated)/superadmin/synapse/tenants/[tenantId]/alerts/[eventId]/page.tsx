@@ -7,7 +7,8 @@ import {
   Breadcrumb,
   Column,
   Footnote,
-  Row,
+  Panel,
+  PanelRow,
   SectionHead,
   SilentModePill,
   Stat,
@@ -167,18 +168,23 @@ export default async function AlertDetailPage({
 
         <section>
           <SectionHead>The product</SectionHead>
-          <Row
-            title={product}
-            meta={
-              <>
-                {alert.store_name ?? "Store no longer in the client directory"}
-                <span className="text-micro mt-1 block font-mono text-foreground-subtle">
+          {/* NO MOCKUP EXISTS FOR THIS PAGE (B2). It is brought into VISUAL consistency with the
+              restyled surfaces and nothing else: the same card object, the same ruled row, the
+              same pills. Every sentence, every figure and every control is untouched, because
+              inventing a layout for a screen the mockups never drew would be designing rather
+              than applying. */}
+          <Panel>
+            <PanelRow>
+              <div className="min-w-0 flex-1">
+                <p className="text-body-strong">{product}</p>
+                <p className="text-caption mt-0.5 text-foreground-muted">
+                  {alert.store_name ?? "Store no longer in the client directory"}
+                </p>
+                <p className="text-micro mt-1 font-mono text-foreground-subtle">
                   {alert.sku_id ?? "no SKU on this alert"}
-                </span>
-              </>
-            }
-            right={
-              <div className="flex flex-col items-end gap-1">
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-col items-end gap-1">
                 {state === null ? (
                   <UnknownStateTag state={alert.lifecycle_state} />
                 ) : (
@@ -190,8 +196,8 @@ export default async function AlertDetailPage({
                 )}
                 <Tag tone="mute">not sent to client (silent mode)</Tag>
               </div>
-            }
-          />
+            </PanelRow>
+          </Panel>
         </section>
 
         <section>
@@ -254,26 +260,27 @@ export default async function AlertDetailPage({
               This is the only time this alert has been recorded.
             </p>
           ) : (
-            history.map((row) => (
-              <Row
-                key={row.event_id}
-                title={row.as_of}
-                meta={
-                  row.days_since_last_sale !== null
-                    ? `${row.days_since_last_sale} days since a sale`
-                    : units(row.days_of_cover) !== null
-                      ? `${units(row.days_of_cover)} days of cover`
-                      : "no evidence figures recorded"
-                }
-                right={
-                  units(row.quantity_at_stake) !== null ? (
-                    <span className="text-caption font-mono text-foreground-muted">
+            <Panel>
+              {history.map((row) => (
+                <PanelRow key={row.event_id}>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-body-strong font-mono tabular-nums">{row.as_of}</p>
+                    <p className="text-caption mt-0.5 text-foreground-muted">
+                      {row.days_since_last_sale !== null
+                        ? `${row.days_since_last_sale} days since a sale`
+                        : units(row.days_of_cover) !== null
+                          ? `${units(row.days_of_cover)} days of cover`
+                          : "no evidence figures recorded"}
+                    </p>
+                  </div>
+                  {units(row.quantity_at_stake) !== null ? (
+                    <span className="text-caption shrink-0 font-mono tabular-nums text-foreground-muted">
                       {units(row.quantity_at_stake)} units
                     </span>
-                  ) : undefined
-                }
-              />
-            ))
+                  ) : null}
+                </PanelRow>
+              ))}
+            </Panel>
           )}
           {/* THE HONEST CAVEAT, and it is load-bearing. Re-raising the same alert on the
               same day is suppressed by the idempotency index and writes NOTHING, so a

@@ -158,13 +158,20 @@ export function EnableMonitor({
     });
   }
 
+  // hover:bg-surface-raised, NOT hover:bg-surface-2, AND THAT WAS A REAL DEFECT. Every button
+  // in this file carried `hover:bg-surface-2` and had NO hover feedback at all: there is no
+  // --color-surface-2 in globals.css, so Tailwind generated no rule and the class was inert.
+  // Verified against the compiled CSS rather than reasoned about: the built stylesheet contains
+  // zero occurrences of surface-2 and one of surface-raised. A class that silently does nothing
+  // is the same failure class as a comment that is silently false, which is why it is fixed in
+  // a visual slice rather than filed.
   return (
     <div className="text-right">
       {!open ? (
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="text-caption rounded-md border border-border px-3 py-1.5 text-foreground hover:bg-surface-2"
+          className="text-caption rounded border border-border px-3 py-1.5 text-foreground hover:bg-surface-raised"
         >
           Enable
         </button>
@@ -178,7 +185,7 @@ export function EnableMonitor({
               disabled={pending}
               onChange={(event) => setFilter(event.target.value)}
               placeholder="Search, e.g. Kolkata"
-              className="text-caption w-64 rounded-md border border-border bg-surface px-2 py-1.5 text-foreground"
+              className="text-caption w-64 rounded border border-border bg-surface px-2 py-1.5 text-foreground"
             />
           </label>
 
@@ -202,7 +209,7 @@ export function EnableMonitor({
               value={chosenIsVisible ? zone : NO_ZONE}
               disabled={pending}
               onChange={(event) => setZone(event.target.value)}
-              className="text-caption w-64 rounded-md border border-border bg-surface px-2 py-1.5 text-foreground"
+              className="text-caption w-64 rounded border border-border bg-surface px-2 py-1.5 text-foreground"
             >
               <option value={NO_ZONE}>Choose a timezone...</option>
               {grouped.map(([region, names]) => (
@@ -256,7 +263,7 @@ export function EnableMonitor({
                 setFilter("");
                 setError(null);
               }}
-              className="text-caption rounded-md border border-border px-3 py-1.5 text-foreground-muted hover:bg-surface-2 disabled:opacity-50"
+              className="text-caption rounded border border-border px-3 py-1.5 text-foreground-muted hover:bg-surface-raised disabled:opacity-50"
             >
               Cancel
             </button>
@@ -266,7 +273,7 @@ export function EnableMonitor({
               // since hidden it. See NO_ZONE above.
               disabled={pending || zone === NO_ZONE || !chosenIsVisible}
               onClick={send}
-              className="text-caption rounded-md border border-border px-3 py-1.5 text-foreground hover:bg-surface-2 disabled:opacity-50"
+              className="text-caption rounded border border-border px-3 py-1.5 text-foreground hover:bg-surface-raised disabled:opacity-50"
             >
               {pending ? "Enabling..." : "Enable in silent mode"}
             </button>

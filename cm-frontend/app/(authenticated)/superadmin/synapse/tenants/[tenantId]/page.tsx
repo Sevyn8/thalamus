@@ -10,9 +10,11 @@ import {
   Fact,
   Facts,
   Footnote,
+  ItemCard,
   MonoChip,
+  Panel,
+  PanelRow,
   type Refusals,
-  Row,
   SectionHead,
   SilentModePill,
   Stat,
@@ -395,50 +397,57 @@ export default async function TenantPage({
               </p>
             )
           ) : (
-            alerts.map((a) => {
-              // NARROWED ONCE, HERE, at the wire boundary. Everything downstream is typed,
-              // so a state this build does not know about renders as the word itself rather
-              // than being filed under one of the four.
-              const state = asAlertState(a.lifecycle_state);
-              return (
-              <Row
-                key={a.event_id}
+            /* ONE CARD, ROWS INSIDE IT, the same treatment as the fleet inbox so the two alert
+               lists read as one thing seen at two scopes. */
+            <Panel>
+              {alerts.map((a) => {
+                // NARROWED ONCE, HERE, at the wire boundary. Everything downstream is typed,
+                // so a state this build does not know about renders as the word itself rather
+                // than being filed under one of the four.
+                const state = asAlertState(a.lifecycle_state);
                 // ATTENTION ONLY WHILE IT IS OPEN. A snoozed, acknowledged or dismissed
                 // alert stays on the list, it is still a recorded finding, but it stops
                 // shouting: all three are decisions, and open means "needs a decision".
-                attention={state !== null && isOpen(state)}
-                right={
-                  state === null ? (
-                    <UnknownStateTag state={a.lifecycle_state} />
-                  ) : (
-                    <AlertStateTag
-                      state={state}
-                      reason={a.lifecycle_reason}
-                      snoozedUntil={a.lifecycle_snoozed_until}
-                    />
-                  )
-                }
-                title={
-                  <a
-                    className="text-primary underline-offset-2 hover:underline"
-                    href={`/superadmin/synapse/tenants/${tenantId}/alerts/${a.event_id}`}
-                  >
-                    {a.product_name ?? a.sku_id ?? "Unknown product"}
-                  </a>
-                }
-                meta={
-                  <>
-                    {a.store_name ? `${a.store_name} · ` : ""}Raised {a.as_of} by the{" "}
-                    {ANALYSIS_NAMES[a.declaration_id] ?? a.declaration_id} monitor · not sent to
-                    client (silent mode)
-                    <span className="text-micro mt-1 block font-mono text-foreground-subtle">
-                      {a.sku_id ?? "no SKU on this alert"}
-                    </span>
-                  </>
-                }
-              />
-              );
-            })
+                const attention = state !== null && isOpen(state);
+                return (
+                  <PanelRow key={a.event_id}>
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={
+                          attention ? "text-body-strong text-warning" : "text-body-strong"
+                        }
+                      >
+                        <a
+                          className="text-primary underline-offset-2 hover:underline"
+                          href={`/superadmin/synapse/tenants/${tenantId}/alerts/${a.event_id}`}
+                        >
+                          {a.product_name ?? a.sku_id ?? "Unknown product"}
+                        </a>
+                      </p>
+                      <p className="text-caption mt-0.5 text-foreground-muted">
+                        {a.store_name ? `${a.store_name} · ` : ""}Raised {a.as_of} by the{" "}
+                        {ANALYSIS_NAMES[a.declaration_id] ?? a.declaration_id} monitor · not sent
+                        to client (silent mode)
+                      </p>
+                      <p className="text-micro mt-1 font-mono text-foreground-subtle">
+                        {a.sku_id ?? "no SKU on this alert"}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      {state === null ? (
+                        <UnknownStateTag state={a.lifecycle_state} />
+                      ) : (
+                        <AlertStateTag
+                          state={state}
+                          reason={a.lifecycle_reason}
+                          snoozedUntil={a.lifecycle_snoozed_until}
+                        />
+                      )}
+                    </div>
+                  </PanelRow>
+                );
+              })}
+            </Panel>
           )}
 
           {/* MOVED HERE FROM THE FOOT OF THE PAGE, unchanged. It explains the alert
@@ -460,7 +469,12 @@ export default async function TenantPage({
               No monitors are enabled for this client yet.
             </p>
           ) : (
-            detail.analyses.map((state) => {
+            /* CARD PER ITEM (B2), the mockups' fourth treatment and the right one here: each
+               monitor carries a BLOCK of facts, its description, its machine id, its declared
+               thresholds and a stats rail, and ruled rows would put all of that between two
+               hairlines and read as one undifferentiated list. */
+            <div className="space-y-3">
+              {detail.analyses.map((state) => {
               // READS actions_appended, NOT actions_proposed, AND THE DIFFERENCE IS A
               // CROSS-TAB DEFECT RATHER THAN A PREFERENCE. The Runs tab, one tab over,
               // renders the same run through runOutcomeTag, which counts appended. While
@@ -479,47 +493,75 @@ export default async function TenantPage({
               // reason, since a past raise is not something needing attention.
               const raised = state.actions_appended ?? 0;
               return (
-                <Row
-                  key={state.analysis_id}
-                  title={ANALYSIS_NAMES[state.analysis_id] ?? state.analysis_id}
-                  meta={
-                    <>
-                      {MONITOR_DESCRIPTIONS[state.analysis_id] ?? null}
-                      {/* Config metadata, demoted. The rung is deliberately absent: the mode is
-                          stated once by the pill in the header, and "shadow" is an internal name. */}
-                      <span className="text-micro mt-1 block font-mono text-foreground-subtle">
-                        {state.analysis_id} · {state.cadence} · {state.timezone}
-                      </span>
-                      {/* THE DECLARED NUMBERS, from /analyses. THE CURRENT declaration, not
-                          the one that produced any particular alert: synapse.actions freezes
-                          the thresholds in force at detection onto each action, which is why
-                          the alert detail page shows its own frozen copy and this does not
-                          claim to be it. Absent entirely when the registry read failed,
-                          rather than rendered as an empty row implying no thresholds. */}
-                      {(thresholdsFor.get(state.analysis_id) ?? []).length > 0 ? (
-                        <span className="mt-1.5 flex flex-wrap gap-1.5">
-                          {(thresholdsFor.get(state.analysis_id) ?? []).map((t) => (
-                            <MonoChip key={t.name}>
-                              {t.name} {t.days}d
-                            </MonoChip>
-                          ))}
-                        </span>
-                      ) : null}
-                    </>
-                  }
-                  right={
-                    <Tag tone="mute">
-                      {raised > 0 ? `${plural(raised, "alert")} raised last run` : "No alerts last run"}
-                    </Tag>
-                  }
-                  // WHY A MONITOR RAISED NOTHING, when the run says. Appended to the
-                  // "last ran" line rather than given its own row: it is a property of
-                  // that run, and Phase A deleted a standalone row here precisely
-                  // because it described engineering backlog instead of the data.
-                  note={monitorNote(state)}
-                />
+                  <ItemCard key={state.analysis_id}>
+                    <div className="flex flex-wrap items-start gap-4">
+                      <div className="min-w-0 flex-1">
+                        {/* THE MOCKUP'S `.mtop`: the plain name with its machine id beside it.
+                            The id moved UP out of the metadata line to sit with the name, which
+                            is where both the tenant-monitors and analyses mockups put it.
+
+                            NO PER-CARD "silent mode" PILL, which the mockup draws on every
+                            monitor. The mode is said ONCE per screen, in the header, and that is
+                            a standing decision this console already made twice: SilentModePill's
+                            own comment says so, and the alerts inbox refuses the mockup's per-row
+                            copy of the same sentence for the same reason. */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-subheading">
+                            {ANALYSIS_NAMES[state.analysis_id] ?? state.analysis_id}
+                          </span>
+                          <span className="text-micro font-mono text-foreground-subtle">
+                            {state.analysis_id}
+                          </span>
+                        </div>
+                        <p className="text-caption mt-1 text-foreground-muted">
+                          {MONITOR_DESCRIPTIONS[state.analysis_id] ?? null}
+                        </p>
+                        {/* Config metadata, demoted. The rung is deliberately absent: the mode is
+                            stated once by the pill in the header, and "shadow" is an internal
+                            name. */}
+                        <p className="text-micro mt-1 font-mono text-foreground-subtle">
+                          {state.cadence} · {state.timezone}
+                        </p>
+                        {/* THE DECLARED NUMBERS, from /analyses. THE CURRENT declaration, not
+                            the one that produced any particular alert: synapse.actions freezes
+                            the thresholds in force at detection onto each action, which is why
+                            the alert detail page shows its own frozen copy and this does not
+                            claim to be it. Absent entirely when the registry read failed,
+                            rather than rendered as an empty row implying no thresholds. */}
+                        {(thresholdsFor.get(state.analysis_id) ?? []).length > 0 ? (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {(thresholdsFor.get(state.analysis_id) ?? []).map((t) => (
+                              <MonoChip key={t.name}>
+                                {t.name} {t.days}d
+                              </MonoChip>
+                            ))}
+                          </div>
+                        ) : null}
+                        {/* WHY A MONITOR RAISED NOTHING, when the run says. Kept on the monitor's
+                            own card rather than given a row of its own: it is a property of that
+                            run, and Phase A deleted a standalone row here precisely because it
+                            described engineering backlog instead of the data. */}
+                        <p className="text-micro mt-2 text-foreground-subtle">
+                          {monitorNote(state)}
+                        </p>
+                      </div>
+                      {/* THE MOCKUP'S `.mstats` RAIL, WITHOUT ITS "Configure" BUTTON. Nothing in
+                          this console configures a monitor: the BFF has no such endpoint and the
+                          provisioning grant has no UPDATE on synapse.provision. A button that
+                          opens nothing is the dead control this page's whole rule is against. */}
+                      <div className="flex shrink-0 flex-col items-end gap-1.5 text-right">
+                        <Tag tone="good">Enabled</Tag>
+                        <Tag tone="mute">
+                          {raised > 0
+                            ? `${plural(raised, "alert")} raised last run`
+                            : "No alerts last run"}
+                        </Tag>
+                      </div>
+                    </div>
+                  </ItemCard>
               );
-            })
+              })}
+            </div>
           )}
 
           {/* DISABLED MONITORS, WITH NO CONTROL, AND THE ABSENCE IS THE FEATURE.
@@ -539,22 +581,38 @@ export default async function TenantPage({
           {detail.disabled_analyses.length > 0 && (
             <div className="mt-6">
               <SectionHead>Switched off</SectionHead>
-              {detail.disabled_analyses.map((row) => (
-                <Row
-                  key={row.analysis_id}
-                  title={ANALYSIS_NAMES[row.analysis_id] ?? row.analysis_id}
-                  meta={
-                    <>
-                      {MONITOR_DESCRIPTIONS[row.analysis_id] ?? null}
-                      <span className="text-micro mt-1 block font-mono text-foreground-subtle">
-                        {row.analysis_id}
-                      </span>
-                    </>
-                  }
-                  right={<Tag tone="mute">Disabled</Tag>}
-                  note={`Ran from ${row.enabled_at.slice(0, 10)} to ${row.disabled_at.slice(0, 10)}`}
-                />
-              ))}
+              <div className="space-y-3">
+                {detail.disabled_analyses.map((row) => (
+                  <ItemCard key={row.analysis_id}>
+                    <div className="flex flex-wrap items-start gap-4">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-subheading text-foreground-muted">
+                            {ANALYSIS_NAMES[row.analysis_id] ?? row.analysis_id}
+                          </span>
+                          <span className="text-micro font-mono text-foreground-subtle">
+                            {row.analysis_id}
+                          </span>
+                        </div>
+                        <p className="text-caption mt-1 text-foreground-muted">
+                          {MONITOR_DESCRIPTIONS[row.analysis_id] ?? null}
+                        </p>
+                        <p className="text-micro mt-2 text-foreground-subtle">
+                          Ran from {row.enabled_at.slice(0, 10)} to {row.disabled_at.slice(0, 10)}
+                        </p>
+                      </div>
+                      {/* SOLID BORDER, NOT THE DASHED `muted` VARIANT, and the difference carries
+                          the meaning the mockup gives it: dashed means AVAILABLE, a monitor that
+                          was never provisioned here. This one WAS provisioned and was switched
+                          off, which is a different state and the reason this section exists at
+                          all. Dashing it would make the two read as one. */}
+                      <div className="shrink-0 text-right">
+                        <Tag tone="mute">Disabled</Tag>
+                      </div>
+                    </div>
+                  </ItemCard>
+                ))}
+              </div>
               <div className="mt-3">
                 <Footnote>
                   Switching a monitor back on is deliberately not available here. This client has
@@ -574,47 +632,60 @@ export default async function TenantPage({
           {available.length > 0 && (
             <div className="mt-6">
               <SectionHead>Available</SectionHead>
-              {available.map((row) => (
-                <Row
-                  key={row.analysis_id}
-                  title={ANALYSIS_NAMES[row.analysis_id] ?? row.name}
-                  meta={
-                    <>
-                      {MONITOR_DESCRIPTIONS[row.analysis_id] ?? null}
-                      <span className="text-micro mt-1 block font-mono text-foreground-subtle">
-                        {row.analysis_id}
-                      </span>
-                      {row.thresholds.length > 0 ? (
-                        <span className="mt-1.5 flex flex-wrap gap-1.5">
-                          {row.thresholds.map((t) => (
-                            <MonoChip key={t.name}>
-                              {t.name} {t.days}d
-                            </MonoChip>
-                          ))}
-                        </span>
-                      ) : null}
-                    </>
-                  }
-                  right={
-                    // NO LIST, NO CONTROL. The only input an enable takes is the
-                    // timezone, so a component with nothing to offer could render a
-                    // button that opens an empty select and an Enable that can never
-                    // arm. Rendering the reason instead is the same call the Monitors
-                    // tab makes everywhere else.
-                    zones.length === 0 ? (
-                      <Tag tone="mute">Timezone list unavailable</Tag>
-                    ) : (
-                      <EnableMonitor
-                        tenantId={tenantId}
-                        analysisId={row.analysis_id}
-                        analysisName={ANALYSIS_NAMES[row.analysis_id] ?? row.name}
-                        zones={zones}
-                        zoneSource={zoneSource}
-                      />
-                    )
-                  }
-                />
-              ))}
+              {/* THE DASHED VARIANT. Both mockups draw a not-yet-provisioned monitor as a
+                  dashed card on the raised surface, which is the one place the card treatment
+                  carries state rather than decoration: solid is running, dashed is not. */}
+              <div className="space-y-3">
+                {available.map((row) => (
+                  <ItemCard key={row.analysis_id} muted>
+                    <div className="flex flex-wrap items-start gap-4">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-subheading text-foreground-muted">
+                            {ANALYSIS_NAMES[row.analysis_id] ?? row.name}
+                          </span>
+                          <span className="text-micro font-mono text-foreground-subtle">
+                            {row.analysis_id}
+                          </span>
+                        </div>
+                        <p className="text-caption mt-1 text-foreground-muted">
+                          {MONITOR_DESCRIPTIONS[row.analysis_id] ?? null}
+                        </p>
+                        {row.thresholds.length > 0 ? (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {row.thresholds.map((t) => (
+                              <MonoChip key={t.name}>
+                                {t.name} {t.days}d
+                              </MonoChip>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-1.5 text-right">
+                        <Tag tone="mute">Available</Tag>
+                        {
+                          // NO LIST, NO CONTROL. The only input an enable takes is the
+                          // timezone, so a component with nothing to offer could render a
+                          // button that opens an empty select and an Enable that can never
+                          // arm. Rendering the reason instead is the same call the Monitors
+                          // tab makes everywhere else.
+                          zones.length === 0 ? (
+                            <Tag tone="mute">Timezone list unavailable</Tag>
+                          ) : (
+                            <EnableMonitor
+                              tenantId={tenantId}
+                              analysisId={row.analysis_id}
+                              analysisName={ANALYSIS_NAMES[row.analysis_id] ?? row.name}
+                              zones={zones}
+                              zoneSource={zoneSource}
+                            />
+                          )
+                        }
+                      </div>
+                    </div>
+                  </ItemCard>
+                ))}
+              </div>
             </div>
           )}
 
@@ -660,27 +731,31 @@ export default async function TenantPage({
               running into. Every figure is one the BFF already serves on /tenants/{id}:
               nothing here is derived, and nothing the mockup showed but the endpoint does
               not carry appears at all. */}
-          <Facts>
-            <Fact
-              label="Last sale ingested"
-              value={detail.latest_sale ?? "never"}
-              note={
-                detail.latest_sale === null
-                  ? "no sale has ever arrived"
-                  : staleDays === null
-                    ? undefined
-                    : `${plural(staleDays, "day")} ago`
-              }
-            />
-            <Fact label="Sales ingested" value={detail.sales_seen.toLocaleString()} />
-            <Fact label="Products watched" value={detail.products.toLocaleString()} />
-            <Fact label="Stores" value={detail.stores.toLocaleString()} />
-            <Fact
-              label="Alerts recorded"
-              value={detail.actions_recorded.toLocaleString()}
-              note="all time"
-            />
-          </Facts>
+          {/* THE FACTS GO IN A CARD (B2), the same object as every other list surface here:
+              white surface, hairline, 14px radius. The table inside is unchanged. */}
+          <div className="overflow-hidden rounded-lg border border-border bg-surface px-4">
+            <Facts>
+              <Fact
+                label="Last sale ingested"
+                value={detail.latest_sale ?? "never"}
+                note={
+                  detail.latest_sale === null
+                    ? "no sale has ever arrived"
+                    : staleDays === null
+                      ? undefined
+                      : `${plural(staleDays, "day")} ago`
+                }
+              />
+              <Fact label="Sales ingested" value={detail.sales_seen.toLocaleString()} />
+              <Fact label="Products watched" value={detail.products.toLocaleString()} />
+              <Fact label="Stores" value={detail.stores.toLocaleString()} />
+              <Fact
+                label="Alerts recorded"
+                value={detail.actions_recorded.toLocaleString()}
+                note="all time"
+              />
+            </Facts>
+          </div>
 
           <div className="mt-4">
             <Footnote>
