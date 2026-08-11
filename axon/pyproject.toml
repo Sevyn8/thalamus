@@ -1,0 +1,33 @@
+[project]
+# Distribution is `thalamus-axon`; the MODULE is `axon`. Same split, same reason, as
+# thalamus-synapse: the bare name is worth disambiguating on an index, and the module name stays
+# short so imports read `axon.send` rather than a prefixed variant.
+name = "thalamus-axon"
+version = "0.0.0"
+description = "Axon - the Thalamus communications and delivery plane. A PEER of DIS and of Synapse, not part of either. Holds ADDRESSES and SEND STATE and nothing else: auth, RBAC, roles and identity stay with Customer Master. Slice 1 is the delivery ledger split by audience, the Channel port, and one SendGrid email adapter for Sevyn8's own internal traffic."
+requires-python = ">=3.12"
+dependencies = [
+  # The two-GUC session discipline plus the FIRST-USE POSTURE GUARD. The guard is the reason
+  # this is a dependency rather than raw SQLAlchemy: it verifies on first use of an engine that
+  # this is the expected database and that the role is NOSUPERUSER NOBYPASSRLS. The platform
+  # ledger has no RLS today, but the tenant ledger does, and a sender that had quietly acquired
+  # a bypassing role would defeat its isolation invisibly.
+  "dis-rls",
+  # UUIDv7 ids only (dis_core.ids.new_uuid7). uuid4 is banned project-wide, and the caller
+  # minting the id is what lets the INSERT skip RETURNING and the grant hold no SELECT.
+  "dis-core",
+  # Statement construction only. sqlalchemy.text() names the table in ONE module (ledger.py);
+  # there is no ORM model here, the DDL file is the source of truth.
+  "sqlalchemy[asyncio]>=2.0.36",
+  # The SendGrid v3 client. Async because a send sits on a request path: a blocking client here
+  # would hold the producer's event loop for the whole round trip. Same choice, same reason, as
+  # the 5e provisioning gate's httpx dependency.
+  "httpx>=0.27",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/axon"]

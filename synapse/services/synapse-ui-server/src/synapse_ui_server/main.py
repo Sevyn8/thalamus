@@ -20,6 +20,14 @@ from datetime import UTC, date, datetime
 from typing import Annotated
 from uuid import UUID
 
+from axon import (
+    Channel,
+    DeliveryState,
+    Message,
+    SendGridEmailAdapter,
+    SendOutcome,
+    send_platform,
+)
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -85,6 +93,65 @@ class EnableBody(BaseModel):
 
 _log = get_logger("synapse-ui-server")
 
+
+# =================================================================================================
+# THE ONE PIECE OF COPY IN THIS SERVICE THAT LEAVES THE PLATFORM
+# =================================================================================================
+# Everything else this file writes is read inside the console. This is read in somebody's inbox,
+# and it is the only string here that no console styling, no theme and no reviewer sits between.
+#
+# PLAIN TEXT, matching the adapter. There is no template here and there is not meant to be: a
+# TENANT message is rendered from an approved template and pins the version that rendered it,
+# because a regulated channel demands it. Platform traffic to our own on-call has no registered
+# entity, no WABA and no approved template, and inventing a templating layer for one internal
+# email would be building the tenant path in the wrong place.
+#
+# NO EM-DASH. tests/test_no_em_dash_in_axon_copy.py walks this function, because neither existing
+# guard can see it: the frontend scan walks TypeScript literals and the served-copy test walks
+# what the console renders. Mail is a third category and the only one that leaves the estate.
+def _enablement_email_body(
+    *,
+    tenant_name: str,
+    analysis_id: str,
+    timezone: str,
+    actor_subject: str,
+    already_provisioned: bool,
+    warning: str | None,
+) -> str:
+    """The enablement notification, as plain text.
+
+    SAYS WHAT THE 5e RESPONSE SAYS, in the same words and with the same care. In particular it
+    does NOT claim a row was written when the database refused a duplicate: `already_provisioned`
+    means the pair already had a row, this request wrote nothing, and the timezone chosen was not
+    applied. An email that said "enabled" there would be the console's own lie, forwarded.
+    """
+    lines = [
+        f"Monitor: {analysis_id}",
+        f"Client:  {tenant_name}",
+        f"By:      {actor_subject}",
+        "",
+    ]
+    if already_provisioned:
+        lines += [
+            "NOTHING WAS WRITTEN. A provision row for this client and monitor already existed,",
+            f"so the timezone chosen for this request ({timezone}) was NOT applied and the",
+            "existing row's zone stands. That column is immutable and no path in the console can",
+            "change it. Whether that row is active or switched off is not visible from the write",
+            "path; the tenant page reads it back and is the only thing that can say.",
+        ]
+    else:
+        lines += [
+            f"Reporting timezone: {timezone}. Chosen once, and it cannot be changed afterwards:",
+            "it decides what a day means for this monitor and it feeds every alert's as_of.",
+            "",
+            "The monitor starts watching at the next daily sweep, in silent mode. It records what",
+            "it finds in the console and sends the client nothing.",
+        ]
+    if warning:
+        lines += ["", warning]
+    return "\n".join(lines)
+
+
 _REASON_STATUS = {"missing": 401, "invalid": 401, "forbidden": 403}
 
 # EnablementRefusedError.reason to HTTP status. A MAPPING RATHER THAN A CHAIN OF ifs, so a reason added
@@ -124,6 +191,19 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.engine = create_rls_engine(config.reader_url)
     app.state.lifecycle_engine = create_rls_engine(config.lifecycle_url)
     app.state.provision_engine = create_rls_engine(config.provision_url)
+    # THE FOURTH ENGINE, AND IT IS AXON'S RATHER THAN THIS SERVICE'S. axon_sender holds INSERT
+    # on axon.platform_deliveries and nothing else: no SELECT anywhere, nothing on the tenant
+    # ledger. It is a fourth narrow credential on the same principle as the three above, not a
+    # widening of any of them.
+    app.state.axon_engine = create_rls_engine(config.axon_sender_url)
+    # CONSTRUCTED ONCE, HERE, and guarded on its credential inside the constructor. Same shape
+    # as CM's SendGrid client, which this adapter is a port of: an adapter that constructs
+    # without a key can only fail later, with a message already in flight.
+    app.state.axon_adapter = SendGridEmailAdapter(
+        api_key=config.axon_sendgrid_api_key,
+        from_email=config.axon_sendgrid_from_email,
+    )
+    app.state.axon_oncall_email = config.axon_platform_oncall_email
     app.state.verifier = getattr(app.state, "verifier", None) or Auth0Verifier(
         jwks_url=config.jwks_url, issuer=config.jwt_issuer, audience=config.jwt_audience
     )
@@ -150,6 +230,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.engine.dispose()
         await app.state.lifecycle_engine.dispose()
         await app.state.provision_engine.dispose()
+        await app.state.axon_engine.dispose()
+        await app.state.axon_adapter.aclose()
 
 
 def create_app(config: Config | None = None) -> FastAPI:
@@ -551,6 +633,96 @@ def create_app(config: Config | None = None) -> FastAPI:
                 "already_provisioned": outcome.already_provisioned,
             },
         )
+
+        # ================================================================================
+        # AXON (slice 1). THE SAME FACT, CARRIED TO A HUMAN RATHER THAN TO A LOG.
+        # ================================================================================
+        # The log line above is the audit record and the module comment says at length why a
+        # 30-day log line is not one. This does not fix that: synapse.provision_events is still
+        # the right home and is still deferred. What this does is carry the event to somebody,
+        # which nothing did before: enabling a monitor for a client was a fact that existed only
+        # where nobody was looking.
+        #
+        # AFTER THE COMMIT, NEVER BEFORE. enable_analysis's transaction closed when it returned;
+        # the row is in the database and this request is going to answer 200 or 201 whatever
+        # happens next.
+        #
+        # AND IT CANNOT FAIL THE ENABLE. send_platform is contracted to raise nothing at all:
+        # a provider refusal comes back as an outcome carrying state='failed', already recorded
+        # on the ledger. The one case it cannot record is its own ledger write failing, which is
+        # why the outcome carries `recorded` separately and why that case logs at ERROR.
+        # axon/src/axon/send.py names that hole as the reason the queue exists.
+        #
+        # WRAPPED ANYWAY, AND THE ASYMMETRY IS THE REASON. axon/tests pins the no-raise contract,
+        # but it is one refactor away from being untrue and the cost of it becoming untrue is a
+        # COMMITTED enablement answered with a 500. The operator would see a failure, retry, and
+        # get the 409 "already enabled" branch for a monitor that was in fact enabled the first
+        # time. A bare `except Exception` is the right width here and nowhere else in this file:
+        # the rule is "nothing from the delivery plane may fail this request", and a narrower
+        # catch would be a list of the failures somebody happened to think of.
+        delivery: SendOutcome | None = None
+        try:
+            delivery = await send_platform(
+                engine=request.app.state.axon_engine,
+                adapter=request.app.state.axon_adapter,
+                message=Message(
+                    channel=Channel.EMAIL,
+                    recipient=request.app.state.axon_oncall_email,
+                    subject=f"Synapse: {outcome.analysis_id} enabled for {outcome.tenant_name}",
+                    body=_enablement_email_body(
+                        tenant_name=outcome.tenant_name,
+                        analysis_id=outcome.analysis_id,
+                        timezone=body.timezone,
+                        actor_subject=identity.subject,
+                        already_provisioned=outcome.already_provisioned,
+                        warning=outcome.warning,
+                    ),
+                ),
+                notification_class="synapse.provision.enabled",
+                # THE OPAQUE SUBJECT PAIR. Not a foreign key into synapse.provision,
+                # deliberately: Axon is a delivery plane, and an FK would order the two chains
+                # against each other for a join nothing performs. The pair is (tenant, analysis)
+                # because that is what synapse.provision is keyed on and what a reader would go
+                # looking for.
+                subject_kind="synapse.provision",
+                subject_id=f"{tenant_id}:{analysis_id}",
+                actor_subject=identity.subject,
+            )
+        except Exception:  # noqa: BLE001 - deliberate; see the comment above the try
+            _log.exception(
+                "the delivery plane raised; the enablement itself is unaffected",
+                extra={
+                    "severity": "ERROR",
+                    "event": "axon.send.raised",
+                    "tenant_id": str(tenant_id),
+                    "analysis_id": analysis_id,
+                },
+            )
+
+        if delivery is not None and not delivery.recorded:
+            # THE ONE CASE WORSE THAN A FAILED SEND. There is no ledger row, so nothing in the
+            # database says this was ever owed. ERROR rather than WARNING for that reason alone.
+            _log.error(
+                "the delivery ledger write failed; this send left no record",
+                extra={
+                    "severity": "ERROR",
+                    "event": "axon.ledger.write_failed",
+                    "tenant_id": str(tenant_id),
+                    "analysis_id": analysis_id,
+                    "detail": delivery.detail,
+                },
+            )
+        elif delivery is not None and delivery.state is not DeliveryState.ACCEPTED:
+            _log.warning(
+                "the enablement notification was not accepted by the provider",
+                extra={
+                    "severity": "WARNING",
+                    "event": "axon.send.failed",
+                    "tenant_id": str(tenant_id),
+                    "analysis_id": analysis_id,
+                    "detail": delivery.detail,
+                },
+            )
 
         # THE CONFIGURATION IS ECHOED SO THE OPERATOR SEES WHAT THEY DID NOT CHOOSE. cadence and
         # rung were never theirs to set, and a response that omitted them would leave the console

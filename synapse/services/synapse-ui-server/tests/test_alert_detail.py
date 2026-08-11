@@ -312,6 +312,10 @@ def _client(monkeypatch: pytest.MonkeyPatch, *, listing: object, detail: object)
             jwt_issuer="https://x/",
             jwt_audience="a",
             expected_database="thalamus",
+            axon_sender_url="postgresql+psycopg://a@h/d",
+            axon_sendgrid_api_key="test-key",
+            axon_sendgrid_from_email="noreply@test.invalid",
+            axon_platform_oncall_email="oncall@test.invalid",
         )
     )
 
@@ -462,6 +466,10 @@ def test_every_route_in_this_service_requires_platform() -> None:
             jwt_issuer="https://x/",
             jwt_audience="a",
             expected_database="thalamus",
+            axon_sender_url="postgresql+psycopg://a@h/d",
+            axon_sendgrid_api_key="test-key",
+            axon_sendgrid_from_email="noreply@test.invalid",
+            axon_platform_oncall_email="oncall@test.invalid",
         )
     )
     unguarded: list[str] = []

@@ -59,6 +59,18 @@ class Config:
     jwt_issuer: str
     jwt_audience: str
     expected_database: str
+    # AXON (slice 1). Four values, and each is REQUIRED for the same reason the DSNs are: a
+    # revision missing any of them has a delivery plane that silently carries nothing, and a
+    # delivery plane nobody can tell is dead is worse than no delivery plane.
+    #
+    # Slice 5d is why this is not an optional block. It shipped an env var this module required
+    # and the Terraform module never wired, and the service refused to start behind a green
+    # apply for two days while staging kept serving the previous revision. The fix was the
+    # wiring, not a softer requirement.
+    axon_sender_url: str
+    axon_sendgrid_api_key: str
+    axon_sendgrid_from_email: str
+    axon_platform_oncall_email: str
 
     @property
     def jwks_url(self) -> str:
@@ -88,6 +100,20 @@ def load_config() -> Config:
         "/api/v1/me/can-do. No trailing slash",
         "SYNAPSE_JWT_ISSUER": "the Auth0 issuer, e.g. https://<tenant>.auth0.com/",
         "SYNAPSE_JWT_AUDIENCE": "the API identifier this service accepts tokens for",
+        "AXON_SENDER_URL": "the axon_sender DSN: INSERT on axon.platform_deliveries and "
+        "NOTHING else. No SELECT anywhere, which is why the write path mints its own id and "
+        "uses neither RETURNING nor ON CONFLICT",
+        "AXON_SENDGRID_API_KEY": "Sevyn8's own SendGrid API key, for Sevyn8's own internal "
+        "traffic. NOT a tenant credential: tenant traffic is sent by the TENANT under its own "
+        "account, and none of that exists yet",
+        "AXON_SENDGRID_FROM_EMAIL": "the from-address. It MUST be a SendGrid-VERIFIED sender "
+        "on the account or every send is refused per message, at runtime, in a way that reads "
+        "like a provider outage",
+        "AXON_PLATFORM_ONCALL_EMAIL": "where internal platform alerts go. A LIST, NOT A "
+        "PERSON: a personal address breaks when one of three people is away. Same argument as "
+        "monitoring-alerts' alert_email, which this deliberately does not reuse - that module "
+        "carries facts about PROCESSES and stays outside the system it watches; Axon carries "
+        "facts about the DOMAIN",
     }
     found = {name: os.environ.get(name) for name in wanted}
     missing = sorted(name for name, value in found.items() if not value)
@@ -128,6 +154,10 @@ def load_config() -> Config:
         # into terraform and a trailing slash would produce "…//api/v1/me/can-do", which Cloud
         # Run answers with a 404 that reads like a missing endpoint rather than a typo.
         cm_api_base_url=str(found["CM_API_BASE_URL"]).rstrip("/"),
+        axon_sender_url=str(found["AXON_SENDER_URL"]),
+        axon_sendgrid_api_key=str(found["AXON_SENDGRID_API_KEY"]),
+        axon_sendgrid_from_email=str(found["AXON_SENDGRID_FROM_EMAIL"]),
+        axon_platform_oncall_email=str(found["AXON_PLATFORM_ONCALL_EMAIL"]),
         jwt_issuer=str(found["SYNAPSE_JWT_ISSUER"]),
         jwt_audience=str(found["SYNAPSE_JWT_AUDIENCE"]),
         # dis-rls refuses any database but its expected one, defaulting to the pre-consolidation

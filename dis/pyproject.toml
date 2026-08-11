@@ -97,6 +97,9 @@ dev = [
   # Synapse's read-only BFF (slice 8a). Installed editable here so the offline
   # suite, mypy and import-linter see it; it is deployed as its own image.
   "synapse-ui-server",
+  # Axon (slice 1). Installed editable so the offline suite and mypy see it; it has no image
+  # of its own yet, because slice 1's only producer is the BFF and the send is in-process.
+  "thalamus-axon",
 
   # Connectors (repo-root siblings) join the workspace so uv sync installs them
   # editable alongside the dis packages they reuse.
@@ -401,6 +404,12 @@ members = [
   # workspace registration that adding synapse itself required: uv resolves
   # members from this list, so an unregistered member cannot be built at all.
   "../synapse/services/synapse-ui-server",
+  # Axon - the communications and delivery plane. A PEER of dis/ and of synapse/ (its own
+  # deploy, its own alembic chain, its own version table), joined here so it resolves dis-rls
+  # and dis-core as workspace members and so synapse-ui-server can depend on it as a LIBRARY.
+  # The library/service line is the one that matters: synapse-ui-server importing axon is fine;
+  # importing a deployable service would not be.
+  "../axon",
 ]
 
 [tool.uv.sources]
@@ -432,3 +441,6 @@ thalamus-synapse = { workspace = true }
 # thalamus-synapse / dis-rls / dis-core dependencies resolve from the workspace
 # rather than being sought on PyPI.
 synapse-ui-server = { workspace = true }
+# Axon (slice 1). Registered as a member above; mapped here so its dis-rls / dis-core
+# dependencies resolve from the workspace rather than being sought on PyPI.
+thalamus-axon = { workspace = true }

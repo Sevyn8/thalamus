@@ -265,6 +265,27 @@ variable "clover_connector_image" {
   default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/clover-connector:v2"
 }
 
+variable "axon_platform_oncall_email" {
+  type = string
+
+  description = <<-EOT
+    AXON_PLATFORM_ONCALL_EMAIL - where Axon delivers internal platform events (Axon slice 1).
+
+    SEPARATE FROM var.alert_email ON PURPOSE, and it resolves to the same mailbox today. That is
+    not an oversight to be tidied away: monitoring-alerts is Cloud Monitoring detecting and
+    sending, which is what keeps it OUTSIDE the system it watches, and Axon is the platform
+    sending facts about its own domain. One variable would couple them, and the failure that
+    couples them is the one where Axon is down and the notification about it goes through Axon.
+
+    THE SHAPE IS STILL WRONG FOR THE SAME REASON alert_email's is, and it carries the same
+    reason: a personal address stops being read the moment that person is away, and silently
+    becomes the wrong destination as soon as the team grows. What replaces it is a Workspace
+    group containing all three founders, and that fixes both variables in one act.
+  EOT
+
+  default = "amit@sevyn8.com"
+}
+
 variable "alert_email" {
   type = string
 

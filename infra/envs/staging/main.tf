@@ -197,6 +197,17 @@ module "synapse_ui_server" {
   # reference also gives terraform the edge, so CM exists before the revision that
   # points at it.
   cm_api_base_url = module.cm_service.service_url
+
+  # AXON (slice 1). This service is the delivery plane's first PRODUCER: the enable route hands
+  # the provisioning event to Axon, which carries it to on-call and writes its own ledger row.
+  #
+  # THE ON-CALL ADDRESS IS DELIBERATELY NOT var.alert_email. That variable belongs to
+  # monitoring-alerts, which carries facts about PROCESSES and is detected and sent by Cloud
+  # Monitoring, outside the system it watches. Axon carries facts about the DOMAIN. Sharing one
+  # variable would couple the two and make it one edit away from the alert that Axon is down
+  # being delivered by Axon. The two may resolve to the same inbox and must not be the same
+  # variable; the duplication is the point.
+  axon_platform_oncall_email = var.axon_platform_oncall_email
 }
 
 module "cm_frontend_service" {
@@ -696,6 +707,30 @@ module "migrate_synapse_job" {
   project_id       = var.project_id
   region           = var.region
   image            = var.synapse_orchestrator_image
+  vpc_connector_id = module.network.vpc_connector_id
+}
+
+# --- migrate-axon: the way Axon's chain reaches this database (Axon slice 1) ---
+#
+# SHIPPED WITH THE MODULE'S FIRST SLICE RATHER THAN AFTER IT, and that is the whole point. Both
+# jobs above were written to close an absence that had already cost something: DIS's chain
+# reached this database by hand for nineteen revisions, and how Synapse's first three arrived is
+# recorded nowhere. Adding a third chain with no mechanism, to save copying a module, would make
+# a standing HIGH finding true of one more plane.
+#
+# THE IMAGE IS THE BFF'S, not an Axon image, because Axon has none: slice 1 gives it no server.
+# synapse-ui-server's Dockerfile COPYs the whole axon/ directory, chain and DDL included, and
+# this job runs alembic out of it with the CMD overridden.
+#
+# THE MANUAL PREREQUISITES ARE ORDERED AND THE ORDER BITES. CREATE ROLE axon_sender must happen
+# BEFORE the first execution, because 0001 grants USAGE on the schema to it and a missing role
+# fails the migration itself. Then this job. Then 06_axon_sender_grant.sql as the schema owner.
+module "migrate_axon_job" {
+  source = "../../modules/cloud-run-job-migrate-axon"
+
+  project_id       = var.project_id
+  region           = var.region
+  image            = var.synapse_ui_server_image
   vpc_connector_id = module.network.vpc_connector_id
 }
 

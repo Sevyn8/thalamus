@@ -25,6 +25,7 @@ from uuid import UUID
 
 import httpx
 import pytest
+from axon import Channel, DeliveryState, SendOutcome
 from synapse_ui_server import main as main_module
 from synapse_ui_server import provision as provision_module
 from synapse_ui_server import reads
@@ -38,6 +39,11 @@ from synapse_ui_server.timezones import OfferedZones
 TENANT = UUID("019fb16b-e402-7dce-b026-6fa9f4919242")
 OPERATOR = Identity(subject="auth0|operator", user_type=UserType.PLATFORM, tenant_id=None)
 
+# The default delivery outcome for every test that is not about delivery. A module-level
+# constant rather than a call in a default argument: SendOutcome is frozen, so one instance is
+# correct, and ruff's B008 refuses the call form for the mutable-default class of bug.
+_ACCEPTED_AND_RECORDED = SendOutcome(state=DeliveryState.ACCEPTED, recorded=True)
+
 _CONFIG = Config(
     reader_url="postgresql+psycopg://r@h/d",
     lifecycle_url="postgresql+psycopg://l@h/d",
@@ -46,6 +52,10 @@ _CONFIG = Config(
     jwt_issuer="https://x/",
     jwt_audience="a",
     expected_database="thalamus",
+    axon_sender_url="postgresql+psycopg://a@h/d",
+    axon_sendgrid_api_key="test-key",
+    axon_sendgrid_from_email="noreply@test.invalid",
+    axon_platform_oncall_email="oncall@test.invalid",
 )
 
 
@@ -103,12 +113,35 @@ def gated_app(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
         outcome: EnableOutcome | Exception | None = None,
         offered: tuple[str, ...] = ("Asia/Kolkata",),
         source: str = "intersection",
+        # What Axon's send returns, or raises. Defaults to the accepted-and-recorded case so
+        # every test that is not about delivery is unaffected by it.
+        axon_outcome: SendOutcome | Exception = _ACCEPTED_AND_RECORDED,
     ) -> tuple[httpx.AsyncClient, list[dict[str, Any]]]:
         app = create_app(_CONFIG)
         # NO LIFESPAN, so nothing tries to open a pool. The handlers only ever pass these to the
         # two functions stubbed below, which ignore them.
         app.state.engine = object()
         app.state.provision_engine = object()
+        # AXON (slice 1). The enable route hands the provisioning event to the delivery plane
+        # after recording it. These three are what the lifespan would have built.
+        #
+        # THE SEND ITSELF IS STUBBED AT main_module, which is the name the ROUTE calls. A stub
+        # patched at axon.send would pass against a route that had stopped calling it, which is
+        # the vacuity trap every fixture in this suite already names. Axon's own behaviour is
+        # tested in axon/tests; these tests are about the three enablement states.
+        app.state.axon_engine = object()
+        app.state.axon_adapter = object()
+        app.state.axon_oncall_email = "oncall@test.invalid"
+
+        sends: list[dict[str, Any]] = []
+
+        async def fake_send(**kwargs: Any) -> SendOutcome:
+            sends.append(kwargs)
+            if isinstance(axon_outcome, Exception):
+                raise axon_outcome
+            return axon_outcome
+
+        monkeypatch.setattr(main_module, "send_platform", fake_send)
         # THE OFFERED SET, which the lifespan would normally compute against the real database.
         # A REAL OfferedZones rather than a stub, so the route exercises the real `offers`; a
         # duck-typed fake could answer True to everything and every refusal test would pass
@@ -141,6 +174,9 @@ def gated_app(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
         monkeypatch.setattr(reads, "tenant_detail", fake_tenant_detail)
         monkeypatch.setattr(main_module, "enable_analysis", fake_enable)
 
+        # `sends` is attached rather than returned, so every existing call site keeps unpacking
+        # a two-tuple and only the tests that care about delivery reach for it.
+        app.state.axon_sends_for_test = sends
         return (
             httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://bff"),
             calls,
@@ -285,6 +321,116 @@ async def test_a_duplicate_at_the_write_is_200_and_says_so(gated_app) -> None:  
     assert "WROTE NOTHING" in body["warning"]
     assert "TIMEZONE YOU CHOSE WAS NOT APPLIED" in body["warning"]
     assert len(calls) == 1, "the write was not attempted; this path is only reachable through it"
+
+
+# ---------------------------------------------------------------------------
+# AXON (slice 1): the enable route is the delivery plane's first producer
+# ---------------------------------------------------------------------------
+
+
+async def test_a_successful_enable_hands_the_event_to_axon(gated_app) -> None:  # type: ignore[no-untyped-def]
+    """THE PRODUCER IS WIRED, asserted on what Axon was actually asked to send.
+
+    THE SUBJECT IS AN OPAQUE PAIR, NOT A FOREIGN KEY, and that is checked here rather than left
+    to the schema: (tenant, analysis) is what synapse.provision is keyed on and what a reader
+    would go looking for, and it travels as text so Axon never needs to know Synapse exists.
+    """
+    client, _ = gated_app(
+        detail=_detail(),
+        outcome=EnableOutcome(
+            analysis_id="dead_stock",
+            tenant_name="TestCo",
+            canonical_positions=15,
+            warning=None,
+            already_provisioned=False,
+        ),
+    )
+    async with client:
+        response = await client.post(_url(), json={"timezone": "Asia/Kolkata"})
+        sends = client._transport.app.state.axon_sends_for_test
+
+    assert response.status_code == 201
+    assert len(sends) == 1, "the enable did not reach the delivery plane"
+    sent = sends[0]
+    assert sent["notification_class"] == "synapse.provision.enabled"
+    assert sent["subject_kind"] == "synapse.provision"
+    assert sent["subject_id"] == f"{TENANT}:dead_stock"
+    assert sent["actor_subject"] == OPERATOR.subject
+    assert sent["message"].recipient == "oncall@test.invalid"
+    assert sent["message"].channel is Channel.EMAIL
+
+
+async def test_a_send_failure_does_not_fail_the_enable(gated_app) -> None:  # type: ignore[no-untyped-def]
+    """THE COUPLING RULE, AND IT IS THE ONE THAT MATTERS MOST IN THIS PAIRING.
+
+    The provision row is already committed when Axon is called: enable_analysis's transaction
+    closed when it returned. An email that did not go out must not undo an enablement, and a
+    response that turned 201 into a 500 would be reporting the delivery's failure as the
+    enable's.
+
+    ASSERTED ON A RETURNED FAILURE, not on an exception, because send_platform is contracted
+    never to raise. The next test covers the case where it breaks that contract anyway.
+    """
+    client, _ = gated_app(
+        detail=_detail(),
+        outcome=EnableOutcome(
+            analysis_id="dead_stock",
+            tenant_name="TestCo",
+            canonical_positions=15,
+            warning=None,
+            already_provisioned=False,
+        ),
+        axon_outcome=SendOutcome(state=DeliveryState.FAILED, recorded=True, detail="provider said 403"),
+    )
+    async with client:
+        response = await client.post(_url(), json={"timezone": "Asia/Kolkata"})
+
+    assert response.status_code == 201, "a failed delivery failed the enable"
+    body = response.json()
+    assert body["analysis_id"] == "dead_stock"
+    # AND THE RESPONSE SAYS NOTHING ABOUT THE DELIVERY. The operator enabled a monitor; whether
+    # an internal notification reached on-call is not their business and not their failure.
+    assert "delivery" not in body
+    assert "axon" not in body
+
+
+async def test_an_axon_exception_still_does_not_fail_the_enable(gated_app) -> None:  # type: ignore[no-untyped-def]
+    """THE CONTRACT IS BELT AND BRACES HERE, deliberately.
+
+    send_platform is contracted never to raise and axon/tests pins that. This asserts the
+    ENABLE ROUTE survives it doing so anyway, because the contract is one refactor away from
+    being untrue and the cost of it becoming untrue is a failed enablement for an email.
+    """
+    client, _ = gated_app(
+        detail=_detail(),
+        outcome=EnableOutcome(
+            analysis_id="dead_stock",
+            tenant_name="TestCo",
+            canonical_positions=15,
+            warning=None,
+            already_provisioned=False,
+        ),
+        axon_outcome=RuntimeError("the delivery plane exploded"),
+    )
+    async with client:
+        response = await client.post(_url(), json={"timezone": "Asia/Kolkata"})
+
+    assert response.status_code == 201, (
+        "an exception escaping the delivery plane failed the enable. The provision row is "
+        "already committed at that point, so this turns a successful enablement into a 500."
+    )
+
+
+async def test_a_refused_enable_sends_nothing(gated_app) -> None:  # type: ignore[no-untyped-def]
+    """NOTHING HAPPENED, SO NOTHING IS DELIVERED. A 409 on an already-enabled pair wrote no row
+    and is not an event; mailing on-call about it would train them to ignore the channel."""
+    client, _ = gated_app(detail=_detail(analyses=(_active("dead_stock"),)))
+    async with client:
+        response = await client.post(_url(), json={"timezone": "Asia/Kolkata"})
+        sends = client._transport.app.state.axon_sends_for_test
+
+    assert response.status_code == 409
+    assert sends == []
 
 
 async def test_the_duplicate_is_not_logged_as_an_enablement() -> None:

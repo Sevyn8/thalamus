@@ -1,0 +1,238 @@
+-- ============================================================================
+-- axon_sender grants: the delivery plane's ONLY write credential (Axon slice 1).
+--
+-- THE FIFTH NARROW ROLE IN THIS ESTATE, and the fifth time the same argument has
+-- been made: what a process can do is bounded by its GRANT, not by its code path.
+--
+--   synapse_reader      SELECT on two canonical tables, identity_mirror, and
+--                       synapse.actions / provision / run / action_events.
+--   synapse_writer      the ORCHESTRATOR. INSERT on synapse.actions, the run
+--                       state machine, nothing on provision.
+--   synapse_lifecycle   the console's alert decisions. INSERT on
+--                       synapse.action_events and nothing else (slice 5d).
+--   synapse_provisioner enablement. INSERT on synapse.provision plus the two
+--                       SELECTs its pre-flight cannot run without (slice 5e).
+--   axon_sender         THIS FILE. One INSERT, on one table, and NO SELECT
+--                       ANYWHERE.
+--
+-- ----------------------------------------------------------------------------
+-- WHAT THIS ROLE HOLDS, STATED HONESTLY
+-- ----------------------------------------------------------------------------
+-- INSERT on axon.platform_deliveries. That is the whole list.
+--
+-- AND THIS TIME THE SHORT SENTENCE IS TRUE, which sql/05 could not say. That
+-- file wanted to say "INSERT on synapse.provision and nothing else" and could
+-- not, because its pre-flight had to read two tables in the same transaction as
+-- the write. Axon's send path reads NOTHING from the database, and the list
+-- below is the proof rather than the claim:
+--
+--   the recipient      configuration (AXON_PLATFORM_ONCALL_EMAIL), not a row
+--   the credential     an env-mounted Secret Manager version, not a row
+--   the from-address   configuration, not a row
+--   the delivery id    minted by the caller with new_uuid7, not a sequence and
+--                      not a DEFAULT
+--   the outcome        what the provider just answered
+--
+-- So there is no SELECT to grant, and the absence is a property of the design
+-- rather than an economy. A credential that cannot read cannot be made to leak a
+-- ledger of who was contacted about what.
+--
+-- ----------------------------------------------------------------------------
+-- NO RETURNING AND NO ON CONFLICT, AND SLICE 5e IS WHY THIS IS SAID HERE
+-- ----------------------------------------------------------------------------
+-- Both need SELECT. RETURNING needs it on the table; ON CONFLICT needs it on the
+-- ARBITER INDEX, which is the one that is not obvious and which cost slice 5e
+-- two days of every enable in production failing with
+-- `permission denied for table provision` behind a green apply.
+--
+-- The write path therefore mints its own id (so it never needs RETURNING) and
+-- has no idempotency mechanism at all (so it never needs ON CONFLICT). There is
+-- nothing to be idempotent against yet: the call is in-process and synchronous,
+-- once per producer event.
+--
+-- WHEN THE QUEUE ARRIVES, redelivery makes idempotency real and the obvious
+-- mechanism is ON CONFLICT on a natural key. IT WILL FAIL AGAINST THIS ROLE.
+-- The two answers that work are recorded in axon/src/axon/ledger.py's docstring:
+-- catch SQLSTATE 23505 matched together with the constraint name, or deduplicate
+-- before the write on a producer-supplied key. Whichever is chosen, choose it
+-- WITH its grant, in that slice, not afterwards.
+--
+-- ----------------------------------------------------------------------------
+-- NOTHING AT ALL ON axon.tenant_deliveries, AND THAT IS THE POINT
+-- ----------------------------------------------------------------------------
+-- The tenant ledger ships EMPTY and UNGRANTED. Nothing writes it in this slice:
+-- there is no address book, no tenant credential, no approved template and no
+-- adapter beyond email.
+--
+-- Its grant arrives with the first tenant send, and it arrives together with a
+-- session change, because the two are inseparable. That table's policy pins a
+-- WRITE to the session's tenant (USING carries the PLATFORM branch; WITH CHECK
+-- does not), so a tenant delivery must be written under
+-- rls_session(engine, tenant_id) and a PLATFORM session is REFUSED. Granting
+-- INSERT now would create a credential that can reach a table nothing has yet
+-- worked out how to open a session against.
+--
+-- ----------------------------------------------------------------------------
+-- RUN AS: THE OWNER OF THE axon SCHEMA
+-- ----------------------------------------------------------------------------
+--   STAGING : `postgres` (Axon's Alembic runs as postgres, so it owns axon)
+--   LOCAL   : `ithina_dis_admin`
+--
+-- WHEN: after Axon's Alembic has reached 0001 (which creates the schema and both
+-- tables), and after the role exists. The role is created OUT OF BAND like
+-- synapse_lifecycle and synapse_provisioner, because a file in git that created
+-- a login role would put a password in git:
+--
+--     CREATE ROLE axon_sender WITH LOGIN NOSUPERUSER NOBYPASSRLS
+--         NOCREATEDB NOCREATEROLE PASSWORD '<from Secret Manager>';
+--     GRANT CONNECT ON DATABASE thalamus TO axon_sender;
+--
+-- THE ROLE MUST EXIST BEFORE THE MIGRATION, not before this file. 0001 grants
+-- USAGE on the schema to axon_sender, so a missing role fails the migration
+-- itself. That is sql/06's recorded ordering hazard in migration 0006's shape,
+-- and it is avoided by sequence: role, then chain, then this file.
+--
+-- NOBYPASSRLS IS NOT DECORATION even though the table this role writes has no
+-- RLS. axon.tenant_deliveries is FORCE ROW LEVEL SECURITY, this role will write
+-- it one slice from now, and dis-rls's first-use guard refuses a bypassing role
+-- on every engine it opens. Getting this wrong fails at the first request rather
+-- than silently.
+--
+-- THE INVOCATION:
+--
+--   psql "host=127.0.0.1 dbname=thalamus user=postgres" \
+--     -f 06_axon_sender_grant.sql
+--
+-- Idempotent: GRANT and REVOKE are repeatable.
+--
+-- ----------------------------------------------------------------------------
+-- THIS FILE REVOKES FROM ONE ROLE ONLY, AND THAT IS DELIBERATE
+-- ----------------------------------------------------------------------------
+-- sql/04 carries `REVOKE ALL ON ALL TABLES IN SCHEMA synapse FROM
+-- synapse_reader`, which twice stripped privileges a later migration had
+-- granted. Every REVOKE below names axon_sender and nothing else, so this file
+-- cannot strip anything from any other role whatever a future migration grants.
+-- Same shape and same reason as sql/05.
+-- ============================================================================
+
+
+-- ---------- CONNECT, portable across the local and shared database names -----
+SELECT 'GRANT CONNECT ON DATABASE ' || quote_ident(current_database())
+       || ' TO axon_sender'
+\gexec
+
+
+-- ---------- Narrow first ------------------------------------------------------
+--
+-- The only statements here that can REMOVE a privilege somebody added by hand.
+-- Scoped to this role in the one schema it touches, so re-running narrows it
+-- back to exactly the posture below and the verification block proves it did.
+REVOKE ALL ON ALL TABLES    IN SCHEMA axon FROM axon_sender;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA axon FROM axon_sender;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA axon FROM axon_sender;
+
+
+-- ---------- Schema usage ------------------------------------------------------
+-- ONE schema. The send path touches no other, which is what makes this role's
+-- blast radius a single table rather than a plane.
+GRANT USAGE ON SCHEMA axon TO axon_sender;
+
+
+-- ---------- The write: one table, one verb ------------------------------------
+-- No UPDATE, so a delivery's recorded outcome cannot be edited after the fact: a
+-- ledger that can be rewritten is not evidence of anything. That also means the
+-- inbound receipt slice CANNOT move a row from `accepted` to `delivered` with
+-- this role, which is correct and deliberate. That slice brings its own grant
+-- and the argument for it, in the open.
+--
+-- No DELETE, so a delivery cannot be removed.
+--
+-- No SELECT, and see the header: the send path performs ZERO reads, so this
+-- costs nothing and removes a whole class of exposure. Do NOT add it to make
+-- RETURNING or ON CONFLICT work; the header names what to do instead.
+GRANT INSERT ON axon.platform_deliveries TO axon_sender;
+
+
+-- ---------- Stated as SQL rather than as a comment, because a comment cannot
+-- ---------- be re-run --------------------------------------------------------
+--
+-- THE TENANT LEDGER IS NOT THIS ROLE'S, YET. Until a tenant send exists, this
+-- REVOKE is what makes "the platform sender cannot write tenant deliveries" a
+-- property of the database rather than of Axon's code. A future slice that
+-- builds tenant sending has to come here and argue with a line.
+REVOKE ALL ON axon.tenant_deliveries FROM axon_sender;
+
+
+-- ============================================================================
+-- VERIFY (run manually, as the schema owner. Each has a specific wrong answer)
+-- ============================================================================
+--
+-- 1. EXACTLY the intended grant for this role, and no more. ONE row.
+--
+--      SELECT table_schema, table_name, privilege_type
+--        FROM information_schema.role_table_grants
+--       WHERE grantee = 'axon_sender'
+--       ORDER BY 1, 2, 3;
+--      -> axon | platform_deliveries | INSERT
+--
+--    A SECOND ROW IS A FAULT, whatever it is. In particular:
+--      - axon | platform_deliveries | SELECT  means somebody reached for
+--        RETURNING or ON CONFLICT. Read the header: neither is needed and both
+--        cost this role its read-nothing posture.
+--      - axon | tenant_deliveries | anything  means the tenant ledger was
+--        granted ahead of the session discipline its policy requires.
+--
+-- 2. THE ROLE CANNOT READ WHAT IT WRITES. As axon_sender:
+--
+--      SELECT count(*) FROM axon.platform_deliveries;   -- permission denied
+--
+--    `permission denied`, NOT zero rows. A silent 0 would mean the role holds
+--    SELECT and the table is simply empty, which is verify 1's fault wearing a
+--    disguise.
+--
+-- 3. THE ROLE CANNOT UNDO ITS OWN WRITE. As axon_sender, against a row that
+--    exists:
+--
+--      UPDATE axon.platform_deliveries SET state = 'failed'; -- permission denied
+--      DELETE FROM axon.platform_deliveries;                 -- permission denied
+--
+-- 4. The role cannot bypass RLS. It writes a table with none today and a table
+--    with FORCE RLS one slice from now.
+--
+--      SELECT rolname, rolsuper, rolbypassrls FROM pg_roles
+--       WHERE rolname = 'axon_sender';
+--      -> f, f
+--
+-- 5. THE INSERT ACTUALLY WORKS, which is the pair a grant check alone cannot
+--    prove. As axon_sender:
+--
+--      INSERT INTO axon.platform_deliveries
+--        (delivery_id, created_at, channel, notification_class, subject_kind,
+--         subject_id, recipient, state, provider)
+--      VALUES (public.uuidv7(), now(), 'email', 'verify.probe', 'verify',
+--              'manual', 'ops@sevyn8.com', 'accepted', 'sendgrid');
+--      -- -> INSERT 0 1. Note this row is REAL and cannot be deleted by this
+--      --    role; delete it as the owner if you do not want it in the ledger.
+--
+-- 6. THE EMAIL-ONLY CHECK BITES. As axon_sender:
+--
+--      INSERT INTO axon.platform_deliveries
+--        (delivery_id, created_at, channel, notification_class, subject_kind,
+--         subject_id, recipient, state, provider)
+--      VALUES (public.uuidv7(), now(), 'whatsapp', 'verify.probe', 'verify',
+--              'manual', '+910000000000', 'accepted', 'meta');
+--      -- -> ERROR: new row violates check constraint
+--      --    "ck_platform_deliveries_email_only"
+--      -- Platform traffic has no WABA and no approved templates; those belong
+--      -- to a tenant. This is not a limitation to work around.
+--
+-- 7. THE TENANT LEDGER IS FORCE RLS AND THIS ROLE HOLDS NOTHING ON IT.
+--
+--      SELECT relrowsecurity, relforcerowsecurity FROM pg_class
+--       WHERE oid = 'axon.tenant_deliveries'::regclass;
+--      -> t, t
+--
+--      SELECT count(*) FROM information_schema.role_table_grants
+--       WHERE grantee = 'axon_sender' AND table_name = 'tenant_deliveries';
+--      -> 0
+-- ============================================================================

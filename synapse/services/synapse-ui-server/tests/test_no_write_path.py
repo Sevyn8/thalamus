@@ -94,7 +94,19 @@ def test_the_config_loads_with_both_write_dsns_and_no_writer(monkeypatch: pytest
 
 @pytest.mark.parametrize(
     "name",
-    ["SYNAPSE_LIFECYCLE_URL", "SYNAPSE_PROVISION_URL", "CM_API_BASE_URL"],
+    [
+        "SYNAPSE_LIFECYCLE_URL",
+        "SYNAPSE_PROVISION_URL",
+        "CM_API_BASE_URL",
+        # AXON's four (slice 1). Covered by the SAME test as the write DSNs deliberately: this
+        # test is the 5d guard, and 5d was an env var the module never wired sitting dead in
+        # staging for two days behind a green apply. A delivery plane that silently carries
+        # nothing is the same failure with a different blast radius.
+        "AXON_SENDER_URL",
+        "AXON_SENDGRID_API_KEY",
+        "AXON_SENDGRID_FROM_EMAIL",
+        "AXON_PLATFORM_ONCALL_EMAIL",
+    ],
 )
 def test_every_write_path_variable_is_required(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
     """A service that cannot write is not the goal any more — a service that SILENTLY cannot
@@ -130,6 +142,13 @@ def _base_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CM_API_BASE_URL", "https://cm.example.run.app")
     monkeypatch.setenv("SYNAPSE_JWT_ISSUER", "https://example.auth0.com/")
     monkeypatch.setenv("SYNAPSE_JWT_AUDIENCE", "https://api.example")
+    # AXON (slice 1). Four more required variables, and they are here rather than in a separate
+    # fixture because load_config reports EVERY missing name at once: a partial base env would
+    # make every test below fail on Axon's names instead of on the thing it is testing.
+    monkeypatch.setenv("AXON_SENDER_URL", "postgresql+psycopg://a@localhost/db")
+    monkeypatch.setenv("AXON_SENDGRID_API_KEY", "test-key")
+    monkeypatch.setenv("AXON_SENDGRID_FROM_EMAIL", "noreply@example.invalid")
+    monkeypatch.setenv("AXON_PLATFORM_ONCALL_EMAIL", "oncall@example.invalid")
 
 
 def test_missing_variables_are_reported_together(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -349,6 +368,10 @@ def test_the_service_exposes_no_schema_endpoints() -> None:
             jwt_issuer="https://x/",
             jwt_audience="a",
             expected_database="thalamus",
+            axon_sender_url="postgresql+psycopg://a@h/d",
+            axon_sendgrid_api_key="test-key",
+            axon_sendgrid_from_email="noreply@test.invalid",
+            axon_platform_oncall_email="oncall@test.invalid",
         )
     )
     paths = {route.path for route in app.routes if hasattr(route, "path")}

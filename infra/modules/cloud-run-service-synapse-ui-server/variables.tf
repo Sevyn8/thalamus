@@ -54,6 +54,58 @@ variable "secret_provisioner_url" {
   default     = "synapse-provisioner-database-url"
 }
 
+variable "secret_axon_sender_url" {
+  type        = string
+  description = "Secret Manager id of the axon_sender DSN (Axon slice 1). INSERT on axon.platform_deliveries and NOTHING else: no SELECT anywhere, nothing at all on axon.tenant_deliveries. The absence of SELECT is why the send path mints its own UUIDv7 and uses neither RETURNING nor ON CONFLICT, both of which need it. Created OUT OF BAND like the three Synapse DSNs; grants come from infra/db-setup/sql/06_axon_sender_grant.sql. The service refuses to start without it."
+  default     = "axon-sender-database-url"
+}
+
+variable "secret_axon_sendgrid_api_key" {
+  type        = string
+  description = "Secret Manager id of SEVYN8'S OWN SendGrid API key (Axon slice 1). NOT a tenant credential: for tenant traffic the TENANT is the sender, under its own WhatsApp Business account, its own DLT registration and its own credentials, and none of that exists yet. A SEPARATE secret from cm-sendgrid-api-key rather than a shared grant on CM's: a secret named for one module and read by another is a name that lies, and a separately revocable key means an Axon compromise does not force a rotation of Customer Master's invitation flow. Created OUT OF BAND."
+  default     = "axon-sendgrid-api-key"
+}
+
+variable "axon_sendgrid_from_email" {
+  type        = string
+  description = "AXON_SENDGRID_FROM_EMAIL - the from-address on Sevyn8's own outbound mail. It MUST be a SendGrid-VERIFIED sender on the account: SendGrid refuses an unverified sender per message, at runtime, which reads like a provider outage rather than a configuration error. Not a secret, so it is a plain variable rather than a Secret Manager reference."
+  default     = "noreply@sevyn8.com"
+
+  validation {
+    condition     = can(regex("^[^@]+@[^@]+\\.[^@]+$", var.axon_sendgrid_from_email))
+    error_message = "axon_sendgrid_from_email must be a single email address."
+  }
+}
+
+variable "axon_platform_oncall_email" {
+  type        = string
+  description = <<-EOT
+    AXON_PLATFORM_ONCALL_EMAIL - where Axon delivers internal platform events.
+
+    A LIST, NOT A PERSON: a personal address breaks when one of three people is away, and needs
+    changing when the team grows. Same argument as monitoring-alerts' alert_email.
+
+    DELIBERATELY NOT THE SAME VARIABLE as that module's. monitoring-alerts carries facts about
+    PROCESSES (a job died, a queue is stuck) and it is Cloud Monitoring that both detects and
+    sends, which is what keeps it outside the system it watches. Axon carries facts about the
+    DOMAIN. Wiring one to the other would make the alert that Axon is down be delivered by Axon.
+    The two may resolve to the same inbox; they must not resolve to the same variable.
+
+    NOT DEFAULTED, deliberately, for the reason monitoring-alerts states: a default would let this
+    apply with a plausible-looking address nobody reads.
+  EOT
+
+  validation {
+    condition     = can(regex("^[^@]+@[^@]+\\.[^@]+$", var.axon_platform_oncall_email))
+    error_message = "axon_platform_oncall_email must be a single email address."
+  }
+
+  validation {
+    condition     = !can(regex("(?i)(example|test|changeme|todo|invalid)", var.axon_platform_oncall_email))
+    error_message = "axon_platform_oncall_email looks like a placeholder. A delivery nobody reads is worse than none."
+  }
+}
+
 variable "cm_api_base_url" {
   type        = string
   description = "CM_API_BASE_URL - Customer Master's origin, called SERVER-SIDE by the provisioning gate. Provisioning is authorized by asking CM's /api/v1/me/can-do whether the caller holds ADMIN.TENANTS.CONFIGURE.GLOBAL, forwarding the caller's own Auth0 token; the gate denies on any failure including a CM outage. Synapse defines no permission of its own and holds no copy of CM's model. Pass module.cm_service.service_url by reference rather than a copied literal, so the two cannot drift. No trailing slash: config.py strips one anyway, because a doubled slash produces a 404 that reads like a missing endpoint. The service refuses to start without it, because a service that cannot evaluate its own authorization must not serve the route."

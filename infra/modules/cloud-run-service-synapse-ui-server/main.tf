@@ -128,6 +128,57 @@ resource "google_secret_manager_secret_iam_member" "provisioner_url" {
   member    = "serviceAccount:${google_service_account.synapse_ui_server.email}"
 }
 
+# =============================================================================
+# AXON (slice 1): TWO SECRETS, AND ALL FOUR PIECES OF EACH LAND IN THIS SLICE.
+# =============================================================================
+# The data source, the IAM member, the env block and the depends_on entry. Slice
+# 5d is the reason that sentence is written out rather than assumed: it shipped
+# the config change and the env var and NOT the wiring, and the write path sat
+# dead in staging for two days behind a green apply. A module that never
+# references a variable cannot fail on it, and a plan cannot say "the container
+# needs an env var you did not write".
+#
+# The depends_on half is checked rather than remembered:
+# tests/test_deployment_posture.py::test_every_secret_iam_member_is_listed_in_the_services_depends_on
+# PARSES this file, so both grants below are covered the moment they land.
+
+# The axon_sender DSN. INSERT on axon.platform_deliveries and nothing else: no
+# SELECT anywhere, nothing on axon.tenant_deliveries. Created out of band like
+# the three Synapse DSNs.
+data "google_secret_manager_secret" "axon_sender_url" {
+  project   = var.project_id
+  secret_id = var.secret_axon_sender_url
+}
+
+resource "google_secret_manager_secret_iam_member" "axon_sender_url" {
+  project   = var.project_id
+  secret_id = data.google_secret_manager_secret.axon_sender_url.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.synapse_ui_server.email}"
+}
+
+# SEVYN8'S OWN SendGrid key, for Sevyn8's own internal traffic. A SEPARATE secret
+# from cm-sendgrid-api-key rather than a shared grant on CM's: a secret named for
+# one module and read by another is a name that lies, and a separately revocable
+# key means an Axon compromise does not force a rotation of Customer Master's
+# invitation flow.
+#
+# THE EGRESS THIS NEEDS ALREADY EXISTS. vpc_access below is
+# PRIVATE_RANGES_ONLY, so SendGrid (public) leaves over the default internet path
+# rather than the connector. That is the same posture CM's module set for the
+# same reason, and it is why this slice adds no networking at all.
+data "google_secret_manager_secret" "axon_sendgrid_api_key" {
+  project   = var.project_id
+  secret_id = var.secret_axon_sendgrid_api_key
+}
+
+resource "google_secret_manager_secret_iam_member" "axon_sendgrid_api_key" {
+  project   = var.project_id
+  secret_id = data.google_secret_manager_secret.axon_sendgrid_api_key.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.synapse_ui_server.email}"
+}
+
 resource "google_cloud_run_v2_service" "synapse_ui_server" {
   deletion_protection = false
 
@@ -230,6 +281,8 @@ resource "google_cloud_run_v2_service" "synapse_ui_server" {
     google_secret_manager_secret_iam_member.reader_url,
     google_secret_manager_secret_iam_member.lifecycle_url,
     google_secret_manager_secret_iam_member.provisioner_url,
+    google_secret_manager_secret_iam_member.axon_sender_url,
+    google_secret_manager_secret_iam_member.axon_sendgrid_api_key,
   ]
 
   template {
@@ -324,6 +377,50 @@ resource "google_cloud_run_v2_service" "synapse_ui_server" {
             version = "latest"
           }
         }
+      }
+
+      # THE FOURTH DSN, AND IT IS NOT SYNAPSE'S (Axon slice 1). axon_sender holds
+      # INSERT on axon.platform_deliveries and nothing else: no SELECT anywhere,
+      # nothing on axon.tenant_deliveries. This service is Axon's first PRODUCER,
+      # so it carries Axon's write credential the way it carries Synapse's two.
+      #
+      # The service refuses to start without it, like the three above.
+      env {
+        name = "AXON_SENDER_URL"
+        value_source {
+          secret_key_ref {
+            secret  = data.google_secret_manager_secret.axon_sender_url.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      # SEVYN8'S OWN SendGrid key. Not a tenant credential: tenant traffic is sent
+      # BY the tenant, under its own account, and none of that exists yet.
+      env {
+        name = "AXON_SENDGRID_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = data.google_secret_manager_secret.axon_sendgrid_api_key.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      # NOT CREDENTIALS, AND STILL REQUIRED. The from-address must be a
+      # SendGrid-VERIFIED sender or every send is refused per message at runtime;
+      # the on-call address is where internal platform events land. Both are
+      # plain values because neither is secret, and both are required because a
+      # revision missing either has a delivery plane that carries nothing while
+      # looking healthy.
+      env {
+        name  = "AXON_SENDGRID_FROM_EMAIL"
+        value = var.axon_sendgrid_from_email
+      }
+
+      env {
+        name  = "AXON_PLATFORM_ONCALL_EMAIL"
+        value = var.axon_platform_oncall_email
       }
 
       # NOT A CREDENTIAL, AND STILL REQUIRED (slice 5e). Provisioning is gated on

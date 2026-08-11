@@ -75,6 +75,18 @@ COPY synapse/pyproject.toml /synapse/pyproject.toml
 COPY synapse/src /synapse/src
 COPY synapse/services/synapse-ui-server /synapse/services/synapse-ui-server
 
+# AXON, at /axon so the workspace's ../axon member source resolves. Slice 1 makes this
+# service Axon's first PRODUCER, so axon joins the closure the same way thalamus-synapse
+# already has. `uv tree --package synapse-ui-server` now reaches six workspace members
+# rather than five; a missing source here fails `uv sync --frozen` at build time, which is
+# the intended place to find out.
+#
+# THE ALEMBIC CHAIN AND THE DDL COME WITH IT, deliberately: this image is also what
+# migrate-axon runs, exactly as the orchestrator's image is what migrate-synapse runs. That
+# is migrate-cm's D6 argument (one image, not two) applied a third time, and it is why the
+# COPY is the whole axon/ directory rather than axon/src alone.
+COPY axon /axon
+
 # The dis workspace skeleton: root project plus the three libs this closure reaches.
 COPY dis/pyproject.toml dis/uv.lock ./
 COPY dis/libs/dis-core /app/libs/dis-core
@@ -142,6 +154,10 @@ RUN SYNAPSE_READER_URL="postgresql+psycopg://u@h/d" \
     CM_API_BASE_URL="https://build.invalid" \
     SYNAPSE_JWT_ISSUER="https://build.invalid/" \
     SYNAPSE_JWT_AUDIENCE="build-check" \
+    AXON_SENDER_URL="postgresql+psycopg://a@h/d" \
+    AXON_SENDGRID_API_KEY="build-check" \
+    AXON_SENDGRID_FROM_EMAIL="noreply@build.invalid" \
+    AXON_PLATFORM_ONCALL_EMAIL="oncall@build.invalid" \
     python -c "\
 import os; \
 from uvicorn.importer import import_from_string; \
