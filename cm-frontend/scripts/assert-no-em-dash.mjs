@@ -35,6 +35,13 @@ const ROOTS = [
   "components/synapse",
   "lib/synapse",
   "app/(authenticated)/superadmin/synapse",
+  // AXON (slice 3). Its console surface renders through the same primitives and is
+  // read by the same operators, so it is governed by the same rule. Added WITH the
+  // surface rather than after it: a root list that lags the directories it is meant
+  // to cover reports zero and means nothing, which is the exact blindness the
+  // header above records.
+  "lib/axon",
+  "app/(authenticated)/superadmin/axon",
 ];
 
 function walk(dir) {
@@ -61,19 +68,36 @@ function stripComments(source) {
   return lines.map((line) => line.replace(/\/\/.*$/, ""));
 }
 
+// A VACUITY GUARD, PER ROOT. It used to swallow a walk failure into an empty array and then
+// check only the TOTAL, which is a guard that a large root can carry for a small one: adding
+// "lib/axon" to the list and misspelling it would have left the total comfortably above the
+// floor while that directory was covered by nothing at all. Every root must resolve and every
+// root must contain at least one file, so the list cannot silently outrun what it walks.
 const files = ROOTS.flatMap((root) => {
+  let found;
   try {
-    return walk(root);
-  } catch {
-    return [];
+    found = walk(root);
+  } catch (cause) {
+    console.error(
+      `assert-no-em-dash: cannot walk ${root} (${String(cause)}). A root in the list that does ` +
+        `not resolve covers nothing, and the total below would hide that.`,
+    );
+    process.exit(1);
   }
+  if (found.length === 0) {
+    console.error(
+      `assert-no-em-dash: ${root} contains no .ts or .tsx files. Either it moved or the rule ` +
+        `has stopped covering it. Passing here would prove nothing.`,
+    );
+    process.exit(1);
+  }
+  return found;
 });
 
-// A VACUITY GUARD. If the globs stop matching — a directory renamed, the script run from the
-// wrong cwd — every check below passes trivially. Absence is a failure, not a pass.
+// AND THE TOTAL, which catches the whole list being run from the wrong directory.
 if (files.length < 8) {
   console.error(
-    `assert-no-em-dash: found only ${files.length} Synapse source files, which means the ` +
+    `assert-no-em-dash: found only ${files.length} console source files, which means the ` +
       `paths have moved or this ran from the wrong directory. Passing here would prove nothing.`,
   );
   process.exit(1);
@@ -100,4 +124,4 @@ if (offenders.length > 0) {
   process.exit(1);
 }
 
-console.log(`assert-no-em-dash: ${files.length} Synapse source files carry no rendered em-dash`);
+console.log(`assert-no-em-dash: ${files.length} console source files carry no rendered em-dash`);

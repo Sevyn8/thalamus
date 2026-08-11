@@ -36,6 +36,12 @@ class Config:
                            SELECTs its pre-flight cannot run without (identity_mirror.tenants and
                            canonical.store_sku_current_position). Enablement. Slice 5e.
 
+    AND TWO AXON CREDENTIALS, WHICH ARE A PAIR RATHER THAN A WIDENING. ``axon_sender_url`` holds
+    INSERT on ``axon.platform_deliveries`` and no SELECT anywhere; ``axon_reader_url`` holds
+    SELECT on both ledgers and no write verb anywhere. Splitting them is what keeps the delivery
+    ledger append-only from BOTH sides: the process that writes it cannot read it back, and the
+    process that displays it cannot edit what it displays.
+
     NEITHER CAN DO THE OTHER'S JOB, and neither can UPDATE or DELETE anything. The provisioner
     in particular has no UPDATE on its own table, so the console cannot disable a tenant or edit
     a timezone: enablement is one direction at the database, not by convention. See
@@ -71,6 +77,15 @@ class Config:
     axon_sendgrid_api_key: str
     axon_sendgrid_from_email: str
     axon_platform_oncall_email: str
+    # AXON slice 3. The delivery ledger's READ credential, and the pair completes the design:
+    # ``axon_sender_url`` can write one table and read nothing; this one can read both ledgers
+    # and write nothing. Neither can do the other's job, and that is a fact about the GRANT.
+    #
+    # A SEPARATE DSN RATHER THAN A SECOND USE OF THE SENDER'S, which would have been one line
+    # less. The sender deliberately holds no SELECT anywhere, so reusing it would mean granting
+    # it SELECT, which would hand the send path the ability to read a ledger of who was
+    # contacted about what. The console needs the read; the sender must not have it.
+    axon_reader_url: str
 
     @property
     def jwks_url(self) -> str:
@@ -109,6 +124,10 @@ def load_config() -> Config:
         "AXON_SENDGRID_FROM_EMAIL": "the from-address. It MUST be a SendGrid-VERIFIED sender "
         "on the account or every send is refused per message, at runtime, in a way that reads "
         "like a provider outage",
+        "AXON_READER_URL": "the axon_reader DSN: SELECT on axon.platform_deliveries and "
+        "axon.tenant_deliveries, and NO write verb anywhere. Not the sender's DSN: that role "
+        "holds no SELECT, deliberately, and giving it one would let the send path read the "
+        "ledger it writes",
         "AXON_PLATFORM_ONCALL_EMAIL": "where internal platform alerts go. A LIST, NOT A "
         "PERSON: a personal address breaks when one of three people is away. Same argument as "
         "monitoring-alerts' alert_email, which this deliberately does not reuse - that module "
@@ -158,6 +177,7 @@ def load_config() -> Config:
         axon_sendgrid_api_key=str(found["AXON_SENDGRID_API_KEY"]),
         axon_sendgrid_from_email=str(found["AXON_SENDGRID_FROM_EMAIL"]),
         axon_platform_oncall_email=str(found["AXON_PLATFORM_ONCALL_EMAIL"]),
+        axon_reader_url=str(found["AXON_READER_URL"]),
         jwt_issuer=str(found["SYNAPSE_JWT_ISSUER"]),
         jwt_audience=str(found["SYNAPSE_JWT_AUDIENCE"]),
         # dis-rls refuses any database but its expected one, defaulting to the pre-consolidation

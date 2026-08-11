@@ -232,17 +232,31 @@ export function Breadcrumb({
 // is a server component so the BFF stays unreachable from a browser. Each page
 // naming itself is also how Breadcrumb already works here.
 //
-// FIVE ENTRIES, NOT SEVEN, AND BOTH ABSENCES ARE DELIBERATE. "Monitors" would
+// SIX ENTRIES, NOT EIGHT, AND BOTH ABSENCES ARE DELIBERATE. "Monitors" would
 // point at a catalog page that does not exist yet, and "Tenants" at a roster
 // that lives on Overview. A nav entry pointing at nothing is a dead control, and
-// two entries pointing at one page is worse than five honest ones. Both arrive
+// two entries pointing at one page is worse than six honest ones. Both arrive
 // with their pages.
+//
+// "Deliveries" IS THE SIXTH AND IT IS AXON'S, NOT SYNAPSE'S, which is why it sits
+// in the Platform group beside Capabilities and Analyses. Axon is a PEER of
+// Synapse rather than part of it: it carries the platform's outbound
+// communications, and Synapse's enable route is only its first producer. Putting
+// it under the Synapse heading would say the delivery ledger belongs to the
+// monitoring plane, which is the misreading that would make somebody look for
+// tenant messaging inside Synapse later.
+//
+// IT LIVES ON THIS STRIP AT ALL because the strip is the console's section rail
+// and the ledger is a console surface. When Axon grows surfaces of its own (an
+// address book, templates, a queue) they get their own rail and this entry moves
+// to it. One entry does not justify a second rail.
 export type SynapseSection =
   | "overview"
   | "alerts"
   | "runs"
   | "capabilities"
-  | "analyses";
+  | "analyses"
+  | "deliveries";
 
 const SECTIONS: ReadonlyArray<{ key: SynapseSection; label: string; href: string; group: string }> = [
   { key: "overview", label: "Overview", href: "/superadmin/synapse", group: "Synapse" },
@@ -255,6 +269,12 @@ const SECTIONS: ReadonlyArray<{ key: SynapseSection; label: string; href: string
     group: "Platform",
   },
   { key: "analyses", label: "Analyses", href: "/superadmin/synapse/analyses", group: "Platform" },
+  {
+    key: "deliveries",
+    label: "Deliveries",
+    href: "/superadmin/axon/deliveries",
+    group: "Platform",
+  },
 ];
 
 export function SubNav({ current }: { current: SynapseSection }) {

@@ -43,6 +43,12 @@ const MUST_BE_DYNAMIC = [
   // concrete id) because that is the key the build emits.
   "superadmin/synapse/tenants/[tenantId]",
   "superadmin/synapse/tenants/[tenantId]/alerts/[eventId]",
+  // AXON's delivery ledger (slice 3). Not a Synapse route and listed here anyway:
+  // this file guards the console's server-rendered pages, not one module's. It
+  // reads the BFF and the session per request exactly like the six above, so a
+  // prerender would bake one moment's ledger into static HTML and the page would
+  // stop changing while deliveries kept being written.
+  "superadmin/axon/deliveries",
 ];
 
 const APP_DIR = join(process.cwd(), ".next", "server", "app");

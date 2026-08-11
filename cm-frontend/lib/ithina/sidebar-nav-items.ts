@@ -4,7 +4,6 @@ import {
   Building2,
   FileText,
   LayoutDashboard,
-  Map,
   Network,
   Shield,
   Store,
@@ -109,17 +108,20 @@ export const ithinaSidebarNavItems: NavGroup[] = [
         // should not see the tenant list should not see the fleet either.
         requires: { module: "ADMIN", resource: "TENANTS", action: "VIEW", scope: "GLOBAL" },
       },
-      {
-        // Atlas is PRESENT AND DISABLED on purpose (D3/N4): the navigation shape
-        // is settled now so nobody wonders whether it was forgotten. It routes to
-        // a static page and fetches NOTHING — an endpoint returning empty is
-        // indistinguishable from one that is broken, and this project has removed
-        // several artifacts of exactly that kind.
-        href: "/superadmin/atlas",
-        label: "Atlas",
-        icon: Map,
-        requires: { module: "ADMIN", resource: "TENANTS", action: "VIEW", scope: "GLOBAL" },
-      },
+      // THE ATLAS ENTRY WAS HERE AND IS REMOVED (Axon slice 3). D3/N4 argued for
+      // keeping it present and disabled so the navigation shape was settled and
+      // nobody wondered whether Atlas had been forgotten. That argument was right
+      // WHILE ATLAS WAS NEXT IN LINE.
+      //
+      // Atlas is now DEFERRED INDEFINITELY. A permanent entry stops reading as
+      // "coming" and starts reading as "in progress" about something nobody is
+      // building, which misinforms every operator who sees it. The reason to show
+      // it and the reason to remove it are the same reason: the nav should say
+      // what is true.
+      //
+      // THE PAGE ITSELF IS KEPT, at /superadmin/atlas, reachable by URL only.
+      // Removing a nav entry and removing a route are different changes, and the
+      // page states its own status. Nothing else about Atlas was deleted.
     ],
   },
   {

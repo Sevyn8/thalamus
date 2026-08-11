@@ -214,33 +214,61 @@ export async function synapsePost<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function synapseGet<T>(path: string): Promise<T> {
-  // ==========================================================================
-  // THE SESSION READ COMES FIRST, AND THE ORDER IS LOAD-BEARING.
-  // ==========================================================================
-  // Reading the Auth0 session touches cookies, and touching cookies is what marks
-  // this route DYNAMIC to Next.js. The pages also declare `force-dynamic`, but
-  // that is a directive an edit can delete; doing the session read first makes the
-  // route dynamic BY USE, so both would have to be undone to reintroduce the bug.
-  //
-  // WHAT HAPPENED WHEN THE CONFIG CHECK RAN FIRST: the throw fired before any
-  // cookie was touched, Next.js saw no dynamic API, prerendered the page AT BUILD
-  // TIME where SYNAPSE_BFF_URL does not exist, and baked "The Synapse service is
-  // not reachable" into static HTML. The container then served a file — no env
-  // read, no fetch — while the running revision had the variable set correctly and
-  // the BFF's logs stayed empty.
-  const userToken = await userAccessToken();
-
   // READ PER REQUEST, never at module scope. This is runtime config: it can change
   // with a revision bounce and must not need a rebuild. app/api/config/route.ts
   // states the same rule for API_BASE_URL, and said so before this was written.
-  const base = process.env.SYNAPSE_BFF_URL ?? "";
+  //
+  // RESOLVED HERE AND CHECKED IN synapseGetFrom, not checked here, and the split is
+  // the whole point of the extraction. See that function: the throw for a missing
+  // base MUST come after the session read, and putting the check at each call site
+  // is how it drifts back in front of it.
+  return synapseGetFrom<T>(
+    process.env.SYNAPSE_BFF_URL ?? "",
+    path,
+    "SYNAPSE_BFF_URL is not configured; the Synapse console cannot load",
+  );
+}
+
+// The same GET, against a base URL the CALLER resolved. Extracted for AXON
+// (lib/axon/server-client.ts), which resolves AXON_BFF_URL ?? SYNAPSE_BFF_URL so
+// that a future standalone Axon service is one environment variable rather than a
+// sweep of call sites.
+//
+// EXTRACTED RATHER THAN COPIED. A second copy of the two-token dance is a second
+// place to send the Google token as `Authorization`, which is the mistake that
+// 401'd every Synapse request once and took an end-to-end trace to find.
+//
+// ==========================================================================
+// THE SESSION READ COMES FIRST, AND THE ORDER IS LOAD-BEARING.
+// ==========================================================================
+// Reading the Auth0 session touches cookies, and touching cookies is what marks
+// the route DYNAMIC to Next.js. The pages also declare `force-dynamic`, but that
+// is a directive an edit can delete; doing the session read first makes the route
+// dynamic BY USE, so both would have to be undone to reintroduce the bug.
+//
+// WHAT HAPPENED WHEN THE CONFIG CHECK RAN FIRST: the throw fired before any cookie
+// was touched, Next.js saw no dynamic API, prerendered the page AT BUILD TIME where
+// SYNAPSE_BFF_URL does not exist, and baked "The Synapse service is not reachable"
+// into static HTML. The container then served a file, with no env read and no
+// fetch, while the running revision had the variable set correctly and the BFF's
+// logs stayed empty.
+//
+// THE MISSING-BASE CHECK THEREFORE LIVES INSIDE THIS FUNCTION, AFTER THE SESSION
+// READ, and callers pass a resolved-or-empty string rather than throwing
+// themselves. A caller that checked its own env and threw would be that exact bug
+// again, in a new file, and lib/axon/server-client.ts is a new file.
+export async function synapseGetFrom<T>(
+  base: string,
+  path: string,
+  missingBaseMessage: string,
+): Promise<T> {
+  const userToken = await userAccessToken();
+
   if (!base) {
-    // KEPT, because it is right for a genuine runtime outage — BFF down, IAM
-    // revoked, VPC broken — and removing it would render a blank page for a real
+    // KEPT, because it is right for a genuine runtime outage - BFF down, IAM
+    // revoked, VPC broken - and removing it would render a blank page for a real
     // one. What was wrong was that it could be reached at BUILD time.
-    throw new SynapseUnavailable(
-      "SYNAPSE_BFF_URL is not configured; the Synapse console cannot load",
-    );
+    throw new SynapseUnavailable(missingBaseMessage);
   }
 
   const idToken = await identityToken(base);

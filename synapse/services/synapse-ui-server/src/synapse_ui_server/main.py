@@ -26,6 +26,8 @@ from axon import (
     Message,
     SendGridEmailAdapter,
     SendOutcome,
+    delivery_counts,
+    recent_deliveries,
     send_platform,
 )
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
@@ -196,6 +198,14 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # ledger. It is a fourth narrow credential on the same principle as the three above, not a
     # widening of any of them.
     app.state.axon_engine = create_rls_engine(config.axon_sender_url)
+    # THE FIFTH, AND IT IS AXON'S OTHER HALF. axon_reader holds SELECT on both ledgers and no
+    # write verb anywhere. A SEPARATE ENGINE rather than a second use of the one above, because
+    # the sender holds no SELECT: serving the console from it would mean granting the send path
+    # the ability to read a ledger of who was contacted about what.
+    #
+    # FIVE ENGINES IS NOT SPRAWL. It is five roles each holding one job's privileges, which is
+    # the only shape in which what this service can do is a fact about the database.
+    app.state.axon_reader_engine = create_rls_engine(config.axon_reader_url)
     # CONSTRUCTED ONCE, HERE, and guarded on its credential inside the constructor. Same shape
     # as CM's SendGrid client, which this adapter is a port of: an adapter that constructs
     # without a key can only fail later, with a message already in flight.
@@ -231,6 +241,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.lifecycle_engine.dispose()
         await app.state.provision_engine.dispose()
         await app.state.axon_engine.dispose()
+        await app.state.axon_reader_engine.dispose()
         await app.state.axon_adapter.aclose()
 
 
@@ -802,6 +813,37 @@ def create_app(config: Config | None = None) -> FastAPI:
     ) -> dict[str, object]:
         rows = await reads.runs(request.app.state.engine, limit=limit)
         return {"runs": [row.__dict__ for row in rows]}
+
+    @app.get("/deliveries")
+    async def get_deliveries(
+        request: Request, _: Annotated[Identity, Depends(require_platform)]
+    ) -> dict[str, object]:
+        """The delivery ledger, both audiences, newest first, with the fleet-wide counts.
+
+        ONE ROUTE FOR THE LIST AND THE COUNTS, WHICH DEPARTS FROM /alerts AND /alerts/state-counts
+        ON PURPOSE. Those are split because the chips are FILTER CONTROLS: they are read once and
+        the list refetches under them, so they are two questions asked at different moments. Here
+        the four cards and the list are one screenshot of one moment, always rendered together and
+        never independently. Two routes would be two round trips that can disagree, and a card
+        that disagrees with the rows beneath it reads as a broken count rather than as a race.
+
+        THE COUNTS ARE STILL NOT DERIVED FROM THE LIST. The list is capped and the counts are not;
+        deriving them would understate every figure the moment the cap bites. reads.py runs a
+        second statement over the whole ledger, in the same session posture, for that reason.
+
+        NO 404 AND NO EMPTY-STATE ERROR. An empty ledger is a legitimate answer.
+
+        ACCEPTED IS NOT DELIVERED, and this endpoint carries no field that says otherwise. A row
+        records what a provider answered at the moment of sending. Whether the message arrived is
+        knowable only from an inbound receipt, and that plane does not exist.
+        """
+        rows, truncated = await recent_deliveries(request.app.state.axon_reader_engine)
+        counts = await delivery_counts(request.app.state.axon_reader_engine)
+        return {
+            "deliveries": [row.__dict__ for row in rows],
+            "truncated": truncated,
+            "counts": counts.__dict__,
+        }
 
     @app.get("/capabilities")
     async def get_capabilities(

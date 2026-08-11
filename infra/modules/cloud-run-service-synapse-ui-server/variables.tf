@@ -60,6 +60,12 @@ variable "secret_axon_sender_url" {
   default     = "axon-sender-database-url"
 }
 
+variable "secret_axon_reader_url" {
+  type        = string
+  description = "Secret Manager id of the axon_reader DSN (Axon slice 3). SELECT on axon.platform_deliveries and axon.tenant_deliveries, and NO write verb anywhere. NOT the sender's DSN and not a widening of it: axon_sender deliberately holds no SELECT, so reusing it would let the send path read back the ledger of who was contacted about what. Created OUT OF BAND like every other DSN here; grants come from infra/db-setup/sql/07_axon_reader_grant.sql. The service refuses to start without it."
+  default     = "axon-reader-database-url"
+}
+
 variable "secret_axon_sendgrid_api_key" {
   type        = string
   description = "Secret Manager id of SEVYN8'S OWN SendGrid API key (Axon slice 1). NOT a tenant credential: for tenant traffic the TENANT is the sender, under its own WhatsApp Business account, its own DLT registration and its own credentials, and none of that exists yet. A SEPARATE secret from cm-sendgrid-api-key rather than a shared grant on CM's: a secret named for one module and read by another is a name that lies, and a separately revocable key means an Axon compromise does not force a rotation of Customer Master's invitation flow. Created OUT OF BAND."

@@ -129,7 +129,7 @@ resource "google_secret_manager_secret_iam_member" "provisioner_url" {
 }
 
 # =============================================================================
-# AXON (slice 1): TWO SECRETS, AND ALL FOUR PIECES OF EACH LAND IN THIS SLICE.
+# AXON: THREE SECRETS, AND ALL FOUR PIECES OF EACH LAND IN THE SLICE THAT ADDS IT.
 # =============================================================================
 # The data source, the IAM member, the env block and the depends_on entry. Slice
 # 5d is the reason that sentence is written out rather than assumed: it shipped
@@ -153,6 +153,27 @@ data "google_secret_manager_secret" "axon_sender_url" {
 resource "google_secret_manager_secret_iam_member" "axon_sender_url" {
   project   = var.project_id
   secret_id = data.google_secret_manager_secret.axon_sender_url.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.synapse_ui_server.email}"
+}
+
+# THE READ HALF OF THE PAIR (Axon slice 3). axon_reader holds SELECT on BOTH
+# ledgers and no write verb anywhere, which is the exact opposite of the role
+# above and is why it is a second secret rather than a second use of the first.
+# Reusing the sender's DSN would have meant granting SELECT to the send path, so
+# that the process which writes a ledger of who was contacted about what could
+# also read it back.
+#
+# Created out of band like every other DSN here; grants come from
+# infra/db-setup/sql/07_axon_reader_grant.sql.
+data "google_secret_manager_secret" "axon_reader_url" {
+  project   = var.project_id
+  secret_id = var.secret_axon_reader_url
+}
+
+resource "google_secret_manager_secret_iam_member" "axon_reader_url" {
+  project   = var.project_id
+  secret_id = data.google_secret_manager_secret.axon_reader_url.secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.synapse_ui_server.email}"
 }
@@ -282,6 +303,7 @@ resource "google_cloud_run_v2_service" "synapse_ui_server" {
     google_secret_manager_secret_iam_member.lifecycle_url,
     google_secret_manager_secret_iam_member.provisioner_url,
     google_secret_manager_secret_iam_member.axon_sender_url,
+    google_secret_manager_secret_iam_member.axon_reader_url,
     google_secret_manager_secret_iam_member.axon_sendgrid_api_key,
   ]
 
@@ -390,6 +412,25 @@ resource "google_cloud_run_v2_service" "synapse_ui_server" {
         value_source {
           secret_key_ref {
             secret  = data.google_secret_manager_secret.axon_sender_url.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      # THE FIFTH DSN, AND IT IS THE FOURTH'S OPPOSITE (Axon slice 3). axon_reader
+      # holds SELECT on both ledgers and NO write verb anywhere. The console's
+      # delivery surface reads through it; nothing writes through it.
+      #
+      # TWO AXON DSNs ON ONE SERVICE IS THE POINT, NOT AN OVERSIGHT. The sender
+      # cannot read what it writes and the reader cannot edit what it displays,
+      # and both facts are properties of the GRANT rather than of the code.
+      #
+      # The service refuses to start without it, like the four above.
+      env {
+        name = "AXON_READER_URL"
+        value_source {
+          secret_key_ref {
+            secret  = data.google_secret_manager_secret.axon_reader_url.secret_id
             version = "latest"
           }
         }
