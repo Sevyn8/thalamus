@@ -43,13 +43,26 @@
 #   synapse-ui-server  itself
 #
 # Assembled in a scratch tree and verified with the real command: 37 packages,
-# resolves clean, and the app object builds with EVERY route registered — checked by
-# (path, method) rather than path alone, so the one write endpoint cannot register as
-# a GET and still pass. The set was seven routes when this was written and has drifted
-# twice since; it is now enumerated in full below rather than sampled.
+# resolves clean, and the app object builds with EVERY route registered, checked by
+# (path, method) rather than path alone, so a write endpoint cannot register as a GET
+# and still pass.
 # (The orchestrator's image is 21 packages — FastAPI, uvicorn and pyjwt are the
 # difference, and keeping them out of it is exactly why this is a separate
 # workspace member.)
+#
+# THE TWO SETS BELOW ARE ENFORCED BY A TEST, NOT MAINTAINED BY HAND, and the previous
+# version of this paragraph is why. It said the route set "is now enumerated in full
+# rather than sampled", which was true when written and false two days later: the
+# fleet alerts inbox added /alerts and /alerts/state-counts and nothing brought them
+# here. Three commits edited this file afterwards without noticing. A comment that
+# names its own falsification condition still goes stale silently, because nothing
+# re-reads it when the condition fires.
+#
+# tests/test_dockerfile_build_check.py PARSES THIS FILE and compares both sets against
+# the running article: the env list against what load_config() actually refuses to
+# start without, and the route set against what create_app() actually registers. Both
+# directions, so a name here that the service does not want fails too. It runs under
+# `make -C synapse test`, which is a command somebody already runs.
 #
 # THE BUILD CONTEXT IS THE MONOREPO ROOT. The uv workspace is rooted at dis/ and
 # declares both synapse and this service as ../-relative siblings, so a dis/-rooted
@@ -133,11 +146,22 @@ ENV ASGI_TARGET="synapse_ui_server.main:create_app"
 # its health check and 404s the console — and it runs synapse.registry's
 # import-time invariants, so a declaration whose evaluator no longer matches its
 # `emits` fails here too.
-# THE ENV LIST IS PART OF THE CONTRACT AND MUST TRACK load_config(). v6 failed here:
-# slice 5d made SYNAPSE_LIFECYCLE_URL required and this list still held the pre-5d
-# three, so the startup guard fired — correctly — during the build. The guard was
-# right and the check was stale. A variable added to load_config() must be added
-# here in the same commit, or the next build fails at step 15 instead of the review.
+# THE ENV LIST IS PART OF THE CONTRACT AND MUST TRACK load_config(). It has now gone
+# stale twice, three months apart in effort and four days apart in fact:
+#
+#   v6  slice 5d made SYNAPSE_LIFECYCLE_URL required and this list still held the
+#       pre-5d three, so the startup guard fired, correctly, during the build.
+#   v15 slice 3 made AXON_READER_URL required and this list still held the ten
+#       before it. Same failure, same place, same message shape.
+#
+# Both times the guard was right and the check was stale. The rule stated here was
+# "a variable added to load_config() must be added here in the same commit", and it
+# was stated here BEFORE v15 failed, which is the whole point: A RULE ENFORCED BY A
+# HUMAN REMEMBERING IS NOT ENFORCED.
+#
+# It is now enforced by tests/test_dockerfile_build_check.py, which parses this list
+# and asserts load_config() succeeds under exactly it and fails under any subset. A
+# missing variable is a red test before it is a red build.
 #
 # SLICE 5e ADDED TWO MORE, both required and both here in the same commit as the
 # load_config change that demands them: SYNAPSE_PROVISION_URL (the synapse_provisioner
@@ -147,7 +171,9 @@ ENV ASGI_TARGET="synapse_ui_server.main:create_app"
 #
 # SYNAPSE_WRITER_URL IS DELIBERATELY ABSENT and must stay absent: load_config refuses
 # to start when it is set, because that is the ORCHESTRATOR's credential. Setting it
-# here to "make the check pass" would break every real revision.
+# here to "make the check pass" would break every real revision. The test covers this
+# without naming it: it builds an environment from THIS LIST ALONE and asserts
+# load_config succeeds, so a writer DSN added here fails the test on the refusal.
 RUN SYNAPSE_READER_URL="postgresql+psycopg://u@h/d" \
     SYNAPSE_LIFECYCLE_URL="postgresql+psycopg://l@h/d" \
     SYNAPSE_PROVISION_URL="postgresql+psycopg://p@h/d" \
@@ -155,6 +181,7 @@ RUN SYNAPSE_READER_URL="postgresql+psycopg://u@h/d" \
     SYNAPSE_JWT_ISSUER="https://build.invalid/" \
     SYNAPSE_JWT_AUDIENCE="build-check" \
     AXON_SENDER_URL="postgresql+psycopg://a@h/d" \
+    AXON_READER_URL="postgresql+psycopg://r@h/d" \
     AXON_SENDGRID_API_KEY="build-check" \
     AXON_SENDGRID_FROM_EMAIL="noreply@build.invalid" \
     AXON_PLATFORM_ONCALL_EMAIL="oncall@build.invalid" \
@@ -168,6 +195,7 @@ routes = {(r.path, m) for r in app.routes if hasattr(r, 'path') for m in (getatt
 required = { \
     ('/healthz', 'GET'), ('/readyz', 'GET'), ('/fleet', 'GET'), ('/runs', 'GET'), \
     ('/capabilities', 'GET'), ('/analyses', 'GET'), ('/timezones', 'GET'), \
+    ('/alerts', 'GET'), ('/alerts/state-counts', 'GET'), ('/deliveries', 'GET'), \
     ('/tenants/{tenant_id}', 'GET'), ('/tenants/{tenant_id}/runs', 'GET'), \
     ('/tenants/{tenant_id}/alerts', 'GET'), \
     ('/tenants/{tenant_id}/alerts/{event_id}', 'GET'), \
