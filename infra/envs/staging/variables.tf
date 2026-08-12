@@ -124,7 +124,7 @@ variable "cloud_sql_deletion_protection" {
 variable "cm_image" {
   type        = string
   description = "CM container image, consumed by BOTH the cm-backend service and the migrate-cm job (D6: one pin, so a migration cannot run a different build than the app it migrates for). Bumping this bumps both."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/cm-backend:v13"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/cm-backend:v14"
 }
 
 variable "cm_app_region" {
