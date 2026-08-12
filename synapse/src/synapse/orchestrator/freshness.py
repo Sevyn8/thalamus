@@ -42,6 +42,20 @@ the number would issue a SECOND full series read, not reuse the first. And threa
 back out of the plan is a Plan-signature change — the identical blocker that deferred populating
 ``run.detail`` (outstanding item 4). Doing it here would silently take on that deferred work.
 
+DEAD_STOCK NOW DOES EXACTLY WHAT THE FIRST PARAGRAPH DESCRIBES, AND THIS MODULE IS UNCHANGED BY
+IT. ``synapse.core.dead_stock._feed_refusal`` takes ``max()`` over the ``last_sale_at`` rows the
+plan already fetched and refuses the sweep when the tenant's newest sale is too old. That does
+not make this module redundant and does not contradict the paragraph above: the blocker named
+there is that the ROWS ARE NOT IN HAND AT THE LAYER THAT CAN LOG THEM, and that is still true.
+The PLAN has the rows; the runner does not, and this metric must be emitted for every swept
+tenant including ones running no dead_stock at all. Two consumers of one fact, at two layers,
+computed where each can reach it.
+
+THE THRESHOLDS AGREE AND MUST STAY AGREEING. ``STALE_AFTER_DAYS`` below, dead_stock's
+``feed_stale_after_days``, stockout_risk's ``stale_after_days`` and the fleet roster's column all
+say 3 days, strictly greater. A change to one without the others makes an alert fire while a
+screen reads healthy.
+
 So: ONE AGGREGATE PER TENANT PER SWEEP, and it lives in
 ``synapse.resolvers.sale_freshness`` — NOT here. Only resolvers may name a canonical table (D6,
 enforced by tests/unit/test_table_name_containment.py). The first draft of this module held the

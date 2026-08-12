@@ -80,6 +80,7 @@ from synapse.core.declaration_resolution import (
     DeclarationUndeclared,
 )
 from synapse.core.provision import Rung
+from synapse.core.refusal import RefusalReason, counts_by_reason
 from synapse.core.resolution import (
     Observation,
     PreconditionReport,
@@ -91,12 +92,7 @@ from synapse.core.resolution import (
     satisfies,
 )
 from synapse.core.stockout_actions import propose_stockout_actions
-from synapse.core.stockout_risk import (
-    RefusalReason,
-    StockoutRiskRow,
-    counts_by_reason,
-    evaluate_stockout_risk,
-)
+from synapse.core.stockout_risk import StockoutRiskRow, evaluate_stockout_risk
 from synapse.resolvers.current_state import resolve_current_state
 from synapse.resolvers.daily_series import (
     DATE_COLUMN,
@@ -157,9 +153,12 @@ class PlanResult:
 
     ``refusals`` IS KEYED BY A CLOSED VOCABULARY, never free text — the keys are stored, and a
     stored key that varies per slot breaks the re-run stability ``synapse.run`` depends on.
-    Empty for an analysis that cannot refuse (dead_stock) and for a run that refused nothing;
-    those two are deliberately indistinguishable here, because the DIFFERENCE lives in the
-    analysis declaration rather than in one run's result.
+
+    EVERY ANALYSIS CAN NOW REFUSE. This used to read "Empty for an analysis that cannot refuse
+    (dead_stock) and for a run that refused nothing; those two are deliberately indistinguishable
+    here" was true when dead_stock had no refusal concept, and is false since it gained one. An empty
+    map now means one thing: this run refused nothing. Anything reading it as "this analysis
+    cannot refuse" is reading a distinction that no longer exists.
     """
 
     actions: Sequence[Action]
@@ -336,21 +335,31 @@ _ACTIONS: Final[Mapping[str, Proposer]] = MappingProxyType(
 async def _plan_dead_stock(satisfied: DeclarationSatisfied, as_of: date) -> PlanResult:
     """Fetch, evaluate and propose for dead_stock. The gateless one: no window, no narrowing.
 
-    NO REFUSALS, AND NOT BECAUSE NONE HAPPENED. dead_stock cannot refuse at all: every position
-    in the universe gets a verdict, and "never sold" is the deadest verdict rather than an
-    inability to reach one. So the empty mapping here is a statement about the ANALYSIS, not
-    about this slot — which is why the run row's breakdown being empty must never be rendered as
-    "nothing was refused today" for an analysis that has no refusal concept.
+    IT REFUSES NOW, AND THIS DOCSTRING USED TO SAY IT COULD NOT. The previous version read "NO
+    REFUSALS, AND NOT BECAUSE NONE HAPPENED. dead_stock cannot refuse at all", and a comment in
+    the console's primitives.tsx was built on that sentence. Both were true until the evaluator
+    gained the declaration's own stock premise and a feed-freshness check; both are corrected in
+    the same commit, because a stale claim about a refusal concept is exactly what makes an empty
+    breakdown unreadable.
+
+    ``feed_stale_after_days`` IS READ OFF THE DECLARATION BY NAME, like the other two, so a
+    rename fails loudly here rather than silently producing an unrefused run. It is deliberately
+    NOT called ``stale_after_days``: the thresholds mapping is name-keyed, so a collision would
+    overwrite the 90-day rule with the 3-day one and nothing would report it. AnalysisDeclaration
+    refuses a duplicate name outright; this is the second layer.
+
+    THE REFUSALS ARE COUNTED HERE, from the findings, exactly as _plan_stockout_risk does. This
+    is the only scope that holds them: the proposer takes findings and returns actions, so a
+    caller downstream of it cannot recover what was refused.
     """
     universe = await satisfied.fetches["current_state"]()
     selling = await satisfied.fetches["last_sale_at"]()
-    stale_after = next(
-        threshold for threshold in satisfied.declaration.thresholds if threshold.name == "stale_after_days"
-    )
+    thresholds = {threshold.name: threshold.days for threshold in satisfied.declaration.thresholds}
     findings = evaluate_dead_stock(
         universe,  # type: ignore[arg-type]
         selling,  # type: ignore[arg-type]
-        stale_after_days=stale_after.days,
+        stale_after_days=thresholds["stale_after_days"],
+        feed_stale_after_days=thresholds["feed_stale_after_days"],
         as_of=as_of,
     )
     return PlanResult(
@@ -361,7 +370,7 @@ async def _plan_dead_stock(satisfied: DeclarationSatisfied, as_of: date) -> Plan
             capability_versions=satisfied.capability_versions,
             as_of=as_of,
         ),
-        refusals={},
+        refusals=counts_by_reason(findings),
     )
 
 

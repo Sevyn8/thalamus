@@ -222,6 +222,27 @@ class AnalysisDeclaration:
         ids = [requirement.capability_id for requirement in self.requires]
         if len(ids) != len(set(ids)):
             raise ValueError(f"analysis {self.id!r} requires the same capability twice: {ids}")
+        # THRESHOLD NAMES MUST BE UNIQUE WITHIN ONE DECLARATION, AND THE FAILURE THIS PREVENTS IS
+        # SILENT. Every consumer reads thresholds as a mapping built with
+        # {threshold.name: threshold.days}, so a duplicate name does not raise, does not warn and
+        # does not render twice: the later entry simply WINS, and the analysis quietly runs on a
+        # number nobody chose. dead_stock is one keystroke from it, carrying stale_after_days=90
+        # beside feed_stale_after_days=3 where the obvious name for the second was the first.
+        #
+        # A LATENT TRAP INDEPENDENT OF ANY ONE SLICE, which is why it is checked on the type
+        # rather than left to whoever writes the next declaration. Duplicate names ACROSS
+        # declarations are legal and already exist (stale_after_days means 90 days of no sale in
+        # dead_stock and 3 days of stale data in stockout_risk); that is why catalog.py keys its
+        # operator descriptions on (analysis_id, name).
+        threshold_names = [threshold.name for threshold in self.thresholds]
+        duplicates = sorted({name for name in threshold_names if threshold_names.count(name) > 1})
+        if duplicates:
+            raise ValueError(
+                f"analysis {self.id!r} declares the threshold name(s) {duplicates} more than "
+                "once. Every consumer reads thresholds as a name-keyed mapping, so the duplicate "
+                "would silently overwrite rather than fail, and the analysis would run on a "
+                "number nobody chose"
+            )
 
 
 DEAD_STOCK = AnalysisDeclaration(
@@ -242,9 +263,23 @@ DEAD_STOCK = AnalysisDeclaration(
     requires=(
         CapabilityRequirement(
             capability_id="current_state",
-            # THE UNIVERSE, plus what makes a dead SKU actionable. stock_qty because dead
-            # stock with no stock is not a problem to solve, and sku_status because a
-            # deliberately delisted SKU is not dead, it is finished.
+            # THE UNIVERSE, plus what makes a dead SKU actionable.
+            #
+            # stock_qty IS NOW ENFORCED, and until this slice it was not. The comment here used
+            # to assert that "dead stock with no stock is not a problem to solve" while the
+            # proposer filtered on is_dead_stock alone and read stock_qty only to populate
+            # quantity_at_stake. Measured on staging 2026-08-12: of 38 dead-stock alerts, 20
+            # carried no stock figure and 12 carried zero, so 32 of 38 contradicted the premise
+            # this comment claimed. The evaluator now refuses both (NO_STOCK_QUANTITY and
+            # NO_STOCK_ON_HAND).
+            #
+            # sku_status IS STILL READ BY NOTHING, AND THIS COMMENT NO LONGER PRETENDS OTHERWISE.
+            # The intent was that a deliberately delisted SKU is not dead, it is finished. It
+            # cannot be implemented from this repository: the column is typed `str | None` on
+            # CurrentStateRow with NO vocabulary anywhere in synapse/src, so expressing "delisted"
+            # would mean inventing values and matching against them. WHAT IS NEEDED is the value
+            # list from whoever owns the column, canonical or DIS. The field stays requested
+            # because that is what makes it available the day the vocabulary lands.
             fields=("tenant_id", "store_id", "sku_id", "stock_qty", "sku_status"),
             # current_state declares no gates: the hot table either has a row or does not.
             gates=(),
@@ -252,14 +287,35 @@ DEAD_STOCK = AnalysisDeclaration(
         CapabilityRequirement(
             capability_id="last_sale_at",
             fields=("tenant_id", "store_id", "sku_id", "last_sale_date"),
-            # No gates either, and that is the interesting half: "when did this last sell" is
-            # answerable from ONE observation. Dead stock is the one real analysis that works
-            # on sparse data precisely because ABSENCE is the signal — it needs no history
-            # coverage at all, which is why it is the right first declaration.
+            # NO GATES, AND THE ORIGINAL REASONING WAS HALF RIGHT. "When did this last sell" is
+            # answerable from ONE observation, so dead_stock genuinely needs no history COVERAGE
+            # and that is why it was the right first declaration.
+            #
+            # WHAT IT DOES NEED IS RECENCY, and the absence of any check was a real defect rather
+            # than an elegant property. Because absence is the signal, a tenant that has sent
+            # NOTHING reads as a catalogue of never-sold positions, and a tenant whose feed
+            # stopped ages every position by one day per day until the whole catalogue crosses
+            # stale_after_days on one date. Both are now refused by the evaluator against
+            # feed_stale_after_days below, using the sale dates this requirement already fetches.
+            #
+            # EXPRESSED AS A THRESHOLD RATHER THAN A GATE, on the Threshold docstring's own
+            # distinction: a gate decides whether a capability may be READ, and this is arithmetic
+            # over rows already in hand. Nothing about the read changes.
             gates=(),
         ),
     ),
-    emits=("tenant_id", "store_id", "sku_id", "days_since_last_sale", "is_dead_stock"),
+    # THE REFUSAL FIELDS ARE PART OF THE PROMISE. _check_analyses compares this tuple against
+    # DeadStockRow's fields at import, so the two cannot drift: adding a field to the row without
+    # adding it here fails the import rather than quietly emitting something undeclared.
+    emits=(
+        "tenant_id",
+        "store_id",
+        "sku_id",
+        "days_since_last_sale",
+        "is_dead_stock",
+        "refused_because",
+        "refusal_reason",
+    ),
     holdout=Holdout(
         # THE FULL GRAIN: per (tenant, store, sku). Per-STORE would be the cleaner comparison in
         # general and is unusable for the first tenant, which has TWO stores — two units cannot
@@ -324,6 +380,30 @@ DEAD_STOCK = AnalysisDeclaration(
                 "that stale_after_days needs and is therefore blocked on the same missing "
                 "capability. 30 days is a review cycle, not a measurement: it says 'look at this "
                 "within a month' and nothing about when the finding stops holding."
+            ),
+        ),
+        Threshold(
+            # DELIBERATELY NOT NAMED stale_after_days, AND THE REASON IS A LATENT TRAP RATHER
+            # THAN A STYLE PREFERENCE. propose_dead_stock_actions builds {t.name: t.days}, so a
+            # second threshold called stale_after_days on THIS declaration would silently
+            # overwrite the 90 above and change the expiry arithmetic with no error anywhere.
+            # AnalysisDeclaration.__post_init__ now refuses a duplicate name outright.
+            #
+            # The collision across analyses is fine and already exists: stockout_risk has its own
+            # stale_after_days meaning something different, which is exactly why catalog.py keys
+            # its operator descriptions on (analysis_id, name) rather than on name.
+            name="feed_stale_after_days",
+            days=3,
+            fitted=False,
+            stands_in_for=(
+                "nothing measured, and unusually for a threshold here it is not a placeholder for "
+                "a fitted number. It is the SAME question three other places already answer with "
+                "3: stockout_risk's own stale_after_days, orchestrator/freshness.py's "
+                "STALE_AFTER_DAYS, and the fleet roster's staleness column. What it stands in for "
+                "is agreement between those four, and the honest fitted version is per tenant: a "
+                "daily grocery feed is broken at 2 days and a weekly wholesale extract is healthy "
+                "at 6. Until a per-tenant expected cadence exists, one number that matches every "
+                "other screen beats a second number that is differently wrong."
             ),
         ),
     ),

@@ -84,6 +84,10 @@ _THRESHOLD_DESCRIPTIONS: Final[Mapping[tuple[str, str], str]] = {
     ("dead_stock", "expires_after_days"): (
         "How long a dead-stock alert stays worth acting on before it is retired."
     ),
+    ("dead_stock", "feed_stale_after_days"): (
+        "Sales data older than this means the monitor reports nothing rather than treating "
+        "a silent feed as products that stopped selling."
+    ),
     ("stockout_risk", "window_days"): ("How far back sales are read to work out how fast a product sells."),
     ("stockout_risk", "at_risk_below_days"): ("Less cover than this at the current rate counts as at risk."),
     ("stockout_risk", "stale_after_days"): (

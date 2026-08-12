@@ -17,7 +17,8 @@
     },
     "thresholds": {
       "stale_after_days": 90,
-      "expires_after_days": 30
+      "expires_after_days": 30,
+      "feed_stale_after_days": 3
     },
     "as_of": "2026-08-05"
   }

@@ -34,7 +34,9 @@
     "store_id",
     "sku_id",
     "days_since_last_sale",
-    "is_dead_stock"
+    "is_dead_stock",
+    "refused_because",
+    "refusal_reason"
   ],
   "holdout": {
     "unit": [
@@ -45,20 +47,26 @@
     "holdout_percent": 20,
     "salt": "dead_stock/2026-08",
     "fitted": false,
-    "stands_in_for": "a power calculation, which cannot help here: 66 positions cannot support a conclusive split at ANY fraction, so 20 is a placeholder for a design that does not yet have enough subjects to be a design. Concretely, with ONE dead SKU in the current data a 20% holdout has roughly a one-in-five chance of holding out the only finding and producing ZERO treated actions. That is not a bug and will be read as one: it is what underpowered means, and the arithmetic is doing exactly what it should. The trigger for revisiting is a tenant with enough positions for a split to mean something — not a calculation someone might run over these 66."
+    "stands_in_for": "a power calculation, which cannot help here: 66 positions cannot support a conclusive split at ANY fraction, so 20 is a placeholder for a design that does not yet have enough subjects to be a design. Concretely, with ONE dead SKU in the current data a 20% holdout has roughly a one-in-five chance of holding out the only finding and producing ZERO treated actions. That is not a bug and will be read as one: it is what underpowered means, and the arithmetic is doing exactly what it should. The trigger for revisiting is a tenant with enough positions for a split to mean something \u2014 not a calculation someone might run over these 66."
   },
   "thresholds": [
     {
       "name": "stale_after_days",
       "days": 90,
       "fitted": false,
-      "stands_in_for": "the tenant's own p90 gap between consecutive sales of the same (store, sku). 90 days is a plausible retail number and nothing more: a fast-moving grocery SKU is dead at 14 days and a furniture SKU is healthy at 120, so one constant across a catalogue is wrong for most of it in both directions. The fitted version is a capability, not arithmetic here, and it is cheap over the collapsed sale dates: PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY gap) over gap = event_date - LAG(event_date) OVER (PARTITION BY tenant_id, store_id, sku_id ORDER BY event_date), aggregated per tenant. STILL A CONSTANT, and the original reason is now spent: it said 'not in the slice that introduces the declaration', and that slice has landed. The current reason is narrower and checkable — the fitted version is a CAPABILITY, so it needs a descriptor, a resolver, a registry row, a contract fixture and a live executability test, which is the whole shape of a capability slice rather than a threshold change. Until then this number is wrong for most of a catalogue in both directions and says so."
+      "stands_in_for": "the tenant's own p90 gap between consecutive sales of the same (store, sku). 90 days is a plausible retail number and nothing more: a fast-moving grocery SKU is dead at 14 days and a furniture SKU is healthy at 120, so one constant across a catalogue is wrong for most of it in both directions. The fitted version is a capability, not arithmetic here, and it is cheap over the collapsed sale dates: PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY gap) over gap = event_date - LAG(event_date) OVER (PARTITION BY tenant_id, store_id, sku_id ORDER BY event_date), aggregated per tenant. STILL A CONSTANT, and the original reason is now spent: it said 'not in the slice that introduces the declaration', and that slice has landed. The current reason is narrower and checkable \u2014 the fitted version is a CAPABILITY, so it needs a descriptor, a resolver, a registry row, a contract fixture and a live executability test, which is the whole shape of a capability slice rather than a threshold change. Until then this number is wrong for most of a catalogue in both directions and says so."
     },
     {
       "name": "expires_after_days",
       "days": 30,
       "fitted": false,
       "stands_in_for": "how long a dead-stock finding stays true, which is the same p90 inter-sale gap that stale_after_days needs and is therefore blocked on the same missing capability. 30 days is a review cycle, not a measurement: it says 'look at this within a month' and nothing about when the finding stops holding."
+    },
+    {
+      "name": "feed_stale_after_days",
+      "days": 3,
+      "fitted": false,
+      "stands_in_for": "nothing measured, and unusually for a threshold here it is not a placeholder for a fitted number. It is the SAME question three other places already answer with 3: stockout_risk's own stale_after_days, orchestrator/freshness.py's STALE_AFTER_DAYS, and the fleet roster's staleness column. What it stands in for is agreement between those four, and the honest fitted version is per tenant: a daily grocery feed is broken at 2 days and a weekly wholesale extract is healthy at 6. Until a per-tenant expected cadence exists, one number that matches every other screen beats a second number that is differently wrong."
     }
   ],
   "max_rung": "shadow"

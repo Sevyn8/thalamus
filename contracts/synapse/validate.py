@@ -178,10 +178,17 @@ def main() -> int:
     # honest about being one" beyond requiring the field; this asserts the field says something.
     thresholds_by_name = {th["name"]: th for th in dead_stock["thresholds"]}
     check(
-        "dead_stock declares both a staleness and an expiry threshold",
-        set(thresholds_by_name) == {"stale_after_days", "expires_after_days"},
+        "dead_stock declares a staleness, an expiry and a feed-freshness threshold",
+        set(thresholds_by_name) == {"stale_after_days", "expires_after_days", "feed_stale_after_days"},
         f"found {sorted(thresholds_by_name)}; an action needs an expiry or it stays on a list "
-        "forever looking current",
+        "forever looking current, and without feed_stale_after_days a stalled feed turns a whole "
+        "catalogue into dead stock about stale_after_days after the last sale",
+    )
+    check(
+        "dead_stock's threshold names are unique",
+        len(thresholds_by_name) == len(dead_stock["thresholds"]),
+        "every consumer reads thresholds as a name-keyed mapping, so a duplicate name silently "
+        "overwrites rather than failing and the analysis runs on a number nobody chose",
     )
     stale_after = thresholds_by_name["stale_after_days"]
     check(

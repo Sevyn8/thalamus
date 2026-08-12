@@ -63,51 +63,23 @@ them without knowing the reasons.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
-from enum import StrEnum
 from uuid import UUID
 
 from synapse.core.current_state import CurrentStateRow
 from synapse.core.daily_series import DailySeriesRow
 
+# THE VOCABULARY MOVED TO core/refusal.py when dead_stock gained refusals. Re-exported here
+# because this module was its home and every existing importer names it through this path; the
+# enum itself is shared and belongs to neither analysis.
+from synapse.core.refusal import RefusalReason, counts_by_reason
+
 __all__ = ["RefusalReason", "StockoutRiskRow", "counts_by_reason", "evaluate_stockout_risk"]
 
 _Key = tuple[UUID, UUID, str]
-
-
-class RefusalReason(StrEnum):
-    """The CLOSED set of reasons a position cannot be assessed. One member per refusal branch.
-
-    WHY A VOCABULARY NOW, WHEN THE PROSE WAS ENOUGH BEFORE. The prose was enough while the only
-    consumer was a human reading a log line. It stops being enough the moment a COUNT of refusals
-    is stored on ``synapse.run``, because a stored breakdown needs keys that are stable across
-    runs, and these reasons are not: four of the five interpolate ``as_of``, an observation count
-    or a date into their leading clause. ``counts_by_reason`` used to derive its buckets by
-    splitting that prose at the first colon or semicolon, which meant a re-run of the SAME SLOT
-    could produce different keys — the exact thing the run row must not do.
-
-    DERIVED FROM THE BRANCHES, NOT INVENTED. Each member below is one arm of ``_refusal`` and
-    there are no others; the pairing is asserted in the unit suite so a new branch cannot ship
-    without a member.
-
-    THE PROSE SURVIVES ALONGSIDE IT. ``refused_because`` still carries the per-series specifics —
-    which date, how many observations, how stale — because that is what makes a refusal
-    actionable for whoever reads one row. The enum is the groupable category; the prose is the
-    evidence. Neither replaces the other.
-
-    StrEnum so a member serialises to its own value as a JSON object key without a custom
-    encoder, and so a stored breakdown reads as ``{"series_too_stale": 12}`` rather than as
-    integers nobody can interpret without this file.
-    """
-
-    NO_STOCK_QUANTITY = "no_stock_quantity"
-    NO_OBSERVATIONS_IN_WINDOW = "no_observations_in_window"
-    SERIES_TOO_STALE = "series_too_stale"
-    TOO_FEW_OBSERVATIONS = "too_few_observations"
-    NO_POSITIVE_DEMAND = "no_positive_demand"
 
 
 @dataclass(frozen=True)
@@ -316,29 +288,3 @@ def _refusal(
         )
 
     return None
-
-
-def counts_by_reason(rows: Sequence[StockoutRiskRow]) -> Mapping[RefusalReason, int]:
-    """How many positions were refused, grouped by the closed-vocabulary category.
-
-    IT USED TO SPLIT THE PROSE, and that was the bug this slice found rather than a style
-    quibble. The old implementation derived a bucket with
-    ``refused_because.split(";")[0].split(":")[0]``, and four of the five reasons interpolate
-    ``as_of``, an observation count or a series end-date BEFORE that split point — so the keys
-    varied per position and per slot. Harmless while the output only reached a log line;
-    disqualifying the moment it became a value stored on ``synapse.run``, where a re-run of the
-    same slot must produce the same bytes.
-
-    Now grouped on ``refusal_reason``, whose members are fixed. Only refused rows are counted, so
-    an all-assessed run yields ``{}`` rather than a map of zeros — the absence of a key means
-    nothing was refused for that reason, which is exactly what "no refusals" should serialise to.
-
-    UNSORTED HERE BY DESIGN. The caller that persists this is responsible for ordering, because
-    stability of the STORED form is a persistence concern; see ``run_postgres._COMPLETE``.
-    """
-    counts: dict[RefusalReason, int] = {}
-    for row in rows:
-        if row.refusal_reason is None:
-            continue
-        counts[row.refusal_reason] = counts.get(row.refusal_reason, 0) + 1
-    return counts

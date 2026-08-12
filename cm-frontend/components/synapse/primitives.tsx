@@ -861,6 +861,9 @@ const REASON_LABEL: Record<string, string> = {
   series_too_stale: "sales data too old",
   no_observations_in_window: "no recent sales",
   no_stock_quantity: "no stock figure",
+  no_stock_on_hand: "no stock on hand",
+  feed_stale: "sales feed has stopped",
+  no_sale_history: "no sales data ever received",
   too_few_observations: "too few sales days",
   no_positive_demand: "returns exceeded sales",
 };
@@ -1002,12 +1005,15 @@ export function wallClock(
 // FOUR INPUTS AND NO INFERENCE: outcome, actions_proposed, actions_appended and the stored
 // refusal breakdown. Nothing here is derived from a count the database does not hold.
 //
-// THE dead_stock TRAP, and it is the reason row 10 exists. synapse.registry._plan_dead_stock
-// returns `refusals={}` on every run: dead_stock has NO refusal concept, and registry.py says
-// so directly, that "the run row's breakdown being empty must never be rendered as 'nothing was
-// refused today' for an analysis that has no refusal concept". So an empty map cannot be read as
-// "it looked and refused nothing", and a zero-action dead_stock run gets a neutral statement of
-// the count rather than a diagnosis the data cannot support.
+// THE dead_stock TRAP IS GONE, AND ROW 10 STAYS ANYWAY. This comment used to read that
+// "_plan_dead_stock returns refusals={} on every run: dead_stock has NO refusal concept", which
+// was true and is now false: the analysis refuses when a position fails its stock premise and
+// when the tenant's sales feed has stopped or never started, and registry.py counts those onto
+// the run row exactly as stockout_risk's have always been.
+//
+// SO AN EMPTY MAP NOW MEANS ONE THING for every analysis: this run refused nothing. Row 10 is
+// kept because zero proposed with nothing refused is still a statement of the count rather than
+// a diagnosis, and that is now a genuinely quiet catalogue rather than an unknown.
 export type RunOutcomeFacts = {
   outcome: string | null;
   actions_proposed: number | null;
@@ -1054,8 +1060,9 @@ export function runOutcomeTag(run: RunOutcomeFacts): { label: string; tone: Tone
   }
   // 9. Refused everything for some other stored reason.
   if (skips.length > 0) return { label: "found nothing - no data", tone: "unknown" };
-  // 10. Zero proposed and nothing recorded as refused. See the dead_stock note above: this is a
-  //     statement of the count and deliberately not a diagnosis.
+  // 10. Zero proposed and nothing recorded as refused. Every analysis can refuse now, so this
+  //     really does mean "it looked and found nothing", which is a statement of the count and
+  //     deliberately still not a diagnosis.
   return { label: "no alerts raised", tone: "mute" };
 }
 

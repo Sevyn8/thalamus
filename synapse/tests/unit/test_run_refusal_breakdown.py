@@ -91,31 +91,52 @@ def _evaluate(universe: list[CurrentStateRow], series: list[DailySeriesRow], *, 
 # ---------------------------------------------------------------------------
 
 
+def _refusal_sources() -> dict[str, str]:
+    """Every function in the estate that produces a refusal, by name.
+
+    A LIST THAT MUST GROW WITH THE ANALYSES, and it grew once already: dead_stock had no refusal
+    concept when these two tests were written, so both read stockout_risk alone. When the
+    vocabulary moved to core/refusal.py and dead_stock started refusing, a member-coverage test
+    scoped to one analysis would have reported the three new members as unused while three
+    branches produced them. That is the scope failure this repository keeps writing tests about,
+    so the scope is now data rather than an import inside each test.
+    """
+    from synapse.core import dead_stock, stockout_risk
+
+    return {
+        "stockout_risk._refusal": inspect.getsource(stockout_risk._refusal),
+        "dead_stock._feed_refusal": inspect.getsource(dead_stock._feed_refusal),
+        "dead_stock._stock_refusal": inspect.getsource(dead_stock._stock_refusal),
+    }
+
+
 def test_every_refusal_branch_returns_a_vocabulary_member() -> None:
     """NO FREE-TEXT KEY MAY REACH THE BREAKDOWN. Parsed from the source rather than exercised, so
-    a NEW branch added later is caught even if no test drives it: every `return (` inside
-    ``_refusal`` must name a RefusalReason.
+    a NEW branch added later is caught even if no test drives it: every `return (` inside a
+    refusal function must name a RefusalReason.
     """
-    from synapse.core import stockout_risk
-
-    source = inspect.getsource(stockout_risk._refusal)
-    returns = [m for m in re.findall(r"return \(\s*([A-Za-z_.]+)", source)]
-    assert returns, "no tuple returns parsed from _refusal; the regex stopped biting"
-    for returned in returns:
-        assert returned.startswith("RefusalReason."), (
-            f"_refusal returns {returned!r}, which is not a RefusalReason member. A free-text "
-            "reason would become a stored key that cannot be grouped and varies per slot."
-        )
+    sources = _refusal_sources()
+    assert len(sources) >= 3, "the refusal-function list shrank; this test would cover less"
+    for name, source in sources.items():
+        returns = [m for m in re.findall(r"return \(\s*([A-Za-z_.]+)", source)]
+        assert returns, f"no tuple returns parsed from {name}; the regex stopped biting"
+        for returned in returns:
+            assert returned.startswith("RefusalReason."), (
+                f"{name} returns {returned!r}, which is not a RefusalReason member. A free-text "
+                "reason would become a stored key that cannot be grouped and varies per slot."
+            )
 
 
 def test_the_vocabulary_has_no_unused_members() -> None:
     """The other direction: a member nobody produces is a promise the data never keeps, and a
-    console branch for it would be dead code that reads as coverage."""
-    from synapse.core import stockout_risk
+    console branch for it would be dead code that reads as coverage.
 
-    source = inspect.getsource(stockout_risk._refusal)
+    UNION ACROSS EVERY REFUSAL FUNCTION, not one of them. A member is used if ANY analysis
+    produces it, and NO_STOCK_QUANTITY is deliberately produced by two.
+    """
+    combined = "\n".join(_refusal_sources().values())
     for member in RefusalReason:
-        assert f"RefusalReason.{member.name}" in source, (
+        assert f"RefusalReason.{member.name}" in combined, (
             f"{member.name} is declared but no branch produces it"
         )
 

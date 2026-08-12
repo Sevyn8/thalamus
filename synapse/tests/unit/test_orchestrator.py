@@ -19,6 +19,7 @@ guard that lags by however long the gap is. These are the ones that should not w
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -33,6 +34,7 @@ from synapse.core.declaration_resolution import DeclarationSatisfied
 from synapse.core.holdout import Arm
 from synapse.core.last_sale_at import LastSaleAtRow
 from synapse.core.provision import Cadence, Provision, Rung
+from synapse.core.refusal import RefusalReason
 from synapse.core.resolution import Satisfied
 from synapse.orchestrator.runner import SlotResult, _propose, _run_one, summarise
 
@@ -58,6 +60,19 @@ def _position(sku_id: str) -> CurrentStateRow:
         last_source_event_at=datetime(2026, 8, 4, 9, 0, tzinfo=UTC),
         last_updated_at=datetime(2026, 8, 4, 9, 0, tzinfo=UTC),
     )
+
+
+def _fresh_feed(slot: date) -> LastSaleAtRow:
+    """A sale on the slot itself, for a SKU that is never in the universe.
+
+    dead_stock refuses the whole sweep when the tenant has no sale history, because with nothing
+    in `selling` every position reads as never-sold and a catalogue of findings is really one
+    statement about the feed. Every test in this file is about the SLOT reaching provenance and
+    the expiry, so each needs a tenant whose feed is current on that slot; without this they
+    would silently become tests of the feed refusal. Dated on the slot rather than on a constant
+    so the tests that use a 2020 slot stay fresh relative to their own as_of.
+    """
+    return LastSaleAtRow(tenant_id=TENANT, store_id=STORE, sku_id="FEED_ANCHOR", last_sale_date=slot)
 
 
 def _satisfied(universe: Sequence[CurrentStateRow], selling: Sequence[LastSaleAtRow]) -> Any:
@@ -113,7 +128,7 @@ async def test_every_action_is_stamped_with_the_slot_not_todays_date() -> None:
     assertion fails on every day except one.
     """
     slot = date(2020, 1, 2)
-    actions = (await _propose(_satisfied([_position("SKU-DEAD")], []), slot)).actions
+    actions = (await _propose(_satisfied([_position("SKU-DEAD")], [_fresh_feed(slot)]), slot)).actions
 
     assert actions, "a position that never sold is dead stock; the fixture must produce one"
     assert {action.provenance.as_of for action in actions} == {slot}
@@ -123,7 +138,7 @@ async def test_the_expiry_is_derived_from_the_slot_too() -> None:
     """expires_on is inside the payload hash, so it has the same requirement as as_of: derived
     from the slot, never from the clock. Otherwise a retry hashes differently and duplicates."""
     slot = date(2020, 1, 2)
-    actions = (await _propose(_satisfied([_position("SKU-DEAD")], []), slot)).actions
+    actions = (await _propose(_satisfied([_position("SKU-DEAD")], [_fresh_feed(slot)]), slot)).actions
     expires_after = next(t for t in DEAD_STOCK.thresholds if t.name == "expires_after_days")
     assert {action.expires_on for action in actions} == {slot + timedelta(days=expires_after.days)}
 
@@ -134,8 +149,8 @@ async def test_two_runs_of_the_same_slot_propose_identical_actions() -> None:
     twice and comparing is the honest check; asserting the hash would be reimplementing it.
     """
     slot = date(2026, 8, 5)
-    first = await _propose(_satisfied([_position("SKU-DEAD")], []), slot)
-    second = await _propose(_satisfied([_position("SKU-DEAD")], []), slot)
+    first = await _propose(_satisfied([_position("SKU-DEAD")], [_fresh_feed(slot)]), slot)
+    second = await _propose(_satisfied([_position("SKU-DEAD")], [_fresh_feed(slot)]), slot)
     assert first == second
 
 
@@ -143,15 +158,20 @@ async def test_a_different_slot_proposes_different_actions() -> None:
     """The converse, and it is what stops the test above passing against a constant. A genuinely
     new day is a new action, which the index must NOT suppress."""
     universe = [_position("SKU-DEAD")]
-    first = await _propose(_satisfied(universe, []), date(2026, 8, 5))
-    second = await _propose(_satisfied(universe, []), date(2026, 8, 6))
+    first_slot, second_slot = date(2026, 8, 5), date(2026, 8, 6)
+    first = await _propose(_satisfied(universe, [_fresh_feed(first_slot)]), first_slot)
+    second = await _propose(_satisfied(universe, [_fresh_feed(second_slot)]), second_slot)
     assert first != second
+    # AND BOTH ACTUALLY PROPOSED. Two empty results are also unequal in no useful way, and a feed
+    # refusal on either side would satisfy the assertion above while proving nothing about slots.
+    assert first.actions and second.actions
 
 
 async def test_every_proposed_action_carries_an_arm_and_full_provenance() -> None:
     """D2. An action without an arm can never be analysed and the counterfactual cannot be added
     later; one without capability versions cannot be compared across a version change."""
-    actions = (await _propose(_satisfied([_position("SKU-DEAD")], []), date(2026, 8, 5))).actions
+    slot = date(2026, 8, 5)
+    actions = (await _propose(_satisfied([_position("SKU-DEAD")], [_fresh_feed(slot)]), slot)).actions
     for action in actions:
         assert action.arm in (Arm.TREATMENT, Arm.HOLDOUT)
         assert action.provenance.declaration_id == "dead_stock"
@@ -270,3 +290,73 @@ def test_summarise_counts_skipped_separately_from_outcomes() -> None:
 def test_failed_is_derived_rather_than_stored_twice() -> None:
     assert SlotResult(TENANT, "a", date(2026, 8, 5), "failed", 0, 0).failed
     assert not SlotResult(TENANT, "a", date(2026, 8, 5), "satisfied", 1, 1).failed
+
+
+# ---------------------------------------------------------------------------
+# THE REFUSAL REACHES THE RUN ROW (Part 2's condition)
+# ---------------------------------------------------------------------------
+#
+# A stale tenant producing NOTHING is indistinguishable from a healthy tenant with no dead
+# stock. These assert on the PLAN's return value, which is the shape runner._run_one writes into
+# synapse.run.refusals, so what is checked here is what an operator reads.
+
+
+async def test_a_stale_tenant_produces_a_refusal_rather_than_silence() -> None:
+    """PART 2's WHOLE CONDITION. The count is per POSITION, so an operator sees how much of the
+    catalogue went unassessed rather than only that something did."""
+    slot = date(2026, 8, 5)
+    stale = LastSaleAtRow(
+        tenant_id=TENANT, store_id=STORE, sku_id="OLD", last_sale_date=slot - timedelta(days=30)
+    )
+    universe = [_position("SKU-A"), _position("SKU-B")]
+
+    result = await _propose(_satisfied(universe, [stale]), slot)
+
+    assert result.actions == []
+    assert result.refusals == {RefusalReason.FEED_STALE: 2}
+
+
+async def test_a_tenant_with_no_sale_history_produces_a_refusal_rather_than_a_catalogue() -> None:
+    """THE STAGING CASE. With no sale history every position reads as never-sold, which used to
+    make the entire catalogue dead stock on the first sweep: 38 alerts, all with a NULL age, none
+    aged past the threshold. It is now one refusal per position and no actions at all."""
+    slot = date(2026, 8, 5)
+    universe = [_position("SKU-A"), _position("SKU-B"), _position("SKU-C")]
+
+    result = await _propose(_satisfied(universe, []), slot)
+
+    assert result.actions == []
+    assert result.refusals == {RefusalReason.NO_SALE_HISTORY: 3}
+
+
+async def test_the_stock_premise_reaches_the_run_row_too() -> None:
+    """32 OF STAGING'S 38 ALERTS FAILED THIS PREMISE, and under a skip they would have vanished
+    with no record. The two reasons stay separate because they send an operator to different
+    places: no figure arrived is an ingestion problem, none on hand is not."""
+    slot = date(2026, 8, 5)
+    universe = [
+        replace(_position("NO-FIGURE"), stock_qty=None),
+        replace(_position("ZERO"), stock_qty=Decimal("0")),
+        _position("REAL"),
+    ]
+
+    result = await _propose(_satisfied(universe, [_fresh_feed(slot)]), slot)
+
+    assert result.refusals == {
+        RefusalReason.NO_STOCK_QUANTITY: 1,
+        RefusalReason.NO_STOCK_ON_HAND: 1,
+    }
+    # THE VACUITY GUARD: the position that satisfies the premise still produces its action, so a
+    # premise check that refused everything cannot pass this.
+    assert [a.target["sku_id"] for a in result.actions] == ["REAL"]
+
+
+async def test_a_healthy_run_still_records_no_refusals() -> None:
+    """The other direction. An empty map must keep meaning "this run refused nothing", which is
+    the reading PlanResult's docstring now commits to for every analysis."""
+    slot = date(2026, 8, 5)
+
+    result = await _propose(_satisfied([_position("SKU-DEAD")], [_fresh_feed(slot)]), slot)
+
+    assert result.refusals == {}
+    assert result.actions

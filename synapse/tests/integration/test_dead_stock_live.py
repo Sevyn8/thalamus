@@ -30,6 +30,7 @@ from synapse.core.declaration_resolution import (
     DeclarationSatisfied,
     DeclarationUndeclared,
 )
+from synapse.core.refusal import counts_by_reason
 
 DSN = os.environ.get("SYNAPSE_READER_URL")
 TENANT = os.environ.get("SYNAPSE_TEST_TENANT_ID")
@@ -77,6 +78,7 @@ async def test_it_resolves_and_both_fetchers_execute() -> None:
     # inside a staging window, so the three unit-test call sites were fixed the same day
     # and these two went unnoticed until the next window.
     stale_after = next(t for t in DEAD_STOCK.thresholds if t.name == "stale_after_days")
+    feed_stale_after = next(t for t in DEAD_STOCK.thresholds if t.name == "feed_stale_after_days")
     engine = create_rls_engine(DSN)
     try:
         outcome = await resolve_declaration(engine, "dead_stock", _scope())
@@ -95,6 +97,7 @@ async def test_it_resolves_and_both_fetchers_execute() -> None:
         universe,  # type: ignore[arg-type]
         selling,  # type: ignore[arg-type]
         stale_after_days=stale_after.days,
+        feed_stale_after_days=feed_stale_after.days,
         as_of=date.today(),
     )
     # One row per position, dead or not — the evaluator's contract.
@@ -125,6 +128,7 @@ async def test_it_evaluates_against_real_rows(require_canonical_rows: RequireRow
     from synapse.registry import resolve_declaration
 
     stale_after = next(t for t in DEAD_STOCK.thresholds if t.name == "stale_after_days")
+    feed_stale_after = next(t for t in DEAD_STOCK.thresholds if t.name == "feed_stale_after_days")
     as_of = date.today()
     scope = _scope()
     engine = create_rls_engine(DSN)
@@ -163,15 +167,22 @@ async def test_it_evaluates_against_real_rows(require_canonical_rows: RequireRow
         universe,  # type: ignore[arg-type]
         selling,  # type: ignore[arg-type]
         stale_after_days=stale_after.days,
+        feed_stale_after_days=feed_stale_after.days,
         as_of=as_of,
     )
     dead = [row for row in evaluated if row.is_dead_stock]
     never_sold = [row for row in evaluated if row.days_since_last_sale is None]
+    # THE REFUSALS ARE PRINTED TOO, and without them this report is misleading rather than merely
+    # incomplete: since the analysis gained a premise check and a feed check, "3 of 66 dead" is
+    # consistent with 63 assessed and with 63 refused, and those are opposite situations.
+    refused = counts_by_reason(evaluated)
 
     print(
-        f"\ndead_stock as_of {as_of}, stale_after_days={stale_after.days}: "
+        f"\ndead_stock as_of {as_of}, stale_after_days={stale_after.days}, "
+        f"feed_stale_after_days={feed_stale_after.days}: "
         f"{len(dead)} of {len(evaluated)} positions dead, "
         f"{len(never_sold)} never sold, "
+        f"refused {dict(sorted((r.value, n) for r, n in refused.items()))}, "
         f"most recent SALE {most_recent}, "
         f"{len(selling)} of {len(universe)} positions have ever sold"
     )
@@ -181,6 +192,10 @@ async def test_it_evaluates_against_real_rows(require_canonical_rows: RequireRow
 
     # A REAL ANSWER IS PARTIAL. All-dead is arithmetically possible and analytically suspect: see
     # the docstring for the three likely causes, none of which is a dead catalogue.
+    #
+    # ALL-REFUSED IS NOT THE SAME FAILURE AND IS NOT ASSERTED AGAINST. A fleet where no tenant has
+    # current sales data legitimately produces zero dead and one refusal per position, which is
+    # the system being honest rather than broken. The print above is what makes that readable.
     assert len(dead) < len(evaluated), (
         f"every one of {len(evaluated)} positions came back dead. Most recent SALE is "
         f"{most_recent} against as_of {as_of} and a {stale_after.days}-day threshold. Check, in "

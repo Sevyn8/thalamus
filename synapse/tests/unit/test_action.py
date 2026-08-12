@@ -215,7 +215,11 @@ def test_every_proposed_action_carries_an_arm_and_full_provenance() -> None:
     assert action.provenance.declaration_version == DEAD_STOCK.version
     assert action.provenance.capability_versions == VERSIONS
     assert action.provenance.as_of == AS_OF
-    assert set(action.provenance.thresholds) == {"stale_after_days", "expires_after_days"}
+    # EVERY DECLARED THRESHOLD, not the two the proposer reads by name. Provenance records what
+    # the analysis was CONFIGURED with, so feed_stale_after_days belongs here even though the
+    # proposer never touches it: an action's record of why it exists is incomplete without the
+    # rule that decided the position was assessable at all.
+    assert set(action.provenance.thresholds) == {t.name for t in DEAD_STOCK.thresholds}
 
 
 def test_quantity_at_stake_is_unknown_when_stock_is_null() -> None:

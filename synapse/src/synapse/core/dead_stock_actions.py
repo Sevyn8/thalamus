@@ -18,6 +18,14 @@ guessing this project has refused five times now.
 ONLY FINDINGS THAT ARE DEAD PRODUCE ACTIONS. The evaluator deliberately emits one row per
 position so ``is_dead_stock`` carries information; the proposer is where the filter belongs,
 because "which findings deserve an action" is an action-layer question.
+
+AND A REFUSED FINDING IS NOT DEAD, SO THE ONE FILTER COVERS BOTH. ``DeadStockRow`` enforces that
+a refused row cannot be flagged dead, which is why the premise checks the declaration states
+(stock on hand, a feed that is still sending) live in the EVALUATOR and not here. They were
+briefly designed as a second filter in this loop, and that would have been wrong twice over: a
+position skipped here produces no row anywhere, so the 32-of-38 positions failing the stock
+premise on staging would have vanished with no record, which is the silent-nothing this slice
+exists to remove. A refusal is a finding about the world; skipping is not.
 """
 
 from __future__ import annotations
@@ -51,6 +59,12 @@ def propose_dead_stock_actions(
     ``universe`` is needed for ``stock_qty``, which the finding does not carry: the evaluator's
     row is the analysis's declared ``emits``, and quantity-at-stake is an ACTION property rather
     than part of the finding. Joining here costs one dict and keeps ``emits`` stable.
+
+    EVERY SURVIVING FINDING NOW HAS A POSITIVE ``stock_qty``, because the evaluator refuses NULL
+    and refuses anything at or below zero. The lookup below therefore cannot legitimately miss,
+    and the ``None`` branch on ``quantity_at_stake`` is kept as a structural fallback rather than
+    an expected case: this function is pure and takes both sequences from its caller, so it
+    cannot assume they came from the matching evaluator run.
 
     ``capability_versions`` comes from ``DeclarationSatisfied.capability_versions``, which exists
     because provenance needed it. Passing it in rather than reaching for the registry keeps this
@@ -111,7 +125,9 @@ def propose_dead_stock_actions(
             Action(
                 target=target,
                 verb=Verb.REVIEW,
-                # None where stock_qty is NULL. Not zero: see Action's docstring.
+                # None only if the universe and the findings did not come from the same run; a
+                # NULL or non-positive stock_qty is refused by the evaluator and never reaches
+                # here. Not zero: see Action's docstring.
                 quantity_at_stake=quantity,
                 expires_on=expires_on,
                 arm=assign(holdout, subject),

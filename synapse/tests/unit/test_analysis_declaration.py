@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import pathlib
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 
 import pytest
 
@@ -110,13 +110,43 @@ def test_a_fitted_threshold_needs_no_reason() -> None:
 def test_dead_stocks_threshold_admits_it_is_a_constant_and_says_what_for() -> None:
     """D6, exercised. If this ever flips to fitted, the p90-gap capability must exist."""
     by_name = {threshold.name: threshold for threshold in DEAD_STOCK.thresholds}
-    assert set(by_name) == {"stale_after_days", "expires_after_days"}
+    assert set(by_name) == {"stale_after_days", "expires_after_days", "feed_stale_after_days"}
     stale_after = by_name["stale_after_days"]
     assert stale_after.fitted is False
     assert stale_after.stands_in_for is not None
     # Not a one-word placeholder: it must say what the fitted version would compute.
     assert "p90" in stale_after.stands_in_for
     assert "PERCENTILE_CONT" in stale_after.stands_in_for
+
+
+def test_every_dead_stock_threshold_is_an_admitted_constant() -> None:
+    """THE RULE APPLIES TO ALL THREE, not to the one the test above happens to name. D6 is about
+    unfitted numbers generally, and a per-threshold test would have to be written again for each
+    new one, which is how the third arrives unchecked."""
+    for threshold in DEAD_STOCK.thresholds:
+        assert threshold.fitted is False, f"{threshold.name} claims to be fitted; D6 wants proof"
+        assert threshold.stands_in_for, f"{threshold.name} is a constant that names nothing"
+
+
+def test_a_declaration_cannot_carry_two_thresholds_with_the_same_name() -> None:
+    """A LATENT TRAP INDEPENDENT OF ANY ONE ANALYSIS, and the failure it prevents is silent.
+
+    Every consumer reads thresholds as a name-keyed mapping built with {t.name: t.days}, so a
+    duplicate name does not raise, does not warn and does not render twice: the later entry
+    simply WINS and the analysis runs on a number nobody chose. dead_stock is one keystroke from
+    it, carrying stale_after_days=90 beside feed_stale_after_days=3 where the obvious name for
+    the second was the first, which would have overwritten the 90 and changed the expiry
+    arithmetic with no error anywhere.
+
+    DUPLICATES ACROSS DECLARATIONS STAY LEGAL and already exist: stale_after_days means 90 days
+    of no sale in dead_stock and 3 days of stale data in stockout_risk. That is why catalog.py
+    keys its operator descriptions on (analysis_id, name).
+    """
+    duplicated = Threshold(
+        name="stale_after_days", days=7, fitted=False, stands_in_for="a second one, deliberately"
+    )
+    with pytest.raises(ValueError, match="more than once"):
+        replace(DEAD_STOCK, thresholds=(*DEAD_STOCK.thresholds, duplicated))
 
 
 # ---------------------------------------------------------------------------

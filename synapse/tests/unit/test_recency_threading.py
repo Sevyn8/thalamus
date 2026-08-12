@@ -46,6 +46,7 @@ OTHER_STORE = UUID("019e5e3c-b700-7000-93c7-83fb205285ff")
 
 AS_OF = date(2026, 8, 7)
 STALE_AFTER = 90
+FEED_STALE_AFTER = 3
 VERSIONS = {"current_state": "0.1.0", "last_sale_at": "0.1.0"}
 
 
@@ -84,8 +85,23 @@ def _chain(
     Both halves, because several assertions below are about the two DISAGREEING in a specific way
     — the skew case keeps a negative on the finding and drops it from the action — and a helper
     that returned only actions could not express that.
+
+    A FRESH FEED ANCHOR IS APPENDED, for the same reason as in the evaluator suite: dead_stock
+    now refuses the whole sweep when the tenant's newest sale is older than feed_stale_after_days
+    or when there is no sale history at all. Every test here is about RECENCY THREADING through
+    to the action, so each needs a tenant whose feed is current; without the anchor they would
+    silently become tests of the feed refusal instead. The anchor is a SKU that is never in the
+    universe, which the evaluator suite already pins as producing no row.
     """
-    findings = list(evaluate_dead_stock(universe, selling, stale_after_days=STALE_AFTER, as_of=as_of))
+    findings = list(
+        evaluate_dead_stock(
+            universe,
+            [*selling, _sold("FEED_ANCHOR", as_of)],
+            stale_after_days=STALE_AFTER,
+            feed_stale_after_days=FEED_STALE_AFTER,
+            as_of=as_of,
+        )
+    )
     actions = list(
         propose_dead_stock_actions(
             findings,
@@ -184,7 +200,15 @@ def test_the_same_sku_at_two_stores_gets_two_answers() -> None:
     universe = [_position("SKU-0029"), _position("SKU-0029", store=OTHER_STORE)]
     selling = [_sold("SKU-0029", date(2026, 1, 19), store=OTHER_STORE)]
 
-    findings = list(evaluate_dead_stock(universe, selling, stale_after_days=STALE_AFTER, as_of=AS_OF))
+    findings = list(
+        evaluate_dead_stock(
+            universe,
+            [*selling, _sold("FEED_ANCHOR", AS_OF)],
+            stale_after_days=STALE_AFTER,
+            feed_stale_after_days=FEED_STALE_AFTER,
+            as_of=AS_OF,
+        )
+    )
     by_store = {row.store_id: row.days_since_last_sale for row in findings}
 
     assert by_store[STORE] is None
