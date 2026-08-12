@@ -58,11 +58,11 @@ async def test_at_n1_new_revision_is_at_alembic_head(
 ) -> None:
     """LOAD-BEARING: the migration chain is applied to the current head.
 
-    The head advances whenever a new migration lands on top; this
-    constant is bumped in lockstep. The DIS module catalog migration
-    (``a1c4e7f09d2b``: adds DIS to ``module_code_enum`` + a lookups row)
-    landed on top of Slice 9's ``f4b8c1d2e3a9``, so the head is now
-    ``a1c4e7f09d2b``.
+    The head advances whenever a new migration lands on top; this constant is
+    bumped in lockstep. The channels permission catalogue migration
+    (``b7e3c95a1d84``: adds CHANNELS to ``resource_enum``, three permission rows
+    and four role grants) landed on top of the DIS module catalog migration
+    (``a1c4e7f09d2b``), so the head is now ``b7e3c95a1d84``.
     """
     schema = get_settings().db_schema
     async for session in get_tenant_session(platform_auth, session_factory):
@@ -70,7 +70,7 @@ async def test_at_n1_new_revision_is_at_alembic_head(
             text(f"SELECT version_num FROM {schema}.alembic_version")
         )
         head = result.scalar_one()
-    assert head == "a1c4e7f09d2b"
+    assert head == "b7e3c95a1d84"
 
 
 # ---------------------------------------------------------------------------

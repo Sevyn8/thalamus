@@ -64,6 +64,25 @@ EXPECTED_VISIBLE_COUNTS_PLATFORM = {
     # `.VIEW.TENANT`; operator REVOKED those and GRANTED
     # `.VIEW.GLOBAL` to the same 3 platform roles. Tenant-side
     # `.VIEW.TENANT` grants on the 8 tenant roles unchanged.
+    # 2026-08-12 (Step 6.22 channels permission catalogue, migration
+    # b7e3c95a1d84): THESE COUNTS DELIBERATELY DO NOT MOVE, and the reason
+    # is worth stating because the obvious edit is wrong.
+    #
+    # The migration adds 3 permissions and 4 role_permissions for the new
+    # CHANNELS resource, so a migrated database holds 40 / 135. But this
+    # test runs `run_seed(reset=True)` FIRST, and `--reset` TRUNCATEs both
+    # `permissions` and `role_permissions` before loading the workbook.
+    # The workbook does not carry the CHANNELS rows (the migration's header
+    # records why the loader cannot add them), so what this test measures
+    # after a reseed is the WORKBOOK's content: still 37 / 131.
+    #
+    # THE OPERATIONAL CONSEQUENCE IS REAL AND IS NOT THIS TEST'S TO FIX.
+    # Running the seed loader against a migrated database DELETES the three
+    # CHANNELS rows, and `alembic upgrade` will NOT put them back: the
+    # revision is already recorded in `alembic_version`, which `--reset`
+    # does not truncate. Restoring them means re-running the migration's
+    # INSERTs by hand or stamping the revision back. Reconciling the
+    # workbook removes the trap; that is separate work.
     "permissions": 37,
     "role_permissions": 131,
     # 2026-05-12: 4 ROOS rows removed from XLSX (Buc-ee's, Żabka,

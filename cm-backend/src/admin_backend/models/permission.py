@@ -47,7 +47,16 @@ from admin_backend.models.tenant_module_access import ModuleCode
 
 
 class PermissionResource(str, Enum):
-    """Mirrors ``resource_enum`` (locked vocabulary; no narrowing needed)."""
+    """Mirrors ``resource_enum`` (locked vocabulary; no narrowing needed).
+
+    DECLARATION ORDER IS LOAD-BEARING, WHICH IS WHY NEW MEMBERS GO AT THE END. Postgres orders
+    an enum column by the type's declaration order, and ``ALTER TYPE ... ADD VALUE`` without a
+    BEFORE/AFTER clause APPENDS. The permission list endpoints sort on the resource column, and
+    ``tests/integration/test_rbac_router.py::_permission_sort_tuple`` recomputes that ordering
+    from THIS class's member positions to assert the two agree. Inserting a member in the middle
+    here, next to the resources it reads well beside, would put Python's ordinal out of step with
+    the database's and break that agreement without touching either side's own correctness.
+    """
 
     PRICING_RULES = "PRICING_RULES"
     MARKDOWNS = "MARKDOWNS"
@@ -61,6 +70,17 @@ class PermissionResource(str, Enum):
     TENANTS = "TENANTS"
     STORES = "STORES"
     ORG_NODES = "ORG_NODES"
+    # THE FIRST VALUE EVER ADDED TO resource_enum (migration b7e3c95a1d84). A tenant's outbound
+    # SENDING CHANNELS: the connection being configured, not the messages sent over it.
+    #
+    # AT THE END, NOT GROUPED WITH THE ADMIN RESOURCES ABOVE, per the class docstring: ADD VALUE
+    # appends, so this position is what keeps Python's ordinal equal to the database's.
+    #
+    # UNDER THE ADMIN MODULE RATHER THAN A NEW ONE. Every tenant running Synapse will eventually
+    # want channels, so per-tenant module entitlement buys little now, and the DIS precedent
+    # (a1c4e7f09d2b) shows a module costs an enum value plus a lookups row plus a launcher tile
+    # nobody asked for. Promoting it to its own module later is possible; the reverse is harder.
+    CHANNELS = "CHANNELS"
 
 
 class PermissionAction(str, Enum):
