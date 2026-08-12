@@ -36,11 +36,15 @@ class Config:
                            SELECTs its pre-flight cannot run without (identity_mirror.tenants and
                            canonical.store_sku_current_position). Enablement. Slice 5e.
 
-    AND TWO AXON CREDENTIALS, WHICH ARE A PAIR RATHER THAN A WIDENING. ``axon_sender_url`` holds
-    INSERT on ``axon.platform_deliveries`` and no SELECT anywhere; ``axon_reader_url`` holds
-    SELECT on both ledgers and no write verb anywhere. Splitting them is what keeps the delivery
-    ledger append-only from BOTH sides: the process that writes it cannot read it back, and the
-    process that displays it cannot edit what it displays.
+    AND ONE AXON CREDENTIAL, WHICH IS THE READ HALF ONLY. ``axon_reader_url`` holds SELECT on
+    both delivery ledgers and no write verb anywhere.
+
+    THE SENDER'S DSN USED TO BE HERE AND IS NOT ANY MORE. Until slice 2 this service also held
+    ``axon_sender_url`` (INSERT on ``axon.platform_deliveries``), because the enable route wrote
+    the ledger row in-process. It now publishes to a queue and writes nothing, so the credential
+    moved to axon-sender, which is the only process that writes. The SendGrid key and
+    from-address moved with it for the same reason: this service no longer talks to a provider.
+    What is left is a console that can read the ledger and cannot alter it.
 
     NEITHER CAN DO THE OTHER'S JOB, and neither can UPDATE or DELETE anything. The provisioner
     in particular has no UPDATE on its own table, so the console cannot disable a tenant or edit
@@ -73,9 +77,6 @@ class Config:
     # and the Terraform module never wired, and the service refused to start behind a green
     # apply for two days while staging kept serving the previous revision. The fix was the
     # wiring, not a softer requirement.
-    axon_sender_url: str
-    axon_sendgrid_api_key: str
-    axon_sendgrid_from_email: str
     axon_platform_oncall_email: str
     # AXON slice 3. The delivery ledger's READ credential, and the pair completes the design:
     # ``axon_sender_url`` can write one table and read nothing; this one can read both ledgers
@@ -86,6 +87,13 @@ class Config:
     # it SELECT, which would hand the send path the ability to read a ledger of who was
     # contacted about what. The console needs the read; the sender must not have it.
     axon_reader_url: str
+    # AXON slice 2. The GCP project holding axon-send-requested. The 5e enable route no longer
+    # sends in-process; it PUBLISHES, and the send happens in axon-sender behind the queue.
+    #
+    # A PROJECT ID RATHER THAN A TOPIC NAME. The topic's name lives in axon.envelope, because
+    # both the producer and the consumer need it and a name configured twice is a name that can
+    # disagree with itself. The project is genuinely per-environment; the topic is not.
+    axon_project_id: str
 
     @property
     def jwks_url(self) -> str:
@@ -115,15 +123,10 @@ def load_config() -> Config:
         "/api/v1/me/can-do. No trailing slash",
         "SYNAPSE_JWT_ISSUER": "the Auth0 issuer, e.g. https://<tenant>.auth0.com/",
         "SYNAPSE_JWT_AUDIENCE": "the API identifier this service accepts tokens for",
-        "AXON_SENDER_URL": "the axon_sender DSN: INSERT on axon.platform_deliveries and "
-        "NOTHING else. No SELECT anywhere, which is why the write path mints its own id and "
-        "uses neither RETURNING nor ON CONFLICT",
-        "AXON_SENDGRID_API_KEY": "Sevyn8's own SendGrid API key, for Sevyn8's own internal "
-        "traffic. NOT a tenant credential: tenant traffic is sent by the TENANT under its own "
-        "account, and none of that exists yet",
-        "AXON_SENDGRID_FROM_EMAIL": "the from-address. It MUST be a SendGrid-VERIFIED sender "
-        "on the account or every send is refused per message, at runtime, in a way that reads "
-        "like a provider outage",
+        "AXON_PROJECT_ID": "the GCP project holding the axon-send-requested topic. The enable "
+        "route publishes a send request rather than sending in-process, so a revision without "
+        "this cannot deliver anything and would fail every publish at runtime instead of "
+        "refusing to start",
         "AXON_READER_URL": "the axon_reader DSN: SELECT on axon.platform_deliveries and "
         "axon.tenant_deliveries, and NO write verb anywhere. Not the sender's DSN: that role "
         "holds no SELECT, deliberately, and giving it one would let the send path read the "
@@ -173,11 +176,9 @@ def load_config() -> Config:
         # into terraform and a trailing slash would produce "…//api/v1/me/can-do", which Cloud
         # Run answers with a 404 that reads like a missing endpoint rather than a typo.
         cm_api_base_url=str(found["CM_API_BASE_URL"]).rstrip("/"),
-        axon_sender_url=str(found["AXON_SENDER_URL"]),
-        axon_sendgrid_api_key=str(found["AXON_SENDGRID_API_KEY"]),
-        axon_sendgrid_from_email=str(found["AXON_SENDGRID_FROM_EMAIL"]),
         axon_platform_oncall_email=str(found["AXON_PLATFORM_ONCALL_EMAIL"]),
         axon_reader_url=str(found["AXON_READER_URL"]),
+        axon_project_id=str(found["AXON_PROJECT_ID"]),
         jwt_issuer=str(found["SYNAPSE_JWT_ISSUER"]),
         jwt_audience=str(found["SYNAPSE_JWT_AUDIENCE"]),
         # dis-rls refuses any database but its expected one, defaulting to the pre-consolidation

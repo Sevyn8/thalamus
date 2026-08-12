@@ -275,10 +275,27 @@ resource "google_monitoring_alert_policy" "dlq_not_empty" {
     display_name = "undelivered messages in a *-dlq-sub"
 
     condition_threshold {
+      # THE REGEX IS ".*-dlq-sub" AND IT USED TO BE "dis-.*-dlq-sub". THE WIDENING IS THE
+      # WHOLE POINT AND IT IS NOT COSMETIC.
+      #
+      # Axon slice 2 added axon-send-requested-dlq-sub. Under the old pattern that queue was
+      # NOT MATCHED, so a dead-lettered send would have sat there unalerted for its 31 day
+      # retention and then been deleted. The alert would have kept reporting healthy the
+      # entire time, because it was reporting on a set that did not include the new queue.
+      #
+      # ".*-dlq-sub" RATHER THAN "(dis|axon)-.*-dlq-sub", and the enumeration is the version
+      # that loses. This exact item exists because a regex did not keep up with a new module;
+      # an alternation would need the NEXT module to remember this file, which is the same
+      # bet that just failed. Matching the naming convention means a new dead-letter lane is
+      # covered by existing on the day it is created.
+      #
+      # THE COST, ACCEPTED: a subscription named *-dlq-sub for some unrelated purpose would
+      # be matched and would alert when non-empty. Given the convention is universal here,
+      # a false positive on a queue that is genuinely accumulating is the cheaper error.
       filter = join(" AND ", [
         "metric.type=\"pubsub.googleapis.com/subscription/num_undelivered_messages\"",
         "resource.type=\"pubsub_subscription\"",
-        "resource.label.subscription_id=monitoring.regex.full_match(\"dis-.*-dlq-sub\")",
+        "resource.label.subscription_id=monitoring.regex.full_match(\".*-dlq-sub\")",
       ])
 
       comparison      = "COMPARISON_GT"

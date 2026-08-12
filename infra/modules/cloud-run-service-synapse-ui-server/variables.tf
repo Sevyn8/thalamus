@@ -54,33 +54,15 @@ variable "secret_provisioner_url" {
   default     = "synapse-provisioner-database-url"
 }
 
-variable "secret_axon_sender_url" {
-  type        = string
-  description = "Secret Manager id of the axon_sender DSN (Axon slice 1). INSERT on axon.platform_deliveries and NOTHING else: no SELECT anywhere, nothing at all on axon.tenant_deliveries. The absence of SELECT is why the send path mints its own UUIDv7 and uses neither RETURNING nor ON CONFLICT, both of which need it. Created OUT OF BAND like the three Synapse DSNs; grants come from infra/db-setup/sql/06_axon_sender_grant.sql. The service refuses to start without it."
-  default     = "axon-sender-database-url"
-}
-
 variable "secret_axon_reader_url" {
   type        = string
   description = "Secret Manager id of the axon_reader DSN (Axon slice 3). SELECT on axon.platform_deliveries and axon.tenant_deliveries, and NO write verb anywhere. NOT the sender's DSN and not a widening of it: axon_sender deliberately holds no SELECT, so reusing it would let the send path read back the ledger of who was contacted about what. Created OUT OF BAND like every other DSN here; grants come from infra/db-setup/sql/07_axon_reader_grant.sql. The service refuses to start without it."
   default     = "axon-reader-database-url"
 }
 
-variable "secret_axon_sendgrid_api_key" {
+variable "axon_send_topic" {
   type        = string
-  description = "Secret Manager id of SEVYN8'S OWN SendGrid API key (Axon slice 1). NOT a tenant credential: for tenant traffic the TENANT is the sender, under its own WhatsApp Business account, its own DLT registration and its own credentials, and none of that exists yet. A SEPARATE secret from cm-sendgrid-api-key rather than a shared grant on CM's: a secret named for one module and read by another is a name that lies, and a separately revocable key means an Axon compromise does not force a rotation of Customer Master's invitation flow. Created OUT OF BAND."
-  default     = "axon-sendgrid-api-key"
-}
-
-variable "axon_sendgrid_from_email" {
-  type        = string
-  description = "AXON_SENDGRID_FROM_EMAIL - the from-address on Sevyn8's own outbound mail. It MUST be a SendGrid-VERIFIED sender on the account: SendGrid refuses an unverified sender per message, at runtime, which reads like a provider outage rather than a configuration error. Not a secret, so it is a plain variable rather than a Secret Manager reference."
-  default     = "noreply@sevyn8.com"
-
-  validation {
-    condition     = can(regex("^[^@]+@[^@]+\\.[^@]+$", var.axon_sendgrid_from_email))
-    error_message = "axon_sendgrid_from_email must be a single email address."
-  }
+  description = "The axon-send-requested topic this service publishes to. Passed in rather than constructed so Terraform sees an edge from the service to the topic and creates the topic first, and so the publisher grant is TOPIC-SCOPED rather than project-wide."
 }
 
 variable "axon_platform_oncall_email" {

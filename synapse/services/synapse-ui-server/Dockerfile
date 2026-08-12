@@ -154,6 +154,14 @@ ENV ASGI_TARGET="synapse_ui_server.main:create_app"
 #   v15 slice 3 made AXON_READER_URL required and this list still held the ten
 #       before it. Same failure, same place, same message shape.
 #
+# SLICE 2 SHRANK THIS LIST RATHER THAN GROWING IT, which is the first time that has
+# happened. AXON_SENDER_URL, AXON_SENDGRID_API_KEY and AXON_SENDGRID_FROM_EMAIL are
+# gone because this service no longer sends: the enable route publishes a message
+# and axon-sender does the provider call and the ledger write. AXON_PROJECT_ID
+# arrived in their place. THE TEST CHECKS BOTH DIRECTIONS, so a variable left here
+# after the loader stopped wanting it fails just as loudly as a missing one; that is
+# what caught these three rather than a reader noticing.
+#
 # Both times the guard was right and the check was stale. The rule stated here was
 # "a variable added to load_config() must be added here in the same commit", and it
 # was stated here BEFORE v15 failed, which is the whole point: A RULE ENFORCED BY A
@@ -180,10 +188,8 @@ RUN SYNAPSE_READER_URL="postgresql+psycopg://u@h/d" \
     CM_API_BASE_URL="https://build.invalid" \
     SYNAPSE_JWT_ISSUER="https://build.invalid/" \
     SYNAPSE_JWT_AUDIENCE="build-check" \
-    AXON_SENDER_URL="postgresql+psycopg://a@h/d" \
     AXON_READER_URL="postgresql+psycopg://r@h/d" \
-    AXON_SENDGRID_API_KEY="build-check" \
-    AXON_SENDGRID_FROM_EMAIL="noreply@build.invalid" \
+    AXON_PROJECT_ID="build-check" \
     AXON_PLATFORM_ONCALL_EMAIL="oncall@build.invalid" \
     python -c "\
 import os; \

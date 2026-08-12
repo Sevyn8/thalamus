@@ -195,7 +195,13 @@ variable "dis_ui_server_image" {
 variable "synapse_ui_server_image" {
   type        = string
   description = "synapse-ui-server container image (the read-only BFF behind the Synapse superadmin console). Built from synapse/services/synapse-ui-server with the MONOREPO ROOT as build context — the BFF is a workspace member alongside thalamus-synapse, so a dis/-rooted context cannot reach it. Explicit _TAG, never a floating `latest`. BUILT AND DEPLOYED: v1 shipped with a CMD/build-check mismatch that made the container fail to start; v2 is the running revision. Bump this in the same commit as any rebuild."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/synapse-ui-server:v16"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/synapse-ui-server:v17"
+}
+
+variable "axon_sender_image" {
+  type        = string
+  description = "axon-sender container image (Axon's poll loop over axon-send-requested). Built from axon/services/axon-sender with the MONOREPO ROOT as build context: the service is a uv workspace member alongside thalamus-axon, so a dis/-rooted context cannot reach it. Explicit tag, never a floating `latest`. Bump this in the same commit as any rebuild."
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/axon-sender:v1"
 }
 
 variable "synapse_orchestrator_image" {

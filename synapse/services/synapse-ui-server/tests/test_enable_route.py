@@ -25,7 +25,7 @@ from uuid import UUID
 
 import httpx
 import pytest
-from axon import Channel, DeliveryState, SendOutcome
+from axon import TOPIC_SEND_REQUESTED, Channel, SendRequested
 from synapse_ui_server import main as main_module
 from synapse_ui_server import provision as provision_module
 from synapse_ui_server import reads
@@ -39,11 +39,6 @@ from synapse_ui_server.timezones import OfferedZones
 TENANT = UUID("019fb16b-e402-7dce-b026-6fa9f4919242")
 OPERATOR = Identity(subject="auth0|operator", user_type=UserType.PLATFORM, tenant_id=None)
 
-# The default delivery outcome for every test that is not about delivery. A module-level
-# constant rather than a call in a default argument: SendOutcome is frozen, so one instance is
-# correct, and ruff's B008 refuses the call form for the mutable-default class of bug.
-_ACCEPTED_AND_RECORDED = SendOutcome(state=DeliveryState.ACCEPTED, recorded=True)
-
 _CONFIG = Config(
     reader_url="postgresql+psycopg://r@h/d",
     lifecycle_url="postgresql+psycopg://l@h/d",
@@ -52,10 +47,8 @@ _CONFIG = Config(
     jwt_issuer="https://x/",
     jwt_audience="a",
     expected_database="thalamus",
-    axon_sender_url="postgresql+psycopg://a@h/d",
     axon_reader_url="postgresql+psycopg://a@h/d",
-    axon_sendgrid_api_key="test-key",
-    axon_sendgrid_from_email="noreply@test.invalid",
+    axon_project_id="test-project",
     axon_platform_oncall_email="oncall@test.invalid",
 )
 
@@ -114,35 +107,37 @@ def gated_app(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
         outcome: EnableOutcome | Exception | None = None,
         offered: tuple[str, ...] = ("Asia/Kolkata",),
         source: str = "intersection",
-        # What Axon's send returns, or raises. Defaults to the accepted-and-recorded case so
-        # every test that is not about delivery is unaffected by it.
-        axon_outcome: SendOutcome | Exception = _ACCEPTED_AND_RECORDED,
+        # What the PUBLISH returns, or raises. Defaults to a message id, so every test that is
+        # not about delivery is unaffected by it.
+        axon_outcome: str | Exception = "fake-message-id",
     ) -> tuple[httpx.AsyncClient, list[dict[str, Any]]]:
         app = create_app(_CONFIG)
         # NO LIFESPAN, so nothing tries to open a pool. The handlers only ever pass these to the
         # two functions stubbed below, which ignore them.
         app.state.engine = object()
         app.state.provision_engine = object()
-        # AXON (slice 1). The enable route hands the provisioning event to the delivery plane
-        # after recording it. These three are what the lifespan would have built.
+        # AXON (slice 2). The enable route no longer sends: it PUBLISHES one message and
+        # returns, and axon-sender does the provider call and the ledger write behind the queue.
+        # So the state this fixture builds shrank from an engine plus an adapter plus an address
+        # to a publisher plus an address.
         #
-        # THE SEND ITSELF IS STUBBED AT main_module, which is the name the ROUTE calls. A stub
-        # patched at axon.send would pass against a route that had stopped calling it, which is
-        # the vacuity trap every fixture in this suite already names. Axon's own behaviour is
-        # tested in axon/tests; these tests are about the three enablement states.
-        app.state.axon_engine = object()
-        app.state.axon_adapter = object()
+        # THE PUBLISHER IS A FAKE ON app.state, NOT A PATCH, and that is a real improvement over
+        # the slice-1 shape. The route reaches it through the same attribute the lifespan sets,
+        # so there is no name to patch and therefore no way for a test to pass against a route
+        # that stopped calling it. The vacuity trap the old comment named is gone rather than
+        # guarded against.
         app.state.axon_oncall_email = "oncall@test.invalid"
 
         sends: list[dict[str, Any]] = []
 
-        async def fake_send(**kwargs: Any) -> SendOutcome:
-            sends.append(kwargs)
-            if isinstance(axon_outcome, Exception):
-                raise axon_outcome
-            return axon_outcome
+        class _FakePublisher:
+            def publish(self, topic_name: str, data: bytes) -> str:
+                sends.append({"topic": topic_name, "data": data})
+                if isinstance(axon_outcome, Exception):
+                    raise axon_outcome
+                return axon_outcome
 
-        monkeypatch.setattr(main_module, "send_platform", fake_send)
+        app.state.axon_publisher = _FakePublisher()
         # THE OFFERED SET, which the lifespan would normally compute against the real database.
         # A REAL OfferedZones rather than a stub, so the route exercises the real `offers`; a
         # duck-typed fake could answer True to everything and every refusal test would pass
@@ -352,55 +347,36 @@ async def test_a_successful_enable_hands_the_event_to_axon(gated_app) -> None:  
 
     assert response.status_code == 201
     assert len(sends) == 1, "the enable did not reach the delivery plane"
+    # PARSED BACK THROUGH THE REAL ENVELOPE, not inspected as a dict. The bytes on the wire are
+    # what axon-sender will read, so asserting on the parsed form is asserting the contract both
+    # deployments share rather than this side's idea of it.
     sent = sends[0]
-    assert sent["notification_class"] == "synapse.provision.enabled"
-    assert sent["subject_kind"] == "synapse.provision"
-    assert sent["subject_id"] == f"{TENANT}:dead_stock"
-    assert sent["actor_subject"] == OPERATOR.subject
-    assert sent["message"].recipient == "oncall@test.invalid"
-    assert sent["message"].channel is Channel.EMAIL
+    assert sent["topic"] == TOPIC_SEND_REQUESTED
+    envelope = SendRequested.from_json(sent["data"])
+    assert envelope.notification_class == "synapse.provision.enabled"
+    assert envelope.subject_kind == "synapse.provision"
+    assert envelope.subject_id == f"{TENANT}:dead_stock"
+    assert envelope.actor_subject == OPERATOR.subject
+    assert envelope.recipient == "oncall@test.invalid"
+    assert envelope.channel is Channel.EMAIL
+    # THE ID THE WHOLE SLICE TURNS ON. Minted here, in the producer, because it is
+    # pk_platform_deliveries: a redelivery carrying it reaches the same row and the second INSERT
+    # is refused. A consumer-minted id would make every redelivery a new row.
+    assert envelope.delivery_id.version == 7
 
 
-async def test_a_send_failure_does_not_fail_the_enable(gated_app) -> None:  # type: ignore[no-untyped-def]
+async def test_a_publish_failure_does_not_fail_the_enable(gated_app) -> None:  # type: ignore[no-untyped-def]
     """THE COUPLING RULE, AND IT IS THE ONE THAT MATTERS MOST IN THIS PAIRING.
 
-    The provision row is already committed when Axon is called: enable_analysis's transaction
-    closed when it returned. An email that did not go out must not undo an enablement, and a
-    response that turned 201 into a 500 would be reporting the delivery's failure as the
-    enable's.
+    The provision row is already committed when Axon is reached: enable_analysis's transaction
+    closed when it returned. A message that did not reach the queue must not undo an enablement,
+    and a response that turned 201 into a 500 would be reporting the delivery's failure as the
+    enable's. The operator would then retry and get the 409 "already enabled" branch for a
+    monitor that was in fact enabled the first time.
 
-    ASSERTED ON A RETURNED FAILURE, not on an exception, because send_platform is contracted
-    never to raise. The next test covers the case where it breaks that contract anyway.
-    """
-    client, _ = gated_app(
-        detail=_detail(),
-        outcome=EnableOutcome(
-            analysis_id="dead_stock",
-            tenant_name="TestCo",
-            canonical_positions=15,
-            warning=None,
-            already_provisioned=False,
-        ),
-        axon_outcome=SendOutcome(state=DeliveryState.FAILED, recorded=True, detail="provider said 403"),
-    )
-    async with client:
-        response = await client.post(_url(), json={"timezone": "Asia/Kolkata"})
-
-    assert response.status_code == 201, "a failed delivery failed the enable"
-    body = response.json()
-    assert body["analysis_id"] == "dead_stock"
-    # AND THE RESPONSE SAYS NOTHING ABOUT THE DELIVERY. The operator enabled a monitor; whether
-    # an internal notification reached on-call is not their business and not their failure.
-    assert "delivery" not in body
-    assert "axon" not in body
-
-
-async def test_an_axon_exception_still_does_not_fail_the_enable(gated_app) -> None:  # type: ignore[no-untyped-def]
-    """THE CONTRACT IS BELT AND BRACES HERE, deliberately.
-
-    send_platform is contracted never to raise and axon/tests pins that. This asserts the
-    ENABLE ROUTE survives it doing so anyway, because the contract is one refactor away from
-    being untrue and the cost of it becoming untrue is a failed enablement for an email.
+    THIS IS ALSO THE HOLE THE QUEUE DID NOT CLOSE. A publish that raises leaves the enablement
+    committed with nothing queued, so no redelivery can rescue it: there is no message. Only a
+    transactional outbox closes that, and main.py records what it would cost.
     """
     client, _ = gated_app(
         detail=_detail(),
@@ -420,6 +396,12 @@ async def test_an_axon_exception_still_does_not_fail_the_enable(gated_app) -> No
         "an exception escaping the delivery plane failed the enable. The provision row is "
         "already committed at that point, so this turns a successful enablement into a 500."
     )
+    body = response.json()
+    assert body["analysis_id"] == "dead_stock"
+    # AND THE RESPONSE SAYS NOTHING ABOUT THE DELIVERY. The operator enabled a monitor; whether
+    # an internal notification reached on-call is not their business and not their failure.
+    assert "delivery" not in body
+    assert "axon" not in body
 
 
 async def test_a_refused_enable_sends_nothing(gated_app) -> None:  # type: ignore[no-untyped-def]

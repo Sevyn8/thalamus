@@ -26,6 +26,8 @@ from axon import (
 )
 from axon import send as send_module
 
+from dis_core.ids import new_uuid7
+
 
 class _FakeAdapter:
     """An adapter that accepts, or raises whatever it was given."""
@@ -64,8 +66,10 @@ def recorded(monkeypatch: pytest.MonkeyPatch) -> _Recorded:
     """
     captured = _Recorded(records=[])
 
-    async def fake_record(engine: object, record: DeliveryRecord) -> None:
+    async def fake_record(engine: object, record: DeliveryRecord) -> bool:
         captured.records.append(record)
+        # True means the row was new. The duplicate branch has its own test below.
+        return True
 
     monkeypatch.setattr(send_module, "record_platform_delivery", fake_record)
     return captured
@@ -81,10 +85,17 @@ def _message() -> Message:
 
 
 async def _send(adapter: Any, **overrides: Any) -> SendOutcome:
+    """Drive the send path with a caller-minted delivery_id, as the consumer does.
+
+    A FRESH UUIDv7 PER CALL unless a test pins one. Slice 2 moved the mint out of send_platform
+    to the producer, so the id is now an argument; a test that reused one id across calls would
+    be asserting the idempotency path by accident rather than on purpose.
+    """
     kwargs: dict[str, Any] = {
         "engine": object(),
         "adapter": adapter,
         "message": _message(),
+        "delivery_id": new_uuid7(),
         "notification_class": "test.event",
         "subject_kind": "test",
         "subject_id": "abc",
@@ -161,30 +172,33 @@ async def test_a_ledger_failure_returns_unrecorded_rather_than_raising(
     assert outcome.recorded is False
 
 
-async def test_the_delivery_id_is_a_uuid7_minted_before_the_send(recorded: _Recorded) -> None:
-    """MINTED BY THE CALLER, WHICH IS WHAT LETS THE GRANT HOLD NO SELECT.
+async def test_the_supplied_delivery_id_reaches_the_ledger_unchanged(recorded: _Recorded) -> None:
+    """SUPPLIED BY THE CALLER, WHICH IS WHAT MAKES THE WHOLE SLICE IDEMPOTENT.
 
-    A server-side DEFAULT would need RETURNING to learn the id, RETURNING needs SELECT, and
-    axon_sender deliberately has none. Version 7 rather than 4 because uuid4 is banned
-    project-wide and because the id then carries the instant.
+    Slice 1 minted it here, which was right while the call was in-process and once per producer
+    event. Under a queue that would mint a NEW id per redelivery, so the same intent would reach
+    the ledger as N rows and pk_platform_deliveries would refuse none of them. The mint moved to
+    the producer and rides in the envelope; this asserts the path does not substitute its own.
+
+    A server-side DEFAULT is still not an option for the same reason as before: it would need
+    RETURNING to learn the id, RETURNING needs SELECT, and axon_sender deliberately has none.
     """
-    await _send(_FakeAdapter())
+    pinned = new_uuid7()
+
+    await _send(_FakeAdapter(), delivery_id=pinned)
 
     delivery_id = recorded.records[0].delivery_id
     assert isinstance(delivery_id, UUID)
+    assert delivery_id == pinned
     assert delivery_id.version == 7
 
 
-async def test_two_sends_are_two_rows(recorded: _Recorded) -> None:
-    """NO IDEMPOTENCY, DELIBERATELY, AND THIS PINS THE DECISION.
+async def test_two_distinct_deliveries_are_two_rows(recorded: _Recorded) -> None:
+    """TWO PRODUCER EVENTS ARE TWO DELIVERIES AND TWO ROWS, which is unchanged by the queue.
 
-    Two producer events are two deliveries and two rows. There is nothing to deduplicate against
-    in this slice: the call is in-process and synchronous, once per event.
-
-    THE QUEUE CHANGES THIS and the obvious mechanism will fail: ON CONFLICT has to read the
-    arbiter index and this role holds no SELECT, which is exactly how slice 5e lost two days.
-    ledger.py's docstring records the two mechanisms that do work. If this test is failing
-    because somebody added deduplication, they should have added a grant too.
+    Idempotency is keyed on delivery_id, so it deduplicates a REDELIVERY of one message and not
+    two genuine sends. If this ever collapses to one row, the mechanism has started deduplicating
+    on something the producer did not intend as a key.
     """
     adapter = _FakeAdapter()
 
@@ -193,3 +207,37 @@ async def test_two_sends_are_two_rows(recorded: _Recorded) -> None:
 
     assert len(recorded.records) == 2
     assert recorded.records[0].delivery_id != recorded.records[1].delivery_id
+
+
+async def test_a_redelivery_of_one_message_is_reported_as_a_duplicate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """THE IDEMPOTENCY PATH, FROM THE SEND SIDE.
+
+    record_platform_delivery returns False when pk_platform_deliveries already held this id, and
+    the outcome carries that through as `duplicate` so the consumer can ack without writing a
+    second row and can log that a redelivery happened.
+
+    recorded IS TRUE AND duplicate IS TRUE AT THE SAME TIME, and both are needed: the evidence
+    exists (so ack) and this pass did not create it (so say so). Collapsing them into one flag
+    would make "the ledger is fine" and "I wrote it" the same statement, which they are not.
+    """
+
+    async def already_there(engine: object, record: DeliveryRecord) -> bool:
+        return False
+
+    monkeypatch.setattr(send_module, "record_platform_delivery", already_there)
+
+    outcome = await _send(_FakeAdapter())
+
+    assert outcome.recorded is True
+    assert outcome.duplicate is True
+
+
+async def test_a_first_write_is_not_reported_as_a_duplicate(recorded: _Recorded) -> None:
+    """THE VACUITY GUARD FOR THE TEST ABOVE. A `duplicate` that were always True would make that
+    assertion pass while the flag carried no information at all."""
+    outcome = await _send(_FakeAdapter())
+
+    assert outcome.recorded is True
+    assert outcome.duplicate is False

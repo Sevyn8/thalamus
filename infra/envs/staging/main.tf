@@ -208,6 +208,9 @@ module "synapse_ui_server" {
   # being delivered by Axon. The two may resolve to the same inbox and must not be the same
   # variable; the duplication is the point.
   axon_platform_oncall_email = var.axon_platform_oncall_email
+  # Referencing the topic's attribute makes Terraform create the lane before the
+  # service that publishes to it, and scopes the publisher grant to that one topic.
+  axon_send_topic = google_pubsub_topic.axon_send_requested.name
 }
 
 module "cm_frontend_service" {
@@ -452,6 +455,134 @@ resource "google_pubsub_subscription" "ingress_ready_sub" {
   depends_on = [
     google_pubsub_topic_iam_member.ingress_dlq_publisher,
   ]
+}
+
+###############################################################################
+# AXON'S SEND LANE (slice 2). Topic, subscription, dead-letter topic, dead-letter
+# subscription, and both service-agent grants.
+#
+# WHY A QUEUE AT ALL. Slice 1 called the send in-process from the 5e enable route
+# and named the hole in its own comment: if the LEDGER WRITE failed there was no
+# row, possibly an email, and a successful enable, with nothing afterwards able to
+# tell that anything was owed. A durable queue makes the intent survive the
+# consumer, so a failed write nacks and is retried instead of evaporating.
+#
+# THE SHAPE IS streaming-consumer's, NOT the orchestrator's. A sender has no
+# cadence; it has a queue. So this is a pull subscription drained by a Cloud Run
+# SERVICE at min_instances = 1, not a scheduled job.
+###############################################################################
+
+resource "google_pubsub_topic" "axon_send_requested" {
+  project = var.project_id
+  name    = "axon-send-requested"
+}
+
+resource "google_pubsub_topic" "axon_send_requested_dlq" {
+  project = var.project_id
+  name    = "axon-send-requested-dlq"
+}
+
+# A dead-letter topic with NO SUBSCRIPTION silently discards everything published
+# to it, so this subscription is what makes the DLQ a queue rather than a drain.
+# Both non-default settings are load-bearing, exactly as on the two DIS lanes:
+#   expiration_policy ttl = ""   -> the subscription never expires. The default is
+#     31 days of INACTIVITY, and a queue nobody pulls is inactive by definition.
+#   message_retention_duration   -> 31 days, the schema maximum (default is 7).
+resource "google_pubsub_subscription" "axon_send_requested_dlq_sub" {
+  project                    = var.project_id
+  name                       = "axon-send-requested-dlq-sub"
+  topic                      = google_pubsub_topic.axon_send_requested_dlq.id
+  ack_deadline_seconds       = 30
+  message_retention_duration = "2678400s"
+  expiration_policy {
+    ttl = ""
+  }
+}
+
+# BOTH GRANTS ARE LOAD-BEARING AND THE FAILURE IS SILENT. The Pub/Sub service
+# agent needs publisher on the dead-letter TOPIC *and* subscriber on the SOURCE
+# SUBSCRIPTION. roles/pubsub.serviceAgent contains ZERO Pub/Sub permissions (this
+# was verified when the DIS lanes were built). Miss either one and the policy is a
+# NO-OP that `gcloud pubsub subscriptions describe` still reports as configured,
+# and messages redeliver forever, indistinguishable from the bug it fixes.
+resource "google_pubsub_topic_iam_member" "axon_dlq_publisher" {
+  project = var.project_id
+  topic   = google_pubsub_topic.axon_send_requested_dlq.name
+  role    = "roles/pubsub.publisher"
+  member  = local.pubsub_service_agent
+}
+
+resource "google_pubsub_subscription_iam_member" "axon_dlq_subscriber" {
+  project      = var.project_id
+  subscription = google_pubsub_subscription.axon_send_requested_sub.name
+  role         = "roles/pubsub.subscriber"
+  member       = local.pubsub_service_agent
+}
+
+# The lane axon-sender drains.
+#
+# max_delivery_attempts = 5, THE LEGAL MINIMUM, AND DELIBERATELY FAR BELOW BOTH
+# DIS LANES (20 and 100). This will look like an oversight next to them, so:
+#
+#   THE DIS 100 IS EARNED BY A HUMAN PROCESS. Its comment records that the
+#   ingress lane carries a documented self-heal where a message waits for a
+#   catalogue or a position to onboard, which is sales uploading at 5pm and the
+#   catalogue landing the next morning. ~16h covers same-working-day onboarding.
+#
+#   A SEND HAS NO ANALOGUE OF THAT. Its failures are a provider refusal, a bad
+#   credential, or the database being unreachable, and none of them resolves by
+#   waiting sixteen hours. Nothing is going to arrive that makes attempt 60
+#   succeed where attempt 5 failed.
+#
+#   AND EVERY RETRY HERE HAS A COST THE DIS LANES DO NOT HAVE. The ledger write
+#   is idempotent on delivery_id, but THE SEND IS NOT: a crash between the
+#   provider's 202 and the ledger commit means the redelivery sends again. So
+#   attempts are duplicate internal emails, and the budget is what bounds them.
+#
+# 5 attempts under the backoff below is roughly 20 minutes, which covers a Cloud
+# SQL restart and a provider blip and then stops.
+#
+# retry_policy is a PREREQUISITE for max_delivery_attempts, not a nicety: delivery
+# attempts are 1 + NACKs, so with no policy they accumulate at loop speed rather
+# than wall-clock speed and a 60s database restart would burn the whole budget in
+# seconds. The consumer also nacks plainly rather than with
+# ack_deadline_seconds = 0, so this backoff is what actually governs the pace.
+resource "google_pubsub_subscription" "axon_send_requested_sub" {
+  project              = var.project_id
+  name                 = "axon-send-requested-sub"
+  topic                = google_pubsub_topic.axon_send_requested.id
+  ack_deadline_seconds = 30
+
+  dead_letter_policy {
+    dead_letter_topic     = google_pubsub_topic.axon_send_requested_dlq.id
+    max_delivery_attempts = 5
+  }
+
+  retry_policy {
+    minimum_backoff = "10s"
+    maximum_backoff = "600s"
+  }
+
+  depends_on = [
+    google_pubsub_topic_iam_member.axon_dlq_publisher,
+  ]
+}
+
+module "axon_sender_service" {
+  source = "../../modules/cloud-run-service-axon-sender"
+
+  project_id       = var.project_id
+  region           = var.region
+  image            = var.axon_sender_image
+  vpc_connector_id = module.network.vpc_connector_id
+
+  # Referencing the subscription's attribute makes Terraform create the lane (and
+  # its dead-letter IAM) before the service that drains it. A revision deployed
+  # first would fail its startup check, which is the intended loud failure, but
+  # the ordering makes it not happen at all.
+  subscription_name = google_pubsub_subscription.axon_send_requested_sub.name
+
+  alert_email = var.axon_platform_oncall_email
 }
 
 module "dis_ui_server_service" {

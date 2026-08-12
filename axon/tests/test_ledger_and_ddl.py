@@ -10,12 +10,14 @@ artifact says another.
 
 from __future__ import annotations
 
+import inspect
 import re
 from pathlib import Path
 
 import pytest
 from axon import DeliveryState, SuppressionReason
 from axon import ledger as ledger_module
+from sqlalchemy.exc import DBAPIError
 
 _DDL = Path(__file__).resolve().parents[1] / "schemas" / "postgres" / "deliveries.sql"
 _GRANT = Path(__file__).resolve().parents[2] / "infra" / "db-setup" / "sql" / "06_axon_sender_grant.sql"
@@ -198,3 +200,98 @@ def test_the_grant_file_gives_the_sender_no_way_to_edit_a_record(forbidden: str)
     correct: that slice brings its own grant and argues for it in the open."""
     grant = _GRANT.read_text(encoding="utf-8")
     assert f"GRANT {forbidden}" not in grant
+
+
+# ---------------------------------------------------------------------------
+# IDEMPOTENCY (slice 2): the queue made redelivery real
+# ---------------------------------------------------------------------------
+#
+# The mechanism is the constraint that already existed. pk_platform_deliveries is on delivery_id,
+# and the producer now mints that id and puts it in the envelope, so a redelivered message reaches
+# the same primary key. No new constraint, no migration, and no grant change: catching a violation
+# is server side, and only ON CONFLICT needs to READ the arbiter index.
+
+
+def _unique_violation(constraint: str | None) -> DBAPIError:
+    """A DBAPIError shaped like psycopg's, carrying a SQLSTATE and a constraint name.
+
+    BUILT BY HAND RATHER THAN PROVOKED FROM A DATABASE, because these tests run offline and the
+    thing under test is the MATCHING, not Postgres's willingness to raise. Whether the real
+    driver populates `.orig.diag.constraint_name` is a separate question, answered by 5e running
+    this exact shape in production against pk_provision.
+    """
+
+    class _Diag:
+        constraint_name = constraint
+
+    class _Orig(Exception):  # noqa: N818 - mimics psycopg's exception shape, not ours
+        sqlstate = "23505"
+        diag = _Diag()
+
+    return DBAPIError("stmt", {}, _Orig())
+
+
+def test_a_repeat_of_the_same_delivery_id_is_reported_not_raised() -> None:
+    """THE IDEMPOTENCY BRANCH. pk_platform_deliveries refusing a redelivery is a success: the
+    ledger already holds the evidence, so the consumer acks and writes nothing."""
+    assert ledger_module._is_duplicate_delivery(_unique_violation("pk_platform_deliveries")) is True
+
+
+def test_a_different_constraint_is_not_treated_as_a_duplicate() -> None:
+    """THE HALF THAT MATTERS MOST, AND THE ONE A BROAD except WOULD GET WRONG.
+
+    23505 is raised by EVERY unique constraint and unique index in the database, including any
+    this table grows later. Matching on the SQLSTATE alone would turn an unrelated integrity
+    failure into "already recorded", which the consumer ACKS. That is a failed write reported as
+    a success, on a queue, where the message is then gone.
+    """
+    assert ledger_module._is_duplicate_delivery(_unique_violation("some_other_index")) is False
+
+
+def test_a_missing_constraint_name_is_not_treated_as_a_duplicate() -> None:
+    """FALSE IS THE SAFE DEFAULT. An error with no diag, or a constraint field Postgres did not
+    populate, becomes a LedgerWriteError and therefore a nack. A redelivery of a genuinely
+    duplicate message is cheap; acking a genuinely failed write is not."""
+    assert ledger_module._is_duplicate_delivery(_unique_violation(None)) is False
+
+
+def test_a_non_unique_violation_is_not_treated_as_a_duplicate() -> None:
+    """A CHECK failure, an RLS refusal or a NOT NULL violation carries a different SQLSTATE and
+    must reach the caller as a write failure. The email may already have gone; the nack is what
+    gives the row another chance to exist."""
+
+    class _Diag:
+        constraint_name = "pk_platform_deliveries"
+
+    class _Orig(Exception):  # noqa: N818 - mimics psycopg's exception shape, not ours
+        sqlstate = "23514"  # check_violation
+        diag = _Diag()
+
+    assert ledger_module._is_duplicate_delivery(DBAPIError("stmt", {}, _Orig())) is False
+
+
+def test_the_statement_still_has_no_on_conflict_after_gaining_idempotency() -> None:
+    """THE POINT OF THE WHOLE MECHANISM, ASSERTED WHERE SOMEBODY WOULD UNDO IT.
+
+    Having decided to be idempotent, the obvious next edit is ON CONFLICT DO NOTHING, which is
+    shorter and reads better. IT WOULD FAIL: ON CONFLICT must read the arbiter index, that read
+    needs SELECT, and axon_sender holds none. Slice 5e shipped exactly that and every enable in
+    production failed with `permission denied for table provision` behind a green apply.
+    """
+    sql = str(ledger_module._INSERT_PLATFORM).upper()
+    assert "ON CONFLICT" not in sql
+    assert "SELECT" not in sql
+
+
+def test_the_primary_key_is_the_idempotency_key() -> None:
+    """READ FROM THE DDL, because the mechanism is a constraint name matched in Python and the
+    two live in different files. A rename on either side breaks idempotency silently: the catch
+    stops matching, every redelivery becomes a LedgerWriteError, and the lane dead-letters."""
+    ddl = _DDL.read_text(encoding="utf-8")
+    assert "CONSTRAINT pk_platform_deliveries PRIMARY KEY (delivery_id)" in ddl
+
+    source = inspect.getsource(ledger_module._is_duplicate_delivery)
+    assert '"pk_platform_deliveries"' in source, (
+        "the duplicate check no longer names pk_platform_deliveries. It and the DDL are one "
+        "mechanism split across two files, and nothing else pins them together."
+    )

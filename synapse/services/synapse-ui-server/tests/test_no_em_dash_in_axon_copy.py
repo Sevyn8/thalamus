@@ -122,7 +122,19 @@ def test_the_composer_is_the_only_one_and_this_test_knows_where_it_lives() -> No
     )
 
 
-@pytest.mark.parametrize("root", ["axon/src/axon", "axon/tests"])
+# EVERY DIRECTORY AXON AUTHORS PYTHON IN. The list grew in slice 2 and the growth is the point:
+# it read ["axon/src/axon", "axon/tests"] when axon was a library with no services, and a new
+# service under axon/services/ would have sat outside it. That is the SAME MISS as
+# cm-frontend/scripts/assert-no-em-dash.mjs's root list, which covered three Synapse directories
+# and would have covered a new lib/axon with nothing while its total stayed above the floor.
+#
+# CAUGHT BEFORE THE SERVICE EXISTED RATHER THAN AFTER, which is the only version of this that is
+# worth anything: a root list updated when somebody notices the gap has already been wrong for
+# however long the gap was there.
+_AXON_ROOTS = ["axon/src/axon", "axon/tests", "axon/services"]
+
+
+@pytest.mark.parametrize("root", _AXON_ROOTS)
 def test_axon_authors_no_em_dash_in_its_own_source(root: str) -> None:
     """AND THE MODULE'S OWN FILES, comments included.
 
@@ -138,9 +150,19 @@ def test_axon_authors_no_em_dash_in_its_own_source(root: str) -> None:
     directory = repo_root / root
     assert directory.is_dir(), f"{directory} not found; this guard has stopped biting"
 
+    # THE VACUITY GUARD, PER ROOT AND NOT ACROSS THE SET. A root that resolves but holds no
+    # Python passes every assertion below having read nothing, and reads as coverage. That is
+    # exactly the failure assert-no-em-dash.mjs had before slice 3: it checked a TOTAL across
+    # roots, so three large directories carried a fourth that was empty or misspelled.
+    scanned = sorted(directory.rglob("*.py"))
+    assert scanned, (
+        f"{directory} contains no .py files. Either the directory moved or this root covers "
+        "nothing, and every check below would pass having read nothing."
+    )
+
     offenders = [
         str(path.relative_to(repo_root))
-        for path in sorted(directory.rglob("*.py"))
+        for path in scanned
         # THIS FILE IS EXCLUDED, AND THE REASON IS THE GUARD ITSELF. It has to contain the
         # character in order to search for it, so scanning itself reports the machinery as the
         # offence. That is the same shape the Terraform posture test records when it strips

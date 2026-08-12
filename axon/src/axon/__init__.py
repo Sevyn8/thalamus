@@ -29,6 +29,7 @@ an unonboarded channel will need.
 """
 
 from axon.channel import Channel, ChannelAdapter, Message
+from axon.envelope import TOPIC_SEND_REQUESTED, Publisher, SendRequested
 from axon.errors import AxonError, ChannelSendError, LedgerWriteError
 from axon.ledger import DeliveryRecord, DeliveryState, SuppressionReason, record_platform_delivery
 from axon.reads import DeliveryCounts, DeliveryRow, delivery_counts, recent_deliveries
@@ -46,9 +47,12 @@ __all__ = [
     "DeliveryState",
     "LedgerWriteError",
     "Message",
+    "Publisher",
     "SendGridEmailAdapter",
+    "SendRequested",
     "SendOutcome",
     "SuppressionReason",
+    "TOPIC_SEND_REQUESTED",
     "delivery_counts",
     "record_platform_delivery",
     "recent_deliveries",

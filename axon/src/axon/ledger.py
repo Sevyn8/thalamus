@@ -45,17 +45,29 @@ READ the arbiter index to detect the conflict, that read needs SELECT, and this 
 Slice 5e shipped exactly that and every enable in production failed with
 ``permission denied for table provision`` from deploy until it was found.
 
-THE TWO AVAILABLE ANSWERS, so the next person does not have to rediscover them:
+SLICE 2 CHOSE ANSWER 1, AND IT NEEDED NO CONSTRAINT AND NO GRANT. The two answers were:
 
-  1. CATCH THE UNIQUE VIOLATION. Add a unique constraint, let the INSERT raise SQLSTATE 23505,
-     and match on the SQLSTATE together with the CONSTRAINT NAME (never on message text, and
-     never on the SQLSTATE alone: 23505 is raised by every unique constraint in the database and
-     a broad except turns an unrelated integrity failure into a silent success). This is what 5e
-     was fixed to do.
-  2. DEDUPLICATE BEFORE THE WRITE, in the consumer, on a producer-supplied key. Costs no grant
-     at all and is the cheaper option if the queue already carries a stable message id.
+  1. CATCH THE UNIQUE VIOLATION. Let the INSERT raise SQLSTATE 23505 and match on the SQLSTATE
+     together with the CONSTRAINT NAME (never on message text, and never on the SQLSTATE alone:
+     23505 is raised by every unique constraint in the database and a broad except turns an
+     unrelated integrity failure into a silent success). This is what 5e was fixed to do.
+  2. DEDUPLICATE BEFORE THE WRITE, in the consumer, on a producer-supplied key.
 
-Whichever is chosen, choose it WITH its grant, in the same slice.
+WHAT MADE 1 FREE. The natural key was already the primary key. ``pk_platform_deliveries`` is on
+``delivery_id``, and slice 2 moved the mint of that id from this module to the PRODUCER, which
+puts it in the queue envelope. A redelivered message therefore carries the same id and reaches
+the same primary key, so the constraint that already existed is the idempotency mechanism. No new
+constraint, no migration, and NO GRANT CHANGE: catching a violation is server side, and only
+ON CONFLICT needs to READ the arbiter index. 5e proves the point from a role that holds no SELECT
+on the table it writes.
+
+WHY 2 LOST. It needs somewhere to remember what it has seen. Pub/Sub's ``message_id`` is stable
+across redeliveries of one publish but a PUBLISHER RETRY mints a new one, so it does not
+deduplicate the case that matters; a dedup table is a table plus a grant plus a retention
+question. Its stated advantage was costing no grant, and answer 1 turned out to cost none either.
+
+WHAT THIS DOES NOT MAKE IDEMPOTENT, stated here because the asymmetry is the residual of the
+whole slice: THE LEDGER WRITE IS IDEMPOTENT, THE SEND IS NOT. See ``send.py``.
 """
 
 from __future__ import annotations
@@ -159,7 +171,7 @@ _INSERT_PLATFORM = text(
 )
 
 
-async def record_platform_delivery(engine: AsyncEngine, record: DeliveryRecord) -> None:
+async def record_platform_delivery(engine: AsyncEngine, record: DeliveryRecord) -> bool:
     """Append one row to the platform ledger.
 
     SESSION POSTURE, STATED BECAUSE EVERY QUERY AGAINST THIS ESTATE MUST STATE ONE.
@@ -177,8 +189,13 @@ async def record_platform_delivery(engine: AsyncEngine, record: DeliveryRecord) 
         A platform session there would be REFUSED, which is the intended behaviour and is why
         the two paths cannot share one helper.
 
-    Raises ``LedgerWriteError`` on any database failure. The caller decides what that means; see
-    ``send.py``, which is the only caller and which cannot let it reach a producer.
+    RETURNS WHETHER THE ROW WAS NEW. ``False`` means this exact ``delivery_id`` was already in the
+    ledger, which under a queue means a redelivery of a message a previous attempt already
+    recorded. That is a success from the caller's point of view: the evidence exists and the
+    message can be acked. See ``_is_duplicate_delivery`` for why the match is narrow.
+
+    Raises ``LedgerWriteError`` on any OTHER database failure. The caller decides what that means;
+    see ``send.py``, which is the only caller and which cannot let it reach a producer.
     """
     try:
         async with rls_platform_session(engine) as conn:
@@ -202,7 +219,43 @@ async def record_platform_delivery(engine: AsyncEngine, record: DeliveryRecord) 
                 },
             )
     except DBAPIError as exc:
+        if _is_duplicate_delivery(exc):
+            # THE IDEMPOTENCY BRANCH. A previous attempt at this same message already wrote this
+            # row, so the ledger is already correct and there is nothing left to do. Reported as
+            # a value rather than swallowed, because the caller logs the two cases differently:
+            # a first write is routine and a duplicate means a redelivery happened.
+            return False
         # WRAPPED, not re-raised bare. The caller must be able to tell a ledger failure from a
         # send failure without inspecting a driver exception, because the two have different
         # consequences and only one of them leaves evidence behind.
         raise LedgerWriteError(f"the delivery ledger write failed for {record.delivery_id}") from exc
+    return True
+
+
+def _is_duplicate_delivery(exc: DBAPIError) -> bool:
+    """Is this ``pk_platform_deliveries`` refusing a repeat, or some other integrity failure?
+
+    TWO CONDITIONS, BOTH REQUIRED, AND NEITHER IS MESSAGE TEXT. The SQLSTATE says "unique
+    violation" and nothing more: 23505 is raised by EVERY unique constraint and unique index in
+    the database, including any this table grows later. The CONSTRAINT NAME says WHICH, and
+    Postgres sends it in the error's constraint field for integrity-constraint violations, so
+    psycopg exposes it on ``.orig.diag.constraint_name``.
+
+    WHY THE PAIR MATTERS MORE THAN EITHER HALF. A broad except on 23505 alone would turn an
+    unrelated integrity failure into "already recorded", which the consumer acks. That is a failed
+    write reported as a success, on a queue, where the message is then gone. Matching the name
+    alone is not available: nothing else in the DBAPI error identifies the class of failure.
+
+    FALSE IS THE SAFE ANSWER AND IS THE DEFAULT. An error with no ``orig``, no ``diag``, or a
+    constraint field Postgres did not populate becomes a LedgerWriteError and therefore a nack.
+    A redelivery of a genuinely-duplicate message is cheap; acking a genuinely-failed write is not.
+
+    COPIED FROM synapse_ui_server.provision._is_duplicate_provision, deliberately and with the
+    reasoning restated rather than imported. The two modules are in different distributions and
+    Axon does not depend on Synapse; a shared helper would be a dependency edge in the wrong
+    direction for four lines.
+    """
+    orig = getattr(exc, "orig", None)
+    if getattr(orig, "sqlstate", None) != "23505":
+        return False
+    return getattr(getattr(orig, "diag", None), "constraint_name", None) == "pk_platform_deliveries"

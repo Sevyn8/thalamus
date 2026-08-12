@@ -38,10 +38,8 @@ _CONFIG = Config(
     jwt_issuer="https://x/",
     jwt_audience="a",
     expected_database="thalamus",
-    axon_sender_url="postgresql+psycopg://a@h/d",
     axon_reader_url="postgresql+psycopg://ar@h/d",
-    axon_sendgrid_api_key="test-key",
-    axon_sendgrid_from_email="noreply@test.invalid",
+    axon_project_id="test-project",
     axon_platform_oncall_email="oncall@test.invalid",
 )
 

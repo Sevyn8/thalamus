@@ -16,43 +16,54 @@ that left no row would be the same as no delivery plane at all: nobody would kno
 not go, and the absence would be indistinguishable from nobody having tried.
 
 =================================================================================================
-THE HOLE THIS SLICE CANNOT CLOSE, AND THE REASON THE QUEUE EXISTS
+THE QUEUE IS IN FRONT OF THIS NOW, AND WHAT IT DID AND DID NOT CLOSE
 =================================================================================================
-There is one outcome this design cannot record: THE LEDGER WRITE ITSELF FAILING.
+Slice 1 called this in-process from the enable route and named one outcome it could not record:
+THE LEDGER WRITE ITSELF FAILING, leaving no row, possibly an email, and a successful enable.
 
-If the database is unreachable at that moment, then there is no row, there may or may not have
-been an email, and the enable succeeded. Nothing afterwards can tell that anything was ever
-owed, because the only evidence of the intent was the row that failed to be written. It is not
-a small hole: a database blip during a send is precisely when a delivery plane's records matter.
+Slice 2 put a durable queue in front. The intent is now persisted at publish time, so a consumer
+that dies mid-send leaves a message that is REDELIVERED rather than an intent that evaporated,
+and a failed ledger write nacks and is retried instead of vanishing. That is the hole closing.
 
-IT IS LOGGED AT ERROR WITH `severity`, WHICH IS THE MOST THIS SLICE CAN DO. Cloud Logging files
-anything without `severity` at DEFAULT where no alert can match it, so the field is the whole
-point of the line. A log line is not a ledger, and thirty days later it is not even a log line.
+=================================================================================================
+AT-LEAST-ONCE, AND THE ASYMMETRY THAT IS THE RESIDUAL OF THE WHOLE SLICE
+=================================================================================================
+THE LEDGER WRITE IS IDEMPOTENT. THE SEND IS NOT.
 
-THE FIX IS THE QUEUE, AND THIS IS WHAT IT IS FOR. With a durable queue in front of the send, the
-intent is persisted BEFORE anything is attempted: the producer's only job is to enqueue, which
-either succeeds or fails loudly inside the producer's own request, and a consumer that dies
-mid-send leaves a message that is redelivered rather than an intent that evaporated. The ledger
-write stops being the first durable record and becomes a state transition on one that already
-exists.
+``delivery_id`` is minted by the PRODUCER and travels in the envelope, so a redelivered message
+reaches the same ``pk_platform_deliveries`` and the second INSERT is refused. ``ledger.py``
+records why that needed no constraint and no grant.
 
-If you are reading this because you are building that queue: the redelivery it introduces is
-what makes idempotency real, and ``ledger.py``'s docstring records why the obvious mechanism
-(ON CONFLICT on a natural key) fails against this role's grant and what the two working answers
-are. Decide it there, with its grant, in that slice.
+The provider call has no such key. So there is one window left: A CRASH BETWEEN THE PROVIDER'S
+202 AND THE LEDGER COMMIT. On redelivery the ledger holds no row, this path cannot know the
+message already went, and it sends again. The result is a duplicate email, bounded by
+``max_delivery_attempts`` on the subscription, which is set to 5 for exactly this reason.
+
+NOTHING AVAILABLE CLOSES THAT WINDOW, and the near misses are worth naming so they are not
+re-proposed. Reading the ledger before sending does not help: after a failed write there is no
+row to find, so the reread and the resend agree on nothing. Writing a `queued` row first and
+updating it after does not help either, and costs more: without SELECT the consumer still cannot
+learn whether the send happened, so it buys a state nobody can act on while giving up the
+property that the ledger cannot be rewritten.
+
+WHAT WOULD CLOSE IT IS A PROVIDER-SIDE IDEMPOTENCY KEY, and WHETHER SENDGRID v3 MAIL SEND
+ACCEPTS ONE IS UNVERIFIED. ``sendgrid.py`` sets personalizations, from, subject, content and
+tracking settings and nothing else, and no claim is made here beyond that. If the provider does
+accept one, passing ``delivery_id`` as that key is a cheap follow-on and would make the send as
+idempotent as the write. It is a thing to check, not a design assumption.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from axon.channel import ChannelAdapter, Message
 from axon.errors import ChannelSendError, LedgerWriteError
 from axon.ledger import DeliveryRecord, DeliveryState, record_platform_delivery
-from dis_core.ids import new_uuid7
 
 __all__ = ["SendOutcome", "send_platform"]
 
@@ -70,6 +81,11 @@ class SendOutcome:
     state: DeliveryState
     recorded: bool
     detail: str | None = None
+    # True when the ledger already held this delivery_id, so this attempt wrote nothing. Under a
+    # queue that means a redelivery of a message a previous attempt had already recorded. It is
+    # SEPARATE FROM `recorded` because both are true at once: the evidence exists (recorded) and
+    # this pass did not create it (duplicate). The consumer acks either way and logs differently.
+    duplicate: bool = False
 
 
 async def send_platform(
@@ -77,6 +93,7 @@ async def send_platform(
     engine: AsyncEngine,
     adapter: ChannelAdapter,
     message: Message,
+    delivery_id: UUID,
     notification_class: str,
     subject_kind: str,
     subject_id: str,
@@ -84,9 +101,11 @@ async def send_platform(
 ) -> SendOutcome:
     """Send one platform message and record it. Raises nothing.
 
-    THE ID IS MINTED HERE, BEFORE ANYTHING IS ATTEMPTED, and it is a UUIDv7 so it carries the
-    instant. That is what lets the row be written without RETURNING, which is what lets the
-    sender's grant hold no SELECT. See ledger.py.
+    ``delivery_id`` IS SUPPLIED BY THE CALLER AND IS THE IDEMPOTENCY KEY. Slice 1 minted it here,
+    which was right while this was called once per producer event in-process. Under a queue that
+    would mint a new id per redelivery and the primary key would refuse nothing, so the mint moved
+    to the producer and rides in the envelope. It is still a UUIDv7, and it is still what lets the
+    row be written without RETURNING, which is what lets the sender's grant hold no SELECT.
 
     THE ORDER IS SEND, THEN RECORD, and it is forced rather than chosen. The row states an
     OUTCOME, and the outcome is not known until the provider has answered. Writing first would
@@ -94,7 +113,6 @@ async def send_platform(
     there is a queue) or writing a lie and correcting it, which needs the UPDATE grant this role
     deliberately does not hold.
     """
-    delivery_id = new_uuid7()
     created_at = datetime.now(UTC)
 
     state = DeliveryState.ACCEPTED
@@ -122,11 +140,12 @@ async def send_platform(
     )
 
     try:
-        await record_platform_delivery(engine, record)
+        was_new = await record_platform_delivery(engine, record)
     except LedgerWriteError as exc:
-        # THE HOLE. Everything above may have succeeded and there is now no evidence of it.
-        # Returned rather than raised, with `recorded=False` so the caller can log at ERROR:
-        # this is the one case that is worse than a failed send.
+        # NO LONGER THE END OF THE STORY, AND THAT IS WHAT THE QUEUE BOUGHT. Everything above may
+        # have succeeded and there is no evidence of it yet, but the MESSAGE still exists: the
+        # consumer nacks on `recorded=False` and the write is retried. Returned rather than raised
+        # so the caller decides; in-process callers (if any remain) still must not let it through.
         return SendOutcome(state=state, recorded=False, detail=str(exc))
 
-    return SendOutcome(state=state, recorded=True, detail=failure_detail)
+    return SendOutcome(state=state, recorded=True, detail=failure_detail, duplicate=not was_new)

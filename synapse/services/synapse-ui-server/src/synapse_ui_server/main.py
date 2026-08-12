@@ -21,19 +21,17 @@ from typing import Annotated
 from uuid import UUID
 
 from axon import (
+    TOPIC_SEND_REQUESTED,
     Channel,
-    DeliveryState,
-    Message,
-    SendGridEmailAdapter,
-    SendOutcome,
+    SendRequested,
     delivery_counts,
     recent_deliveries,
-    send_platform,
 )
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from dis_core.ids import new_uuid7
 from dis_core.logging import configure_logging, get_logger
 from dis_rls import create_rls_engine, rls_platform_session
 from synapse_ui_server import catalog, reads
@@ -52,6 +50,7 @@ from synapse_ui_server.provision import (
     EnablementRefusedError,
     enable_analysis,
 )
+from synapse_ui_server.publisher import PubsubPublisher
 from synapse_ui_server.timezones import load_offered
 
 # RE-EXPORTED so tests can patch the name THIS module calls. A test that patched
@@ -193,26 +192,25 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.engine = create_rls_engine(config.reader_url)
     app.state.lifecycle_engine = create_rls_engine(config.lifecycle_url)
     app.state.provision_engine = create_rls_engine(config.provision_url)
-    # THE FOURTH ENGINE, AND IT IS AXON'S RATHER THAN THIS SERVICE'S. axon_sender holds INSERT
-    # on axon.platform_deliveries and nothing else: no SELECT anywhere, nothing on the tenant
-    # ledger. It is a fourth narrow credential on the same principle as the three above, not a
-    # widening of any of them.
-    app.state.axon_engine = create_rls_engine(config.axon_sender_url)
-    # THE FIFTH, AND IT IS AXON'S OTHER HALF. axon_reader holds SELECT on both ledgers and no
-    # write verb anywhere. A SEPARATE ENGINE rather than a second use of the one above, because
-    # the sender holds no SELECT: serving the console from it would mean granting the send path
-    # the ability to read a ledger of who was contacted about what.
+    # THE FOURTH ENGINE, AND IT IS AXON'S READER. axon_reader holds SELECT on both delivery
+    # ledgers and no write verb anywhere; the console's /deliveries surface reads through it.
     #
-    # FIVE ENGINES IS NOT SPRAWL. It is five roles each holding one job's privileges, which is
+    # THE SENDER'S ENGINE IS GONE FROM THIS SERVICE, and its absence is the point. Until slice 2
+    # this process also held axon_sender (INSERT on axon.platform_deliveries), because the enable
+    # route wrote the ledger row itself. It now publishes and writes nothing, so it holds no Axon
+    # write credential at all. The DSN moved to axon-sender, which is the only process that
+    # writes. A credential mounted on a service that no longer uses it is a privilege nobody is
+    # accounting for.
+    #
+    # FOUR ENGINES IS NOT SPRAWL. It is four roles each holding one job's privileges, which is
     # the only shape in which what this service can do is a fact about the database.
     app.state.axon_reader_engine = create_rls_engine(config.axon_reader_url)
-    # CONSTRUCTED ONCE, HERE, and guarded on its credential inside the constructor. Same shape
-    # as CM's SendGrid client, which this adapter is a port of: an adapter that constructs
-    # without a key can only fail later, with a message already in flight.
-    app.state.axon_adapter = SendGridEmailAdapter(
-        api_key=config.axon_sendgrid_api_key,
-        from_email=config.axon_sendgrid_from_email,
-    )
+    # THE PUBLISHER. Constructed once; the gRPC channel connects on first publish, so startup
+    # stays lazy and offline exactly like the engines above.
+    #
+    # THE SENDGRID ADAPTER IS GONE FROM HERE TOO, for the same reason as the engine: this process
+    # no longer talks to a provider. The key and the from-address moved to axon-sender.
+    app.state.axon_publisher = PubsubPublisher(project_id=config.axon_project_id)
     app.state.axon_oncall_email = config.axon_platform_oncall_email
     app.state.verifier = getattr(app.state, "verifier", None) or Auth0Verifier(
         jwks_url=config.jwks_url, issuer=config.jwt_issuer, audience=config.jwt_audience
@@ -240,9 +238,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.engine.dispose()
         await app.state.lifecycle_engine.dispose()
         await app.state.provision_engine.dispose()
-        await app.state.axon_engine.dispose()
         await app.state.axon_reader_engine.dispose()
-        await app.state.axon_adapter.aclose()
 
 
 def create_app(config: Config | None = None) -> FastAPI:
@@ -646,7 +642,7 @@ def create_app(config: Config | None = None) -> FastAPI:
         )
 
         # ================================================================================
-        # AXON (slice 1). THE SAME FACT, CARRIED TO A HUMAN RATHER THAN TO A LOG.
+        # AXON. THE SAME FACT, CARRIED TO A HUMAN RATHER THAN TO A LOG.
         # ================================================================================
         # The log line above is the audit record and the module comment says at length why a
         # 30-day log line is not one. This does not fix that: synapse.provision_events is still
@@ -654,29 +650,50 @@ def create_app(config: Config | None = None) -> FastAPI:
         # which nothing did before: enabling a monitor for a client was a fact that existed only
         # where nobody was looking.
         #
+        # SLICE 2 MADE THIS A PUBLISH. It used to call send_platform in-process, which meant a
+        # provider round trip and a ledger write inside this request. Now it puts one message on
+        # axon-send-requested and returns; axon-sender does the send and writes the ledger row.
+        # THE DELIVERY_ID IS MINTED HERE, and that is the whole idempotency mechanism: it is
+        # pk_platform_deliveries, so a redelivered message reaches the same row and the second
+        # INSERT is refused. See axon/src/axon/ledger.py for why that needed no grant.
+        #
         # AFTER THE COMMIT, NEVER BEFORE. enable_analysis's transaction closed when it returned;
         # the row is in the database and this request is going to answer 200 or 201 whatever
         # happens next.
         #
-        # AND IT CANNOT FAIL THE ENABLE. send_platform is contracted to raise nothing at all:
-        # a provider refusal comes back as an outcome carrying state='failed', already recorded
-        # on the ledger. The one case it cannot record is its own ledger write failing, which is
-        # why the outcome carries `recorded` separately and why that case logs at ERROR.
-        # axon/src/axon/send.py names that hole as the reason the queue exists.
+        # WRAPPED ANYWAY, AND THE ASYMMETRY IS THE REASON. axon/tests pins the no-raise
+        # contract on the send path, but a PUBLISH is a network call to a different service and
+        # nothing pins that. The cost of it raising is a COMMITTED enablement answered with a
+        # 500: the operator sees a failure, retries, and gets the 409 "already enabled" branch
+        # for a monitor that was in fact enabled the first time. A bare `except Exception` is the
+        # right width here and nowhere else in this file: the rule is "nothing from the delivery
+        # plane may fail this request", and a narrower catch would be a list of the failures
+        # somebody happened to think of.
         #
-        # WRAPPED ANYWAY, AND THE ASYMMETRY IS THE REASON. axon/tests pins the no-raise contract,
-        # but it is one refactor away from being untrue and the cost of it becoming untrue is a
-        # COMMITTED enablement answered with a 500. The operator would see a failure, retry, and
-        # get the 409 "already enabled" branch for a monitor that was in fact enabled the first
-        # time. A bare `except Exception` is the right width here and nowhere else in this file:
-        # the rule is "nothing from the delivery plane may fail this request", and a narrower
-        # catch would be a list of the failures somebody happened to think of.
-        delivery: SendOutcome | None = None
+        # =====================================================================================
+        # THE PUBLISH WINDOW, AND THE ONLY CONSTRUCT THAT CLOSES IT
+        # =====================================================================================
+        # Slice 2 shrank the hole and did not remove it. It used to be a provider round trip
+        # plus a database write between the commit and the evidence; it is now a single
+        # publish. But because a delivery failure must never fail an enable, a publish that
+        # raises is still swallowed here, and the enablement is then committed with nothing
+        # queued and only the log line below to say so.
+        #
+        # A TRANSACTIONAL OUTBOX IS THE ONLY THING THAT CLOSES IT. The intent would be written
+        # to a table in the SAME transaction as the synapse.provision INSERT, so it commits or
+        # rolls back with the enablement and can never be half-done, and a relay would publish
+        # from that table afterwards. THE COST IS A GRANT AND A TABLE: synapse_provisioner
+        # currently holds INSERT on synapse.provision plus the two SELECTs its pre-flight needs,
+        # and it would have to gain INSERT on a second table, which is a widening of the one
+        # role in this service that is deliberately one verb on one table. That is a real
+        # decision for a later slice, not a gap left undescribed.
+        delivery_id = new_uuid7()
+        published: str | None = None
         try:
-            delivery = await send_platform(
-                engine=request.app.state.axon_engine,
-                adapter=request.app.state.axon_adapter,
-                message=Message(
+            published = request.app.state.axon_publisher.publish(
+                TOPIC_SEND_REQUESTED,
+                SendRequested(
+                    delivery_id=delivery_id,
                     channel=Channel.EMAIL,
                     recipient=request.app.state.axon_oncall_email,
                     subject=f"Synapse: {outcome.analysis_id} enabled for {outcome.tenant_name}",
@@ -688,50 +705,55 @@ def create_app(config: Config | None = None) -> FastAPI:
                         already_provisioned=outcome.already_provisioned,
                         warning=outcome.warning,
                     ),
-                ),
-                notification_class="synapse.provision.enabled",
-                # THE OPAQUE SUBJECT PAIR. Not a foreign key into synapse.provision,
-                # deliberately: Axon is a delivery plane, and an FK would order the two chains
-                # against each other for a join nothing performs. The pair is (tenant, analysis)
-                # because that is what synapse.provision is keyed on and what a reader would go
-                # looking for.
-                subject_kind="synapse.provision",
-                subject_id=f"{tenant_id}:{analysis_id}",
-                actor_subject=identity.subject,
+                    notification_class="synapse.provision.enabled",
+                    # THE OPAQUE SUBJECT PAIR. Not a foreign key into synapse.provision,
+                    # deliberately: Axon is a delivery plane, and an FK would order the two
+                    # chains against each other for a join nothing performs. The pair is
+                    # (tenant, analysis) because that is what synapse.provision is keyed on and
+                    # what a reader would go looking for.
+                    subject_kind="synapse.provision",
+                    subject_id=f"{tenant_id}:{analysis_id}",
+                    actor_subject=identity.subject,
+                ).to_json(),
             )
         except Exception:  # noqa: BLE001 - deliberate; see the comment above the try
             _log.exception(
                 "the delivery plane raised; the enablement itself is unaffected",
                 extra={
                     "severity": "ERROR",
-                    "event": "axon.send.raised",
+                    "event": "axon.publish.raised",
                     "tenant_id": str(tenant_id),
                     "analysis_id": analysis_id,
+                    "delivery_id": str(delivery_id),
                 },
             )
 
-        if delivery is not None and not delivery.recorded:
-            # THE ONE CASE WORSE THAN A FAILED SEND. There is no ledger row, so nothing in the
-            # database says this was ever owed. ERROR rather than WARNING for that reason alone.
+        if published is None:
+            # THE REMAINING HOLE, LOGGED AT ERROR. The enablement is committed and nothing is
+            # queued, so no redelivery can rescue it: there is no message. This is the case the
+            # outbox above would remove, and it is the reason that paragraph is written here
+            # rather than in a design note nobody opens.
             _log.error(
-                "the delivery ledger write failed; this send left no record",
+                "the enablement notification was never queued; nothing will deliver it",
                 extra={
                     "severity": "ERROR",
-                    "event": "axon.ledger.write_failed",
+                    "event": "axon.publish.failed",
                     "tenant_id": str(tenant_id),
                     "analysis_id": analysis_id,
-                    "detail": delivery.detail,
+                    "delivery_id": str(delivery_id),
                 },
             )
-        elif delivery is not None and delivery.state is not DeliveryState.ACCEPTED:
-            _log.warning(
-                "the enablement notification was not accepted by the provider",
+        else:
+            # ENQUEUED IS NOT DELIVERED, and the log line says so rather than implying otherwise.
+            # What happens next is axon-sender's, and the ledger row it writes is the evidence.
+            _log.info(
+                "enablement notification queued",
                 extra={
-                    "severity": "WARNING",
-                    "event": "axon.send.failed",
+                    "event": "axon.publish.queued",
                     "tenant_id": str(tenant_id),
                     "analysis_id": analysis_id,
-                    "detail": delivery.detail,
+                    "delivery_id": str(delivery_id),
+                    "message_id": published,
                 },
             )
 

@@ -98,7 +98,9 @@ def test_the_config_loads_with_both_write_dsns_and_no_writer(monkeypatch: pytest
         "SYNAPSE_LIFECYCLE_URL",
         "SYNAPSE_PROVISION_URL",
         "CM_API_BASE_URL",
-        # AXON's five (four from slice 1, the reader DSN from slice 3). Covered by the SAME
+        # AXON's three, and slice 2 REDUCED this from five. The sender DSN and both SendGrid
+        # values left with the provider call when the enable route became a publish; the project
+        # id arrived in their place. Covered by the SAME
         # test as the write DSNs deliberately: this test is the 5d guard, and 5d was an env var
         # the module never wired sitting dead in staging for two days behind a green apply. A
         # delivery plane that silently carries nothing is the same failure with a different
@@ -109,11 +111,9 @@ def test_the_config_loads_with_both_write_dsns_and_no_writer(monkeypatch: pytest
         # before the queue was that an operator can SEE what the delivery plane did. A revision
         # that starts without it has a plane nobody can look at, which is the state slice 3
         # exists to end.
-        "AXON_SENDER_URL",
-        "AXON_SENDGRID_API_KEY",
-        "AXON_SENDGRID_FROM_EMAIL",
         "AXON_PLATFORM_ONCALL_EMAIL",
         "AXON_READER_URL",
+        "AXON_PROJECT_ID",
     ],
 )
 def test_every_write_path_variable_is_required(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
@@ -150,13 +150,11 @@ def _base_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CM_API_BASE_URL", "https://cm.example.run.app")
     monkeypatch.setenv("SYNAPSE_JWT_ISSUER", "https://example.auth0.com/")
     monkeypatch.setenv("SYNAPSE_JWT_AUDIENCE", "https://api.example")
-    # AXON (slices 1 and 3). Five more required variables, and they are here rather than in a
-    # separate fixture because load_config reports EVERY missing name at once: a partial base env
-    # would make every test below fail on Axon's names instead of on the thing it is testing.
-    monkeypatch.setenv("AXON_SENDER_URL", "postgresql+psycopg://a@localhost/db")
+    # AXON. Three required variables, and they are here rather than in a separate fixture because
+    # load_config reports EVERY missing name at once: a partial base env would make every test
+    # below fail on Axon's names instead of on the thing it is testing.
     monkeypatch.setenv("AXON_READER_URL", "postgresql+psycopg://ar@localhost/db")
-    monkeypatch.setenv("AXON_SENDGRID_API_KEY", "test-key")
-    monkeypatch.setenv("AXON_SENDGRID_FROM_EMAIL", "noreply@example.invalid")
+    monkeypatch.setenv("AXON_PROJECT_ID", "test-project")
     monkeypatch.setenv("AXON_PLATFORM_ONCALL_EMAIL", "oncall@example.invalid")
 
 
@@ -382,10 +380,8 @@ def test_the_service_exposes_no_schema_endpoints() -> None:
             jwt_issuer="https://x/",
             jwt_audience="a",
             expected_database="thalamus",
-            axon_sender_url="postgresql+psycopg://a@h/d",
             axon_reader_url="postgresql+psycopg://a@h/d",
-            axon_sendgrid_api_key="test-key",
-            axon_sendgrid_from_email="noreply@test.invalid",
+            axon_project_id="test-project",
             axon_platform_oncall_email="oncall@test.invalid",
         )
     )

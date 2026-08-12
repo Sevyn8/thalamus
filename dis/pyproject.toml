@@ -100,6 +100,10 @@ dev = [
   # Axon (slice 1). Installed editable so the offline suite and mypy see it; it has no image
   # of its own yet, because slice 1's only producer is the BFF and the send is in-process.
   "thalamus-axon",
+  # Axon's sender: the poll loop over axon-send-requested. A SERVICE, installed editable here so
+  # the offline suite, mypy and ruff see it; it is deployed as its own image and nothing imports
+  # it. Same posture as synapse-ui-server one line down.
+  "axon-sender",
 
   # Connectors (repo-root siblings) join the workspace so uv sync installs them
   # editable alongside the dis packages they reuse.
@@ -410,6 +414,12 @@ members = [
   # The library/service line is the one that matters: synapse-ui-server importing axon is fine;
   # importing a deployable service would not be.
   "../axon",
+  # Axon's SENDER, the poll loop over axon-send-requested (slice 2). Registered for the same
+  # unavoidable reason every other member is: uv resolves members from this list, so an
+  # unregistered member cannot be built, cannot be type-checked and cannot be imported by its
+  # own tests. It is a SERVICE and nothing imports it; the library above is what
+  # synapse-ui-server depends on.
+  "../axon/services/axon-sender",
 ]
 
 [tool.uv.sources]
@@ -444,3 +454,4 @@ synapse-ui-server = { workspace = true }
 # Axon (slice 1). Registered as a member above; mapped here so its dis-rls / dis-core
 # dependencies resolve from the workspace rather than being sought on PyPI.
 thalamus-axon = { workspace = true }
+axon-sender = { workspace = true }

@@ -1,0 +1,250 @@
+-- ============================================================================
+-- axon_tenant_reader grants: the TENANT-scoped read credential (Axon slice 2).
+--
+-- THE SEVENTH NARROW ROLE IN THIS ESTATE, AND THE THIRD IN AXON. The three
+-- Axon roles are not three variations on a theme; each can do exactly one job
+-- and none can do another's:
+--
+--   axon_sender        INSERT on axon.platform_deliveries. No SELECT anywhere.
+--   axon_reader        SELECT on BOTH ledgers. No write verb anywhere. This is
+--                      the SUPERADMIN console's credential and it is fleet-wide
+--                      by design.
+--   axon_tenant_reader THIS FILE. SELECT on axon.tenant_deliveries ONLY, with
+--                      an explicit REVOKE on the platform ledger.
+--
+-- ----------------------------------------------------------------------------
+-- WHY A THIRD ROLE RATHER THAN REUSING axon_reader
+-- ----------------------------------------------------------------------------
+-- Because axon.platform_deliveries HAS NO ROW LEVEL SECURITY. Not weak RLS, not
+-- RLS with a permissive branch: none at all, deliberately, because there is no
+-- tenant to isolate on a table of Sevyn8's own internal traffic.
+--
+-- The consequence is that a tenant-facing process holding axon_reader is ONE
+-- QUERY away from that whole ledger: every recipient address Sevyn8 has mailed,
+-- every actor_subject that triggered a send, every internal notification class.
+-- NO SESSION POSTURE PREVENTS IT. rls_session, rls_platform_session, a raw
+-- connection: all identical here, because there is no policy to consult. The
+-- only thing that can stop that read is the absence of the privilege, which is
+-- what this file is.
+--
+-- SO THE SEPARATION IS THE GRANT, NOT THE CODE. A tenant read path built on
+-- axon_reader would be correct until the first query that forgot a predicate,
+-- and nothing would report it. Built on this role, that query is refused by the
+-- database whatever the code says.
+--
+-- ----------------------------------------------------------------------------
+-- WHAT THIS ROLE HOLDS, STATED HONESTLY
+-- ----------------------------------------------------------------------------
+-- CONNECT, USAGE ON SCHEMA axon, and SELECT on axon.tenant_deliveries. That is
+-- the whole list, and unlike sql/05 the short sentence is true.
+--
+-- ----------------------------------------------------------------------------
+-- IT HAS NO CONSUMER, AND THAT IS DELIBERATE RATHER THAN AN OVERSIGHT
+-- ----------------------------------------------------------------------------
+-- Nothing in this repository connects as axon_tenant_reader today. There is no
+-- tenant-facing Axon surface, no route and no read path, and slice 2 builds
+-- none: its subject is the queue, and adding a tenant surface would widen the
+-- blast radius of a slice that is already changing how every platform send
+-- happens.
+--
+-- WHAT IT BUYS BY EXISTING NOW is that the separation is settled BEFORE there
+-- is a caller to be tempted. The alternative shape, build the tenant surface
+-- first and reach for axon_reader because it is already provisioned, is how a
+-- read credential ends up spanning two audiences: not by decision, but because
+-- the narrow one did not exist on the day somebody needed a query to work.
+--
+-- IT IS ALSO INERT. A role nothing connects as changes no behaviour, so this
+-- file cannot break slice 2 and cannot break anything already running.
+--
+-- ----------------------------------------------------------------------------
+-- SELECT ON A FORCE RLS TABLE IS NOT ENOUGH TO READ IT, AND THAT IS THE POINT
+-- ----------------------------------------------------------------------------
+-- axon.tenant_deliveries is ENABLE + FORCE ROW LEVEL SECURITY. A grant gets a
+-- session past the privilege check; the POLICY then decides which rows it sees.
+-- Its USING carries a PLATFORM branch and an equality against
+-- NULLIF(current_setting('app.tenant_id', TRUE), '')::uuid, so a session opened
+-- with rls_session(engine, tenant_id) sees that tenant's rows and no others.
+--
+-- THE FAILURE MODE IF THE SESSION IS WRONG IS A SILENT ZERO. A connection that
+-- never set the GUCs matches NO ROWS and RAISES NOTHING, for the table owner
+-- and for `postgres` alike. That has now bitten this project twelve times, once
+-- on a DELETE run as the table owner and once during slice 3's own verification.
+--
+-- SO THIS GRANT IS HALF THE MECHANISM AND THE SESSION IS THE OTHER HALF. The
+-- day a tenant read path is built, it opens rls_session(engine, tenant_id) and
+-- asserts that at the call site, because a row-count assertion cannot tell a
+-- correct empty table from a broken session while the table is empty.
+--
+-- ----------------------------------------------------------------------------
+-- RUN AS: THE OWNER OF THE axon SCHEMA
+-- ----------------------------------------------------------------------------
+--   STAGING : `postgres` (Axon's Alembic runs as postgres, so it owns axon)
+--   LOCAL   : `ithina_dis_admin`
+--
+-- WHEN: after Axon's Alembic has reached 0001, and after the role exists. The
+-- role is created OUT OF BAND, like every other login role in this estate,
+-- because a file in git that created one would put a password in git:
+--
+--     CREATE ROLE axon_tenant_reader WITH LOGIN NOSUPERUSER NOBYPASSRLS
+--         NOCREATEDB NOCREATEROLE PASSWORD '<from Secret Manager>';
+--     GRANT CONNECT ON DATABASE thalamus TO axon_tenant_reader;
+--
+-- NO ORDERING HAZARD. Migration 0001 grants USAGE on the schema to axon_sender
+-- only, so it does not name this role and cannot fail on its absence.
+--
+-- NOBYPASSRLS IS THE LOAD-BEARING FLAG ON THIS ROLE, more than on either of the
+-- other two. Its entire purpose is to read a FORCE RLS table THROUGH the policy.
+-- A bypassing role would return the same rows today and would keep returning
+-- them if the policy were changed or dropped, which is the difference between
+-- an isolation guarantee and a coincidence. dis-rls's first-use posture guard
+-- refuses such a role on every engine it opens.
+--
+-- THE INVOCATION:
+--
+--   psql "host=127.0.0.1 dbname=thalamus user=postgres" \
+--     -f 08_axon_tenant_reader_grant.sql
+--
+-- Idempotent: GRANT and REVOKE are repeatable.
+--
+-- ----------------------------------------------------------------------------
+-- THIS FILE REVOKES FROM ONE ROLE ONLY, AND THAT IS DELIBERATE
+-- ----------------------------------------------------------------------------
+-- sql/04 carries `REVOKE ALL ON ALL TABLES IN SCHEMA synapse FROM
+-- synapse_reader`, which twice stripped privileges a later migration had
+-- granted. Every REVOKE below names axon_tenant_reader and nothing else, so
+-- this file cannot strip anything from axon_sender or axon_reader whatever a
+-- future migration grants. Same shape and same reason as sql/05, 06 and 07.
+-- ============================================================================
+
+
+-- ---------- CONNECT, portable across the local and shared database names -----
+SELECT 'GRANT CONNECT ON DATABASE ' || quote_ident(current_database())
+       || ' TO axon_tenant_reader'
+\gexec
+
+
+-- ---------- Narrow first ------------------------------------------------------
+--
+-- The only statements here that can REMOVE a privilege somebody added by hand.
+-- Scoped to this role in the one schema it touches, so re-running narrows it
+-- back to exactly the posture below and the verification block proves it did.
+REVOKE ALL ON ALL TABLES    IN SCHEMA axon FROM axon_tenant_reader;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA axon FROM axon_tenant_reader;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA axon FROM axon_tenant_reader;
+
+
+-- ---------- Schema usage ------------------------------------------------------
+-- ONE schema. No CM table, no DIS table, no canonical table: a tenant-facing
+-- read credential that could reach the estate would be a worse version of the
+-- problem this role exists to solve.
+GRANT USAGE ON SCHEMA axon TO axon_tenant_reader;
+
+
+-- ---------- The one read ------------------------------------------------------
+-- SELECT ONLY, and on ONE table. Not INSERT: a tenant surface displays what the
+-- platform sent on the tenant's behalf and does not author deliveries. Not
+-- UPDATE or DELETE: the ledger is evidence.
+GRANT SELECT ON axon.tenant_deliveries TO axon_tenant_reader;
+
+
+-- ---------- Stated as SQL rather than as a comment, because a comment cannot
+-- ---------- be re-run --------------------------------------------------------
+--
+-- THE WHOLE REASON THIS ROLE EXISTS, IN ONE STATEMENT. axon_reader holds SELECT
+-- here and that is correct for a Sevyn8 operator; it is exactly wrong for a
+-- tenant-facing process, because the table has no RLS and no session posture
+-- can substitute for the missing privilege. This REVOKE is what makes "a tenant
+-- surface cannot read Sevyn8's internal delivery ledger" a property of the
+-- database rather than of the query somebody wrote.
+--
+-- A future slice that wants a tenant surface to see platform traffic has to
+-- come here and argue with a line, which is the intended cost.
+REVOKE ALL ON axon.platform_deliveries FROM axon_tenant_reader;
+
+
+-- ============================================================================
+-- VERIFY (run manually, as the schema owner. Each has a specific wrong answer)
+-- ============================================================================
+--
+-- 1. EXACTLY the intended grant for this role, and no more. ONE row.
+--
+--      SELECT table_schema, table_name, privilege_type
+--        FROM information_schema.role_table_grants
+--       WHERE grantee = 'axon_tenant_reader'
+--       ORDER BY 1, 2, 3;
+--      -> axon | tenant_deliveries | SELECT
+--
+--    A SECOND ROW IS A FAULT, whatever it is. In particular:
+--      - axon | platform_deliveries | anything  is the exact exposure this
+--        role exists to prevent. It means the REVOKE above did not run, or
+--        somebody granted it back.
+--      - any write verb means a tenant surface can author or edit deliveries.
+--
+-- 2. THE PLATFORM LEDGER IS REFUSED. As axon_tenant_reader:
+--
+--      SELECT count(*) FROM axon.platform_deliveries;   -- permission denied
+--
+--    `permission denied`, NOT a count and NOT zero. THIS IS THE ONE VERIFY THAT
+--    MATTERS MOST, because a zero here would be indistinguishable from a
+--    correct empty table on the OTHER ledger and would read as success. That
+--    table is not empty: slice 1 wrote a real row on 2026-08-11.
+--
+-- 3. THE TENANT LEDGER IS REACHABLE, which the grant check alone cannot prove.
+--    As axon_tenant_reader, inside one transaction:
+--
+--      BEGIN;
+--      SELECT set_config('app.user_type', 'TENANT', true);
+--      SELECT set_config('app.tenant_id', '<a real tenant uuid>', true);
+--      SELECT count(*) FROM axon.tenant_deliveries;   -- -> 0, no error
+--      COMMIT;
+--
+--    0 AND NO ERROR IS THE PASS TODAY. The table is empty and can hold no rows
+--    in this slice: there is no address book, no tenant credential and no
+--    adapter beyond email, so nothing exists that could write it. What this
+--    verify proves is that the privilege check passes; what it CANNOT prove is
+--    that the policy admits the right rows.
+--
+-- 4. AND THE SILENT ZERO, SO THE READER KNOWS IT IS THERE. As
+--    axon_tenant_reader, with NO GUCs set:
+--
+--      SELECT count(*) FROM axon.tenant_deliveries;   -- -> 0, no error
+--
+--    IDENTICAL TO VERIFY 3'S ANSWER, and that is the point rather than a flaw
+--    in the check. Under FORCE RLS a session with no app.user_type matches zero
+--    rows and raises nothing, so while the table is empty a correct session and
+--    a broken one are byte-identical. Re-run 3 and 4 the day the first tenant
+--    delivery exists; that is when they diverge and the answer becomes evidence.
+--
+-- 5. The role cannot bypass RLS. Its whole job is to read a FORCE RLS table
+--    THROUGH the policy.
+--
+--      SELECT rolname, rolsuper, rolbypassrls FROM pg_roles
+--       WHERE rolname = 'axon_tenant_reader';
+--      -> f, f
+--
+--    A `t` in either column makes verifies 3 and 4 meaningless: the rows would
+--    come back whether or not the policy still had its tenant predicate.
+--
+-- 6. THE THREE AXON ROLES DO NOT OVERLAP. Run as the owner:
+--
+--      SELECT grantee, table_name, privilege_type
+--        FROM information_schema.role_table_grants
+--       WHERE grantee IN ('axon_sender', 'axon_reader', 'axon_tenant_reader')
+--         AND table_schema = 'axon'
+--       ORDER BY 1, 2, 3;
+--      -> axon_reader        | platform_deliveries | SELECT
+--      -> axon_reader        | tenant_deliveries   | SELECT
+--      -> axon_sender        | platform_deliveries | INSERT
+--      -> axon_tenant_reader | tenant_deliveries   | SELECT
+--
+--    EXACTLY FOUR ROWS. Any fifth is a role doing a second job.
+--
+-- 7. THE ROLE REACHES NOTHING OUTSIDE THE axon SCHEMA. As axon_tenant_reader:
+--
+--      SELECT count(*) FROM synapse.actions;   -- permission denied
+--      SELECT count(*) FROM core.tenants;      -- permission denied
+--
+--    A count rather than an error means this role inherited privileges from
+--    PUBLIC or from a group role, and its blast radius is not what the header
+--    claims.
+-- ============================================================================

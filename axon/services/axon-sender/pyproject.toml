@@ -1,0 +1,35 @@
+[project]
+# Distribution `axon-sender`; the MODULE is `axon_sender`. Same split as every other service
+# here. This is a SERVICE, not a library: nothing imports it, it is deployed as its own image.
+name = "axon-sender"
+version = "0.0.0"
+description = "Axon's sender: the poll loop over axon-send-requested. Consumes one send request, hands it to a Channel adapter, and appends the outcome to the delivery ledger. At-least-once: the ledger write is idempotent on delivery_id, the send is not. No producer, no reads, no HTTP surface beyond the Cloud Run health probe."
+requires-python = ">=3.12"
+dependencies = [
+  # The envelope, the Channel port, the SendGrid adapter, the ledger and the send path. Every
+  # piece of behaviour this service has is Axon's; the service is a loop around it.
+  "thalamus-axon",
+  # The structured logger that emits `severity`, and nothing else from dis-core is used here.
+  "dis-core",
+  # The two-GUC session discipline plus the first-use posture guard, reached through axon.ledger.
+  # Declared explicitly rather than leant on transitively: this service opens the engine.
+  "dis-rls",
+  # The subscriber. Emulator-or-ambient exactly as dis-ui-server's publisher does it.
+  "google-cloud-pubsub>=2.23",
+  # The readiness /healthz server. Cloud Run needs an HTTP surface to probe even though the real
+  # work is an outbound pull; the same shape streaming-consumer uses.
+  "uvicorn>=0.32",
+  "starlette>=0.41",
+  # The engine the ledger writes through.
+  "sqlalchemy[asyncio]>=2.0.36",
+  "psycopg[binary]>=3.2",
+  # The SendGrid adapter's client, reached through axon.sendgrid.
+  "httpx>=0.27",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/axon_sender"]

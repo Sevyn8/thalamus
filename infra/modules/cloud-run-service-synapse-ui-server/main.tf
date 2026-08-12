@@ -142,19 +142,25 @@ resource "google_secret_manager_secret_iam_member" "provisioner_url" {
 # tests/test_deployment_posture.py::test_every_secret_iam_member_is_listed_in_the_services_depends_on
 # PARSES this file, so both grants below are covered the moment they land.
 
-# The axon_sender DSN. INSERT on axon.platform_deliveries and nothing else: no
-# SELECT anywhere, nothing on axon.tenant_deliveries. Created out of band like
-# the three Synapse DSNs.
-data "google_secret_manager_secret" "axon_sender_url" {
-  project   = var.project_id
-  secret_id = var.secret_axon_sender_url
-}
-
-resource "google_secret_manager_secret_iam_member" "axon_sender_url" {
-  project   = var.project_id
-  secret_id = data.google_secret_manager_secret.axon_sender_url.secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.synapse_ui_server.email}"
+# THE PUBLISHER GRANT, WHICH REPLACED THE SENDER'S DSN IN SLICE 2.
+#
+# This service used to hold axon_sender (INSERT on axon.platform_deliveries),
+# because the 5e enable route sent in-process and wrote the ledger row itself. It
+# now PUBLISHES one message to axon-send-requested and writes nothing; axon-sender
+# does the send behind the queue. So the DSN moved there and this is what is left.
+#
+# THE REDUCTION IS THE POINT, not a side effect. A console that can no longer
+# write the delivery ledger cannot corrupt it, and a credential mounted on a
+# process that no longer uses it is a privilege nobody is accounting for.
+#
+# TOPIC-SCOPED, NOT PROJECT-WIDE. A project-level roles/pubsub.publisher would let
+# this service publish to every topic in the estate, including DIS's ingress lanes
+# and every dead-letter topic.
+resource "google_pubsub_topic_iam_member" "axon_send_publisher" {
+  project = var.project_id
+  topic   = var.axon_send_topic
+  role    = "roles/pubsub.publisher"
+  member  = "serviceAccount:${google_service_account.synapse_ui_server.email}"
 }
 
 # THE READ HALF OF THE PAIR (Axon slice 3). axon_reader holds SELECT on BOTH
@@ -178,27 +184,10 @@ resource "google_secret_manager_secret_iam_member" "axon_reader_url" {
   member    = "serviceAccount:${google_service_account.synapse_ui_server.email}"
 }
 
-# SEVYN8'S OWN SendGrid key, for Sevyn8's own internal traffic. A SEPARATE secret
-# from cm-sendgrid-api-key rather than a shared grant on CM's: a secret named for
-# one module and read by another is a name that lies, and a separately revocable
-# key means an Axon compromise does not force a rotation of Customer Master's
-# invitation flow.
-#
-# THE EGRESS THIS NEEDS ALREADY EXISTS. vpc_access below is
-# PRIVATE_RANGES_ONLY, so SendGrid (public) leaves over the default internet path
-# rather than the connector. That is the same posture CM's module set for the
-# same reason, and it is why this slice adds no networking at all.
-data "google_secret_manager_secret" "axon_sendgrid_api_key" {
-  project   = var.project_id
-  secret_id = var.secret_axon_sendgrid_api_key
-}
-
-resource "google_secret_manager_secret_iam_member" "axon_sendgrid_api_key" {
-  project   = var.project_id
-  secret_id = data.google_secret_manager_secret.axon_sendgrid_api_key.secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.synapse_ui_server.email}"
-}
+# THE SENDGRID KEY IS GONE FROM THIS SERVICE, and its absence is deliberate. This
+# process no longer talks to a provider: it publishes a message and returns. The
+# key and the from-address moved to axon-sender's module, which is the only thing
+# that now calls SendGrid. Same reason as the DSN above.
 
 resource "google_cloud_run_v2_service" "synapse_ui_server" {
   deletion_protection = false
@@ -302,9 +291,8 @@ resource "google_cloud_run_v2_service" "synapse_ui_server" {
     google_secret_manager_secret_iam_member.reader_url,
     google_secret_manager_secret_iam_member.lifecycle_url,
     google_secret_manager_secret_iam_member.provisioner_url,
-    google_secret_manager_secret_iam_member.axon_sender_url,
     google_secret_manager_secret_iam_member.axon_reader_url,
-    google_secret_manager_secret_iam_member.axon_sendgrid_api_key,
+    google_pubsub_topic_iam_member.axon_send_publisher,
   ]
 
   template {
@@ -401,20 +389,15 @@ resource "google_cloud_run_v2_service" "synapse_ui_server" {
         }
       }
 
-      # THE FOURTH DSN, AND IT IS NOT SYNAPSE'S (Axon slice 1). axon_sender holds
-      # INSERT on axon.platform_deliveries and nothing else: no SELECT anywhere,
-      # nothing on axon.tenant_deliveries. This service is Axon's first PRODUCER,
-      # so it carries Axon's write credential the way it carries Synapse's two.
+      # THE PROJECT HOLDING axon-send-requested. Not a topic name: the topic's
+      # name lives in axon.envelope because both the producer and the consumer
+      # need it, and a name configured twice is a name that can disagree with
+      # itself. The project is genuinely per-environment; the topic is not.
       #
-      # The service refuses to start without it, like the three above.
+      # The service refuses to start without it, like the DSNs above.
       env {
-        name = "AXON_SENDER_URL"
-        value_source {
-          secret_key_ref {
-            secret  = data.google_secret_manager_secret.axon_sender_url.secret_id
-            version = "latest"
-          }
-        }
+        name  = "AXON_PROJECT_ID"
+        value = var.project_id
       }
 
       # THE FIFTH DSN, AND IT IS THE FOURTH'S OPPOSITE (Axon slice 3). axon_reader
@@ -436,29 +419,9 @@ resource "google_cloud_run_v2_service" "synapse_ui_server" {
         }
       }
 
-      # SEVYN8'S OWN SendGrid key. Not a tenant credential: tenant traffic is sent
-      # BY the tenant, under its own account, and none of that exists yet.
-      env {
-        name = "AXON_SENDGRID_API_KEY"
-        value_source {
-          secret_key_ref {
-            secret  = data.google_secret_manager_secret.axon_sendgrid_api_key.secret_id
-            version = "latest"
-          }
-        }
-      }
-
-      # NOT CREDENTIALS, AND STILL REQUIRED. The from-address must be a
-      # SendGrid-VERIFIED sender or every send is refused per message at runtime;
-      # the on-call address is where internal platform events land. Both are
-      # plain values because neither is secret, and both are required because a
-      # revision missing either has a delivery plane that carries nothing while
-      # looking healthy.
-      env {
-        name  = "AXON_SENDGRID_FROM_EMAIL"
-        value = var.axon_sendgrid_from_email
-      }
-
+      # NOT A CREDENTIAL, AND STILL REQUIRED. The on-call address is where internal
+      # platform events land, and it is the RECIPIENT this service puts on the
+      # envelope. The from-address moved to axon-sender with the provider call.
       env {
         name  = "AXON_PLATFORM_ONCALL_EMAIL"
         value = var.axon_platform_oncall_email
