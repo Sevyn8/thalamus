@@ -1110,6 +1110,40 @@ class DocumentStorageUnavailableError(AdminBackendError):
     code = "DOCUMENT_STORAGE_UNAVAILABLE"
 
 
+class ChannelsUnavailableError(AdminBackendError):
+    """A channel-configuration write was requested but the vault is not configured here.
+
+    Raised when ``channels_secrets_project_id`` is unset, so no ``ChannelSecretWriter`` was
+    constructed and the credential has nowhere to go. Mirrors ``DocumentStorageUnavailableError``
+    and ``ProvisioningUnavailableError`` exactly: an operational-capability signal rather than the
+    caller's fault or an unexpected server fault, so it carries its own 503 and a specific code
+    instead of a generic 500.
+
+    IT MUST NOT BE A ClientError. A tenant administrator who filled the form correctly has done
+    nothing wrong, and a 4xx here would tell them to change their input.
+    """
+
+    public_message = "Channel configuration is not available in this environment"
+    http_status = 503
+    code = "CHANNELS_UNAVAILABLE"
+
+
+class InvalidChannelCredentialError(ClientError):
+    """The submitted credential key-value set is malformed.
+
+    THE FIELD NAMES ARE THE TENANT'S, NOT OURS, so this validates SHAPE and never semantics: keys
+    present, unique, legally charactered, values non-empty, the whole blob within a size bound.
+    Nothing here knows what a Sinch credential looks like, and inventing a schema for one would
+    be a guess frozen into a 422.
+
+    The offending KEYS travel in ``context`` for the log; the VALUES never leave the request.
+    """
+
+    public_message = "The credential could not be accepted; check the highlighted fields"
+    http_status = 422
+    code = "INVALID_CHANNEL_CREDENTIAL"
+
+
 class UserNotProvisionedError(AdminBackendError):
     """Send-invitation was requested for a user that has no Auth0 identity yet.
 

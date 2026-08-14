@@ -137,6 +137,7 @@ required = { \
     ('/api/v1/ready', 'GET'), \
     ('/api/v1/me/permissions', 'GET'), \
     ('/api/v1/audit/activities', 'GET'), \
+    ('/api/v1/channels', 'GET'), \
     ('/api/v1/dashboard/fleet-stats', 'GET'), \
     ('/api/v1/lookups', 'GET'), \
     ('/api/v1/module-access/me', 'GET'), \

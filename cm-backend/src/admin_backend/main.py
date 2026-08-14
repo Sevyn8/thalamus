@@ -34,6 +34,7 @@ from admin_backend.auth.auth0 import Auth0Client
 from admin_backend.auth.auth0_management import Auth0ManagementClient
 from admin_backend.auth.protocol import AuthClient
 from admin_backend.auth.stub import StubAuthClient
+from admin_backend.channels import ChannelSecretWriter
 from admin_backend.email_sender import SendGridEmailSender
 from admin_backend.gcs import GcsSignedUrlGenerator, build_gcs_signer
 from admin_backend.config import get_settings
@@ -53,6 +54,7 @@ from admin_backend.logging_config import configure_logging
 from admin_backend.middleware.audit_context import AuditContextMiddleware
 from admin_backend.middleware.auth import AuthMiddleware
 from admin_backend.routers.v1 import audit as audit_router
+from admin_backend.routers.v1 import channels as channels_router
 from admin_backend.routers.v1 import dashboard as dashboard_router
 from admin_backend.routers.v1 import documents as documents_router
 from admin_backend.routers.v1 import lookups as lookups_router
@@ -131,6 +133,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # SendGrid email sender (Slice 2d-send, D-41). Constructed ONCE here, only
     # when a SendGrid API key is present; STUB / unconfigured leaves it None
     # (the send-invitation endpoint then returns 503, never a raw 500).
+    # Channel credential vault (Axon slice 5). Constructed only when a project is configured;
+    # absent means the channels WRITE refuses with CHANNELS_UNAVAILABLE at use time rather than
+    # blocking boot, so a revision without it comes up healthy and every other surface works.
+    channel_secret_writer: ChannelSecretWriter | None = None
+    if settings.channels_secrets_project_id:
+        channel_secret_writer = ChannelSecretWriter(settings)
+    app.state.channel_secret_writer = channel_secret_writer
+
     email_sender: SendGridEmailSender | None = None
     if settings.sendgrid_api_key:
         email_sender = SendGridEmailSender(settings)
@@ -300,6 +310,9 @@ def create_app() -> FastAPI:
     )
     app.include_router(
         audit_router.router, prefix=settings.api_prefix
+    )
+    app.include_router(
+        channels_router.router, prefix=settings.api_prefix
     )
 
     @app.exception_handler(AdminBackendError)

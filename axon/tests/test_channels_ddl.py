@@ -360,6 +360,67 @@ def test_neither_table_is_granted_to_anything() -> None:
     )
 
 
+def test_axon_does_not_derive_the_secret_name() -> None:
+    """SLICE 5 DELETED ``axon.vault`` AND THIS KEEPS IT DELETED.
+
+    It was landed in slice 4 under a zero-dead-controls exception, on the premise that it would
+    PRE-EXIST TWO CALLERS. It pre-existed one. Customer Master is the writer and cannot import
+    this package: cm-backend is not a uv workspace member and its Dockerfile builds from
+    cm-backend/ with no path to axon/. So CM derives the name and stores it in ``secret_ref``,
+    and Axon reads that column verbatim.
+
+    THE FAILURE THIS PREVENTS IS A SECOND DEFINITION. If a future Axon reader re-adds a
+    derivation helper "for convenience", there are then two rules for one name in two build
+    units with nothing holding them equal, and the symptom is a channel that reads as
+    unconfigured for a tenant that configured it.
+    """
+    import importlib
+
+    import axon
+
+    assert not hasattr(axon, "secret_id_for"), (
+        "axon exports a secret-name derivation again. The name is CM's to derive and Axon's to "
+        "read from channel_connections.secret_ref; two derivations are two things to keep equal."
+    )
+    # importlib rather than a bare `import axon.vault`: mypy resolves a static import at check
+    # time and fails on the missing module, which would make this file unable to assert the very
+    # absence it exists to assert.
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("axon.vault")
+
+
+def test_the_ddl_does_not_claim_a_live_derivation_helper() -> None:
+    """The column comment named ``axon.vault.secret_id_for`` until slice 5. A comment naming a
+    module that no longer exists is the lying-artifact class this repository keeps paying for, so
+    the executable COMMENT must not name it. The prose above the column may discuss the deletion,
+    which is why this reads the COMMENT statement rather than the whole file."""
+    ddl = _channels()
+    comment = ddl[ddl.index("COMMENT ON COLUMN axon.channel_connections.secret_ref") :]
+    comment = comment[: comment.index(";")]
+
+    assert "axon.vault" not in comment, "the live column comment names axon.vault, which no longer exists"
+    assert "Written by Customer Master" in comment, (
+        "the comment no longer says who writes the name and who only reads it, which is the "
+        "whole reason the column exists rather than a shared function"
+    )
+
+
+def test_the_deferred_live_comment_is_recorded_as_a_ledger_item() -> None:
+    """STAGING'S COMMENT IS STILL THE OLD TEXT AND THAT IS A DELIBERATE DEFERRAL.
+
+    Migration 0002 already applied the old string. Correcting it needs a new axon revision, which
+    needs a synapse-ui-server image rebuild because that image is what migrate-axon runs. A
+    console BFF deploy to fix a metadata string is the wrong trade. The deferral is only
+    acceptable while it is WRITTEN DOWN where the next migration author will read it.
+    """
+    ddl = _channels()
+    assert "LEDGER ITEM" in ddl and "NEXT AXON MIGRATION" in ddl, (
+        "the ledger note about the unsynced live COMMENT has gone. Either it was carried into a "
+        "migration (delete this test in that commit) or it was lost, and staging now disagrees "
+        "with this file with nothing recording why."
+    )
+
+
 def test_the_credential_itself_is_not_a_column() -> None:
     """SEVYN8 NEVER HOLDS ANOTHER COMPANY'S CREDENTIAL. The table carries a NAME, and a future
     console query cannot leak a value that is not in the row."""

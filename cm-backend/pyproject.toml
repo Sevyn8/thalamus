@@ -23,6 +23,7 @@ dependencies = [
     # (unit tests inject an in-memory service-account credential); on Cloud
     # Run it uses keyless IAM signBlob (runtime SA + serviceAccountTokenCreator).
     "google-cloud-storage>=2.18",
+    "google-cloud-secret-manager>=2.20",
 ]
 
 [dependency-groups]
@@ -55,6 +56,16 @@ testpaths = ["tests"]
 # mypy --strict reports import-untyped on `google.cloud.storage`. Scope the
 # ignore narrowly to that namespace; google.auth / google.oauth2 ARE typed
 # and stay checked. Does not relax strictness for any first-party module.
+#
+# google-cloud-secret-manager (Axon slice 5 channel vault) joined the same
+# namespace and CHANGED HOW MYPY RESOLVES IT. `google.cloud` is a namespace
+# package: with one distribution present mypy fell back to the missing-imports
+# ignore below, and with two it began resolving the package and reporting
+# `Module "google.cloud" has no attribute "storage"` on a line that had been
+# clean for months. `follow_imports = "skip"` restores the previous behaviour
+# for this namespace only. The alternative, a per-line ignore in gcs.py, would
+# put the fix somewhere the cause is invisible.
 [[tool.mypy.overrides]]
-module = ["google.cloud.*"]
+module = ["google.cloud.*", "google.cloud"]
 ignore_missing_imports = true
+follow_imports = "skip"

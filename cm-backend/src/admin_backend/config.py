@@ -139,6 +139,12 @@ class Settings(BaseSettings):
     # document endpoints that mint signed URLs require it at request time,
     # raising DocumentStorageUnavailableError (503) if unset. Unused in
     # STUB mode unless document endpoints are exercised.
+    # The GCP project holding tenant channel credentials (Axon slice 5). Lazy, like every
+    # other integration credential above: absent means the channels write path refuses with
+    # CHANNELS_UNAVAILABLE at use time rather than blocking boot, so a revision without it
+    # comes up healthy and every other surface keeps working. It is a project id, not a
+    # credential; the SECRETS it names are per tenant and are created at save time.
+    channels_secrets_project_id: str | None = None
     gcs_documents_bucket: str | None = None
     # Runtime service-account email used for keyless V4 signing on Cloud
     # Run (IAM signBlob). REQUIRED alongside gcs_documents_bucket for the

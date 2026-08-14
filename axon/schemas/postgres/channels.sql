@@ -12,7 +12,7 @@
 -- templates all belong to the tenant, and a tenant administrator enters them.
 -- Sevyn8 never holds or types another company's credential. That is why the
 -- credential itself is NOT in this file: only a REFERENCE to it is, and the value
--- lives in Secret Manager under a name both sides derive from axon.vault.
+-- lives in Secret Manager under the name recorded in secret_ref.
 --
 -- WHAT SEVYN8 SUPERADMIN MAY SEE, AND THE LINE IS DRAWN IN THE COLUMN LIST RATHER
 -- THAN IN A QUERY. Connection state is operational: it is the answer to "why did
@@ -122,9 +122,21 @@ CREATE TABLE IF NOT EXISTS axon.channel_connections (
     -- NULLABLE because a connection can exist before the provider has issued one.
     sending_identity    TEXT                                NULL,
 
-    -- THE SECRET's NAME, NEVER ITS VALUE AND NEVER A VERSION. Produced by
-    -- axon.vault.secret_id_for(tenant_id, channel), which both the eventual writer
-    -- and the eventual reader call so the name cannot drift between them.
+    -- THE SECRET's NAME, NEVER ITS VALUE AND NEVER A VERSION.
+    --
+    -- WRITTEN BY THE WRITER, READ VERBATIM BY THE READER, DERIVED BY NOBODY ELSE.
+    -- Slice 4 said both sides would derive it from a shared axon.vault helper. That
+    -- helper was deleted in slice 5: Customer Master is the writer and cannot import
+    -- this package (not a uv workspace member, and its Dockerfile builds from
+    -- cm-backend/ with no path to axon/), so a shared function had one caller and
+    -- would have become two definitions free to disagree. CM derives the name and
+    -- stores it here; Axon reads this column and never derives.
+    --
+    -- CM'S DERIVATION IS STILL DETERMINISTIC, AND THAT IS NOT STYLE. The Secret
+    -- Manager write and this row's write cannot be atomic. If the secret lands and
+    -- the row does not, a free-form name orphans a live tenant credential that
+    -- nothing can attribute to a tenant or a channel ever again. A deterministic
+    -- name makes the retry land on the same secret, and makes an orphan readable.
     --
     -- A VERSION IS DELIBERATELY NOT RECORDED. Pinning one here would make this row
     -- go stale the moment a credential is rotated, and the reader wants "latest"
@@ -180,8 +192,15 @@ COMMENT ON TABLE axon.channel_connections IS
 COMMENT ON COLUMN axon.channel_connections.status IS
 'pending | connected | disabled. Only `pending` is reachable today: `connected` means a send was accepted on this channel and no adapter beyond email exists to accept one.';
 
+-- LEDGER ITEM, DELIBERATELY NOT SYNCED IN SLICE 5. The COMMENT below is corrected in
+-- this file, but the LIVE comment in staging still reads "from axon.vault.secret_id_for",
+-- because migration 0002 already applied the old text and updating it needs a new axon
+-- revision, which needs a synapse-ui-server image rebuild (that image is what migrate-axon
+-- runs). A console BFF deploy to fix a metadata string is the wrong trade, and it would be
+-- the fourth instance of that shared-image coupling. THE NEXT AXON MIGRATION THAT SHIPS FOR
+-- A REAL REASON MUST CARRY THIS ONE STATEMENT.
 COMMENT ON COLUMN axon.channel_connections.secret_ref IS
-'The Secret Manager secret NAME from axon.vault.secret_id_for. Never the value, and deliberately not a version: pinning a version would make this row stale on the first rotation.';
+'The Secret Manager secret NAME. Never the value, and deliberately not a version: pinning a version would make this row stale on the first rotation. Written by Customer Master, read verbatim by Axon, derived by nobody else.';
 
 
 -- RLS. Copied VERBATIM from axon.tenant_deliveries, including the asymmetry.
