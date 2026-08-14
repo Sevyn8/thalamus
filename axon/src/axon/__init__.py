@@ -15,9 +15,19 @@ reason worth acting on visible. It landed BEFORE the queue on purpose: slice 2 m
 asynchronous and adds a dead-letter lane, and debugging that through psql is worse than debugging
 it with a screen.
 
-WHAT IS STILL NOT HERE, and none of these is an oversight: no queue, no address book, no
-templates, no tenant credentials, no inbound webhooks, no adapter beyond SendGrid. Each is its
-own slice and each is named where the code that will need it lives.
+WHAT SLICE 4 ADDED, AND IT IS RAILS RATHER THAN TRAFFIC. Two tenant-scoped tables,
+``axon.channel_connections`` and ``axon.channel_templates``, plus ``vault.secret_id_for``, plus
+the composite foreign key that lets a tenant delivery pin the template version that rendered
+it. NOTHING READS OR WRITES ANY OF IT YET: both tables ship empty and ungranted on slice 1's
+recorded precedent, and the naming function is an accepted zero-dead-controls exception whose
+docstring says why.
+
+WHAT IS STILL NOT HERE, and none of these is an oversight: no address book, no tenant channel
+surface, no credential collection, no inbound webhooks, no adapter beyond SendGrid, and no
+template row anywhere. The registry stays empty until an adapter can verify a send, because a
+seeded name that turns out to be wrong is worse than an empty table: an empty table suppresses
+with a reason and a wrong name fails at the provider. Each remaining piece is its own slice and
+each is named where the code that will need it lives.
 
 THE DESTINATION IS TENANT-FACING MULTI-CHANNEL DELIVERY, and nothing here may make that a
 rewrite. The tenant, not Sevyn8, is the sender for tenant traffic: its own WhatsApp Business
@@ -35,6 +45,7 @@ from axon.ledger import DeliveryRecord, DeliveryState, SuppressionReason, record
 from axon.reads import DeliveryCounts, DeliveryRow, delivery_counts, recent_deliveries
 from axon.send import SendOutcome, send_platform
 from axon.sendgrid import SendGridEmailAdapter
+from axon.vault import secret_id_for
 
 __all__ = [
     "AxonError",
@@ -56,5 +67,6 @@ __all__ = [
     "delivery_counts",
     "record_platform_delivery",
     "recent_deliveries",
+    "secret_id_for",
     "send_platform",
 ]

@@ -3,12 +3,13 @@ import type { ModuleCode } from "@/types/api";
 
 import {
   LAUNCHER_TILES,
+  unmappedTile,
   type LauncherTileConfig,
   type LauncherTileId,
 } from "./tiles";
 
 // Phase 5d.1: My Ithina launcher tile-visibility resolution.
-// Phase 5g.1: TENANT Admin carve-out removed — the launcher now
+// Phase 5g.1: TENANT Admin carve-out removed; the launcher now
 // trusts the backend's module-access matrix as the sole signal for
 // Admin tile visibility (Finding #17 closed). When matrix has
 // ADMIN: ENABLED for the tenant, Admin tile renders for TENANT same
@@ -29,12 +30,39 @@ import {
 //   - Insights + Workforce (moduleCode === null): always HIDDEN for
 //                          TENANT (forward-looking placeholders not
 //                          on the tenant's per-module contract).
+//   - An ENABLED module with no tile in this build: a VISIBLY BROKEN
+//                          tile naming the code. See below.
 //
-// Pure function — no React, no hooks. Page composes the inputs from
+// Pure function, no React, no hooks. Page composes the inputs from
 // useAuthSnapshot + (TENANT) useMyModules.
+//
+// =========================================================================
+// AXON SLICE 4: A MODULE WITH NO TILE MUST FAIL VISIBLY
+// =========================================================================
+// This function used to return an empty array for an enabled module it had no
+// tile for. A module granted to a tenant and missing from tiles.ts rendered
+// nothing at all, and nothing anywhere said so. That is the same defect class as
+// a defaulted environment variable the build check cannot see, which this
+// repository has paid for three times.
+//
+// WHY THE COMPILER CANNOT COVER THIS ON ITS OWN, and it is not belt and braces.
+// tiles.ts now keys its registry by `Record<ModuleCode, ...>`, so a module code
+// in the union with no tile is a build failure. But MODULE ACCESS IS DATA: the
+// set below is built at runtime from GET /module-access/me, and `ModuleCode` is
+// a hand-maintained union in types/api.ts. The server can return a module_code
+// that union has never contained, on an image that shipped weeks earlier. The
+// declared type of `enabledModules` says that cannot happen; the wire says
+// otherwise, and the wire wins. So the check is here, at runtime, where the
+// value actually arrives.
+//
+// THIS IS NOT AN ALERT AND IS NOT WIRED TO ONE. The tenant sees it; Sevyn8 does
+// not. Inventing a reporting path was deliberately left out of this slice, and
+// the gap is stated rather than implied.
+
+export type TileState = "available" | "coming-soon" | "unmapped";
 
 export type ResolvedTile = LauncherTileConfig & {
-  state: "available" | "coming-soon";
+  state: TileState;
 };
 
 export function getVisibleTiles(
@@ -42,6 +70,9 @@ export function getVisibleTiles(
   // The set of module codes ENABLED for the TENANT persona's own tenant
   // (Slice 8: sourced from GET /module-access/me). Ignored for PLATFORM
   // personas, whose tiles are static. Empty while the query loads.
+  //
+  // TYPED AS ModuleCode AND NOT TRUSTED AS ONE. See the header: this is
+  // server data, and the type is a claim about it rather than a constraint on it.
   enabledModules: ReadonlySet<ModuleCode>,
 ): ResolvedTile[] {
   if (persona.userType === "PLATFORM") {
@@ -55,18 +86,46 @@ export function getVisibleTiles(
   }
 
   // TENANT path. Gate every tile by the tenant's enabled module set.
-  return LAUNCHER_TILES.flatMap<ResolvedTile>((t) => {
-    if (t.moduleCode === null) return []; // Insights / Workforce
-    if (!enabledModules.has(t.moduleCode)) return [];
+  const resolved: ResolvedTile[] = [];
+  const covered = new Set<string>();
+
+  for (const t of LAUNCHER_TILES) {
+    if (t.moduleCode === null) {
+      // DECLARED INTENT, NOT A MISSING CASE. Insights and Workforce are
+      // forward-looking placeholders that sit on no tenant's per-module
+      // contract, so a tenant never sees them. tiles.ts keeps them in their own
+      // array so this branch cannot quietly acquire a second meaning.
+      continue;
+    }
+
+    covered.add(t.moduleCode);
+
+    if (!enabledModules.has(t.moduleCode)) {
+      // NOT ENABLED FOR THIS TENANT, which is the module-access matrix doing
+      // exactly its job. Distinct from both branches around it.
+      continue;
+    }
+
     if (t.id === "dis" || t.id === "admin") {
       // DIS + Admin: backend module-access matrix is the authoritative
-      // gate. Matrix says ENABLED → real link; per-surface guards
+      // gate. Matrix says ENABLED, so a real link; per-surface guards
       // inside the product enforce finer-grained access.
-      return [{ ...t, state: "available" as const }];
+      resolved.push({ ...t, state: "available" as const });
+    } else {
+      // Product modules: enabled means Coming Soon (modules ship later)
+      resolved.push({ ...t, state: "coming-soon" as const });
     }
-    // Product modules: enabled → Coming Soon (modules ship later)
-    return [{ ...t, state: "coming-soon" as const }];
-  });
+  }
+
+  // THE MISSING CASE, MADE LOUD. Anything the tenant is entitled to that this
+  // build cannot render gets a tile saying so, rather than vanishing.
+  for (const code of enabledModules) {
+    if (!covered.has(code)) {
+      resolved.push({ ...unmappedTile(code), state: "unmapped" as const });
+    }
+  }
+
+  return resolved;
 }
 
 // Re-export ids for e2e + page consumers.

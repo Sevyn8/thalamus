@@ -254,6 +254,25 @@ def _is_duplicate_delivery(exc: DBAPIError) -> bool:
     reasoning restated rather than imported. The two modules are in different distributions and
     Axon does not depend on Synapse; a shared helper would be a dependency edge in the wrong
     direction for four lines.
+
+    =============================================================================================
+    23503 IS NOW A REACHABLE FAILURE ON THE TENANT LEDGER, AND THIS CLASSIFIER DOES NOT KNOW IT
+    =============================================================================================
+    Slice 4 put a composite FOREIGN KEY on axon.tenant_deliveries (tenant_id,
+    template_version_id) referencing axon.channel_templates. So a tenant delivery naming a
+    template version that does not exist, or that belongs to ANOTHER TENANT, now fails with
+    SQLSTATE 23503 rather than 23505.
+
+    NOT LIVE TODAY. This function serves record_platform_delivery, which writes the PLATFORM
+    ledger, and that table has no foreign key at all: ck_platform_deliveries_no_template forces
+    the column NULL and there is no tenant_id to compose a reference from. Nothing writes the
+    tenant ledger yet.
+
+    WRITTEN HERE RATHER THAN ONLY IN THE DDL because this is where somebody will look the first
+    time it fires. The tenant ledger's writer needs its own classifier, and 23503 must NOT be
+    folded into the duplicate branch: a duplicate means the evidence already exists and the
+    message can be acked, while a foreign key violation means the row was never written and the
+    template reference was wrong. Acking the second one loses the delivery and the reason.
     """
     orig = getattr(exc, "orig", None)
     if getattr(orig, "sqlstate", None) != "23505":
