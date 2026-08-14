@@ -1,0 +1,124 @@
+# Cloud Build: build + push the cm-backend image.
+#
+# Run from cm-backend/, NOT the monorepo root:
+#
+#   gcloud builds submit \
+#     --config cloudbuild.yaml \
+#     --substitutions=_TAG=v15 .
+#
+# WHY THIS FILE EXISTS. Every cm-backend image to date was built by hand. The only
+# build script in the repository, scripts/deploy-cloud-run.sh, named a project that
+# has not existed for weeks, and all four of its constants were wrong: project
+# ithina-retail-admin, service admin-backend, repository admin-images, alembic job
+# admin-backend-alembic. The live values are sevyn8-thalamus-staging, cm-backend,
+# thalamus-images and migrate-cm. It has been deleted along with its near-identical
+# twin, which named a second dead project.
+#
+# THREE OF THOSE FOUR CANNOT RECUR HERE, and that is the main thing this file buys
+# over a script. $PROJECT_ID is supplied by the build itself rather than typed, the
+# repository and region are substitutions, and the service and job names appear
+# nowhere because this file does not deploy. It builds and pushes; Terraform decides
+# what runs.
+#
+# ============================================================================
+# THE BUILD CONTEXT IS cm-backend/, AND MOVING IT TO THE REPO ROOT WOULD BREAK
+# THE BUILD RATHER THAN COST A PATH REWRITE. Read this before proposing it.
+# ============================================================================
+# The obvious objection is that synapse-ui-server builds from the monorepo root and
+# this does not, so the estate is inconsistent. That service builds from the root
+# because it MUST: the uv workspace is rooted at dis/ and declares it and axon as
+# ../-relative members, so a narrower context cannot reach them. cm-backend imports
+# nothing outside itself and is not a workspace member, so root context buys it
+# nothing. Two contexts, each for a stated reason, is the same arrangement
+# cloudbuild-mirror-sync-consumer.yaml and cloudbuild-dis-ui-ver2.yaml already have.
+#
+# AND ROOT CONTEXT WOULD NOT MERELY BE UNNECESSARY, IT WOULD FAIL. Two reasons, both
+# checked rather than assumed:
+#
+#   1. The root .dockerignore excludes `**/scripts/` wholesale. The Dockerfile copies
+#      scripts/verify_cloud_schema.py and scripts/smoke_test.py, which are the Cloud
+#      Run job's verification scripts. Under a root context those files are not in
+#      the context at all and both COPY lines fail. Fixing that means editing an
+#      ignore file shared with synapse-ui-server and synapse-orchestrator, so a
+#      cm-backend build change would alter what two unrelated images can see.
+#   2. Docker reads only the .dockerignore at the CONTEXT ROOT. cm-backend/.dockerignore
+#      is 151 lines tuned to this service; the root one is 62. Moving the context
+#      silently retires the former in favour of the latter, which changes what lands
+#      in the image. The Dockerfile's own comment above the scripts COPY depends on
+#      three of those exclusions by name.
+#
+# If cm-backend ever joins the uv workspace, root context becomes mandatory and both
+# problems above have to be solved in that slice anyway. Deferring them costs nothing
+# now and the work does not grow.
+#
+# DOCKER_BUILDKIT=1 IS MANDATORY HERE, NOT STYLISTIC, which is the one place this
+# file diverges from synapse-ui-server's. That header says BuildKit is deliberately
+# absent because its Dockerfile "uses neither a `# syntax=` directive nor heredoc
+# COPYs". This Dockerfile uses BOTH a `# syntax=docker/dockerfile:1.7` directive and
+# two `RUN --mount=type=cache` lines, and the classic builder cannot parse either.
+# Same requirement and same reason as cloudbuild-dis-ui-ver2.yaml, which sets it.
+#
+# ONE CORRECTION TO BOTH EXISTING HEADERS, recorded here rather than edited into
+# theirs: they say the .dockerignore "filters the upload". It does not. `gcloud
+# builds submit` filters the UPLOAD with .gcloudignore, falling back to .gitignore
+# inside a git repository; .dockerignore filters the context handed to the daemon at
+# BUILD time. Two files, two stages. cm-backend has no .gcloudignore, so the upload
+# is filtered by .gitignore, which excludes .venv and .env; the image contents are
+# then filtered by cm-backend/.dockerignore. Both matter and they are not the same
+# mechanism.
+#
+# _TAG IS REQUIRED with an empty default, so an omitted tag fails the build loudly
+# instead of silently re-pinning a floating one. There is deliberately no `latest`:
+# the Cloud Run pin is an explicit vN, because a floating
+# thalamus-images/dis-ui-ver2:latest once came to point at v7 while v15 was serving.
+#
+# THE TAG MUST MATCH infra/envs/staging/variables.tf's `cm_image`, AND THAT VARIABLE
+# FEEDS TWO THINGS. Its description records the reason: the cm-backend service and
+# the migrate-cm job share one pin by design (D6), so a migration cannot run a
+# different build than the app it migrates for. Bumping it bumps both. Nothing
+# reconciles the tag with this build automatically, so grep the pinned string before
+# building:
+#
+#   grep -rn "cm-backend:" infra/envs/
+#
+# NO BUILD ARGS EXCEPT SERVICE_VERSION, which is baked so /api/v1/health reports the
+# image tag with no deploy-time env setup. It is passed as ${_TAG} so the version the
+# endpoint reports IS the tag that was pushed; the Dockerfile's `dev` default only
+# fires for a build that forgot, and is loud enough in /api/v1/health to be noticed.
+# Everything else cm-backend needs is RUNTIME env supplied by Cloud Run, so one image
+# is promotable across environments unchanged and no credential is ever baked in.
+#
+# THE IMAGE IS ALSO THE MIGRATION RUNNER. migrate-cm overrides CMD with `alembic
+# upgrade head` against this same image, which is why migrations/ and alembic.ini are
+# in it. A build that breaks the image breaks schema bring-up too.
+
+substitutions:
+  _REGION: "asia-south1"
+  _REPO: "thalamus-images"
+  # REQUIRED. Empty default = fail loud rather than mispin (see header).
+  _TAG: ""
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  # --no-cache: a cached layer can hide a drifted lock, and here it would also hide
+  # a route that has stopped registering. The Dockerfile's build-time check is only
+  # worth having if it actually runs every build.
+  #
+  # DOCKER_BUILDKIT=1 is REQUIRED, not optional: see the header.
+  - name: gcr.io/cloud-builders/docker
+    env: ['DOCKER_BUILDKIT=1']
+    args:
+      - build
+      - -f
+      - Dockerfile
+      - --no-cache
+      - --build-arg
+      - SERVICE_VERSION=${_TAG}
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/cm-backend:${_TAG}
+      - .
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/cm-backend:${_TAG}
