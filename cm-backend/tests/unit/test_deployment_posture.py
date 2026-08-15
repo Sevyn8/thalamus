@@ -14,6 +14,14 @@ tokenVaultWriter in cloud-run-service-dis-ui-server, which DOES hold versions.ac
 absence here cannot be maintained by copying the neighbouring module, and a reviewer reaching for
 that module as the pattern would reintroduce it. Hence a test.
 
+AND THE OTHER HALF OF THE SAME MECHANISM. The role lets cm-backend create those secrets; it does
+not make it try. main.py:140 constructs the writer only when CHANNELS_SECRETS_PROJECT_ID is set,
+and config.py:147 defaults it to None. A module with a perfect role and no such variable applies
+cleanly and produces a service whose channels write refuses with CHANNELS_UNAVAILABLE, which is a
+privilege granted ahead of its caller wearing the costume of a correct apply. So this file
+asserts the variable too, and asserts its VALUE against the project the role is scoped to, since
+two halves that each look right and name different projects meet nowhere.
+
 BOTH DIRECTIONS, ALWAYS. The permission set is asserted as exact set equality, not as a subset.
 A one-directional check goes stale silently: a REMOVED permission fails loudly at runtime the
 next time somebody saves a channel, but an ADDED one fails nothing at all and the check keeps
@@ -158,6 +166,45 @@ def test_the_binding_references_the_custom_role_and_the_modules_own_identity() -
     )
     assert "google_service_account.cm_backend.email" in block, (
         "the binding does not name this module's own runtime service account."
+    )
+
+
+def test_the_service_is_told_which_project_to_write_channel_secrets_in() -> None:
+    """THE OTHER HALF OF THE MECHANISM, and without it every test above asserts half of one.
+
+    The role lets cm-backend create the per-tenant channel secrets. It does not make it try.
+    main.py:140 constructs the ChannelSecretWriter only when channels_secrets_project_id is set,
+    and config.py:147 defaults it to None, so a module carrying a perfect role and no
+    CHANNELS_SECRETS_PROJECT_ID produces a service where PUT /api/v1/channels refuses with
+    CHANNELS_UNAVAILABLE at channels.py:149. That is a privilege granted ahead of its caller
+    wearing the costume of a correct apply.
+
+    THE VALUE IS ASSERTED, NOT JUST THE PRESENCE, and that is the load-bearing half. The custom
+    role is a PROJECT-level role in var.project_id bound to this service's own SA, so it reaches
+    secrets in that project and nowhere else. An env var naming any other project would construct
+    a writer that fails PermissionDenied on its first save: two halves that each look right and
+    do not meet. Asserting both name the same expression is what makes them one mechanism.
+    """
+    code = _terraform_code()
+    match = re.search(r"^\s*CHANNELS_SECRETS_PROJECT_ID\s*=\s*(\S+)\s*$", code, flags=re.MULTILINE)
+    assert match is not None, (
+        "CHANNELS_SECRETS_PROJECT_ID is not set on the cm-backend service. Without it "
+        "main.py:140 never constructs the ChannelSecretWriter, so cmChannelVaultWriter is a role "
+        "granted to a code path that cannot run."
+    )
+    assert match.group(1) == "var.project_id", (
+        f"CHANNELS_SECRETS_PROJECT_ID is set to {match.group(1)}, not var.project_id. The custom "
+        "role is project-scoped to var.project_id, so it cannot reach secrets anywhere else and "
+        "the first save would fail with PermissionDenied. If channel secrets genuinely moved "
+        "project, the role and its binding move with them, and this test changes with both."
+    )
+
+    role_block = _balanced_block(
+        code, f'resource "google_project_iam_custom_role" "{_ROLE_RESOURCE}"'
+    )
+    assert re.search(r"^\s*project\s*=\s*var\.project_id\s*$", role_block, flags=re.MULTILINE), (
+        "the custom role is no longer scoped to var.project_id, so the assertion above is "
+        "comparing the env var against a project the role does not cover."
     )
 
 

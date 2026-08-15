@@ -153,6 +153,25 @@ locals {
     LOG_LEVEL            = var.log_level            # config.py:137 log_level
     SENDGRID_FROM_EMAIL  = var.sendgrid_from_email  # config.py:125 sendgrid_from_email
     CORS_ALLOWED_ORIGINS = var.cors_allowed_origins # config.py:141 cors_allowed_origins
+
+    # config.py:147 channels_secrets_project_id. THE OTHER HALF OF THE CHANNEL VAULT: the role
+    # above lets this service create the per-tenant channel secrets, and this is what makes it
+    # try. main.py:140 constructs the ChannelSecretWriter only when this is set, so without it
+    # PUT /api/v1/channels refuses with CHANNELS_UNAVAILABLE at channels.py:149 no matter how
+    # correct the IAM is. A role applied for a code path that cannot construct is a privilege
+    # granted ahead of its caller, which is the thing this estate does not do.
+    #
+    # THE COUPLING, NAMED RATHER THAN LEFT IMPLIED: the writer creates per-tenant secrets in the
+    # project the service runs in, so this is var.project_id and not a variable of its own. It is
+    # not a knob: the custom role above is a PROJECT-level role in var.project_id bound to this
+    # service's own SA, so any other value here would construct a writer that fails
+    # PermissionDenied on its first save. If channel secrets ever live somewhere else, THIS is
+    # the line that changes, and the role and its binding move with it in the same commit.
+    #
+    # Deliberately NOT in the Dockerfile's build-check env list. That list is the variables
+    # Settings has no default for; this one defaults to None, so its absence does not stop the
+    # service booting, and asserting it there would claim something untrue about the service.
+    CHANNELS_SECRETS_PROJECT_ID = var.project_id
   }
 
   # Lazy Auth0 values. Empty string => omit the env var entirely so CM's
