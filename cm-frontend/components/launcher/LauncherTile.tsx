@@ -6,7 +6,7 @@ import type { LucideIcon } from "lucide-react";
 import { comingInV1 } from "@/components/shared/ComingInV1Toast";
 import { cn } from "@/lib/utils";
 
-// Phase 5d.1: My Ithina launcher tile primitive. Two visual states:
+// Phase 5d.1: My Sevyn8 launcher tile primitive. Two visual states:
 //
 //   "available": full-color icon, hoverable card, navigates via
 //                 next/link to the tile's href when clicked.

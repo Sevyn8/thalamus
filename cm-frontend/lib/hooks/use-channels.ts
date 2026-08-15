@@ -26,7 +26,7 @@ export function useMyChannels(options?: { enabled?: boolean }) {
     queryFn: () => channelsApi.mine(),
     // The caller decides. The page passes false for any caller it will not
     // render the surface to, so a PLATFORM persona never fires this request.
-    // See the guard in app/my-ithina/channels/page.tsx for why that is not
+    // See the guard in app/my-sevyn8/channels/page.tsx for why that is not
     // merely tidy: GET /channels has no audience pin, and under a PLATFORM
     // session RLS returns EVERY tenant's rows from it.
     enabled: options?.enabled ?? true,

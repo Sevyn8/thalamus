@@ -7,7 +7,7 @@ import { NotificationsButton } from "./NotificationsButton";
 import { UserMenu } from "./UserMenu";
 
 // Phase 5d.10: ProductSwitcher dropdown removed. The launcher at
-// /my-ithina is now the canonical product-discovery surface; the
+// /my-sevyn8 is now the canonical product-discovery surface; the
 // dropdown was a "coexist during rollout" placeholder from 5d.1
 // that's now redundant. Decontextualized "Platform" badge dropped
 // alongside (it was meaningful next to the dropdown; standalone it
@@ -43,7 +43,7 @@ export function TopBar() {
       <div className="flex h-14 items-center gap-4 px-6">
         <div className="flex min-w-0 items-center gap-3">
           <Link
-            href="/my-ithina"
+            href="/my-sevyn8"
             aria-label="Back to My Sevyn8 launcher"
             className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[0.8rem] font-medium text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >

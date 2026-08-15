@@ -7,5 +7,5 @@ import { auth0 } from "@/lib/auth0";
 // destination based on the session.
 export default async function RootPage() {
   const session = await auth0.getSession();
-  redirect(session ? "/my-ithina" : "/auth/login");
+  redirect(session ? "/my-sevyn8" : "/auth/login");
 }

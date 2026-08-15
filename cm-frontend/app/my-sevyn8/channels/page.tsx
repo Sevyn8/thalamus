@@ -58,11 +58,11 @@ function ChannelsUnavailable() {
         channels. Sevyn8 support can tell you which.
       </p>
       <Link
-        href="/my-ithina"
+        href="/my-sevyn8"
         className="mt-8 inline-flex items-center gap-2 text-sm text-primary hover:underline"
       >
         <ArrowLeft className="h-4 w-4" />
-        Back to My Ithina
+        Back to My Sevyn8
       </Link>
     </div>
   );
@@ -106,11 +106,11 @@ export default function TenantChannelsPage() {
     <div className="mx-auto flex max-w-4xl flex-col gap-8 px-6 py-10">
       <div className="flex flex-col gap-2">
         <Link
-          href="/my-ithina"
+          href="/my-sevyn8"
           className="inline-flex w-fit items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
-          My Ithina
+          My Sevyn8
         </Link>
         <h1 className="text-display">Sending channels</h1>
         <p className="text-body text-muted-foreground">

@@ -91,7 +91,7 @@ export const ithinaSidebarNavItems: NavGroup[] = [
         // pins audience PLATFORM). Because hasPermission matches the scope
         // exactly and does not cascade, this hides for every tenant persona
         // without a special case; a tenant's own channels live at
-        // /my-ithina/channels, reached from the dashboard card.
+        // /my-sevyn8/channels, reached from the dashboard card.
         href: "/superadmin/channels",
         label: "Sending Channels",
         icon: Send,

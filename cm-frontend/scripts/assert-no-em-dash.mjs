@@ -42,6 +42,12 @@ const ROOTS = [
   // header above records.
   "lib/axon",
   "app/(authenticated)/superadmin/axon",
+  // CHANNELS (Axon slice 5). Added for the same reason axon was: this surface is copy-heavy in
+  // a way the console screens are not. It carries the sentences telling a tenant that saving
+  // replaces their whole credential and that nothing sends yet, and those are precisely the
+  // sentences somebody will reach for a dash while writing.
+  "components/channels",
+  "app/my-sevyn8",
 ];
 
 function walk(dir) {

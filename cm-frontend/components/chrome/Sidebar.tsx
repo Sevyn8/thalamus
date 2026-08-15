@@ -124,12 +124,12 @@ export function Sidebar({ navGroups }: SidebarProps) {
         !hydrated && "invisible",
       )}
     >
-      {/* Phase 5d.1: logo + brand block routes to My Ithina launcher.
+      {/* Phase 5d.1: logo + brand block routes to My Sevyn8 launcher.
           Same Sidebar primitive used by both Ithina + DIS layouts, so
           this single Link gives both products the back-to-launcher
           affordance via the logo. */}
       <Link
-        href="/my-ithina"
+        href="/my-sevyn8"
         aria-label="Go to My Sevyn8 launcher"
         className="flex items-center gap-2 px-4 py-4 transition-colors duration-150 ease-out hover:bg-sidebar-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >

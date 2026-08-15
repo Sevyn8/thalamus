@@ -8,7 +8,7 @@ import {
   type LauncherTileId,
 } from "./tiles";
 
-// Phase 5d.1: My Ithina launcher tile-visibility resolution.
+// Phase 5d.1: My Sevyn8 launcher tile-visibility resolution.
 // Phase 5g.1: TENANT Admin carve-out removed; the launcher now
 // trusts the backend's module-access matrix as the sole signal for
 // Admin tile visibility (Finding #17 closed). When matrix has

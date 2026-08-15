@@ -28,7 +28,7 @@ export function useModuleMatrix(params?: ModuleMatrixParams) {
     queryKey: ["module-access-matrix", userId, params],
     queryFn: () => modulesApi.matrix(params),
     // Phase 5d.1: matrix is slow-changing data. 5-min staleTime
-    // matches useModuleCards; benefits the My Ithina launcher
+    // matches useModuleCards; benefits the My Sevyn8 launcher
     // (TENANT path reads matrix on every visit) and the existing
     // /superadmin/modules consumer alike.
     staleTime: 5 * 60_000,

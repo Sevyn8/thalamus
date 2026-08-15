@@ -104,7 +104,7 @@ export default function DashboardPage() {
   );
 
   // The tenant's own sending-channel surface. TENANT scope specifically: this
-  // links to /my-ithina/channels, which is the caller's OWN channels, and a
+  // links to /my-sevyn8/channels, which is the caller's OWN channels, and a
   // platform operator wanting the fleet view has /superadmin/channels instead.
   const canSeeOwnChannels = hasPermission(
     snapshot,

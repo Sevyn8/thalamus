@@ -38,32 +38,32 @@ import { useUpsertChannel } from "@/lib/hooks/use-channels";
 // the read type ever gains a field that could pre-fill them.
 //
 // =========================================================================
-// KEY-VALUE PAIRS RATHER THAN NAMED FIELDS, AND THAT IS AN ADMISSION
+// KEY-VALUE PAIRS RATHER THAN NAMED FIELDS, AND NO SEEDED NAMES AT ALL
 // =========================================================================
-// The three seeded keys are the values currently in hand from one provider.
-// They are not a claim about any provider's API, and all three are editable and
-// removable, because a tenant whose provider hands them different values must
-// be able to enter those instead. The backend's schema validates SHAPE and
-// never semantics for the same reason.
+// This form used to seed three rows named client_id, username and password.
+// Those are the values in hand for ONE provider, and it is the odd one: they
+// match none of Sinch's documented current APIs. Worse, every channel will have
+// its own field set. WhatsApp, SMS, email and a voicebot will not agree with
+// each other, so any seed chosen now is wrong for most of them and teaches a
+// default that does not hold.
+//
+// So there is ONE EMPTY ROW and no vocabulary. The tenant enters what their
+// provider gave them, which is the same reason the backend's schema validates
+// SHAPE and never semantics. A per-provider field schema belongs with the
+// adapter work, where something will actually consume the names.
 
 type Pair = { id: string; key: string; value: string };
 
-// Seeded EMPTY, and editable and removable. See the header: these are the
-// values in hand from one provider, not a contract with one.
-const SEED_KEYS = ["client_id", "username", "password"] as const;
-
-function seedPairs(): Pair[] {
-  return SEED_KEYS.map((key, index) => ({
-    id: `seed-${index}-${key}`,
-    key,
-    value: "",
-  }));
-}
-
 let pairCounter = 0;
+
 function newPair(): Pair {
   pairCounter += 1;
   return { id: `pair-${pairCounter}`, key: "", value: "" };
+}
+
+// One row, empty, named nothing. Also the reset shape after a successful save.
+function seedPairs(): Pair[] {
+  return [newPair()];
 }
 
 function blobBytes(pairs: Pair[]): number {
@@ -275,10 +275,10 @@ export function ChannelCredentialForm() {
         <div className="flex flex-col gap-1">
           <h3 className="text-subheading">Credential</h3>
           <p className="text-caption text-muted-foreground">
-            Enter exactly what your provider gave you. The three rows below are
-            the values we have seen from one provider; they are not a claim about
-            what yours issues. Rename or remove any of them, and add rows if your
-            provider hands you something else.
+            Enter the field names exactly as your provider gave them, and add a
+            row for each one. Different providers use different names, and the
+            same provider often uses different names for different channels, so
+            there is nothing here to fill in for you.
           </p>
         </div>
 

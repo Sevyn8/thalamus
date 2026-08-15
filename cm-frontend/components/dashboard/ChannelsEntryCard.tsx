@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, Send } from "lucide-react";
 
-// The entry point to /my-ithina/channels for a tenant administrator.
+// The entry point to /my-sevyn8/channels for a tenant administrator.
 //
 // IT DELIBERATELY FETCHES NOTHING. A count of configured channels would need
 // GET /api/v1/channels, which is absent from the deployed cm-backend image and
@@ -21,7 +21,7 @@ import { ArrowRight, Send } from "lucide-react";
 export function ChannelsEntryCard() {
   return (
     <Link
-      href="/my-ithina/channels"
+      href="/my-sevyn8/channels"
       className="group flex items-start gap-4 rounded-md border border-border bg-surface p-4 transition-colors duration-150 ease-out hover:border-border-strong hover:bg-surface-raised"
     >
       <span className="mt-0.5 rounded-md border border-border p-2 text-muted-foreground">

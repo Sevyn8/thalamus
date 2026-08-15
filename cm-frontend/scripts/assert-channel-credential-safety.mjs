@@ -35,7 +35,15 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 const FORM = "components/channels/ChannelCredentialForm.tsx";
 const GENERATED_TYPES = "types/openapi-generated.ts";
 const CHANNELS_DIR = "components/channels";
-const MY_ITHINA_DIR = "app/my-ithina";
+
+// THE ONE TENANT-FACING PREFIX. It was app/my-ithina and it is now app/my-sevyn8.
+// Ithina is a CLIENT of Sevyn8, and their name was sitting on the breadcrumb of
+// every Sevyn8 tenant's own settings page. The rest of the product already said
+// "My Sevyn8", so the rename closed a gap rather than opening one.
+const TENANT_SURFACE_DIR = "app/my-sevyn8";
+const RETIRED_TENANT_SURFACE_DIR = "app/my-ithina";
+const TENANT_PREFIX = "/my-sevyn8";
+const MIDDLEWARE = "middleware.ts";
 
 let failures = 0;
 
@@ -208,31 +216,104 @@ for (const file of readdirSync(CHANNELS_DIR)) {
 }
 
 // ---------------------------------------------------------------------------
-// 6. The two structural decisions, asserted as artifacts rather than as prose.
+// 6. The structural decisions, asserted as artifacts rather than as prose.
 // ---------------------------------------------------------------------------
-// NO [tenantId] SEGMENT under the tenant surface. The tenant is in the token, and RLS scopes
-// every row. A path segment would create a token-versus-path mismatch that then needs
-// quarantining; adding the trap and guarding it is worse than not adding it.
-const dynamicSegments = readdirSync(MY_ITHINA_DIR, { withFileTypes: true })
-  .filter((e) => e.isDirectory() && e.name.startsWith("["))
-  .map((e) => e.name);
 
-if (dynamicSegments.length > 0) {
+// THE SURFACE EXISTS. This is the vacuity guard for the scan below, and it is also what catches
+// half a rename: readdirSync on a missing directory throws an uncaught ENOENT, which is a stack
+// trace rather than a sentence, and a caught-and-ignored one would let the segment scan cover
+// nothing at all.
+if (!existsSync(TENANT_SURFACE_DIR)) {
   fail(
-    `${MY_ITHINA_DIR} has dynamic segment(s) ${dynamicSegments.join(", ")}. The tenant comes from ` +
-      `the token on this surface. A tenant id in the path is a second source of truth for the ` +
-      `same fact, and the two disagreeing is a case that has to be quarantined rather than read.`,
+    `${TENANT_SURFACE_DIR} does not exist. Either the tenant surface moved and this script was ` +
+      `not updated with it, or a rename landed half-finished. The checks below would then be ` +
+      `scanning a directory that is not there.`,
+  );
+} else {
+  // NO [tenantId] SEGMENT under the tenant surface. The tenant is in the token, and RLS scopes
+  // every row. A path segment would create a token-versus-path mismatch that then needs
+  // quarantining; adding the trap and guarding it is worse than not adding it.
+  const dynamicSegments = readdirSync(TENANT_SURFACE_DIR, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && e.name.startsWith("["))
+    .map((e) => e.name);
+
+  if (dynamicSegments.length > 0) {
+    fail(
+      `${TENANT_SURFACE_DIR} has dynamic segment(s) ${dynamicSegments.join(", ")}. The tenant ` +
+        `comes from the token on this surface. A tenant id in the path is a second source of ` +
+        `truth for the same fact, and the two disagreeing is a case that has to be quarantined ` +
+        `rather than read.`,
+    );
+  }
+}
+
+// EXACTLY ONE TENANT-FACING PREFIX, AND THIS ASSERTION HAS BEEN DELIBERATELY INVERTED.
+// It previously forbade app/my-sevyn8 and now forbids app/my-ithina. The invariant did not
+// change: app/ has one tenant-facing top-level group. Only the name of the survivor changed, and
+// the forbidden name is now the one that lost. Ithina is a client of Sevyn8, so their name was
+// appearing on every tenant's own settings breadcrumb; the rest of the product already said
+// "My Sevyn8". The old path still redirects (next.config.ts), which is why nothing needs to
+// exist here for the retired name to keep working.
+if (existsSync(RETIRED_TENANT_SURFACE_DIR)) {
+  fail(
+    `${RETIRED_TENANT_SURFACE_DIR} exists. There is one tenant-facing top-level group and it is ` +
+      `${TENANT_SURFACE_DIR}. Two prefixes means every future tenant surface has to pick one and ` +
+      `half of them will pick differently. The retired path is served by a redirect in ` +
+      `next.config.ts, not by a second tree.`,
   );
 }
 
-// NO SECOND TENANT-FACING PREFIX. app/ has exactly one, and my-ithina carrying an old brand name
-// is a rename decision on its own, not a reason to start a second tree beside it.
-if (existsSync("app/my-sevyn8")) {
+// ---------------------------------------------------------------------------
+// 7. The tenant surface is actually gated at the edge.
+// ---------------------------------------------------------------------------
+// THE QUIET HALF OF A ROUTE RENAME. Renaming the directory fails at the compiler if an import
+// breaks, and fails at runtime if an href is missed, which somebody notices. Missing the string
+// in middleware.ts fails NOWHERE: isProtectedPath stops matching, the edge waves the request
+// through unauthenticated, and the build stays green. AuthBoundary in the layout still gates the
+// render, so this is a lost layer rather than an open door, and a lost layer nobody can see is
+// exactly the shape worth asserting.
+//
+// BOTH HALVES ARE CHECKED, because either one alone can silently switch the middleware off for
+// this prefix. PROTECTED_PREFIXES decides what is gated; config.matcher decides whether the
+// middleware runs at all. Today the matcher is a negative pattern that excludes only static
+// assets, so it covers every route by construction; if it is ever replaced by a positive
+// allowlist that omits this prefix, PROTECTED_PREFIXES becomes dead code with nothing to say so.
+const middlewareSource = read(MIDDLEWARE);
+
+const protectedBlock = middlewareSource.match(
+  /const PROTECTED_PREFIXES\s*=\s*\[([\s\S]*?)\]/,
+);
+if (!protectedBlock) {
   fail(
-    `app/my-sevyn8 exists. There is one tenant-facing top-level group and it is app/my-ithina. ` +
-      `Two prefixes means every future tenant surface has to pick one, and half of them will ` +
-      `pick differently. Renaming my-ithina is its own decision, taken once, everywhere.`,
+    `could not find PROTECTED_PREFIXES in ${MIDDLEWARE}. It may have been renamed or restructured; ` +
+      `this check cannot see what it claims to check.`,
   );
+} else if (!protectedBlock[1].includes(`"${TENANT_PREFIX}"`)) {
+  fail(
+    `${TENANT_PREFIX} is not in PROTECTED_PREFIXES in ${MIDDLEWARE}, so the edge lets ` +
+      `unauthenticated requests to the tenant surface through. Nothing else reports this: the ` +
+      `build passes and the page still renders its own AuthBoundary.`,
+  );
+}
+
+const matcherBlock = middlewareSource.match(/matcher:\s*\[([\s\S]*?)\]/);
+if (!matcherBlock) {
+  fail(
+    `could not find config.matcher in ${MIDDLEWARE}. Without a matcher the middleware does not ` +
+      `run, and PROTECTED_PREFIXES gates nothing.`,
+  );
+} else {
+  const matcher = matcherBlock[1];
+  // The exclusion form, "/((?!...).*)", matches everything not listed and therefore covers this
+  // prefix by construction. Any other shape has to name the prefix itself.
+  const isExclusionForm = matcher.includes("(?!");
+  if (!isExclusionForm && !matcher.includes(TENANT_PREFIX)) {
+    fail(
+      `config.matcher in ${MIDDLEWARE} is no longer the catch-all exclusion pattern and does not ` +
+        `name ${TENANT_PREFIX}. The middleware will not run on the tenant surface, which makes ` +
+        `its presence in PROTECTED_PREFIXES dead code.`,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -246,5 +327,6 @@ if (failures > 0) {
 
 console.log(
   `assert-channel-credential-safety: ${credentialInputs.length} credential input(s) checked, ` +
-    `${READ_MODELS.length} read model(s) verified to carry no credential field, path decisions intact`,
+    `${READ_MODELS.length} read model(s) verified to carry no credential field, ` +
+    `${TENANT_SURFACE_DIR} is the only tenant prefix and is gated at the edge`,
 );

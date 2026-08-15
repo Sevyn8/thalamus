@@ -31,7 +31,7 @@ const PUBLIC_PREFIXES = [
 const PROTECTED_PREFIXES = [
   "/superadmin", // Ithina
   "/dis", // DIS
-  "/my-ithina", // launcher route
+  "/my-sevyn8", // launcher route
   "/profile",
   "/notifications",
   "/approvals",

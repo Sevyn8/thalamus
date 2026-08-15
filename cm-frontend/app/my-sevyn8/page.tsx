@@ -15,7 +15,7 @@ import {
 } from "@/lib/format/greeting";
 import type { ModuleCode } from "@/types/api";
 
-// Phase 5d.1: My Ithina launcher. 3-column tile grid; tiles
+// Phase 5d.1: My Sevyn8 launcher. 3-column tile grid; tiles
 // resolve per persona via getVisibleTiles.
 //
 // PLATFORM personas see the full 9-tile shape (Admin + DIS
@@ -59,7 +59,7 @@ export default function MyIthinaPage() {
     <div className="mx-auto flex max-w-5xl flex-col gap-8 px-6 py-12">
       <div className="flex flex-col gap-3">
         <IthinaLogo size={48} />
-        {/* Phase 5d.9: greeting replaces the prior "My Ithina"
+        {/* Phase 5d.9: greeting replaces the prior "My Sevyn8"
             heading. Brand identity carries via logo + URL/tab
             title; the heading personalizes. Time-aware prefix +
             first-name extraction (with initial-style fallback to
