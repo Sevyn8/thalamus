@@ -5,6 +5,7 @@ import {
   FileText,
   LayoutDashboard,
   Network,
+  Send,
   Shield,
   Store,
   Users,
@@ -83,6 +84,18 @@ export const ithinaSidebarNavItems: NavGroup[] = [
         label: "Module Access",
         icon: Boxes,
         requires: { module: "ADMIN", resource: "TENANTS", action: "OVERRIDE", scope: "GLOBAL" },
+      },
+      {
+        // The operator's fleet view of tenant sending-channel connections.
+        // GLOBAL scope, matching the endpoint it reads (GET /channels/platform
+        // pins audience PLATFORM). Because hasPermission matches the scope
+        // exactly and does not cascade, this hides for every tenant persona
+        // without a special case; a tenant's own channels live at
+        // /my-ithina/channels, reached from the dashboard card.
+        href: "/superadmin/channels",
+        label: "Sending Channels",
+        icon: Send,
+        requires: { module: "ADMIN", resource: "CHANNELS", action: "VIEW", scope: "GLOBAL" },
       },
     ],
   },

@@ -16,6 +16,7 @@ import { ErrorInline } from "@/components/shared/ErrorInline";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { TopTenantsPanel } from "@/components/dashboard/TopTenantsPanel";
 import { RecentActivityPanel } from "@/components/dashboard/RecentActivityPanel";
+import { ChannelsEntryCard } from "@/components/dashboard/ChannelsEntryCard";
 import { useFleetStats, useGovernanceStats } from "@/lib/hooks/use-dashboard";
 import { useAuthSnapshot } from "@/lib/auth/auth-cache";
 import { hasPermission } from "@/lib/auth/permissions-check";
@@ -100,6 +101,17 @@ export default function DashboardPage() {
     "TENANTS",
     "VIEW",
     "GLOBAL",
+  );
+
+  // The tenant's own sending-channel surface. TENANT scope specifically: this
+  // links to /my-ithina/channels, which is the caller's OWN channels, and a
+  // platform operator wanting the fleet view has /superadmin/channels instead.
+  const canSeeOwnChannels = hasPermission(
+    snapshot,
+    "ADMIN",
+    "CHANNELS",
+    "VIEW",
+    "TENANT",
   );
 
   // Phase 5g.1.2: persona-aware heading copy. PLATFORM keeps the
@@ -247,6 +259,24 @@ export default function DashboardPage() {
           </div>
         ) : null}
       </section>
+
+      {/* Axon channels entry point. A SEPARATE SECTION rather than a fourth
+          card in the Governance grid above: that grid is lg:grid-cols-3 with
+          exactly three children, so a fourth would reflow it into a ragged 3+1
+          for every viewer including the platform personas who never see this.
+
+          hasPermission does NOT cascade (it matches the scope exactly), so this
+          renders for the tenant roles holding CHANNELS.VIEW at TENANT scope and
+          not for SUPER_ADMIN, whose grant is VIEW.GLOBAL. The operator's own
+          view of the same data is /superadmin/channels. */}
+      {canSeeOwnChannels ? (
+        <section className="flex flex-col gap-3 px-6 pb-6">
+          <h2 className="text-label uppercase tracking-wider text-muted-foreground">
+            Sending channels
+          </h2>
+          <ChannelsEntryCard />
+        </section>
+      ) : null}
 
       <section
         className={cn(

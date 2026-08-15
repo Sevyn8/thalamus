@@ -1371,6 +1371,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's own tenant's sending channels
+         * @description Connection state for the caller's own tenant. Returns the Secret Manager secret NAME and never the credential's value; this service cannot read a stored credential back. RLS scopes the rows to the JWT's tenant.
+         */
+        get: operations["list_my_channels_api_v1_channels_get"];
+        /**
+         * Configure or reconfigure one sending channel
+         * @description Stores the tenant's own provider credential in Secret Manager and records the connection. REPLACES the whole credential set: this service cannot read the stored credential, so there is nothing to merge a partial edit into. Status is server-forced to `pending`; nothing sends yet.
+         */
+        put: operations["upsert_my_channel_api_v1_channels_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/channels/platform": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every tenant's channel connection state
+         * @description Which tenants have which channels configured, across the fleet. Returns connection state and the Secret Manager secret NAME; never a credential value. Exists so a blocked or suppressed delivery is explicable.
+         */
+        get: operations["list_platform_channels_api_v1_channels_platform_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1640,6 +1684,81 @@ export interface components {
             billing_contact_name?: string | null;
             /** Billing Address */
             billing_address?: string | null;
+        };
+        /**
+         * ChannelConnectionRead
+         * @description One connection, as the owning tenant sees it. NO CREDENTIAL FIELD, by design.
+         */
+        ChannelConnectionRead: {
+            /** Channel */
+            channel: string;
+            /** Provider */
+            provider: string;
+            /**
+             * Status
+             * @description pending, connected or disabled. Only pending is reachable today: connected means a send was accepted on this channel, and no adapter exists yet to accept one.
+             */
+            status: string;
+            /** Sending Identity */
+            sending_identity: string | null;
+            /**
+             * Secret Ref
+             * @description The Secret Manager secret NAME. Never the credential's value.
+             */
+            secret_ref: string | null;
+            /** Connected At */
+            connected_at: string | null;
+            /** Disabled At */
+            disabled_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ChannelConnectionsListResponse */
+        ChannelConnectionsListResponse: {
+            /** Items */
+            items: components["schemas"]["ChannelConnectionRead"][];
+        };
+        /**
+         * ChannelCredentialPair
+         * @description One key and one value, both the tenant's words.
+         */
+        ChannelCredentialPair: {
+            /** Key */
+            key: string;
+            /** Value */
+            value: string;
+        };
+        /**
+         * ChannelUpsertRequest
+         * @description Configure or reconfigure one channel.
+         *
+         *     REPLACES THE WHOLE CREDENTIAL SET. There is no partial edit, because a partial edit would
+         *     require reading the stored set to merge into, and nothing here can read it. The surface says
+         *     so in as many words rather than letting a tenant discover it by losing a value.
+         */
+        ChannelUpsertRequest: {
+            /**
+             * Channel
+             * @description email, whatsapp or sms
+             */
+            channel: string;
+            /** Provider */
+            provider: string;
+            /**
+             * Sending Identity
+             * @description The number or sender id recipients will see. An identifier, not a secret: Sevyn8 support can see this, unlike the credential.
+             */
+            sending_identity?: string | null;
+            /** Credential */
+            credential: components["schemas"]["ChannelCredentialPair"][];
         };
         /** ContactInput */
         ContactInput: {
@@ -2867,9 +2986,17 @@ export interface components {
         /**
          * PermissionResource
          * @description Mirrors ``resource_enum`` (locked vocabulary; no narrowing needed).
+         *
+         *     DECLARATION ORDER IS LOAD-BEARING, WHICH IS WHY NEW MEMBERS GO AT THE END. Postgres orders
+         *     an enum column by the type's declaration order, and ``ALTER TYPE ... ADD VALUE`` without a
+         *     BEFORE/AFTER clause APPENDS. The permission list endpoints sort on the resource column, and
+         *     ``tests/integration/test_rbac_router.py::_permission_sort_tuple`` recomputes that ordering
+         *     from THIS class's member positions to assert the two agree. Inserting a member in the middle
+         *     here, next to the resources it reads well beside, would put Python's ordinal out of step with
+         *     the database's and break that agreement without touching either side's own correctness.
          * @enum {string}
          */
-        PermissionResource: "PRICING_RULES" | "MARKDOWNS" | "EXPIRING_ITEMS" | "WASTE_LOG" | "DONATION_ROUTING" | "CAMPAIGNS" | "USERS" | "ROLES" | "AUDIT_LOG" | "TENANTS" | "STORES" | "ORG_NODES";
+        PermissionResource: "PRICING_RULES" | "MARKDOWNS" | "EXPIRING_ITEMS" | "WASTE_LOG" | "DONATION_ROUTING" | "CAMPAIGNS" | "USERS" | "ROLES" | "AUDIT_LOG" | "TENANTS" | "STORES" | "ORG_NODES" | "CHANNELS";
         /**
          * PermissionScope
          * @description Mirrors ``permission_scope_enum`` (post Step 6.1 narrowing).
@@ -2911,6 +3038,55 @@ export interface components {
             /** Items */
             items: components["schemas"]["PlatformAssignmentItem"][];
             pagination: components["schemas"]["Pagination"];
+        };
+        /**
+         * PlatformChannelConnectionRead
+         * @description The same row plus the tenant it belongs to, for the operator surface.
+         *
+         *     Adding ``tenant_id`` here rather than giving the platform read its own unrelated shape keeps
+         *     one promise in one place: whatever the tenant surface cannot show, this cannot either.
+         */
+        PlatformChannelConnectionRead: {
+            /** Channel */
+            channel: string;
+            /** Provider */
+            provider: string;
+            /**
+             * Status
+             * @description pending, connected or disabled. Only pending is reachable today: connected means a send was accepted on this channel, and no adapter exists yet to accept one.
+             */
+            status: string;
+            /** Sending Identity */
+            sending_identity: string | null;
+            /**
+             * Secret Ref
+             * @description The Secret Manager secret NAME. Never the credential's value.
+             */
+            secret_ref: string | null;
+            /** Connected At */
+            connected_at: string | null;
+            /** Disabled At */
+            disabled_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+        };
+        /** PlatformChannelConnectionsListResponse */
+        PlatformChannelConnectionsListResponse: {
+            /** Items */
+            items: components["schemas"]["PlatformChannelConnectionRead"][];
         };
         /**
          * PlatformUserListResponse
@@ -6203,6 +6379,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_my_channels_api_v1_channels_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelConnectionsListResponse"];
+                };
+            };
+        };
+    };
+    upsert_my_channel_api_v1_channels_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChannelUpsertRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChannelConnectionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_platform_channels_api_v1_channels_platform_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformChannelConnectionsListResponse"];
                 };
             };
         };
