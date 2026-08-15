@@ -189,7 +189,7 @@ variable "cm_documents_frontend_origin" {
 variable "dis_ui_server_image" {
   type        = string
   description = "dis-ui-server container image (the BFF). Built from dis/terraform/docker/dis-ui-server.Dockerfile with the dis/ WORKSPACE ROOT as build context; bump this in the same commit as any deploy. v8 added GET /tenant-self, which the ver2 topbar reads for the tenant name."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-server:v8"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-server:v9"
 }
 
 variable "synapse_ui_server_image" {
