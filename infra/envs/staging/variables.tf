@@ -166,7 +166,7 @@ variable "cm_auth0_ticket_result_url" {
 
 variable "cm_frontend_image" {
   type        = string
-  description = "cm-frontend container image. The tag live on the imported service; cm-frontend is deployed by gcloud, so bump this in the same commit as any deploy."
+  description = "cm-frontend container image. TERRAFORM OWNS THIS IMAGE: main.tf passes it to module.cm_frontend_service, and the module declares google_cloud_run_v2_service with no lifecycle.ignore_changes anywhere, so bumping this variable and applying IS how cm-frontend is deployed. This description previously said the service was deployed by gcloud, which was false and pointed a reader at a hand-deploy that the next apply would revert. The image is built by hand: cm-frontend has no cloudbuild."
   default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/cm-frontend:v43"
 }
 

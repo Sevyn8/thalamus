@@ -395,6 +395,12 @@ resource "google_pubsub_subscription_iam_member" "ingress_ready_sub_subscriber" 
 # max_delivery_attempts = 20 (~2.3h to dead-letter under this backoff). Legal
 # range is 5-100. DELIBERATELY LOWER than the ingress lane below; see the
 # asymmetry note there.
+# A MAIN LANE. IF YOU ADD ANOTHER ONE, ADD IT TO main_subscription_names IN THE
+# monitoring_alerts MODULE CALL BELOW, or it ships with no stuck-message alert and nothing says
+# so. The dead-letter policy matches "*-dlq-sub" and covers new DLQs by existing; the
+# stuck-message policy cannot do the same for mains, because "every -sub except the DLQ ones"
+# needs a negative lookahead and RE2 has none, so the mains are enumerated by hand. This is the
+# one drift that enumeration does not close, and this comment is where it is closable by a human.
 resource "google_pubsub_subscription" "csv_received_sub" {
   project              = var.project_id
   name                 = "dis-csv-received-sub"
@@ -436,6 +442,8 @@ resource "google_pubsub_subscription" "csv_received_sub" {
 # catalogue never onboards it is the same infinite loop this policy exists to
 # bound. After this, the message is VISIBLE in a DLQ, intact for 31 days, and
 # replayable. The automatic path narrows; the observable path appears.
+# A MAIN LANE. A new one must also be added to main_subscription_names in the monitoring_alerts
+# module call below, or it has no stuck-message alert. See the note at csv_received_sub.
 resource "google_pubsub_subscription" "ingress_ready_sub" {
   project              = var.project_id
   name                 = "dis-ingress-ready-sub"
@@ -547,6 +555,10 @@ resource "google_pubsub_subscription_iam_member" "axon_dlq_subscriber" {
 # than wall-clock speed and a 60s database restart would burn the whole budget in
 # seconds. The consumer also nacks plainly rather than with
 # ack_deadline_seconds = 0, so this backoff is what actually governs the pace.
+# A MAIN LANE, AND THE ONE THAT PROVED THE GAP. This subscription existed and was watched by no
+# stuck-message alert, because that policy's filter had been hand-typed as
+# "dis-(csv-received|ingress-ready)-sub" and nobody came back to it. A new one must also be added
+# to main_subscription_names in the monitoring_alerts module call below. See csv_received_sub.
 resource "google_pubsub_subscription" "axon_send_requested_sub" {
   project              = var.project_id
   name                 = "axon-send-requested-sub"
@@ -817,6 +829,19 @@ module "monitoring_alerts" {
   # MUST TRACK synapse.orchestrator.freshness.STALE_AFTER_DAYS. Terraform cannot read a Python
   # constant, so this is a second source of truth kept in step by hand and named as such.
   stale_after_days = 3
+
+  # EVERY MAIN LANE, BY REFERENCE. The stuck-message policy cannot use a wildcard the way the
+  # dead-letter policy does: "every -sub that is not a DLQ" needs a negative lookahead and RE2
+  # has none, so the mains have to be named. Naming them HERE, as resource references, is what
+  # keeps a rename from silently un-matching the filter.
+  #
+  # ADDING A FOURTH MAIN SUBSCRIPTION MEANS ADDING IT HERE. Nothing enforces that; see the
+  # comment at the subscription resources above.
+  main_subscription_names = [
+    google_pubsub_subscription.csv_received_sub.name,
+    google_pubsub_subscription.ingress_ready_sub.name,
+    google_pubsub_subscription.axon_send_requested_sub.name,
+  ]
 }
 
 # --- migrate-synapse: the way Synapse's chain reaches this database ---

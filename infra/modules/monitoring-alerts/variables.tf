@@ -53,6 +53,28 @@ variable "stuck_message_age_seconds" {
   default     = 3600
 }
 
+variable "main_subscription_names" {
+  type        = list(string)
+  description = <<-EOT
+    Every MAIN Pub/Sub subscription, by name, that the stuck-message policy should watch. Passed
+    from the env as RESOURCE REFERENCES rather than literals, so a rename follows the reference
+    instead of silently un-matching a hand-typed regex.
+
+    Dead-letter subscriptions must NOT appear here. A DLQ holds old messages by design, so one in
+    this list would alert permanently and teach the operator to ignore the policy.
+  EOT
+
+  validation {
+    condition     = length(var.main_subscription_names) > 0
+    error_message = "The stuck-message alert would be created watching no subscriptions at all: an empty list joins to an empty regex, which matches nothing, applies cleanly, and reports healthy for ever."
+  }
+
+  validation {
+    condition     = length([for n in var.main_subscription_names : n if endswith(n, "-dlq-sub")]) == 0
+    error_message = "A dead-letter subscription is in the main list. It would breach the oldest-unacked threshold permanently, because holding old messages is what a DLQ is for, and a policy that is always red is a policy nobody reads."
+  }
+}
+
 variable "orchestrator_silence_seconds" {
   type        = number
   description = <<-EOT

@@ -610,9 +610,34 @@ resource "google_monitoring_alert_policy" "messages_stuck" {
       filter = join(" AND ", [
         "metric.type=\"pubsub.googleapis.com/subscription/oldest_unacked_message_age\"",
         "resource.type=\"pubsub_subscription\"",
-        # MAIN subscriptions only. A DLQ legitimately holds old messages by design — that is what
-        # a DLQ is — so including them here would double-report #1 and never clear.
-        "resource.label.subscription_id=monitoring.regex.full_match(\"dis-(csv-received|ingress-ready)-sub\")",
+        # MAIN subscriptions only. A DLQ legitimately holds old messages by design, that is what
+        # a DLQ is, so including them here would double-report #1 and never clear.
+        #
+        # ENUMERATED, AND THE SIBLING POLICY AT #1 IS NOT. That looks like an inconsistency and is
+        # not one. #1 can say ".*-dlq-sub" because the naming convention IS the membership test,
+        # so a new dead-letter lane is covered by existing. There is no equivalent for the mains:
+        # "every -sub except the DLQ ones" needs a negative lookahead and RE2 has none, so the
+        # only expressible answer is to name them.
+        #
+        # THE NAMES COME FROM THE SUBSCRIPTION RESOURCES, not from a string typed here. This
+        # filter used to read "dis-(csv-received|ingress-ready)-sub", which had already fallen
+        # behind: axon-send-requested-sub existed and was watched by nothing.
+        #
+        # WHAT THAT FIXES AND WHAT IT DOES NOT, stated exactly, because a comment that overstates
+        # its own guarantee is how a guard stops being checked:
+        #   Cannot drift on a RENAME       the reference follows it
+        #   Cannot drift on a TYPO         an unknown resource address fails at plan
+        #   Cannot produce an EMPTY filter the variable refuses an empty list
+        #   Cannot admit a DLQ             the variable refuses a *-dlq-sub name
+        #   CAN still drift on an ADDITION a new main subscription that nobody adds to
+        #                                  main_subscription_names ships with no alert, silently.
+        #                                  Terraform cannot enumerate its own resources, so this
+        #                                  is unclosed. The reminder lives at the subscription
+        #                                  resources in envs/staging/main.tf, which is the file
+        #                                  the person adding the fourth one is actually editing.
+        #
+        # Wrapped in a group so the alternation cannot interact with full_match's anchoring.
+        "resource.label.subscription_id=monitoring.regex.full_match(\"(${join("|", var.main_subscription_names)})\")",
       ])
 
       comparison      = "COMPARISON_GT"
