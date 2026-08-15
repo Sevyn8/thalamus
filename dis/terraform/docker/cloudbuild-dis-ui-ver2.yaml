@@ -55,7 +55,13 @@ substitutions:
   # Cross-app "back to My Sevyn8" launcher link in the Shell header. Distinct from
   # the login URL above: this is the AUTHENTICATED launcher, and it is how DIS returns
   # to CM. Read by src/components/Shell.tsx; an empty value hides the link.
-  _VITE_CM_LAUNCHER_URL: "https://cm-frontend-697546531605.asia-south1.run.app/my-ithina"
+  # THE PATH CHANGED FROM /my-ithina ON 2026-08-15 AND THIS VALUE IS WHY THE OLD ONE
+  # STILL WORKS TODAY. Vite inlines import.meta.env at BUILD time, so this string is
+  # baked into the image rather than read at runtime: editing it changes nothing until
+  # dis-ui-ver2 is rebuilt and deployed. Until that happens, cm-frontend serves a 307
+  # from /my-ithina, and those redirect entries are removed only after the rebuilt image
+  # is confirmed serving. Rebuilding this image is the first half of that sequence.
+  _VITE_CM_LAUNCHER_URL: "https://cm-frontend-697546531605.asia-south1.run.app/my-sevyn8"
 
 options:
   logging: CLOUD_LOGGING_ONLY
