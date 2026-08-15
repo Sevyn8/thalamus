@@ -124,7 +124,7 @@ variable "cloud_sql_deletion_protection" {
 variable "cm_image" {
   type        = string
   description = "CM container image, consumed by BOTH the cm-backend service and the migrate-cm job (D6: one pin, so a migration cannot run a different build than the app it migrates for). Bumping this bumps both."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/cm-backend:v16"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/cm-backend:v17"
 }
 
 variable "cm_app_region" {
@@ -167,7 +167,7 @@ variable "cm_auth0_ticket_result_url" {
 variable "cm_frontend_image" {
   type        = string
   description = "cm-frontend container image. TERRAFORM OWNS THIS IMAGE: main.tf passes it to module.cm_frontend_service, and the module declares google_cloud_run_v2_service with no lifecycle.ignore_changes anywhere, so bumping this variable and applying IS how cm-frontend is deployed. This description previously said the service was deployed by gcloud, which was false and pointed a reader at a hand-deploy that the next apply would revert. The image is built by hand: cm-frontend has no cloudbuild."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/cm-frontend:v43"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/cm-frontend:v44"
 }
 
 variable "cm_documents_bucket_name" {
