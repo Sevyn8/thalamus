@@ -174,7 +174,7 @@ function asTab(raw: string | undefined): TabKey {
   return TABS.includes(raw as TabKey) ? (raw as TabKey) : "overview";
 }
 
-// "Last ran 2026-08-07 · 12 series refused — sales data too old". The full
+// "Last ran 2026-08-07 · 12 positions refused, sales data too old". The full
 // sentence rather than the fleet table's terse chip: this is the screen where an
 // operator asks why one client's monitor is quiet.
 function monitorNote(state: AnalysisState): string {

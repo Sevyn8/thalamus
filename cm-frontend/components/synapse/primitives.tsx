@@ -891,16 +891,26 @@ export function refusalSummary(
   return { total, top, count };
 }
 
-// "12 series refused as stale", the per-monitor line Phase A's item 5a wanted
+// "12 positions refused as stale", the per-monitor line Phase A's item 5a wanted
 // and could not have. Names the DOMINANT reason and, when there are others,
 // says so rather than implying the total is all one cause.
 //
-// "series" IS PASSED TWICE ON PURPOSE. Its plural is itself, and plural()'s default
-// appends an s to anything, which is how "43 seriess refused" reached staging.
+// THE NOUN IS "position" AND IT USED TO BE "series", WHICH WAS WRONG FOR BOTH ANALYSES.
+// The number comes from counts_by_reason in synapse/src/synapse/core/refusal.py, whose own
+// docstring reads "How many positions were refused", and both analyses feed it the same shape:
+// DeadStockRow and StockoutRiskRow are each one row per position, keyed by store and sku.
+//
+// "series" looked right for stockout_risk because a daily series is what that analysis READS.
+// It is not what it REFUSES. A tenant reading "12 series refused" on a dead-stock monitor was
+// being told about a unit that analysis has no concept of.
+//
+// NO THIRD ARGUMENT NEEDED NOW, and that is worth saying because the old line had one: the
+// plural of "series" is "series", so it had to be passed twice to stop plural() emitting
+// "43 seriess". "position" takes the default.
 export function refusalSentence(refusals: Refusals): string | null {
   const summary = refusalSummary(refusals);
   if (!summary) return null;
-  const head = `${plural(summary.count, "series", "series")} refused, ${reasonLabel(summary.top)}`;
+  const head = `${plural(summary.count, "position")} refused, ${reasonLabel(summary.top)}`;
   const rest = summary.total - summary.count;
   return rest > 0 ? `${head}, and ${rest} for other reasons` : head;
 }

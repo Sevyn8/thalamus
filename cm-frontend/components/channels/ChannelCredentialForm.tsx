@@ -77,6 +77,7 @@ function blobBytes(pairs: Pair[]): number {
 // next to the offending row instead of as a 422 that discards a credential set
 // the tenant just retyped in full.
 function validate(args: {
+  channel: ChannelKind;
   provider: string;
   sendingIdentity: string;
   pairs: Pair[];
@@ -91,6 +92,25 @@ function validate(args: {
   if (args.sendingIdentity.length > MAX_SENDING_IDENTITY_LENGTH) {
     problems.push(
       `Sending identity must be ${MAX_SENDING_IDENTITY_LENGTH} characters or fewer.`,
+    );
+  }
+
+  // MIRRORS THE SERVER, WHICH ENFORCES. The rule is per-channel and only email has one: the
+  // identity there IS the From address, so it is an email address. sms and whatsapp get no
+  // format rule because an E.164 number and an alphanumeric sender id are both legitimate and
+  // which one a tenant may use is the provider's rule, not ours. Guessing a pattern would
+  // refuse valid input with a confident message.
+  //
+  // A phone number saved on an email channel is what this closes; it happened on 2026-08-15.
+  //
+  // DELIBERATELY LOOSER THAN THE SERVER'S EmailStr. This exists to put the message next to the
+  // field instead of after a round trip, so it catches the obvious case and lets the server be
+  // the authority on the edges. A client check that tried to be exact would start refusing
+  // addresses the server accepts, which is a dead control of the worst kind: one that is wrong.
+  const identity = args.sendingIdentity.trim();
+  if (args.channel === "email" && identity && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identity)) {
+    problems.push(
+      "Sending identity must be an email address on an email channel. It is the From address your recipients will see.",
     );
   }
 
@@ -155,7 +175,7 @@ export function ChannelCredentialForm() {
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
 
-    const found = validate({ provider, sendingIdentity, pairs });
+    const found = validate({ channel, provider, sendingIdentity, pairs });
     setProblems(found);
     if (found.length > 0) return;
 
@@ -171,7 +191,7 @@ export function ChannelCredentialForm() {
         credential,
       },
       {
-        onSuccess: () => {
+        onSuccess: (saved) => {
           // CLEARED ON SUCCESS, deliberately. Leaving the values in component
           // state keeps a live credential in the page for as long as the tab
           // stays open, and the form cannot re-read them anyway, so there is
@@ -180,7 +200,25 @@ export function ChannelCredentialForm() {
           setProvider("");
           setSendingIdentity("");
           setProblems([]);
-          toast.success("Channel saved. The previous credential was replaced.");
+
+          // THE TOAST USED TO SAY "the previous credential was replaced" ON EVERY SAVE,
+          // INCLUDING THE FIRST, when there was no previous credential to replace. A message
+          // asserting an event that did not happen is the same defect as a control that does
+          // nothing, and this one is worse than it looks: replacement is the property the whole
+          // surface warns about, so claiming it on a first save teaches the tenant to distrust
+          // the warning that matters.
+          //
+          // GROUNDED IN WHAT THE WRITE RETURNED, not in what the page had loaded. The upsert
+          // sets created_at and updated_at from the same now() on INSERT and leaves created_at
+          // alone in the ON CONFLICT branch, so equality means this row was created by this
+          // request. The loaded list would also answer the question and can be stale or
+          // partially loaded; the response cannot.
+          const wasCreated = saved.created_at === saved.updated_at;
+          toast.success(
+            wasCreated
+              ? "Channel saved."
+              : "Channel saved. The previous credential was replaced.",
+          );
         },
         onError: (error) => {
           // Never echoes a submitted value. The 401 case is called out because
@@ -263,10 +301,24 @@ export function ChannelCredentialForm() {
           value={sendingIdentity}
           onChange={(e) => setSendingIdentity(e.target.value)}
           maxLength={MAX_SENDING_IDENTITY_LENGTH}
-          placeholder="the number or sender id your recipients will see"
+          placeholder={
+            channel === "email"
+              ? "the address your recipients will see in the From line"
+              : "the number or sender id your recipients will see"
+          }
           autoComplete="off"
         />
+        {/* THE COPY IS PER CHANNEL, because the old copy was not. It said "the number or sender
+            id" on every channel including email, which is how a phone number came to be saved
+            as an email From address.
+
+            IT ALSO SAYS WHERE A RULE EXISTS AND WHERE ONE DOES NOT. Claiming a format is
+            enforced on sms would be the same defect in the other direction: the tenant would
+            read a checked field and get an unchecked one. */}
         <p className="text-caption text-muted-foreground">
+          {channel === "email"
+            ? "The From address your recipients will see. It has to be an email address."
+            : "The number or sender id your recipients will see. Your provider decides what is valid here, so we do not check the format."}{" "}
           Not a secret. Sevyn8 support can see this, unlike the credential below.
         </p>
       </div>

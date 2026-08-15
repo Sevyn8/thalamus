@@ -13,13 +13,13 @@ import {
 import { EmptyState } from "@/components/shared/EmptyState";
 import type { ChannelConnectionRead } from "@/lib/api/channels";
 
-// The tenant's own connection state. State and the secret's NAME, never a value,
-// because the wire carries no value to render.
+// The tenant's own connection state. Never a credential value, because the wire carries none,
+// and NO LONGER THE SECRET'S NAME EITHER: that column moved to operators only. See the note at
+// the table head for why a tenant cannot use it and an operator can.
 //
-// EVERY NULL RENDERS AS AN EXPLICIT DASH. A blank cell where secret_ref is null
-// reads as "no credential stored", which is a claim this component cannot make:
-// null means the column is empty in the row we were given, and the reason is not
-// on the wire either.
+// EVERY NULL RENDERS AS AN EXPLICIT DASH. A blank cell reads as "not configured", which is a
+// claim this component cannot make: null means the column is empty in the row we were given,
+// and the reason is not on the wire either.
 
 function orDash(value: string | null | undefined) {
   if (value === null || value === undefined || value === "") return "-";
@@ -56,7 +56,12 @@ export function ChannelConnectionsPane({
             <TableHead>Provider</TableHead>
             <TableHead>Sending identity</TableHead>
             <TableHead>State</TableHead>
-            <TableHead>Stored secret name</TableHead>
+            {/* NO "Stored secret name" COLUMN HERE, AND THERE IS ONE ON THE OPERATOR SURFACE.
+                It held the Secret Manager secret id, axon-channel-{tenant_uuid}-{channel}. A
+                tenant can do nothing with it: they cannot open it, name it in a support request
+                more usefully than by naming the channel, and it puts our internal naming and
+                their own tenant uuid on their settings page. An operator uses it to correlate a
+                row with a vault entry, so it stays at superadmin/channels. */}
             <TableHead>Last saved</TableHead>
           </TableRow>
         </TableHeader>
@@ -67,12 +72,6 @@ export function ChannelConnectionsPane({
               <TableCell>{orDash(c.provider)}</TableCell>
               <TableCell>{orDash(c.sending_identity)}</TableCell>
               <TableCell>{orDash(c.status)}</TableCell>
-              {/* The NAME of the secret. Shown because it is what makes a
-                  support conversation about a specific stored credential
-                  possible without anyone reading the credential. */}
-              <TableCell className="font-mono text-caption break-all">
-                {orDash(c.secret_ref)}
-              </TableCell>
               <TableCell>{whenever(c.updated_at)}</TableCell>
             </TableRow>
           ))}

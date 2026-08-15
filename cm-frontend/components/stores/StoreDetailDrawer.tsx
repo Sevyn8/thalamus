@@ -60,15 +60,17 @@ function MetadataRow({
   );
 }
 
+// onEdit WAS A PARAMETER HERE AND IS DELETED RATHER THAN UNDERSCORED. Body never called it:
+// the working Edit button and its handler both live in the parent's footer, so the parameter
+// was a claim that this component might start an edit, which it cannot. Underscoring it would
+// have satisfied the linter and kept the claim.
 function Body({
   store,
-  onEdit,
   onTransition,
   transitionInFlight,
   canEdit,
 }: {
   store: StoreDetail;
-  onEdit: () => void;
   onTransition: (target: StoreStatus) => void;
   transitionInFlight: boolean;
   canEdit: boolean;
@@ -240,7 +242,6 @@ export function StoreDetailDrawer({
         ) : q.data ? (
           <Body
             store={q.data}
-            onEdit={onEditClick}
             onTransition={onTransition}
             transitionInFlight={setStatusMutation.isPending}
             canEdit={canEdit}

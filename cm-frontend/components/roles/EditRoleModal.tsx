@@ -307,7 +307,7 @@ function EditRoleForm({
       <div className="flex flex-col gap-2">
         <FieldLabel htmlFor="role-permissions">Permissions</FieldLabel>
         <p className="text-caption text-foreground-muted">
-          Replace-set: the saved list is exactly what's checked. Unchanged
+          Replace-set: the saved list is exactly what&apos;s checked. Unchanged
           rows preserve their audit history.
         </p>
         <div
