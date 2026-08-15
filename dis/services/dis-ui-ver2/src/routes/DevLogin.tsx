@@ -1,8 +1,5 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { Suspense, lazy, useEffect } from 'react'
 
-import { PERSONAS } from '../auth/dev/personas'
-import { signStubToken } from '../auth/dev/signStubToken'
 import { useAuth } from '../auth/useAuth'
 import { isRealMode } from '../lib/dis-ui-server/mode'
 
@@ -27,72 +24,39 @@ function RealModeSignIn() {
   )
 }
 
-// Dev-only login. Mints the chosen persona's dev-stub token AT RUNTIME via
-// signStubToken (HMAC, byte-identical secret/iss/aud to the backend verifier), hands
-// it to AuthProvider via login(), and navigates to the protected home. Runtime minting
-// (over the older pre-baked VITE_STUB_TOKEN_* build args) means the token always carries
-// the persona's current claims - notably the real seeded tenant_id/store_id UUIDs the
-// backend RLS keys on - so real mode against a live BFF authorizes correctly without a
-// rebuild. signStubToken refuses to run in a production bundle. Dev/staging only.
-export function DevLogin() {
-  const { login } = useAuth()
-  const navigate = useNavigate()
-  const [error, setError] = useState<string | null>(null)
+// THE DEV PICKER IS REACHED ONLY THROUGH A DYNAMIC IMPORT THAT A PRODUCTION BUILD CANNOT
+// REACH, and the shape of this line is the whole mechanism.
+//
+// import.meta.env.PROD is replaced by Vite with the literal `true` in a production build, so
+// Rollup folds `true ? null : lazy(import(...))` to `null`, the import() becomes unreachable,
+// and NO CHUNK IS EMITTED for DevPersonaPicker or anything it pulls in: the dev-stub secret,
+// the stub issuer, and every persona identity. Those were all present as string literals in
+// the deployed v18 bundle, measured rather than assumed.
+//
+// A STATIC IMPORT COULD NOT ACHIEVE THIS. DevLogin is reachable in every mode, because
+// AuthBoundary sends unauthenticated users to /dev/login, so anything it imports statically
+// ships. That is why the picker moved to its own module rather than staying a branch here.
+//
+// GATED ON THE BUILD FLAG, NOT ON isRealMode(). isRealMode() reads
+// VITE_DIS_UI_SERVER_MODE, a deployment variable that can be absent, and a production build
+// made without it would ship the secret again. PROD cannot be absent from a production build.
+const DevPersonaPicker = import.meta.env.PROD
+  ? null
+  : lazy(() => import('./DevPersonaPicker'))
 
-  // Real mode: skip the persona picker and auto-redirect to Auth0 sign-in.
-  if (isRealMode()) {
+// /dev/login is LOAD-BEARING IN REAL MODE and this route is not going anywhere: AuthBoundary
+// navigates here when the session resolves to unauthenticated, and RealModeSignIn is what
+// fires the redirect to Customer Master's login. Only the dev branch above is excluded from a
+// production build.
+export function DevLogin() {
+  // Production, or real mode in any build: the CM login redirect, never the picker.
+  if (DevPersonaPicker === null || isRealMode()) {
     return <RealModeSignIn />
   }
 
-  async function pick(personaId: string): Promise<void> {
-    setError(null)
-    const persona = PERSONAS.find((candidate) => candidate.id === personaId)
-    if (persona === undefined) {
-      setError('Unknown persona')
-      return
-    }
-    try {
-      // Mint the persona's stub token at runtime (HMAC; secret/iss/aud match the
-      // backend verifier). The claims - including the seeded tenant_id/store_id UUIDs
-      // the RLS keys on - come straight from the persona, so no rebuild is needed to
-      // change them.
-      const token = await signStubToken(persona)
-      await login(token)
-      navigate('/', { replace: true })
-    } catch {
-      setError('Could not sign in with the selected persona')
-    }
-  }
-
   return (
-    <section className="mx-auto mt-16 max-w-md px-4">
-      <h1 className="mb-1 text-2xl font-semibold">DIS UI v2 - Dev Login</h1>
-      <p className="mb-4 text-sm text-gray-500">
-        Pick a persona to sign in with a local stub token.
-      </p>
-      <ul className="flex flex-col gap-3">
-        {PERSONAS.map((persona) => (
-          <li key={persona.id}>
-            <button
-              type="button"
-              onClick={() => void pick(persona.id)}
-              className="flex w-full flex-col items-start gap-1 rounded-md border border-gray-300 p-4 text-left hover:bg-gray-50"
-            >
-              <span className="text-base font-semibold">{persona.name}</span>
-              <span className="text-sm text-gray-500">{persona.email}</span>
-              <span className="mt-1 rounded bg-gray-100 px-2 py-0.5 text-xs font-medium">
-                {persona.roleLabel}
-                {persona.tenantName !== null ? ` - ${persona.tenantName}` : ''}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      {error !== null ? (
-        <p role="alert" className="mt-3 text-sm text-red-600">
-          {error}
-        </p>
-      ) : null}
-    </section>
+    <Suspense fallback={<p className="mx-auto mt-16 max-w-md px-4 text-sm text-gray-500">Loading...</p>}>
+      <DevPersonaPicker />
+    </Suspense>
   )
 }

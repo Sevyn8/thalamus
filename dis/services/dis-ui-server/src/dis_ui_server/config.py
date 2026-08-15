@@ -55,6 +55,9 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
+
 from dis_core.errors import DisError
 from dis_core.pubsub_names import resolve_pubsub_name
 
@@ -63,9 +66,10 @@ _CORS_ALLOWED_ORIGINS = "CORS_ALLOWED_ORIGINS"
 _GCS_BUCKET_BRONZE = "GCS_BUCKET_BRONZE"
 _PUBSUB_PROJECT_ID = "PUBSUB_PROJECT_ID"
 # Auth mode + real-Auth0 verify config (13b / D25). DIS_AUTH_MODE selects the
-# token verifier: STUB (default; the HS256 dev stub, local/dev/tests unchanged)
-# or AUTH0 (the RS256/JWKS verifier). JWT_ISSUER / JWT_AUDIENCE are REQUIRED only
-# in AUTH0 mode; AUTH0_JWKS_URL is optional and derived from the issuer when
+# token verifier: AUTH0 (the DEFAULT; the RS256/JWKS verifier) or STUB (the HS256
+# dev stub, which additionally requires a loopback database, see
+# _refuse_stub_against_a_remote_database). JWT_ISSUER / JWT_AUDIENCE are REQUIRED
+# only in AUTH0 mode; AUTH0_JWKS_URL is optional and derived from the issuer when
 # unset (the Auth0 convention, mirroring Customer Master).
 _DIS_AUTH_MODE = "DIS_AUTH_MODE"
 _JWT_ISSUER = "JWT_ISSUER"
@@ -200,6 +204,60 @@ def _optional_int_env(name: str) -> int | None:
     return value
 
 
+# The only database hosts the HS256 dev stub may run against. NOT A DENYLIST: a list of
+# forbidden hosts is a list somebody has to keep current, and the one it misses is the one
+# that matters.
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def _refuse_stub_against_a_remote_database(postgres_url: str) -> None:
+    """Refuse the HS256 dev stub unless the database is local. Raises, or returns None.
+
+    =============================================================================================
+    WHY THE MODE ALONE IS NOT A SUFFICIENT CONDITION
+    =============================================================================================
+    DIS_AUTH_MODE and POSTGRES_URL are independent values read from the same environment. An
+    operator who sets STUB for a local session while POSTGRES_URL still points at staging gets a
+    verifier that accepts a symmetric-signed token against real tenant data, and the stub's
+    secret is a published constant. Checking the mode and stopping there would pass cleanly in
+    exactly that case, which is the shape of a guard that is not one.
+
+    So the second condition is the CONNECTION TARGET, parsed with SQLAlchemy's own make_url
+    rather than a regex so this reads the same target create_rls_engine will open. Staging is a
+    private IP and the Cloud SQL socket form parses to no host at all, so both are refused by
+    construction rather than by a list of forbidden things.
+
+    Same guard, same reasoning, as the one on scripts/seed_dev_data in cm-backend.
+
+    FAIL CLOSED. A URL this cannot parse is a URL it refuses: a guard that cannot read its input
+    has checked nothing. The message names the host and never the URL, which carries a password.
+    """
+    try:
+        host = make_url(postgres_url).host
+    except (ArgumentError, ValueError) as exc:
+        raise DisError(
+            f"{_DIS_AUTH_MODE}=STUB was requested but {_POSTGRES_URL} could not be parsed, so "
+            "this process cannot tell whether the dev stub would be accepting tokens against a "
+            "local database or a real one. Refusing to start."
+        ) from exc
+
+    if host is None:
+        raise DisError(
+            f"{_DIS_AUTH_MODE}=STUB was requested but {_POSTGRES_URL} names no TCP host, which "
+            "is the Cloud SQL socket form. The HS256 dev stub is a local-only verifier and its "
+            "signing secret is a published constant; it must not run against a managed database."
+        )
+
+    if host not in _LOOPBACK_HOSTS:
+        raise DisError(
+            f"{_DIS_AUTH_MODE}=STUB was requested but {_POSTGRES_URL} points at {host!r}, which "
+            "is not loopback. The HS256 dev stub accepts tokens signed with a published constant "
+            "and its claims drive RLS, so running it against a remote database would make a "
+            f"forged token a read of real tenant data. Allowed hosts: "
+            f"{', '.join(sorted(_LOOPBACK_HOSTS))}."
+        )
+
+
 @dataclass(frozen=True)
 class UiServerConfig:
     """Resolved environment profile for one server process."""
@@ -207,11 +265,16 @@ class UiServerConfig:
     postgres_url: str
     gcs_bucket_bronze: str
     pubsub_project_id: str
-    # Auth mode + real-Auth0 verify config (13b / D25). STUB is the default so
-    # local/dev/tests are unchanged; AUTH0 turns on the RS256/JWKS verifier.
-    # jwt_issuer / jwt_audience are None in STUB mode (unused), REQUIRED in AUTH0
-    # mode (from_env raises). auth0_jwks_url is derived from jwt_issuer when unset.
-    auth_mode: str = "STUB"
+    # Auth mode + real-Auth0 verify config (13b / D25). AUTH0 IS THE DEFAULT AND USED
+    # TO BE STUB; see from_env for why the inversion matters. jwt_issuer /
+    # jwt_audience are None in STUB mode (unused), REQUIRED in AUTH0 mode (from_env
+    # raises). auth0_jwks_url is derived from jwt_issuer when unset.
+    #
+    # THIS DEFAULT AND from_env's MUST AGREE. They are two separate sites for the same
+    # decision, and a default changed in one and not the other is worse than changing
+    # neither: the constructor and the environment path would disagree silently, and
+    # every test that builds this dataclass directly would exercise the old behaviour.
+    auth_mode: str = "AUTH0"
     jwt_issuer: str | None = None
     jwt_audience: str | None = None
     auth0_jwks_url: str | None = None
@@ -307,14 +370,29 @@ class UiServerConfig:
             raise DisError(
                 f"{_PUBSUB_PROJECT_ID} is not set; the CSV upload cannot publish {CSV_RECEIVED_TOPIC!r}"
             )
-        # Auth mode select (13b / D25). Default STUB keeps local/dev/tests on the
-        # HS256 dev stub with no new required env. AUTH0 turns on the RS256/JWKS
-        # verifier and then REQUIRES jwt_issuer + jwt_audience.
-        auth_mode = os.environ.get(_DIS_AUTH_MODE) or "STUB"
+        # =====================================================================================
+        # AUTH MODE. THE DEFAULT IS AUTH0 AND IT USED TO BE STUB.
+        # =====================================================================================
+        # The old line was `os.environ.get(_DIS_AUTH_MODE) or "STUB"`, so an ABSENT env var
+        # selected the HS256 dev-stub verifier with no error and no warning. That default is
+        # fail-open: the stub accepts tokens signed with a symmetric secret, and the claims it
+        # yields drive RLS, so a forged token would be a tenant-scoped read of somebody else's
+        # data. Nothing was exploited, because the Terraform module defaults DIS_AUTH_MODE to
+        # AUTH0 (cloud-run-service-dis-ui-server/variables.tf:80) and staging does not override
+        # it. THAT IS THE PROBLEM RESTATED, NOT A MITIGATION: the application was safe only
+        # while something outside it happened to be set correctly, and a deploy that dropped
+        # the variable would have been silently insecure rather than broken.
+        #
+        # Inverting it makes the failure mode the safe one: an absent variable now selects the
+        # RS256/JWKS verifier and then refuses to start without an issuer and an audience, so a
+        # misconfiguration crashloops instead of accepting forged tokens.
+        auth_mode = os.environ.get(_DIS_AUTH_MODE) or "AUTH0"
         if auth_mode not in ("STUB", "AUTH0"):
             raise DisError(
                 f"{_DIS_AUTH_MODE}={auth_mode!r} is not a recognized mode; expected STUB or AUTH0"
             )
+        if auth_mode == "STUB":
+            _refuse_stub_against_a_remote_database(postgres_url)
         jwt_issuer = os.environ.get(_JWT_ISSUER) or None
         jwt_audience = os.environ.get(_JWT_AUDIENCE) or None
         auth0_jwks_url = os.environ.get(_AUTH0_JWKS_URL) or None

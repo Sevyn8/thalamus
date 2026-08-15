@@ -1,10 +1,20 @@
 // DEV ONLY. These constants configure the local stub JWT minted at /dev/login.
 //
-// The secret guards nothing real: in this slice there is no Customer Master, no
-// backend, and no canonical data behind it. In real mode the stub is replaced by
-// Customer Master tokens verified against a JWKS key set (decisions.md D25), and
-// this module is deleted. The signer (signStubToken.ts) refuses to run in a
-// production build, so this secret can never mint a token outside dev.
+// HOW THIS IS ACTUALLY KEPT OUT OF PRODUCTION, corrected. This comment used to say the
+// signer's refusal to run in a production build meant "this secret can never mint a token
+// outside dev". That was false in the way that matters. The refusal at signStubToken.ts:15 is
+// a check on OUR code path; it does nothing about the secret itself, which was a string
+// literal in the shipped bundle. Anyone could read it out of the published asset and mint a
+// token with any JWT library, and the stub verifier would accept it, and its claims drive RLS.
+// It was measured in the deployed v18 bundle, not theorised.
+//
+// THE PROTECTION IS NOW BUILD-TIME EXCLUSION. routes/DevLogin.tsx reaches this module only
+// through a dynamic import gated on import.meta.env.PROD, so Rollup drops the branch and emits
+// no chunk containing these constants for a production build. The runtime refusal in the
+// signer stays as a second layer; it is not the protection.
+//
+// In real mode the stub is replaced by Customer Master tokens verified against a JWKS key set
+// (decisions.md D25).
 //
 // The issuer and audience match Sanjeev's slice-2 Customer Master fake
 // (libs/dis-testing fixtures: iss "https://customer-master.local", aud "dis"), so
