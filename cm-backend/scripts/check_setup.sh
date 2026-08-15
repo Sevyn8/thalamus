@@ -218,7 +218,9 @@ if command -v psql >/dev/null 2>&1 && [[ -n "${DATABASE_URL:-}" ]]; then
 fi
 
 # Other useful env vars (warn but don't fail; they're needed for app startup but not for setup)
-for var in JWT_ISSUER JWT_AUDIENCE APP_REGION ENVIRONMENT LOG_LEVEL; do
+# APP_REGION was in this list and is gone with the Settings field it checked for. A setup
+# check that asks for a variable nothing reads teaches the next person to set it.
+for var in JWT_ISSUER JWT_AUDIENCE ENVIRONMENT LOG_LEVEL; do
     if [[ -n "${!var:-}" ]]; then
         pass "$var is set"
     else

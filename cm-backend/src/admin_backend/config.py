@@ -161,7 +161,18 @@ class Settings(BaseSettings):
     gcs_download_url_expiry_seconds: int = 300
 
     # Application
-    app_region: Literal["EU", "US", "LOCAL"] = "LOCAL"
+    #
+    # app_region WAS HERE AND IS DELETED. It was declared as
+    # Literal["EU", "US", "LOCAL"] and NOTHING read it: no settings.app_region anywhere in
+    # src/admin_backend, so it selected nothing, gated nothing and appeared in no response.
+    # The deployed staging revision carried APP_REGION=US on a platform that runs in
+    # asia-south1, so the one thing it did was misinform anyone who read it during a data
+    # residency conversation, which is the conversation it looks like it exists for.
+    #
+    # TERRAFORM STILL SETS THE ENV VAR and that is safe rather than an oversight: model_config
+    # above sets extra="ignore", so an env var with no field is ignored at construction.
+    # Verified by constructing Settings with APP_REGION present after the field was gone.
+    # Removing the variable from the service is a separate Terraform change.
     environment: Literal["local", "development", "staging", "production"] = "local"
     log_level: str = "INFO"
 

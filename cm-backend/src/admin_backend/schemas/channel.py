@@ -20,7 +20,16 @@ import json
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    TypeAdapter,
+    field_validator,
+    model_validator,
+)
+from pydantic_core import PydanticCustomError
 
 __all__ = [
     "ChannelConnectionRead",
@@ -44,6 +53,12 @@ _MAX_BLOB_BYTES = 8192
 
 # Enough for any real credential set and low enough that the form stays a form.
 _MAX_PAIRS = 20
+
+# EmailStr behind a TypeAdapter rather than as a field type, because the field is only an email
+# address on ONE of the three channels. Declaring the field as EmailStr would refuse an sms
+# sender id, and declaring it as str with no check is what let a phone number onto an email
+# channel. The adapter lets the model validator apply the rule exactly where it holds.
+_EMAIL_ADAPTER: TypeAdapter[EmailStr] = TypeAdapter(EmailStr)
 
 
 class ChannelCredentialPair(BaseModel):
@@ -71,8 +86,10 @@ class ChannelUpsertRequest(BaseModel):
         default=None,
         max_length=255,
         description=(
-            "The number or sender id recipients will see. An identifier, not a secret: Sevyn8 "
-            "support can see this, unlike the credential."
+            "Who the message appears to come from, which is a different kind of value per "
+            "channel: a From address on email, and a number or sender id on sms and whatsapp. "
+            "An identifier, not a secret: Sevyn8 support can see this, unlike the credential. "
+            "Only the email form is checked; see the validator for why the other two are not."
         ),
     )
     credential: list[ChannelCredentialPair] = Field(min_length=1, max_length=_MAX_PAIRS)
@@ -106,6 +123,63 @@ class ChannelUpsertRequest(BaseModel):
         if len(blob.encode("utf-8")) > _MAX_BLOB_BYTES:
             raise ValueError(f"credential exceeds {_MAX_BLOB_BYTES} bytes when serialised")
         return v
+
+    @model_validator(mode="after")
+    def _sending_identity_fits_the_channel(self) -> ChannelUpsertRequest:
+        """Check the sending identity against the channel, but ONLY where the shape is knowable.
+
+        =========================================================================================
+        WHAT WENT WRONG WITHOUT THIS
+        =========================================================================================
+        On 2026-08-15 a row was saved with channel=email and sending_identity=9560879222. Nothing
+        refused it: the field carried a length cap and no format rule, and the surface's helper
+        text was phone-shaped for all three channels, so it read as an invitation. A From address
+        that is a phone number cannot send, and the tenant is told the channel is configured.
+
+        =========================================================================================
+        EMAIL IS CHECKED. SMS AND WHATSAPP ARE DELIBERATELY NOT.
+        =========================================================================================
+        The email case is knowable: the identity IS a From address, so it is an email address,
+        and EmailStr is already this codebase's answer to that question (schemas/tenant_user.py,
+        schemas/tenant.py).
+
+        For sms and whatsapp it is NOT knowable from this repository. Both an E.164 number and an
+        alphanumeric sender id are legitimate, which of them a tenant may use is the provider's
+        rule, and no provider contract and no adapter for either channel exists here to read one
+        from. A guessed pattern would refuse valid input with a confident message, which is a
+        worse defect than the one above: the tenant cannot tell a real rule from our invention.
+
+        SO THE DEFAULT FOR AN UNRECOGNISED CHANNEL IS NO FORMAT RULE, NOT A GUESS. Unreachable
+        today because _known_channel refuses anything outside the three before this runs, and
+        written this way so a fourth channel arrives unvalidated rather than mis-validated.
+
+        WHAT IS CHECKED FOR EVERY CHANNEL is only that a value is not whitespace: an identity of
+        "   " is stored as absent rather than as a string that renders blank and looks set.
+        """
+        if self.sending_identity is None:
+            return self
+
+        trimmed = self.sending_identity.strip()
+        if not trimmed:
+            # Whitespace only. Absent is the honest reading, and it keeps the surface from
+            # showing a set-looking blank.
+            self.sending_identity = None
+            return self
+        self.sending_identity = trimmed
+
+        if self.channel == "email":
+            try:
+                _EMAIL_ADAPTER.validate_python(trimmed)
+            except ValueError as exc:
+                raise PydanticCustomError(
+                    "sending_identity_not_an_email",
+                    (
+                        "sending_identity must be an email address when channel is email. "
+                        "It is the From address recipients will see."
+                    ),
+                ) from exc
+
+        return self
 
     def credential_blob(self) -> bytes:
         """The bytes that go into Secret Manager. Sorted keys, so re-entering the same credential
