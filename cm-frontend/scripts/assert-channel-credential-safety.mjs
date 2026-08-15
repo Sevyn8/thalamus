@@ -252,14 +252,16 @@ if (!existsSync(TENANT_SURFACE_DIR)) {
 // change: app/ has one tenant-facing top-level group. Only the name of the survivor changed, and
 // the forbidden name is now the one that lost. Ithina is a client of Sevyn8, so their name was
 // appearing on every tenant's own settings breadcrumb; the rest of the product already said
-// "My Sevyn8". The old path still redirects (next.config.ts), which is why nothing needs to
-// exist here for the retired name to keep working.
+// "My Sevyn8". The old path redirected from next.config.ts while dis-ui-ver2 still carried it
+// baked into its image; that redirect is now gone, so /my-ithina resolves to nothing at all.
+// Recreating the directory would therefore not merely duplicate a prefix, it would revive a
+// path the rest of the estate has stopped pointing at.
 if (existsSync(RETIRED_TENANT_SURFACE_DIR)) {
   fail(
     `${RETIRED_TENANT_SURFACE_DIR} exists. There is one tenant-facing top-level group and it is ` +
       `${TENANT_SURFACE_DIR}. Two prefixes means every future tenant surface has to pick one and ` +
-      `half of them will pick differently. The retired path is served by a redirect in ` +
-      `next.config.ts, not by a second tree.`,
+      `half of them will pick differently. The retired path no longer redirects either, so this ` +
+      `would revive a name nothing else points at.`,
   );
 }
 
