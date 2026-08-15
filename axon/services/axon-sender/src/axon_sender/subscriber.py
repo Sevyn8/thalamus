@@ -41,6 +41,12 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from axon import Channel, ChannelAdapter, Message, SendRequested, send_platform
+from google.api_core.exceptions import (
+    DeadlineExceeded,
+    RetryError,
+    ServerError,
+    TooManyRequests,
+)
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from axon_sender.config import SUBSCRIPTION
@@ -50,6 +56,34 @@ from dis_core.logging import get_logger
 __all__ = ["Decision", "Subscriber", "process_message"]
 
 _log = get_logger("axon-sender")
+
+# The middle tier of run_forever's three: errors that a retry can plausibly clear.
+# DELIBERATELY NARROW. Anything not listed falls through to the BUG tier, which logs at
+# ERROR with a traceback, so a class missed here is loud rather than silently retried.
+#
+# DeadlineExceeded IS A ServerError SUBCLASS and is therefore NOT in this tuple: it gets
+# its own clause ABOVE this one in run_forever. If that ordering is ever reversed, the
+# empty pull becomes a warning again and this whole change is undone silently. The test
+# suite asserts the two together for that reason.
+#
+# IT EXCLUDES THE 4xx CLASS, and that exclusion is the point rather than an oversight.
+# PermissionDenied, NotFound and InvalidArgument are configuration errors; no amount of
+# retrying fixes a missing IAM binding or a wrong subscription name. None of them is a
+# ServerError subclass, so they fall to the BUG tier by construction.
+#
+# NO SQLAlchemy CLASSES, WHICH IS WHERE THIS DIVERGES FROM streaming-consumer. That
+# service lists them because its poll_once runs a Cloud SQL dual-write inline. Axon's
+# database work goes through send_platform, which catches ChannelSendError and
+# LedgerWriteError and RETURNS an outcome rather than raising (axon/src/axon/send.py,
+# and its docstring says it raises nothing). So the database is not expected to surface
+# here. If one ever escapes anyway it lands in the BUG tier at ERROR with a traceback,
+# which is the safe direction to be wrong in.
+_TRANSIENT_POLL_ERRORS = (
+    ServerError,  # Pub/Sub 5xx: ServiceUnavailable, InternalServerError, GatewayTimeout
+    TooManyRequests,  # 429 quota pushback; not a ServerError subclass, so listed
+    RetryError,  # api_core retry budget exhausted on a retryable class
+    OSError,  # raw socket failure, e.g. ConnectionRefusedError
+)
 
 Decision = Literal["ack", "nack"]
 
@@ -225,16 +259,50 @@ class Subscriber:
             self.heartbeat.beat()
             try:
                 await self.poll_once()
-            except Exception as exc:  # noqa: BLE001 - a dead loop is worse than a noisy one
-                # DELIBERATELY ONE BRANCH, NOT streaming-consumer's THREE. That service separates
-                # DeadlineExceeded (an empty pull, the normal steady state) from transient
-                # transport errors from programming errors, because its empty-pull case fired
-                # ~7,800 times per instance per day and buried real output. This queue is far
-                # quieter, so the split is not yet earned; what IS kept is the reason for it, so
-                # that if this line starts producing that volume the fix is known rather than
-                # rediscovered. Logged at WARNING with the type, not swallowed silently.
+            except DeadlineExceeded:
+                # AN EMPTY QUEUE IS THE NORMAL STEADY STATE, NOT A FAILURE. The synchronous pull
+                # holds the connection open until the client deadline and then raises
+                # DeadlineExceeded, so every pass over an idle subscription arrives here.
+                #
+                # THIS BRANCH REPLACES A SINGLE HANDLER THAT LOGGED IT AT WARNING AS
+                # `axon.poll.failed`, and the comment that defended doing so was built on a
+                # misread number. It said streaming-consumer's ~7,800 entries per instance per
+                # day came from that queue being busy, and concluded "this queue is far quieter,
+                # so the split is not yet earned". The arithmetic says otherwise. Both services
+                # pull with timeout=10 and then sleep(1), so a pass takes about eleven seconds
+                # and 86400 / 11 is about 7,854. THAT NUMBER IS THE CADENCE, NOT THE TRAFFIC. It
+                # is what an idle loop produces no matter how quiet the queue is, and a quieter
+                # queue produces MORE of them, because more passes return empty. The condition
+                # the old comment set for revisiting was already met the day it was written.
+                #
+                # DEBUG RATHER THAN SILENCE. A logged non-event at a level nobody queries is what
+                # separates "the loop is alive and idle" from "the loop stopped" for whoever
+                # raises the level to find out.
+                log.debug("empty pull; no messages this pass")
+                await asyncio.sleep(1)
+            except _TRANSIENT_POLL_ERRORS as exc:
+                # A REAL PULL FAILURE, AND IT STAYS LOUD. This is what the WARNING level was
+                # always for; it was just being drowned by the branch above. The event name keeps
+                # `failed` because this one actually is one. Nothing watches the name: no alert
+                # policy, no log-based metric and no dashboard matches on it, which is why this
+                # commit needs no Terraform.
                 log.warning(
                     "poll pass failed; retrying",
                     extra={"event": "axon.poll.failed", "error_type": type(exc).__name__},
                 )
+                await asyncio.sleep(1)
+            except Exception:  # noqa: BLE001 - a dead loop is worse than a noisy one
+                # A PROGRAMMING OR CONFIGURATION ERROR. Still swallowed, because a loop that dies
+                # drains nothing, but at ERROR with a traceback under a `bug` marker so it can be
+                # found.
+                #
+                # THE CONCRETE CASE THIS TIER EXISTS FOR IS A 4xx, AND IT MATTERS MORE THAN THE
+                # NOISE REDUCTION. PermissionDenied on the subscription is NOT a ServerError
+                # subclass, so it does not match the transient tuple and lands here. Under the
+                # single handler this replaced, a revision that had lost its IAM binding logged
+                # one WARNING line every eleven seconds, indistinguishable from an idle queue,
+                # and retried forever while draining nothing. That is a permanent failure wearing
+                # a transient's clothes, and it is now an ERROR with a stack trace on the first
+                # pass.
+                log.bind(bug=True).exception("BUG: poll pass raised a non-transient error; retrying")
                 await asyncio.sleep(1)
