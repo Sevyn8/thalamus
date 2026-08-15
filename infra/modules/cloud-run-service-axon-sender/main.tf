@@ -231,5 +231,37 @@ resource "google_cloud_run_v2_service" "axon_sender" {
       condition     = var.min_instances >= 1
       error_message = "axon-sender must run at least one instance. At zero the pull loop scales away and the queue stops draining, with nothing to wake it: the work is an outbound pull, so there is no inbound request to trigger a cold start."
     }
+
+    # THE SERVICE-LEVEL scaling BLOCK IS IGNORED. THE TEMPLATE ONE IS NOT, AND THE
+    # PRECONDITION ABOVE STILL GOVERNS IT.
+    #
+    # google_cloud_run_v2_service has TWO scaling blocks, and they are SIBLINGS in the
+    # address space rather than one nested inside the other:
+    #
+    #   scaling            manual_instance_count, min_instance_count, scaling_mode
+    #   template.scaling   min_instance_count, max_instance_count
+    #
+    # `ignore_changes = [scaling]` names the first. The second is reached through the
+    # `template` attribute, which is not in this list, so the block inside `template`
+    # stays fully managed and var.min_instances keeps setting the poll loop's floor.
+    #
+    # THAT IS CHECKABLE RATHER THAN ASSERTED. manual_instance_count exists ONLY on the
+    # top-level block, and the perpetual diff this removes was on manual_instance_count
+    # and min_instance_count together, so the diff cannot have been template.scaling.
+    #
+    # WHY IGNORE RATHER THAN DECLARE. This module never declared a service-level scaling
+    # block, and the Cloud Run v2 API re-materializes one on every read with zeros that
+    # mean "absent". Terraform reads the zeros, finds nothing configured, and proposes
+    # removing what it cannot remove, on every plan. That trains people to skim plans,
+    # which is the actual cost. Declaring a block to match the zeros would be writing
+    # configuration to satisfy a read rather than to state an intent, and it would put a
+    # second min_instance_count in this resource, one line from the one that must never
+    # be zero. cloud-run-service-synapse-ui-server carries the same ignore for the same
+    # diff and keeps its template scaling managed alongside it.
+    #
+    # THE COST: a service-level scaling change made outside Terraform is neither reverted
+    # nor reported here. Nothing in this estate sets one and scaling_mode is unused, so
+    # there is nothing today for that blindness to hide.
+    ignore_changes = [scaling]
   }
 }
