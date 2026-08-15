@@ -66,6 +66,16 @@ export function EditOrgNodeModal({
 
   useEffect(() => {
     if (open) {
+      // Same shape and same reasoning as CreateOrgNodeModal: the reset runs after the
+      // dialog has rendered with the previous node's values, and the canonical fix is a
+      // key prop on open so the initial useState values do the work. Deferred for the
+      // same reason, that it changes dialog behaviour in a package with no test runner
+      // for a frame nobody has reported.
+      //
+      // Note this one keys on `node` as well as `open`, so it also re-runs when the
+      // selected node changes while the dialog stays open. A key on open alone would not
+      // cover that; a key of `${open}-${node.id}` would.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setName(node.name);
       setCode(node.code);
       setReparentEnabled(focusReparent);

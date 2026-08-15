@@ -106,6 +106,15 @@ export function AuditFilters({
   // a reset button or URL navigation).
   useEffect(() => {
     if (filters.search === "" && searchInput !== "") {
+      // The rule is right that this is a render-then-render: the input paints its old
+      // value and is corrected on the next pass. NOT the modal-reset shape the other
+      // suppressions in this codebase carry, and there is no remount to key on here.
+      // The canonical fix is to stop holding a second copy of this value: derive the
+      // input from filters.search, or lift the draft state to the owner that already
+      // owns the committed one. Either is a real change to how this component and its
+      // parent share state, and it would land with the debounce effect above rather
+      // than on its own.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSearchInput("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

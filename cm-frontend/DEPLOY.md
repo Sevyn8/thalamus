@@ -105,6 +105,8 @@ pnpm lint
 ```
 
 `pnpm build` runs the four assertion scripts after `next build` and is the whole gate: this
-package has no test runner. `pnpm lint` currently exits 1 on a pre-existing baseline of ten
-problems in files unrelated to any recent change; that baseline is tracked separately and a clean
-lint is not a precondition for deploying.
+package has no test runner. `pnpm lint` fails on warnings as well as errors, and treats an
+eslint-disable directive that no longer suppresses anything as an error, so a stale suppression
+breaks the build rather than accumulating quietly. Two problems remain from before that
+tightening, an unescaped entity and an unused parameter, and both are tracked to ship with the
+next cm-frontend image; until they do, lint still exits 1 on those two and only those two.

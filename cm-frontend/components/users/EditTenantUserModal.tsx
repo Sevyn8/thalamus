@@ -97,6 +97,16 @@ export function EditTenantUserModal({
 
   useEffect(() => {
     if (open) {
+      // Same shape as the other reset-on-open dialogs, and the canonical fix is the same
+      // key prop on open. Deferred for the same reason: a dialog behaviour change in a
+      // package with no test runner, for a frame nobody has reported.
+      //
+      // One detail specific to this site if somebody does the refactor: the reset also
+      // clears `rolesTouched`, which is not form content but a flag deciding whether the
+      // role rows get submitted at all. A remount resets it to its initial value anyway,
+      // so the behaviour carries over, but it is the one piece of state here whose reset
+      // is load-bearing rather than cosmetic.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFullName(user.full_name);
       setEmail(user.email);
       setRoles(readToRows(user));

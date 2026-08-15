@@ -13,7 +13,6 @@ export default function SuperadminError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // eslint-disable-next-line no-console
     console.error("[superadmin/error.tsx]", error);
   }, [error]);
 

@@ -10,6 +10,7 @@ overrides:
   hono: '>=4.12.18'
   ip-address: '>=10.1.1'
   brace-expansion: ^2.0.2
+  eslint-plugin-react-hooks: 7.1.1
 
 importers:
 

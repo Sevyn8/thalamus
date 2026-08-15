@@ -149,6 +149,20 @@ function EditRoleForm({
   // Reset when the underlying role changes (e.g. modal re-opens for
   // a different role, or detail refetches after invalidation).
   useEffect(() => {
+    // THIS ONE IS NOT GATED ON `open` AND A KEY PROP IS ONLY HALF A FIX. Read the deps:
+    // it fires on role.id, role.name, role.description and role.permissions, which means
+    // it serves two different jobs. A key of role.id would cover the first, reopening the
+    // dialog for a DIFFERENT role. It would NOT cover the second, the detail refetching
+    // after an invalidation, where role.id is unchanged and the content is not, so no
+    // remount happens and the form would keep showing pre-refetch values.
+    //
+    // So the canonical fix here is not the one the other suppressions in this codebase
+    // name. It is either splitting the two jobs apart, keying identity and syncing
+    // content, or deciding that a refetch should not overwrite what the operator has
+    // typed, which is a product question rather than a refactor. Whoever picks this up
+    // should answer that question first; the rule is right that the current shape resets
+    // an open form underneath someone.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setName(role.name);
     setDescription(role.description ?? "");
     setPermissionIds(new Set(role.permissions.map((p) => p.id)));

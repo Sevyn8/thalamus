@@ -91,6 +91,15 @@ export function Sidebar({ navGroups }: SidebarProps) {
 
   useEffect(() => {
     const saved = window.localStorage.getItem(COLLAPSED_KEY);
+    // THE RULE IS WRONG ABOUT THIS SITE, and it is the only one of the seven where that
+    // is the answer. localStorage does not exist during the server render, so the
+    // collapsed state CANNOT be known until after mount; reading it in an effect and
+    // setting state is the prescribed pattern for exactly this, not a workaround for it.
+    // The `hydrated` flag set on the next line exists so the sidebar does not paint a
+    // guessed width before the real one is known. There is nothing to defer and nothing
+    // to refactor: moving this read earlier would produce a hydration mismatch, which is
+    // the failure this shape prevents.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCollapsed(saved === "1");
     setHydrated(true);
   }, []);

@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build && node scripts/assert-dynamic-routes.mjs && node scripts/assert-no-em-dash.mjs && node scripts/assert-launcher-tiles.mjs && node scripts/assert-channel-credential-safety.mjs",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "eslint --max-warnings 0 --report-unused-disable-directives",
     "gen:types": "openapi-typescript docs/openapi.json -o types/openapi-generated.ts",
     "gen:dis-types": "test -f docs/dis-openapi.json && openapi-typescript docs/dis-openapi.json -o types/dis-openapi-generated.ts || echo '[gen:dis-types] docs/dis-openapi.json missing; skipping (no-op)' >&2"
   },
@@ -50,7 +50,8 @@
       "fast-uri": ">=3.1.2",
       "hono": ">=4.12.18",
       "ip-address": ">=10.1.1",
-      "brace-expansion": "^2.0.2"
+      "brace-expansion": "^2.0.2",
+      "eslint-plugin-react-hooks": "7.1.1"
     }
   }
 }

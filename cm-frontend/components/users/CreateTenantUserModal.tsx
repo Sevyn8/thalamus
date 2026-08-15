@@ -87,6 +87,15 @@ export function CreateTenantUserModal({
 
   useEffect(() => {
     if (open) {
+      // Same shape as the org-node modals: six resets that run after the dialog has
+      // already rendered with the last entry's values, where a key prop on open would
+      // make the initial useState values the reset and delete the effect. Deferred for
+      // the same reason, a behavioural change to a dialog with no test runner behind it
+      // and no reported symptom.
+      //
+      // The stale frame would be most visible here of the four, because this form can be
+      // opened repeatedly from a list to add several users in a row.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTenantId(preselectedTenantId ?? "");
       setFullName("");
       setEmail("");

@@ -76,6 +76,17 @@ export function CreateOrgNodeModal({
 
   useEffect(() => {
     if (open) {
+      // The rule is right in general: this resets six pieces of state after the modal has
+      // already rendered with the previous entry's values, so there is a frame where a
+      // reopened dialog shows what the last one held. The canonical fix is to remount on
+      // open with a key prop, which makes the initial useState values the reset and
+      // deletes this effect entirely.
+      //
+      // Not done here because it is a behavioural change to a dialog in a package with no
+      // test runner, for a defect nobody has reported seeing. It becomes worth doing when
+      // these modals are next touched for a real reason, or when a stale frame is actually
+      // observed rather than reasoned about.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setParent(defaultParent);
       // Parentless first node: HQ is the natural first type under the
       // tenant root. Otherwise the user picks after choosing a parent.
