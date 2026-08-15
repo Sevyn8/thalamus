@@ -69,6 +69,15 @@ def set_unit_env(monkeypatch: pytest.MonkeyPatch) -> None:
     fakes instead of reaching them.
     """
     monkeypatch.setenv("POSTGRES_URL", UNREACHABLE_POSTGRES_URL)
+    # DECLARED, NOT INHERITED. DIS_AUTH_MODE used to default to STUB, so the unit suite got
+    # the dev verifier by saying nothing. That default was fail-open in production and is now
+    # AUTH0, which requires an issuer and an audience, so a suite that wants the stub has to
+    # ask for it. Saying it here is also the honest thing: these tests DO want the HS256 stub,
+    # and that was previously invisible.
+    #
+    # The guard that AUTH0-by-default brought with it is satisfied by UNREACHABLE_POSTGRES_URL
+    # above being 127.0.0.1: STUB is refused against a non-loopback database.
+    monkeypatch.setenv("DIS_AUTH_MODE", "STUB")
     monkeypatch.setenv("GCS_BUCKET_BRONZE", "ithina-bronze-raw")
     monkeypatch.setenv("PUBSUB_PROJECT_ID", "local-dis")
     monkeypatch.setenv("PUBSUB_EMULATOR_HOST", "127.0.0.1:9")  # construction guard only

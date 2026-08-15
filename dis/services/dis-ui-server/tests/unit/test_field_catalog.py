@@ -225,6 +225,11 @@ def test_label_drift_aborts_the_boot_not_just_the_builder(monkeypatch: pytest.Mo
     del pruned["sale_event"]["quantity"]
     monkeypatch.setattr("dis_ui_server.catalog.field_catalog.LABELS", pruned)
     monkeypatch.setenv("POSTGRES_URL", "postgresql+psycopg://u:p@127.0.0.1:9/ithina_dis_db")
+    # DIS_AUTH_MODE is DECLARED because this module builds its own environment rather than
+    # going through conftest's set_unit_env. The default is AUTH0, which requires an issuer
+    # and an audience; these tests want the HS256 stub, and the URL above is loopback, which
+    # is what the stub guard requires.
+    monkeypatch.setenv("DIS_AUTH_MODE", "STUB")
     monkeypatch.setenv("GCS_BUCKET_BRONZE", "ithina-bronze-raw")
     monkeypatch.setenv("PUBSUB_PROJECT_ID", "local-dis")
     monkeypatch.setenv("PUBSUB_EMULATOR_HOST", "127.0.0.1:9")

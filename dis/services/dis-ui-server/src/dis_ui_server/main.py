@@ -66,14 +66,29 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # builds the RS256/JWKS verifier holding a cached PyJWKClient (no network I/O
     # at construction; the first verify does the JWKS fetch). scope.py reads this
     # off app.state and calls .verify; both modes yield the identical Identity.
+    # THE SELECTION IS ANNOUNCED, and that is not decoration. Which verifier a process is
+    # running is the single fact its request security rests on, and until this line it was
+    # visible nowhere: both branches constructed silently, so an operator reading the logs of a
+    # service accepting forged tokens would see a clean startup. STUB is logged at WARNING
+    # rather than INFO because a running service on the HS256 dev stub is a condition that
+    # should surface in a severity scan, not one somebody has to go looking for.
     if config.auth_mode == "AUTH0":
         app.state.verifier = Auth0Verifier(
             jwks_url=config.auth0_jwks_url,
             issuer=config.jwt_issuer,
             audience=config.jwt_audience,
         )
+        _log.bind(stage="startup").info(
+            "token verifier: AUTH0 (RS256/JWKS)",
+            extra={"event": "dis.auth.verifier_selected", "auth_mode": "AUTH0"},
+        )
     else:
         app.state.verifier = StubVerifier()
+        _log.bind(stage="startup").warning(
+            "token verifier: STUB (HS256 dev stub). Tokens signed with a published constant "
+            "are accepted, and their claims drive RLS. Local use only.",
+            extra={"event": "dis.auth.verifier_selected", "auth_mode": "STUB"},
+        )
     # Slice 8 upload dependencies — all construction-lazy like the engine (no
     # network I/O until first use), so the liveness/readiness split holds: a
     # missing env var crashloops here, an unreachable backend degrades later.

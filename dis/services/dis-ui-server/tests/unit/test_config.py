@@ -20,6 +20,11 @@ from dis_ui_server.config import (
 
 def _set_all_required(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("POSTGRES_URL", "postgresql+psycopg://u:p@localhost:5433/ithina_dis_db")
+    # DIS_AUTH_MODE is DECLARED because this module builds its own environment rather than
+    # going through conftest's set_unit_env. The default is AUTH0, which requires an issuer
+    # and an audience; these tests want the HS256 stub, and the URL above is loopback, which
+    # is what the stub guard requires.
+    monkeypatch.setenv("DIS_AUTH_MODE", "STUB")
     monkeypatch.setenv("GCS_BUCKET_BRONZE", "ithina-bronze-raw")
     monkeypatch.setenv("PUBSUB_PROJECT_ID", "local-dis")
 

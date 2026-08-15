@@ -111,6 +111,11 @@ def test_default_is_the_dev_origin_and_never_a_wildcard(
 def test_env_override_displaces_the_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "http://a.example:1, http://b.example:2")
     monkeypatch.setenv("POSTGRES_URL", "postgresql+psycopg://u:p@127.0.0.1:9/ithina_dis_db")
+    # DIS_AUTH_MODE is DECLARED because this module builds its own environment rather than
+    # going through conftest's set_unit_env. The default is AUTH0, which requires an issuer
+    # and an audience; these tests want the HS256 stub, and the URL above is loopback, which
+    # is what the stub guard requires.
+    monkeypatch.setenv("DIS_AUTH_MODE", "STUB")
     # Slice 8 required config (lazy construction; nothing is reached in this test).
     monkeypatch.setenv("GCS_BUCKET_BRONZE", "ithina-bronze-raw")
     monkeypatch.setenv("PUBSUB_PROJECT_ID", "local-dis")
