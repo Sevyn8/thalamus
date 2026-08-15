@@ -46,7 +46,20 @@ def _channels_code() -> str:
     double hyphen, and if one ever appears the tests that use this helper get louder, not
     quieter.
     """
-    return "\n".join(line.split("--")[0] for line in _channels().splitlines())
+    return _code("channels.sql")
+
+
+def _code(source: str) -> str:
+    """The same comment-stripping as ``_channels_code`` for any file in this schema directory.
+
+    GENERALISED WHEN deliveries.sql JOINED THE POLICY TEST, and for the same reason the helper
+    existed in the first place: that file's DROP now carries a comment explaining that
+    ``CREATE POLICY IF NOT EXISTS`` does not exist, so a raw scan would read the explanation as
+    the thing being explained.
+    """
+    path = _SCHEMAS / source
+    assert path.is_file(), f"{path} not found; a missing file would strip to an empty string"
+    return "\n".join(line.split("--")[0] for line in path.read_text(encoding="utf-8").splitlines())
 
 
 def test_the_artifacts_are_where_this_test_thinks_they_are() -> None:
@@ -101,13 +114,19 @@ def test_each_policy_widens_reads_and_pins_writes(policy_name: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ("policy_name", "table"),
+    ("source", "policy_name", "table"),
     [
-        ("channel_connections_tenant_isolation", "channel_connections"),
-        ("channel_templates_tenant_isolation", "channel_templates"),
+        ("channels.sql", "channel_connections_tenant_isolation", "channel_connections"),
+        ("channels.sql", "channel_templates_tenant_isolation", "channel_templates"),
+        # deliveries.sql JOINED THIS TEST WHEN IT WAS FIXED, and the pairing is the point: the
+        # docstring below used to name this file as carrying the defect deliberately, which
+        # stopped being true the moment the DROP landed. A comment describing a defect that no
+        # longer exists is the lying-artifact class this repository keeps paying for, so the
+        # fix and the assertion that covers it ship together.
+        ("deliveries.sql", "tenant_deliveries_tenant_isolation", "tenant_deliveries"),
     ],
 )
-def test_each_policy_is_dropped_before_it_is_created(policy_name: str, table: str) -> None:
+def test_each_policy_is_dropped_before_it_is_created(source: str, policy_name: str, table: str) -> None:
     """`CREATE POLICY IF NOT EXISTS` DOES NOT EXIST IN POSTGRES, AND THIS FILE FOUND OUT BY
     RUNNING.
 
@@ -119,16 +138,21 @@ def test_each_policy_is_dropped_before_it_is_created(policy_name: str, table: st
     The DROP is what makes the file idempotent, and it is invisible: somebody adding a third
     policy will copy the CREATE and not the line above it. That is the drift this asserts.
 
-    axon/schemas/postgres/deliveries.sql HAS THE SAME DEFECT and is deliberately not fixed
-    here: it is outside this slice's scope. It has never bitten because alembic applies a
-    revision once, and it will bite the first person who hand-runs that file twice.
+    COVERS EVERY POLICY-BEARING FILE IN THIS SCHEMA, not only the one the defect was found in.
+    deliveries.sql carried the same defect from slice 1 and was fixed by adding the DROP; it is
+    parametrised here so the convention is ENFORCED across the schema rather than satisfied in
+    one file and left to chance in the next. Adding a fourth policy anywhere means adding a case.
     """
-    code = _channels_code()
+    code = _code(source)
     drop = f"DROP POLICY IF EXISTS {policy_name} ON axon.{table};"
     create = f"CREATE POLICY {policy_name}"
     assert drop in code, (
         f"{policy_name} is created without being dropped first, so a second run of "
-        "channels.sql fails. There is no CREATE POLICY IF NOT EXISTS to reach for."
+        f"{source} fails. There is no CREATE POLICY IF NOT EXISTS to reach for."
+    )
+    assert create in code, (
+        f"{policy_name} is not created in {source} at all, so the ordering assertion below "
+        "would compare nothing. Either the policy was renamed or this case is stale."
     )
     assert code.index(drop) < code.index(create), "the DROP must precede the CREATE"
 

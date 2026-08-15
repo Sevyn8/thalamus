@@ -147,6 +147,8 @@ python -m scripts.seed_dev_data --reset
 
 The `--reset` flag truncates seed-loaded tables before re-inserting. Migrations remain applied — only seed data is replaced.
 
+The loader refuses to run against any non-loopback database, whatever `ENVIRONMENT` says, so it cannot reach staging.
+
 After re-seed, re-run step 5 queries. They should now match.
 
 ### Step 7 — Local smoke

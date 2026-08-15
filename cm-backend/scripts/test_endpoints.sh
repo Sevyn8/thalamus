@@ -233,6 +233,7 @@ db_check_output=$(email_exists_in_db \
     "$TENANT_EMAIL_1"   "$TENANT_EMAIL_2")
 if echo "$db_check_output" | grep -q "^MISSING:"; then
     missing=$(echo "$db_check_output" | grep "^MISSING:" | sed 's/^MISSING://')
+    # The re-seed command refuses any non-loopback database, whatever ENVIRONMENT says.
     die "seed data missing — these emails do not resolve to a platform_users \
 or tenant_users row: ${missing}. Re-seed: \`uv run python -m \
 scripts.seed_dev_data --reset\`"

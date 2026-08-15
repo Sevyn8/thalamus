@@ -294,6 +294,17 @@ ALTER TABLE axon.tenant_deliveries FORCE ROW LEVEL SECURITY;
 -- connection current_setting returns '' rather than NULL, and ''::uuid raises.
 -- CM paid for this in its migration e59f62d5037d; dis-rls sets the GUC the same
 -- way and every policy in this estate wraps it identically.
+-- DROPPED FIRST, BECAUSE `CREATE POLICY IF NOT EXISTS` DOES NOT EXIST. Every DDL file in this
+-- chain is required to be hand-runnable and repeatable, which 0001 states as its contract, and
+-- CREATE TABLE IF NOT EXISTS delivers that for the tables and nothing for the policies. This file
+-- carried the defect from slice 1 until now: channels.sql found it by running, fixed itself, and
+-- recorded that this file had the same defect.
+--
+-- BEHAVIOUR-PRESERVING ON THE PATH REVISION 0001 ACTUALLY TAKES. 0001 applies this file to a
+-- fresh database, where the policy cannot already exist, so the DROP matches nothing and the
+-- CREATE below is unchanged. What it buys is the second hand-run, which previously failed with
+-- `policy "..." for table "..." already exists`.
+DROP POLICY IF EXISTS tenant_deliveries_tenant_isolation ON axon.tenant_deliveries;
 CREATE POLICY tenant_deliveries_tenant_isolation
     ON axon.tenant_deliveries
     FOR ALL

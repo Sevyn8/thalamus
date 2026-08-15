@@ -41,6 +41,9 @@ def test_the_invented_capabilities_are_absent() -> None:
     own. Until then it belongs on the outstanding list, not on a screen describing system state.
     """
     shown = {row.capability_id for row in catalog.capabilities()}
+    # VACUITY GUARD. `not shown & {...}` is true of an empty set, so an empty catalogue would
+    # report that the invented capabilities are absent while nothing at all was rendered.
+    assert shown, "the catalogue rendered nothing; an empty set satisfies the assertion below"
     assert not shown & {"basket_set", "identity_series", "detections"}
 
 
@@ -55,9 +58,12 @@ def test_a_declined_capability_carries_its_verified_reason() -> None:
 
 
 def test_a_resolving_capability_carries_no_declined_reason() -> None:
+    seen = 0
     for row in catalog.capabilities():
         if row.resolves:
+            seen += 1
             assert row.declined_reason is None
+    assert seen >= 1, "no resolving capability was seen; this test proved nothing"
 
 
 def test_used_by_is_derived_from_the_declarations() -> None:
@@ -73,10 +79,13 @@ def test_used_by_is_derived_from_the_declarations() -> None:
 def test_every_rendered_capability_has_a_plain_language_name() -> None:
     """D4: plain name AND internal id. A capability added without naming it would otherwise
     render its bare identifier to an operator, which is the failure the decision was about."""
+    seen = 0
     for row in catalog.capabilities():
+        seen += 1
         assert row.name != row.capability_id, (
             f"{row.capability_id} has no plain-language name; add one to _CAPABILITY_NAMES"
         )
+    assert seen >= 1, "no capability was rendered; a loop over nothing asserts nothing"
 
 
 # ---------------------------------------------------------------------------
@@ -89,8 +98,11 @@ def test_every_declared_analysis_is_shown() -> None:
 
 
 def test_every_analysis_has_a_plain_language_name() -> None:
+    seen = 0
     for row in catalog.analyses():
+        seen += 1
         assert row.name != row.analysis_id, f"{row.analysis_id} needs a name in _ANALYSIS_NAMES"
+    assert seen >= 1, "no analysis was rendered; a loop over nothing asserts nothing"
 
 
 def test_the_ceiling_is_shown_and_is_shadow_today() -> None:
