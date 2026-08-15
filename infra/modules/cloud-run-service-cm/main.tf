@@ -71,6 +71,74 @@ resource "google_secret_manager_secret_iam_member" "sendgrid_api_key" {
   member    = "serviceAccount:${google_service_account.cm_backend.email}"
 }
 
+# --- Tenant channel credential vault (Axon sending channels) ---
+#
+# PUT /api/v1/channels writes one Secret Manager secret per (tenant, channel), named
+# axon-channel-{tenant_uuid}-{channel} by channels/secret_naming.py, and adds a version to it.
+#
+# WHY A NARROW CUSTOM ROLE AND NOT roles/secretmanager.admin: secretmanager.secrets.create is
+# checked at the PROJECT level, before the resource exists, so it cannot be resource-scoped.
+# Per-tenant secrets do not exist at apply time either, so Terraform has nothing to bind a
+# per-secret grant to. tokenVaultWriter in cloud-run-service-dis-ui-server records the same
+# reasoning and is the shape this is modelled on.
+#
+# TWO DELIBERATE DIVERGENCES FROM tokenVaultWriter.
+#
+# 1. NO secretmanager.versions.access, which tokenVaultWriter DOES hold. CM writes a tenant's
+#    credential and never reads it back, and never reading it back is a promise the surface
+#    makes to the tenant: the form cannot pre-fill and states that saving replaces the
+#    credential. Granting access would leave that promise unenforced, resting on nobody adding
+#    a read method. channels/secret_writer.py has no read method for the same reason, so the
+#    role and the code agree. This is the first vault role in this estate that cannot read.
+#    That is not a departure from how the estate splits vault roles, it is that split taken one
+#    step further: squareTokenVaultRefresher and cloverTokenVaultRefresher are already separate
+#    get+access+add roles held by the connectors' own service accounts, granted because those
+#    connectors actually refresh. The eventual reader of THESE secrets is the sending adapter in
+#    axon-sender, and it gets its own role on its own service account when it exists and has a
+#    caller. It is deliberately not granted here: a privilege granted ahead of its caller is one
+#    nobody can justify.
+#
+# 2. secretmanager.versions.list and .destroy ARE included, and they are there to be USED.
+#    The caller is ChannelSecretWriter.prune (channels/secret_writer.py:148), which lists the
+#    secret's versions and destroys every ENABLED one except the version just written. It runs
+#    after every write, at routers/v1/channels.py:180. tokenVaultWriter's own comment records
+#    both halves of the trap: without these two the write succeeds and the prune fails with
+#    PermissionDenied so versions accumulate silently behind a healthy-looking save, and with
+#    the permissions but no prune call they accumulate just as silently.
+#
+#    NOTE THE WEAKER JUSTIFICATION HERE THAN ON dis-ui-server. That prune is required; this one
+#    is best effort. routers/v1/channels.py:179-182 wraps the prune call in a try/except that
+#    swallows every exception, deliberately, so a failed prune cannot lose a tenant the
+#    credential they just saved successfully. A PermissionDenied from a missing list/destroy
+#    would therefore be invisible at the API. A permission granted for a call whose failure is
+#    swallowed is a different and weaker argument than one granted for a required call, which is
+#    exactly why it is written down rather than assumed.
+#
+# secretmanager.secrets.get has no direct caller in secret_writer.py. It backs the
+# create-if-absent path (create_secret catching AlreadyExists) at the API layer and mirrors the
+# writer role, the same note squareTokenVaultRefresher makes about its own secrets.get.
+resource "google_project_iam_custom_role" "channel_vault_writer" {
+  project     = var.project_id
+  role_id     = "cmChannelVaultWriter"
+  title       = "Channel vault writer (cm-backend)"
+  description = "Create, add and PRUNE the per-tenant channel credential secrets (axon-channel-*). Deliberately cannot read them back."
+  permissions = [
+    "secretmanager.secrets.create",
+    "secretmanager.secrets.get",
+    "secretmanager.versions.add",
+    # The prune. See divergence 2 above: the caller is ChannelSecretWriter.prune, and its
+    # failure is swallowed at the call site, so a missing grant here is silent.
+    "secretmanager.versions.list",
+    "secretmanager.versions.destroy",
+  ]
+}
+
+resource "google_project_iam_member" "channel_vault_writer" {
+  project = var.project_id
+  role    = google_project_iam_custom_role.channel_vault_writer.id
+  member  = "serviceAccount:${google_service_account.cm_backend.email}"
+}
+
 locals {
   # Plain env, always set. Names are CM's EXACT config.py field names (upper-cased;
   # pydantic-settings is case_sensitive=False). See config.py:75-154.
