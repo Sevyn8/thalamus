@@ -6,20 +6,15 @@ import { ArrowLeft } from "lucide-react";
 import { NotificationsButton } from "./NotificationsButton";
 import { UserMenu } from "./UserMenu";
 
-// Phase 5d.10: ProductSwitcher dropdown removed. The launcher at
-// /my-sevyn8 is now the canonical product-discovery surface; the
-// dropdown was a "coexist during rollout" placeholder from 5d.1
-// that's now redundant. Decontextualized "Platform" badge dropped
-// alongside (it was meaningful next to the dropdown; standalone it
-// just labeled the product the user is already in via sidebar).
-// Lib/products.ts + lib/feature-flags.ts orphans deleted in the
-// same chunk.
+// There is no ProductSwitcher dropdown here: the launcher at
+// /my-sevyn8 is the canonical product-discovery surface, so a
+// standalone "Platform" badge would be redundant with the sidebar.
 
-// Phase 5g.1.4: top-of-page search hidden — no global-search backend
-// implementation. Placeholder strings retained for when search
-// returns (persona-aware framing from 5g.1). When re-adding the
-// input, also restore `useAuthSnapshot` from "@/lib/auth/auth-cache"
-// to drive the placeholder selection.
+// Top-of-page search is hidden — no global-search backend
+// implementation. Placeholder strings are retained for when search
+// returns (persona-aware framing). When re-adding the input, also
+// restore `useAuthSnapshot` from "@/lib/auth/auth-cache" to drive the
+// placeholder selection.
 export const SEARCH_PLACEHOLDER_PLATFORM = "Search tenants, users, roles…";
 export const SEARCH_PLACEHOLDER_TENANT = "Search users, roles, stores…";
 

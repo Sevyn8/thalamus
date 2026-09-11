@@ -1,12 +1,12 @@
-"""``GET /api/v1/runs`` against the LIVE stack — audit-derived run state (Slice 51a, D117-D120).
+"""``GET /api/v1/runs`` against the LIVE stack — audit-derived run state.
 
 Two concerns. HTTP shape/scope: the endpoint is VALID against the real schema and TENANT-SCOPED
 live (the isolation test seeds two tenants via an admin/RLS-bypassing connection, reads back
-through the scoped repo, then cleans up — D100). Audit-derived behaviour: seeded bronze + audit
+through the scoped repo, then cleans up). Audit-derived behaviour: seeded bronze + audit
 rows prove the verdict/counts/completion/seen-before/names/file-name derive from the AUDIT trail
 (not bronze.processing_status), each expected value read INDEPENDENTLY from its seeded source.
 
-Loud-error posture (the Slice 4/7/8 lesson): a missing stack env var ERRORS, never skips.
+Loud-error posture: a missing stack env var ERRORS, never skips.
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ _INSERT = text(
     "now(), 'PROCESSED', :marker)"
 )
 
-# -- Slice 51a seeding: a bronze run (RETURNING id) + audit rows keyed to it ----------
+# -- Seeding: a bronze run (RETURNING id) + audit rows keyed to it --------------------
 
 _MARK51 = "runs51a-"  # prefix for the audit-derived tests' bronze markers (cleanup by prefix)
 
@@ -86,7 +86,7 @@ def _assert_well_shaped(body: dict[str, object]) -> None:
     items = body["items"]
     assert isinstance(items, list)
     assert len(items) <= 100  # the bound
-    # Slice 51b: the envelope carries next_cursor (opaque token or null), beside items.
+    # The envelope carries next_cursor (opaque token or null), beside items.
     assert body["next_cursor"] is None or isinstance(body["next_cursor"], str)
     prev: str | None = None
     for row in items:
@@ -110,7 +110,7 @@ def _assert_well_shaped(body: dict[str, object]) -> None:
         # PII / payload columns never present.
         for pii in ("auth_principal", "client_ip", "user_agent", "gcs_uri"):
             assert pii not in row
-        assert "last_updated_at" not in row  # AC6: dropped in Slice 51b (D125)
+        assert "last_updated_at" not in row  # deliberately not served
         if prev is not None:
             assert row["received_at"] <= prev  # newest-first
         prev = row["received_at"]
@@ -172,7 +172,7 @@ async def test_runs_tenant_isolation_over_bronze(stack_env: dict[str, str]) -> N
         await rls_engine.dispose()
 
 
-# -- Slice 51a: audit-derived verdict / counts / seen-before / names / file-name ------
+# -- audit-derived verdict / counts / seen-before / names / file-name -----------------
 
 
 async def _seed_bronze(
@@ -397,7 +397,7 @@ async def test_store_name_resolves_and_status_filter_on_verdict(stack_env: dict[
         await rls_engine.dispose()
 
 
-# -- Slice 51b: keyset pagination — walk, stability under concurrent insert, filter compose ----
+# -- keyset pagination: walk, stability under concurrent insert, filter compose ---------------
 
 _MARK51B = "runs51b-"
 

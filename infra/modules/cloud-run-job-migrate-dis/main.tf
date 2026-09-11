@@ -2,16 +2,10 @@
 # migrate-dis — the way DIS's alembic chain reaches a database
 # =============================================================================
 #
-# WHY THIS EXISTS. DIS's revisions reached staging BY HAND. infra/db-setup/README.md records it
-# at :45-49 — "DIS Alembic as `postgres` (8 schemas + 18 revisions)", 2026-07-20 — and nothing
-# else in this repository applies them. `POSTGRES_ADMIN_URL` appears only in tests,
-# docs/local-setup.md, decisions.md and migrate-synapse's own comment: no job, no cloudbuild
-# step, no script, no terraform. That is the standing `no-migrate-dis-job-exists` ledger item,
-# and this closes it. migrate-synapse (b544974) closed the same item for the other plane.
-#
-# THE FIRST EXECUTION IS A NO-OP, AND THAT IS THE POINT. The live stamp is 0019 — the chain
-# head — confirmed against the database 2026-08-07. So `upgrade head` applies nothing and the
-# run proves the MECHANISM: image, identity, secret, VPC path, target guard, version table.
+# This job is the ONLY mechanism that applies DIS's alembic chain to a deployed
+# database; nothing else in the repository holds POSTGRES_ADMIN_URL outside tests.
+# A run against an already-at-head database is a deliberate no-op that still proves
+# the mechanism: image, identity, secret, VPC path, target guard, version table.
 # Same proving pattern migrate-synapse used. A first run that also applied DDL would conflate
 # "the job works" with "the migration works", and a failure would not say which.
 #

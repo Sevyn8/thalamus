@@ -28,7 +28,7 @@ class ActableTenant(BaseModel):
 
     tenant_id: str  # internal UUID, lowercase string (the acted-for id, §2.2)
     name: str
-    display_code: str | None  # nullable at source (D55) — served as-is, never invented
+    display_code: str | None  # nullable at source — served as-is, never invented
     status: TenantStatus
 
 
@@ -36,7 +36,7 @@ class TenantSelf(BaseModel):
     """The CALLER'S OWN tenant, for the topbar's identity chip (``GET /tenant-self``).
 
     BOTH DISPLAY FIELDS ARE NULLABLE, and that is the contract rather than a weakness.
-    ``display_code`` is nullable at source (D55). ``name`` is nullable for a different
+    ``display_code`` is nullable at source. ``name`` is nullable for a different
     reason: ``identity_mirror`` is EVENTUALLY CONSISTENT, so a tenant onboarded in Customer
     Master since the last mirror-sync run legitimately has no row here. That case is served
     as a 200 with nulls, NEVER a 404 — the client falls back to the UUID, and mirror lag must
@@ -49,4 +49,4 @@ class TenantSelf(BaseModel):
 
     tenant_id: str  # the caller's own tenant, echoed from the verified token
     name: str | None  # None when the mirror has no row yet (lag), not an error
-    display_code: str | None  # nullable at source (D55) — served as-is, never invented
+    display_code: str | None  # nullable at source — served as-is, never invented

@@ -52,9 +52,9 @@ resource "google_service_account" "scheduler" {
 # env refs below, and fail the PLAN fast if a secret is missing — which is the right time to
 # find out, rather than at 03:00 on a container that cannot start.
 #
-# BOTH ALREADY EXIST (verified 2026-08-05): synapse-reader-database-url from slice 3 and
-# synapse-writer-database-url version 1 from the slice-5 window. Terraform only ever READS DSN
-# secrets in this project; there is no resource creating a *-database-url anywhere in infra/.
+# BOTH ALREADY EXIST: synapse-reader-database-url and synapse-writer-database-url version 1.
+# Terraform only ever READS DSN secrets in this project; there is no resource creating a
+# *-database-url anywhere in infra/.
 data "google_secret_manager_secret" "reader_url" {
   project   = var.project_id
   secret_id = var.secret_reader_url

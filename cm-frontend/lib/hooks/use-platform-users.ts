@@ -8,13 +8,12 @@ import {
 } from "@/lib/api/platform-users";
 import { useAuthSnapshot } from "@/lib/auth/auth-cache";
 
-// Phase 5g.1: `enabled` defaults to true; callers without
+// `enabled` defaults to true; callers without
 // ADMIN.USERS.VIEW.GLOBAL pass false to skip the fetch (avoids a noisy
 // 403 in the Network tab for TENANT-OWNER personas who can never see
 // the Platform tab).
 //
-// Phase 5h.1.1 (2026-05-21): userId in queryKey to prevent cross-
-// persona cache bleed. See Finding #50.
+// userId in queryKey prevents cross-persona cache bleed.
 export function usePlatformUsers(
   params?: PlatformUserListParams,
   options?: { enabled?: boolean },

@@ -1,9 +1,9 @@
 -- ============================================================================
--- DIS telemetry schema: connector_health  (Connector Health Phase A, D116)
+-- DIS telemetry schema: connector_health  (Connector Health Phase A)
 --
--- The first WORKER-PRODUCED telemetry table in the shared DIS DB. It resolves
--- the deferral D112 flagged: connector health (last-seen, missed intervals,
--- rate limit, auth expiry) is worker/poller-produced telemetry, not a BFF write.
+-- The first WORKER-PRODUCED telemetry table in the shared DIS DB: connector
+-- health (last-seen, missed intervals, rate limit, auth expiry) is
+-- worker/poller-produced telemetry, not a BFF write.
 -- One row per (tenant_id, source_id) — the per-connector liveness/freshness record.
 --
 -- Producer/consumer split (the inverse of config.sources, which is BFF-written):
@@ -98,7 +98,7 @@ CREATE INDEX ix_telemetry_connector_health_tenant
 
 
 -- ----------------------------------------------------------------------------
--- Row-Level Security — two-GUC (D91), matching config.sources
+-- Row-Level Security — two-GUC, matching config.sources
 -- ----------------------------------------------------------------------------
 -- TENANT sees/writes its own tenant; PLATFORM (app.user_type='PLATFORM') reads
 -- all tenants (USING) but the WITH CHECK stays tenant-pinned, so a worker write

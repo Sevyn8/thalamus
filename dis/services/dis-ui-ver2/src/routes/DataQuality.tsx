@@ -9,12 +9,12 @@ import { useQuarantineDetail, useQuarantineList } from '../lib/dis-ui-server/qua
 import { distinctTenants, matchesTenant, SYSTEM_TENANT, tenantFull, tenantName } from '../lib/dis-ui-server/tenant-label'
 
 // Data Quality & History (tenant). REAL (mode-aware): the quarantine list (GET /api/v1/quarantine)
-// and the per-item DETAIL (GET /api/v1/quarantine/{id}), wired to QuarantineDetail. Slice 53a
-// consumes 52b's store identity (store_name) + structured failures[]: the list is a lean triage
+// and the per-item DETAIL (GET /api/v1/quarantine/{id}), wired to QuarantineDetail. The list
+// consumes the store identity (store_name) + structured failures[]: the list is a lean triage
 // queue (Store · Source · What failed · Stage · When · Status — no value/column, the list contract
 // carries neither), and the drawer puts the offending VALUE front and centre via a failure hero
 // that degrades honestly (Option A: a null value OMITS its row, never an "empty" chip). Resolve /
-// Dismiss are INERT — no write endpoint exists yet (D82). The PLATFORM FleetView is unchanged.
+// Dismiss are INERT — no write endpoint exists yet. The PLATFORM FleetView is unchanged.
 
 // error_reason (a FailureCode) -> a human phrase for the list "What failed" column and the drawer
 // title. Unknown codes fall back to a readable Title Case form (no silent default).
@@ -35,7 +35,7 @@ function humanizeReason(code: string): string {
 }
 
 // Status -> badge class. Only 'open' occurs today; 'resolved' is a real wire member but unreachable
-// until a resolve-write path exists (D82). No 'dismissed' key — the backend collapses DB DISMISSED
+// until a resolve-write path exists. No 'dismissed' key — the backend collapses DB DISMISSED
 // to wire 'resolved' (schemas/quarantine.py), so it never reaches the client.
 const STATUS_BADGE: Record<StatusWire, string> = {
   open: 'b-fail',
@@ -118,7 +118,7 @@ function FailureHero({ f }: { f: QuarantineFailure }) {
 // hero -> per-cell table (when >1 failure) -> one-line kind context -> "Where it came from" kv ->
 // inert Resolve/Dismiss + "not yet" note (replacing the old static warnbox).
 // `readOnly` hides the (inert) Resolve/Dismiss footer entirely — used by the PLATFORM fleet view,
-// where cross-tenant mutation is out of scope (Sanjeev's RLS/policy, slice-25). The tenant view
+// where cross-tenant mutation is out of scope. The tenant view
 // leaves it unset, keeping the inert-but-visible actions.
 function GateFailureDetail({
   itemId,
@@ -376,7 +376,7 @@ function TenantView() {
 // quarantine-api.ts) SEE-ALLS cross-tenant for a PLATFORM token, so there is no separate "fleet"
 // route — the tenant endpoint returns every tenant's rows under a PLATFORM scope. We render them as
 // a flat, filterable triage table attributed by tenant_id (Chunk 1), READ-ONLY: no cross-tenant
-// resubmit/resolve (that mutation is Sanjeev's RLS/policy, slice-25) — the detail drawer opens in
+// resubmit/resolve (cross-tenant mutation is out of scope) — the detail drawer opens in
 // readOnly mode. Filters (Tenant + Failure type) auto-populate from the rows present, combine AND.
 function FleetView() {
   const { snapshot } = useAuth()

@@ -5,17 +5,18 @@ Answers the four contract methods (``resolve_from_token``, ``resolve_from_upload
 fixture-truth module, conforming to the authoritative OpenAPI
 (``contracts/identity-service/identity_service.openapi.yaml``).
 
-Identity model (D37 RESOLVED, Slice 9a): every resolve answer carries the
+Identity model: every resolve answer carries the
 **internal UUIDs** as ``tenant_id``/``store_id`` (the load-bearing identity a
 caller writes downstream) plus Customer Master's authoritative external codes
-(``display_code``/``store_code``, readability only, D55). Resolution keys coming
+(``display_code``/``store_code``, readability only). Resolution keys coming
 *in* from external artifacts (JWT claims, canned sessions) are the codes; a store
 with ``store_code=None`` cannot be named by code (faithful to the source) and is
 reachable by UUID (``validate``) or as part of its tenant's store set.
 
-HARD BOUNDARIES (slice scope):
+HARD BOUNDARIES:
   * **No real identity resolution.** No Customer Master lookup, no cache, no
-    circuit breaker, no stale-while-error. Canned answers only. That is Slice 13.
+    circuit breaker, no stale-while-error. Canned answers only — that's the
+    real Identity Service's job.
   * Per the contract + service README, this service does **not** verify the JWT
     signature — it extracts identity from claims (the receiver verified the
     signature). So ``resolve_from_token`` decodes the token *unverified*.
@@ -82,7 +83,7 @@ def _identity_for(tenant_display_code: str | None, store_code: str | None) -> Id
         tenant_id=tenant.uuid,
         store_id=store.uuid,
         display_code=tenant.display_code,
-        store_code=store.store_code,  # None when the source carries no code (D55)
+        store_code=store.store_code,  # None when the source carries no code
         is_active=tenant.is_active and store.is_active,
         source="customer_master",
         metadata=dict(tenant.metadata),
@@ -124,7 +125,7 @@ def create_app() -> FastAPI:
     @app.post("/v1/validate")
     def validate(req: ValidateRequest) -> JSONResponse:
         # validate returns exists:false as a normal answer (never 404). Keyed by the
-        # internal UUIDs (the contract form, D37) — this is the path that reaches a
+        # internal UUIDs (the contract form) — this is the path that reaches a
         # store even when it carries no store_code.
         tenant = next((t for t in fx.TENANTS if t.uuid == req.tenant_id), None)
         store = next((s for s in fx.STORES if s.uuid == req.store_id), None)
@@ -146,7 +147,7 @@ def create_app() -> FastAPI:
         except _NotResolvedError as exc:
             return _error_response("identity_not_found", str(exc), 404)
         # exclude_none: optional fields are OMITTED when absent (the contract's
-        # "populate when present" posture, D55) — never serialised as null.
+        # "populate when present" posture) — never serialised as null.
         return JSONResponse(status_code=200, content=identity.model_dump(mode="json", exclude_none=True))
 
     return app

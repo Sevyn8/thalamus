@@ -8,19 +8,19 @@ DDL plus a series of cleanup migrations:
 
   - ``module_code_enum`` (6 values: ADMIN, PRICING_OS,
     PERISHABLES_ASSISTANT, PROMOTIONS_ASSISTANT, ROOS, GOAL_CONSOLE)
-    — Step 6.6 unification (``cec8fae734e0``) re-pointed
-    ``permissions.module`` from the (now-dropped) narrow
-    ``module_enum`` to ``module_code_enum``, the same enum that
+    — migration ``cec8fae734e0`` re-pointed ``permissions.module``
+    from the (now-dropped) narrow ``module_enum`` to
+    ``module_code_enum``, the same enum that
     ``tenant_module_access.module`` uses. The ``ModuleCode`` Python
     enum is imported from ``models/tenant_module_access`` rather than
     redeclared here — single source of truth across both consumer
-    columns. Closes the MODULES-EXT forward note from Step 6.1.
-    As of 2026-05-12, ROOS is retained in the DB enum but retired
-    from the Python ``ModuleCode`` class; PG cleanup deferred to the
-    future rename migration when ROOS's replacement is decided.
+    columns.
+    ROOS is retained in the DB enum but retired from the Python
+    ``ModuleCode`` class; PG cleanup deferred to the future rename
+    migration when ROOS's replacement is decided.
 
   - ``permission_scope_enum`` (3 values: GLOBAL, TENANT, STORE) —
-    Step 6.1's ``rbac_enum_cleanup`` (``90cd038ae618``) dropped REGION.
+    migration ``90cd038ae618`` dropped REGION.
 
   - ``resource_enum`` and ``action_enum`` — locked vocabularies in the
     original DDL; no narrowing migrations.
@@ -95,7 +95,7 @@ class PermissionAction(str, Enum):
 
 
 class PermissionScope(str, Enum):
-    """Mirrors ``permission_scope_enum`` (post Step 6.1 narrowing)."""
+    """Mirrors ``permission_scope_enum`` (narrowed; REGION was dropped)."""
 
     GLOBAL = "GLOBAL"
     TENANT = "TENANT"
@@ -117,7 +117,7 @@ class Permission(Base):
     # ``ModuleCode`` is the unified Python enum imported from
     # ``models/tenant_module_access``; same enum backs both
     # ``permissions.module`` and ``tenant_module_access.module``
-    # post Step 6.6's unification migration (``cec8fae734e0``).
+    # (unified by migration ``cec8fae734e0``).
     module: Mapped[ModuleCode] = mapped_column(
         PG_ENUM(
             ModuleCode,

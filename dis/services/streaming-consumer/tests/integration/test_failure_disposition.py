@@ -1,4 +1,4 @@
-"""The Slice 11a failure disposition through the REAL subscriber.
+"""The failure disposition through the REAL subscriber.
 
 Two complementary proofs over the live Pub/Sub emulator:
 
@@ -11,8 +11,8 @@ Two complementary proofs over the live Pub/Sub emulator:
   lag heals it (the governing principle: retry is its designed recovery) — still
   NACKS and the emulator REDELIVERS it (deadline 0), exactly today's behavior.
 
-Plus the 11a boundary pin: the quarantine SINK exists (direct write), but no
-``quarantine`` TOPIC publish and no drainer exist — that is Slice 11b.
+Plus the boundary pin: the quarantine SINK exists (direct write), but no
+``quarantine`` TOPIC publish and no drainer exist yet.
 """
 
 from __future__ import annotations
@@ -217,9 +217,9 @@ async def test_non_allowlisted_failure_still_nacks_and_redelivers(
 
 
 def test_quarantine_topic_publish_is_absent() -> None:
-    # The 11a/11b boundary, review-pinned: the quarantine SINK exists (the direct
+    # Boundary, review-pinned: the quarantine SINK exists (the direct
     # write into quarantine.*), but no `quarantine` TOPIC publish and no drainer —
-    # the topic-mediated path is Slice 11b.
+    # the topic-mediated path does not exist yet.
     import streaming_consumer.sinks.quarantine as quarantine_sink
 
     source = inspect.getsource(quarantine_sink)

@@ -1,4 +1,4 @@
-"""Slice 2c integration tests for the Auth0 provisioning endpoints.
+"""Integration tests for the Auth0 provisioning endpoints.
 
 Auth0 is faked at the seam (a _FakeMgmt satisfying Auth0ManagementClientProtocol
 injected onto app.state.mgmt_client); the live tenant is never hit. The RBAC
@@ -12,8 +12,8 @@ injected fake in place.
 Key assertions: RBAC (non-PLATFORM -> 403), 404 on a missing row, idempotent
 get-or-create (calling twice does not double-create), the correct app_metadata
 (tenant_id / user_type / cm_user_id, NOT email; cm_user_id == tenant_users.id),
-that 2c writes NOTHING to the DB (row stays INVITED / auth0_sub NULL / invited_at
-NULL), and mgmt-not-configured / connection-missing -> 503, not 500.
+that provisioning writes NOTHING to the DB (row stays INVITED / auth0_sub NULL /
+invited_at NULL), and mgmt-not-configured / connection-missing -> 503, not 500.
 """
 import uuid
 from typing import Any
@@ -191,7 +191,7 @@ async def test_tenant_provision_creates_org(
     assert body["created"] is True
     assert fake_mgmt.org_create_count == 1
 
-    # Slice 5 (option a): the org id is persisted, so onboarding-state now
+    # The org id is persisted, so onboarding-state now
     # reports a durable TRUE (was UNKNOWN before this slice).
     state = provision_client.get(
         f"/api/v1/tenants/{tenant.id}/onboarding",
@@ -322,7 +322,7 @@ async def test_tenant_user_provision_writes_nothing_to_db(
         f"/api/v1/tenant-users/{user.id}/provision-auth0", headers=_auth(super_admin_jwt)
     )
     assert resp.status_code == 200, resp.text
-    # 2c is Auth0-side only: the row is untouched.
+    # Provisioning is Auth0-side only: the row is untouched.
     row = await _fetch_user_row(session_factory, platform_auth, user.id)
     assert row["status"] == "INVITED"
     assert row["auth0_sub"] is None

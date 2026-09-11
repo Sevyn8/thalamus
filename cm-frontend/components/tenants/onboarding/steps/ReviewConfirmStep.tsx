@@ -156,9 +156,9 @@ export function ReviewConfirmStep({
     },
   ];
 
-  // Client gate mirrors the backend complete-onboarding gate exactly
-  // (Slice 6 option a): legal + billing + contact + Auth0 org + >=1 invited
-  // admin + documents all-verified.
+  // Client gate mirrors the backend complete-onboarding gate exactly:
+  // legal + billing + contact + Auth0 org + >=1 invited admin + documents
+  // all-verified.
   const blockers: string[] = [];
   if (!present.legal) blockers.push("legal_profile");
   if (!present.billing) blockers.push("billing_profile");

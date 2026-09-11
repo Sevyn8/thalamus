@@ -2,7 +2,7 @@
 
 Both emits stay fire-and-forget: NOTHING propagates, because a telemetry write must
 never kill an ingest run that has already written bronze and published ingress.ready
-(D116, hard rule 11). What changed is the CATCH, which used to be one bare
+. What changed is the CATCH, which used to be one bare
 ``except Exception`` and therefore absorbed a TypeError exactly as quietly as a
 transient DB blip. That is how a broken duplicate-path emit hid for weeks behind a
 green test board.
@@ -139,7 +139,7 @@ async def test_programming_error_logs_bug_at_error_and_is_swallowed(
 async def test_nothing_propagates_from_either_tier(
     emit: str, raises: BaseException, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """D116 / hard rule 11 still holds: neither tier re-raises."""
+    """Hard rule 11 still holds: neither tier re-raises."""
     pipeline = _pipeline(monkeypatch, raises=raises)
 
     if emit == "seen":

@@ -1,4 +1,4 @@
-"""Step 2.1 unit tests for stub auth.
+"""Unit tests for stub auth.
 
 21 tests in 6 groups:
     A1-A3:   happy paths (TENANT, PLATFORM, PLATFORM with impersonation tenant_id)

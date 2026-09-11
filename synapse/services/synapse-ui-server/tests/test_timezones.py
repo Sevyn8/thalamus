@@ -1,6 +1,6 @@
 """The offered timezone set: the intersection, the fallback, and the names that broke staging.
 
-THE FAILURE THESE PIN. Slice 5e populated the picker from the browser, which offered
+THE FAILURE THESE PIN. The picker was once populated from the browser, which offered
 ``Asia/Calcutta`` and ``Asia/Katmandu`` and did NOT offer ``Asia/Kolkata`` at all. Every tenant in
 production is Asia/Kolkata, so the control could not emit the only value anybody needed, and every
 attempt was refused with a 422 before the INSERT. Nothing could be provisioned.

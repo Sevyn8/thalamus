@@ -1,4 +1,4 @@
-"""Slice 2e integration tests: PATCH email keeps Auth0 in sync (D-42).
+"""Integration tests: PATCH email keeps Auth0 in sync (D-42).
 
 Fake mgmt client (with update_user_email) injected on app.state.mgmt_client; the
 TestClient is built without the context-manager form so the fake survives. The

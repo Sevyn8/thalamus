@@ -121,8 +121,8 @@ async def test_both_reads_open_a_platform_session(patched: Any) -> None:
     Under FORCE ROW LEVEL SECURITY a session that never set ``app.user_type`` matches ZERO ROWS
     and raises nothing. So for ``axon.tenant_deliveries``:
 
-        A BROKEN SESSION AND A CORRECT EMPTY TABLE ARE BYTE-IDENTICAL, FOR THE WHOLE LIFE OF THIS
-        SLICE.
+        A BROKEN SESSION AND A CORRECT EMPTY TABLE ARE BYTE-IDENTICAL, FOR AS LONG AS THE TABLE
+        IS EMPTY.
 
     That table holds zero rows today and CAN hold none: there is no address book, no tenant
     credential and no adapter beyond email, so nothing exists that could write it. A test that
@@ -133,7 +133,7 @@ async def test_both_reads_open_a_platform_session(patched: Any) -> None:
     So the assertion is structural: reads.py's own name for the helper is called, once per read,
     with ``tenant_id=None``. That is checkable offline and it is the property that will still be
     true when the tenant ledger is non-empty. The value-level assertion becomes possible in the
-    slice that first writes a tenant delivery, and it belongs there.
+    change that first writes a tenant delivery, and it belongs there.
 
     DO NOT REPLACE THIS WITH A ROW ASSERTION while the tenant ledger is empty. It would be a
     weaker test that reads as a stronger one.

@@ -1,7 +1,7 @@
 """The derive sub-stage: canonical fields computed from others.
 
-Derive is bounded to the same declarative vocabulary as normalize (slice-05;
-arbitrary derive logic is the deferred escape hatch). Each derive target carries
+Derive is bounded to the same declarative vocabulary as normalize
+(arbitrary derive logic is the deferred escape hatch). Each derive target carries
 an ORDERED LIST: a generator first (``copy`` / ``constant`` /
 ``date_from_datetime``), then optional normalize-vocabulary ops — composition
 typing is validated at SourceMapping construction, so by the time the engine runs

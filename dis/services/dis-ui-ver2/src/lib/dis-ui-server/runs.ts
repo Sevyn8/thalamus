@@ -4,22 +4,22 @@ import type { AuthSnapshot } from '../../auth/AuthSnapshot'
 import { getJson } from './client'
 import { isRealMode } from './mode'
 
-// Ingestion Runs (tenant slice). Shaped EXACTLY to Sanjeev's rebuilt dis-ui-server contract
-// (services/dis-ui-server/.../schemas/runs.py: RunListResponse / RunRow, D117-D125): GET
-// /api/v1/runs, one tenant-scoped read over bronze.data_ingress_events (READ-ONLY, D111; RLS
-// two-GUC, D91) with the run VERDICT + counts DERIVED from audit.events (D117-D119), one row per
-// ingress execution, newest-first, KEYSET-paginated (D124). Mode-aware: real mode calls the live
+// Ingestion Runs (tenant slice). Shaped EXACTLY to the dis-ui-server contract
+// (services/dis-ui-server/.../schemas/runs.py: RunListResponse / RunRow): GET
+// /api/v1/runs, one tenant-scoped read over bronze.data_ingress_events (READ-ONLY; RLS
+// two-GUC) with the run VERDICT + counts DERIVED from audit.events, one row per
+// ingress execution, newest-first, KEYSET-paginated. Mode-aware: real mode calls the live
 // endpoint; fixture mode (default + tests) returns plausible inlined rows so local dev needs no
 // backend.
 //
 // HONEST NULLS — the backend returns these absent (never fabricated) and the UI renders them as
-// such (per-column "—"/deferred labels; D119 criteria 3/5):
+// such (per-column "—"/deferred labels):
 //   - store_name / source_name / template_name / template_id / file_name / mapping_version /
 //     published_at / completed_at are null where they cannot resolve (store deferred, source has
 //     no registry row, run predates templates, upload carried no filename, run not terminal).
 //   - accepted / quarantined are null unless the run reached the matching terminal audit event;
 //     input_row_count is the worker's DuckDB preflight total. The wire does NOT assert
-//     accepted + quarantined == input_row_count (two independent parsers, D119) — the UI computes
+//     accepted + quarantined == input_row_count (two independent parsers) — the UI computes
 //     the reconcile line honestly and represents a gap rather than forcing agreement.
 //   - status is only the 4 real verdicts (processing/succeeded/quarantined/failed).
 
@@ -39,14 +39,14 @@ export type RunRow = {
   store_name: string | null // identity_mirror.stores.name; null when store_id null / unmirrored
   source_id: string // the pipeline id (always present)
   source_name: string | null // config.sources.display_name; null when the source has no registry row
-  template_id: string | null // bronze replay-lineage template; null on pre-Slice-8 runs
+  template_id: string | null // bronze replay-lineage template; null on runs recorded before templates were stamped
   template_name: string | null // config.source_mappings.template_name; null when unresolved
   method: MethodWire // dis_channel, passthrough
-  status: StatusWire // the audit-derived verdict (D117)
+  status: StatusWire // the audit-derived verdict
   mapping_version: number | null // from the terminal audit event; null while unresolved
-  seen_before: boolean // a recorded duplicate outcome exists for this run (D119)
+  seen_before: boolean // a recorded duplicate outcome exists for this run
   source_payload_id: string | null // the File / event ref (upload_session_id)
-  file_name: string | null // the uploaded file's original name; null on pre-Slice-51a runs (D120)
+  file_name: string | null // the uploaded file's original name; null on runs recorded before it was captured
   input_row_count: number | null // bronze.row_count (the payload total; worker DuckDB preflight)
   accepted: number | null // rows committed to canonical (path-aware); null unless terminal
   quarantined: number | null // ONE bucket of held/rejected rows; null unless quarantined-verdict
@@ -56,7 +56,7 @@ export type RunRow = {
 }
 
 // The list body: one keyset page (newest first) plus the opaque next-page token (null at the end
-// of history, Slice 51b / D124). Callers echo next_cursor back, never parse it.
+// of history). Callers echo next_cursor back, never parse it.
 export type RunListResponse = {
   items: RunRow[]
   next_cursor: string | null
@@ -76,7 +76,7 @@ export const RUNS_PAGE_SIZE = 100
 
 // Plausible fixtures shaped to the 20-field RunRow (newest first), grounded on real seeded
 // sources. Counts are honest: row 1 reconciles (accepted == input), row 5 deliberately does NOT
-// (997 accepted vs 1000 received — the two-parser gap D119 allows), rows 3/4 carry the null shapes
+// (997 accepted vs 1000 received — the two-parser gap the contract allows), rows 3/4 carry the null shapes
 // (unregistered source, deferred store, no template/file/mv, not-yet-published/completed).
 const FIXTURE_RUNS: RunRow[] = [
   {
@@ -188,7 +188,7 @@ const FIXTURE_RUNS: RunRow[] = [
     source_payload_id: 'us_99ff00aa11bb',
     file_name: 'inventory_0708.csv',
     input_row_count: 1000,
-    accepted: 997, // NON-RECONCILING: 997 accepted vs 1000 received (two-parser gap, D119)
+    accepted: 997, // NON-RECONCILING: 997 accepted vs 1000 received (two-parser gap)
     quarantined: 0,
     received_at: '2026-06-07T22:05:00Z',
     published_at: '2026-06-07T22:05:01Z',

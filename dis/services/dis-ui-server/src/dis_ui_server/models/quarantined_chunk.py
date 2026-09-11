@@ -35,16 +35,15 @@ class QuarantinedChunk(Base):
     tenant_id: Mapped[UUID] = mapped_column(Uuid)
     trace_id: Mapped[UUID] = mapped_column(Uuid)
     source_id: Mapped[str] = mapped_column(String(128))
-    # Live column (written by the streaming consumer); nullable — the read ORM mirror
-    # catches up in Slice 52b to expose store identity, resolved to store_name via the
-    # inline identity_mirror.stores join in repos/quarantine.py.
+    # Live column (written by the streaming consumer); nullable, resolved to store_name
+    # via the inline identity_mirror.stores join in repos/quarantine.py.
     store_id: Mapped[UUID | None] = mapped_column(Uuid)
     # CHECK ck_qc_failure_stage_vocab (9-member superset, incl. pre-lookup stages);
     # translated via the single crosswalk in schemas/quarantine.py.
     failure_stage: Mapped[str] = mapped_column(String(64))
-    failure_reason: Mapped[str] = mapped_column(String(256))  # a FailureCode member (D79)
+    failure_reason: Mapped[str] = mapped_column(String(256))  # a FailureCode member
     failure_context: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     mapping_version_id: Mapped[int | None] = mapped_column(BigInteger)  # NULL for pre-lookup failures
     quarantined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    # CHECK ck_qc_status_vocab: NEW | RESOLVED | DISMISSED; 11a writes NEW only (D82).
+    # CHECK ck_qc_status_vocab: NEW | RESOLVED | DISMISSED; 11a writes NEW only.
     status: Mapped[str] = mapped_column(String(32))

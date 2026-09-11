@@ -31,7 +31,7 @@ _log = get_logger(SERVICE_NAME)
 
 # A real FORCE-RLS table this service will read (quarantine console), with the
 # single-GUC tenant_isolation policy — the strongest probe that needs no seeded
-# data (Slice 13a plan, open question 2).
+# data.
 _PROBE_QUERY = text("SELECT count(*) FROM quarantine.quarantined_rows")
 
 

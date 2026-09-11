@@ -248,7 +248,7 @@ ROLE_PERMISSIONS: Final[SheetMapping] = [
     db("created_by_user_type"),
 ]
 
-# user_role_assignments: post Step 6.8.1 split. Excel still has BOTH
+# user_role_assignments: the Excel sheet has BOTH
 # platform_user_id and tenant_user_id columns (one populated per row,
 # the other NULL — same shape as before). The loader at
 # loaders/user_role_assignments.py inspects which is set and routes
@@ -289,7 +289,7 @@ TENANT_MODULE_ACCESS: Final[SheetMapping] = [
 
 
 # Master mapping. All loadable sheets present; audit_logs is excluded
-# (no DDL — Step 6.2 territory).
+# (audit rows are emitted by the application, not seeded).
 SHEET_MAPPINGS: Final[dict[str, SheetMapping]] = {
     "platform_users": PLATFORM_USERS,
     "tenants": TENANTS,

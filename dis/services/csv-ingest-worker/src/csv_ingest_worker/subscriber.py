@@ -3,7 +3,7 @@
 Startup REQUIRES the subscription to exist and raises loudly if it does not —
 provisioning lives in ``tools/local/create_topics.py`` (``make topics-create``),
 NEVER in worker runtime code, so an absent subscription is a configuration error,
-not a silent auto-repair. The client is emulator-or-ambient (slice 40a): the
+not a silent auto-repair. The client is emulator-or-ambient: the
 emulator when ``PUBSUB_EMULATOR_HOST`` is set (the ``pubsub_v1`` client honours it
 natively), real Pub/Sub via ambient service-account credentials when it is not.
 
@@ -15,8 +15,8 @@ Message routing:
   audit). Preflight failure is handled INSIDE the pipeline (FAILED bronze row) and
   acks via the normal outcome path.
 - everything else (DB/GCS/publish unreachable) is transient: logged and NACKed for
-  redelivery, which converges via the idempotency path (D59). The error is handled
-  by the messaging layer, not swallowed (code-quality rule 6).
+  redelivery, which converges via the idempotency path. The error is handled
+  by the messaging layer, not swallowed.
 """
 
 from __future__ import annotations
@@ -121,7 +121,7 @@ async def process_message(pipeline: IngestPipeline, data: bytes) -> Decision:
     except Exception as exc:
         # NOT necessarily transient, and deliberately no longer claiming to be. This
         # catch is blind: a DB blip and a TypeError land here identically. For the
-        # blip, redelivery plus the D59 idempotency path does converge; for a
+        # blip, redelivery plus the idempotency path does converge; for a
         # programming error nothing is transient and idempotency never converges.
         # The nack is now BOUNDED rather than infinite - dis-csv-received-sub carries
         # a dead_letter_policy (max_delivery_attempts 20) plus a 10s-600s retry
@@ -141,7 +141,7 @@ class Subscriber:
     project_id: str
     pipeline: IngestPipeline
     max_messages: int = 10
-    # Slice 40a: beaten once per loop cycle UNCONDITIONALLY (all modes — the loop
+    # Beaten once per loop cycle UNCONDITIONALLY (all modes — the loop
     # never branches on environment; only the healthz SERVER is toggled, main.py).
     heartbeat: Heartbeat = field(default_factory=Heartbeat)
 
@@ -209,7 +209,7 @@ class Subscriber:
         log = _log.bind(stage="subscriber")
         log.info("subscribed; pulling from %s", self._sub_path)
         while True:
-            # Slice 40a: the readiness heartbeat, written unconditionally in every
+            # The readiness heartbeat, written unconditionally in every
             # mode (local / Cloud Run Service / Worker Pools) — only the healthz
             # server that READS it is toggled. A dead/hung loop stops beating and
             # /healthz goes stale.
@@ -235,7 +235,5 @@ class Subscriber:
                 # pipeline, a 403 on the subscription, a malformed request. Still
                 # swallowed, because a dead loop is worse than a noisy one, but at
                 # ERROR with a traceback under a `bug` marker so it is findable.
-                log.bind(bug=True).exception(
-                    "BUG: poll pass raised a non-transient error; retrying"
-                )
+                log.bind(bug=True).exception("BUG: poll pass raised a non-transient error; retrying")
                 await asyncio.sleep(1)

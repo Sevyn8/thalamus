@@ -1,6 +1,6 @@
 """Populate ``identity_mirror`` via the REAL mirror-sync path, for tests.
 
-``identity_mirror`` is owned by mirror-sync (Slice 7, DB-pull); the seeder no
+``identity_mirror`` is owned by mirror-sync; the seeder no
 longer writes it. Tests that need FK targets (a mirrored tenant/store) call
 :func:`sync_identity_mirror`, which provisions the in-cluster Customer Master
 stand-in and runs the actual mirror-sync runner to completion against it — the

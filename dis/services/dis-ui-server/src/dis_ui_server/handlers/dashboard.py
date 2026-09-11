@@ -81,9 +81,7 @@ async def get_dashboard_metrics(
                     quarantined_rows=t.quarantined_rows_24h,
                     received_rows=t.rows_ingested_24h,
                     rate=(
-                        (t.quarantined_rows_24h / t.rows_ingested_24h)
-                        if t.rows_ingested_24h > 0
-                        else None
+                        (t.quarantined_rows_24h / t.rows_ingested_24h) if t.rows_ingested_24h > 0 else None
                     ),
                 ),
             )

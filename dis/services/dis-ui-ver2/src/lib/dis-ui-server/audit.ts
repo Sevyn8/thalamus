@@ -7,17 +7,16 @@ import { QUARANTINE_TRACE_IDS } from './quarantine'
 
 // Audit event log (tenant slice). Shaped EXACTLY to the real dis-ui-server contract
 // (services/dis-ui-server/.../schemas/audit.py: AuditEventListResponse / AuditEventRow):
-// GET /api/v1/audit, one tenant-scoped read over audit.events (RLS two-GUC, D91), bounded
+// GET /api/v1/audit, one tenant-scoped read over audit.events (RLS two-GUC), bounded
 // newest-100, list-only. Mode-aware: real mode calls the live endpoint; fixture mode
 // (default + tests) returns plausible inlined rows so local dev needs no backend.
 //
 // PII: auth_principal / client_ip are omitted by the backend BY DESIGN; the "Who" column is
 // the non-PII actor (service_name). A NAMED-actor display (real person names, as the mockup
-// mocks) is pending the auth_principal exposure decision (docs/decisions.md) — never invented
+// mocks) is pending an auth_principal exposure decision — never invented
 // here. Filters window/outcome/trace_id are supported by the endpoint; wired as query params.
 //
-// This REPLACES the earlier fixture-only single-trace lookup (the dis-ui donor shape, not the
-// mockup). A per-trace drill-in (GET /audit/{trace_id}) is a later slice (no route on main).
+// A per-trace drill-in (GET /audit/{trace_id}) does not exist (no route on main).
 
 export type OutcomeWire = 'success' | 'failure' | 'skipped' | 'retried' | 'duplicate'
 export type EventScopeWire = 'INGRESS_EVENT' | 'ROW'
@@ -129,7 +128,7 @@ const FIXTURE_EVENTS: AuditEventRow[] = [
     service_name: 'streaming-consumer',
     stage: 'QUARANTINED',
     event_scope: 'ROW',
-    outcome: 'success', // the disposition record itself lands (D78), not a pipeline failure
+    outcome: 'success', // the disposition record itself lands, not a pipeline failure
     row_count: null,
     rows_succeeded: null,
     rows_failed: 3,

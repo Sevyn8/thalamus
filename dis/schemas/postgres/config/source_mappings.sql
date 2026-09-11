@@ -4,10 +4,10 @@
 -- Versioned mapping configurations per (tenant, source, template). The
 -- contract between an external data source and DIS canonical. A source may
 -- carry multiple named mapping templates (e.g. 'manual_csv_upload' carrying
--- sales, inventory, pricing); each template has its own version lineage
--- (Slice 14a; register decision at the commit gate). Read by the streaming
--- consumer per-lookup inside a tenant-scoped rls_session (D6 side input);
--- mapping.changed event-driven refresh is DEFERRED (Slice 10).
+-- sales, inventory, pricing); each template has its own version lineage.
+-- Read by the streaming consumer per-lookup inside a tenant-scoped
+-- rls_session (mapping as side input); mapping.changed event-driven
+-- refresh is DEFERRED.
 --
 -- Every row is immutable once written. Edits create a new version row,
 -- leaving the prior version intact. This is the load-bearing property for
@@ -33,27 +33,23 @@
 -- config.source_mappings_v exposes a computed `label` column with the
 -- pattern: {first_word_of_tenant_name}-{source_id}-v{seq}-{YYYYMMDD}.
 -- Example: acme-shopify_pos_v2-v3-20260528.
--- KNOWN GAP (Slice 14a, owned by 14b): version_seq_per_source now sequences
--- per template, so two templates under one source can both render '-v1-';
--- the label does not yet incorporate the template. The view's SELECT list is
--- deliberately untouched here (14b owns surfacing the template in reads).
+-- KNOWN GAP: version_seq_per_source sequences per template, so two
+-- templates under one source can both render '-v1-'; the label does not
+-- yet incorporate the template.
 --
 -- ----------------------------------------------------------------------------
--- RLS: ENABLED (ENABLE + FORCE, Slice 14a)
+-- RLS: ENABLED (ENABLE + FORCE)
 -- ----------------------------------------------------------------------------
 -- The table carries tenant_id and its rows are per-tenant data, so it follows
 -- the DIS principle (RLS ON wherever tenant_id exists) with the same
--- single-GUC app.tenant_id policy as the other tenant-scoped tables. The
--- prior header claimed the consumer "reads mappings across all tenants at
--- startup" — stale: the live consumer reads per-lookup inside a tenant-scoped
--- rls_session (streaming_consumer/pipeline/mapping.py, Slice 10), so no
--- cross-tenant read exists. The view below is security_invoker so it cannot
--- silently bypass the policy with owner rights. The register decision
--- correcting the old "configuration, not tenant data" comment receives its
--- D-number at the commit gate.
+-- two-GUC tenant_isolation policy as the other tenant-scoped tables. The
+-- consumer reads per-lookup inside a tenant-scoped rls_session
+-- (streaming_consumer/pipeline/mapping.py), so no cross-tenant read
+-- exists. The view below is security_invoker so it cannot silently
+-- bypass the policy with owner rights.
 --
 -- ----------------------------------------------------------------------------
--- Phase 0 migration order
+-- Migration order (required for this DDL to succeed)
 -- ----------------------------------------------------------------------------
 --
 -- 1. Schemas exist: config, identity_mirror.
@@ -74,7 +70,7 @@
 
 -- Required by ex_csm_template_name_per_source (gist equality on uuid/text plus
 -- uuid <>). If the target environment cannot create it, this RAISES — never a
--- silent fallback to a weaker name constraint (Slice 14a operator confirm).
+-- silent fallback to a weaker name constraint.
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 
 
@@ -93,8 +89,8 @@ CREATE TABLE config.source_mappings (
         -- 'square_csv', 'manual_csv_upload').
     template_id                     UUID                            NOT NULL,
         -- Stable identity of the mapping template under (tenant_id,
-        -- source_id). UUIDv7, minted server-side at DRAFT creation (Slice 14b
-        -- write path); immutable once set (write-path enforced convention).
+        -- source_id). UUIDv7, minted server-side at DRAFT creation;
+        -- immutable once set (write-path enforced convention).
         -- All version rows of one template share this id.
     template_name                   TEXT COLLATE "C"                NOT NULL,
         -- Operator-set human label for the template (e.g. 'sales',
@@ -102,7 +98,7 @@ CREATE TABLE config.source_mappings (
         -- non-DEPRECATED rows via ex_csm_template_name_per_source.
     version_seq_per_source          SMALLINT                        NOT NULL,
         -- Per-(tenant, source, template) sequence number. Set by trigger on
-        -- INSERT. The column name predates the template grain (Slice 14a)
+        -- INSERT. The column name predates the template grain
         -- and is kept to avoid contract churn.
 
     -- ---------- Status ----------
@@ -146,10 +142,10 @@ CREATE TABLE config.source_mappings (
         -- Free-form notes: change description, onboarding context, ops notes.
         -- Designed to evolve.
 
-    -- ---------- Packet axis (Slice 14d) ----------
+    -- ---------- Packet axis ----------
     template_type                   TEXT COLLATE "C"                NOT NULL,
         -- snapshot | sales | inventory_change. The stored discriminator that
-        -- formalises the implicit sale-vs-change inference (Slice 14d). The
+        -- formalises the implicit sale-vs-change inference. The
         -- vocabulary lives once in code (dis_validation.TEMPLATE_TYPES), read by
         -- the field catalog, the rule-target validator, and the consumer's
         -- routing; deliberately NO enum type and NO CHECK (a lookup-table move is
@@ -276,9 +272,9 @@ CREATE TRIGGER trg_csm_set_version_seq
 
 
 -- ----------------------------------------------------------------------------
--- Row-level security (Slice 14a)
+-- Row-level security
 --
--- Single-GUC tenant policy, shape-matched to the other DIS tenant tables
+-- Two-GUC tenant_isolation policy, shape-matched to the other DIS tenant tables
 -- (e.g. canonical.store_sku_current_position). Unset GUC ->
 -- current_setting(..., true) is NULL -> tenant_id = NULL matches nothing ->
 -- zero rows (fail-closed).
@@ -306,8 +302,8 @@ CREATE POLICY tenant_isolation
 -- Pattern: {first_word_of_tenant_name}-{source_id}-v{seq}-{YYYYMMDD}.
 -- security_invoker: the view is owned by the admin role; owner-rights
 -- execution would silently bypass the tenant_isolation policy for every
--- querying role (Slice 14a). SELECT list deliberately unchanged (template
--- surfacing in reads is 14b's; see the label-collision gap in the header).
+-- querying role. The SELECT list does not yet surface the template
+-- (see the label-collision gap in the header).
 -- ----------------------------------------------------------------------------
 
 CREATE VIEW config.source_mappings_v WITH (security_invoker = true) AS
@@ -332,7 +328,7 @@ SELECT
         || '-v' || sm.version_seq_per_source
         || '-' || TO_CHAR(sm.created_at, 'YYYYMMDD')
         AS label,
-    -- Slice 14d: appended last so Alembic 0010's CREATE OR REPLACE VIEW neither
+    -- Appended last so Alembic 0010's CREATE OR REPLACE VIEW neither
     -- reorders nor drops the existing columns.
     sm.template_type
 FROM config.source_mappings sm

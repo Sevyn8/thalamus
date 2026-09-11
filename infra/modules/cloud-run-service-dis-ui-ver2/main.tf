@@ -32,8 +32,8 @@
 # This is invisible from reading either module alone. dis-ui-server's own module
 # asserts twice that it is "authenticated-only (NO allUsers binding)" and cites an
 # org policy as the reason, and BOTH claims are false against the live project
-# (the policy is allValues:ALLOW and allUsers is bound). Slice 2b-iii is where
-# that gets reconciled and is exactly where someone would trip on this. If the
+# (the policy is allValues:ALLOW and allUsers is bound). Whoever reconciles
+# that mismatch is exactly where someone would trip on this. If the
 # tightening is the goal, dis-ui-ver2 needs a credential first - an ID-token
 # minting sidecar/proxy, or moving the /api hop server-side - and that is a
 # design change, not an IAM edit.

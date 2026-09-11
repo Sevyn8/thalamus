@@ -1,14 +1,14 @@
-"""Canonical-shape (post-mapping) suite: judges a mapped contribution (slice-05).
+"""Canonical-shape (post-mapping) suite: judges a mapped contribution.
 
 The suite scopes to ONE named ``dis-canonical`` model restricted to the
-source-owned, mapping-produced columns (D8): field set, dtype, nullability,
+source-owned, mapping-produced columns: field set, dtype, nullability,
 max-length/digits, and enum vocab are DERIVED from the model's ``model_fields``
-(the single description of canonical shape — OQ7); business invariants (range
+(the single description of canonical shape); business invariants (range
 bounds, identifier patterns, cross-field consistency) are AUTHORED on the
 definition. ``strict=True`` so an off-universe column fails loud.
 
 What is deliberately NOT here: existence checks against ``identity_mirror``
-(a DB read this pure lib cannot do — the consumer's at write time, Slice 10) and
+(a DB read this pure lib cannot do — the consumer's at write time) and
 any check on the consumer-injected columns (identity, ``trace_id``,
 ``mapping_version_id``) — the contribution never carries them.
 """
@@ -97,7 +97,7 @@ def _flatten_metadata(raw: tuple[Any, ...]) -> tuple[Any, ...]:
 def _column_from_field(
     model: type[BaseModel], name: str, info: FieldInfo, authored: list[Check]
 ) -> pa.Column:
-    """Derive one pandera Column from a pydantic field + authored checks (OQ7)."""
+    """Derive one pandera Column from a pydantic field + authored checks."""
     resolved = _resolve_annotation(info.annotation)
     metadata = tuple(info.metadata) + resolved.metadata
     nullable = resolved.nullable or not info.is_required()
@@ -164,20 +164,20 @@ def materialize_canonical_shape(definition: CanonicalShapeSuiteDef) -> pa.DataFr
     """Turn a definition into a runnable Pandera schema (pure; no DB, no config read).
 
     Runs the drift guard first: the owned set must be a subset of the model's
-    source-owned universe — mapping-produced ∪ enrichment-produced (slice-5b,
-    D94/D95) — and STILL rejects consumer-injected / DB-generated / compute-owned
-    columns (errors, never skips — criterion 6).
+    source-owned universe — mapping-produced ∪ enrichment-produced — and STILL
+    rejects consumer-injected / DB-generated / compute-owned columns
+    (errors, never skips).
     """
     model = definition.target_model
     # Source-owned for the canonical-shape gate = mapping-produced + enrichment-produced.
-    # Enrichment writes canonical values that pass the SAME gate (D94); widening to admit
+    # Enrichment writes canonical values that pass the SAME gate; widening to admit
     # them must NOT admit consumer-injected/DB-generated/compute-owned columns.
     produced = mapping_produced_columns(model) | enrichment_produced_columns(model)
 
     owned = tuple(dict.fromkeys(definition.owned_columns))
     if not owned:
         raise SuiteDefinitionError(
-            f"{model.__name__}: owned_columns is empty — a source owns at least one column (D8)",
+            f"{model.__name__}: owned_columns is empty — a source owns at least one column",
             model=model.__name__,
         )
     off_universe = [column for column in owned if column not in produced]

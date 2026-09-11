@@ -1,11 +1,10 @@
-"""The test-scoped Pub/Sub project (D100 structural isolation).
+"""The test-scoped Pub/Sub project.
 
 Integration tests run on a SEPARATE emulator project from the resident data-plane
 workers (csv-ingest-worker, streaming-consumer), which stay on ``PUBSUB_PROJECT_ID``
 = ``local-dis``. A resident's subscription is bound to its project, so a message
 published to the test project is unreachable to it BY CONSTRUCTION — a resident can
-never consume a test-published message, regardless of whether it is running. See
-docs/decisions.md D100 and docs/scratch/resident-test-isolation-grounding.md.
+never consume a test-published message, regardless of whether it is running.
 
 The plugin (``plugin.py``) sets ``PUBSUB_PROJECT_ID`` to this value for the pytest
 process (gated on ``PUBSUB_EMULATOR_HOST``) before any test module imports, so the

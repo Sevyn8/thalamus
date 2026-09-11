@@ -1,9 +1,8 @@
 """SQLAlchemy ORM model for the ``org_nodes`` table.
 
 Maps every column of ``db/raw_ddl/Ithina_postgres_SQL_DDL_org_nodes_v2.sql``
-in DDL order. Backs the Organization Tree page (Step 5.3, E2 + E3) and
-serves as the permission-scope anchor when RBAC enforcement lands at
-Step 6.1.
+in DDL order. Backs the Organization Tree page and serves as the
+permission-scope anchor for RBAC enforcement.
 
 Notes on shape (mirrors ``models/tenant_user.py`` and
 ``models/tenant_module_access.py``):

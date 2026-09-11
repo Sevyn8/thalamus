@@ -21,16 +21,16 @@
 -- Every row carries mapping_version_id (architecture B1, v0.6).
 --
 -- ----------------------------------------------------------------------------
--- Partitioning: none for beta (D77 scope revised)
+-- Partitioning: none for beta
 -- ----------------------------------------------------------------------------
 -- This is a PLAIN table. It was PARTITION BY RANGE (event_date) with a fixed
 -- bootstrap-created daily window, no DEFAULT partition, and no automation —
--- the same write-cliff shape Slice 30a removed from audit.events (D77), except
+-- the same write-cliff shape audit.events was de-partitioned to remove, except
 -- here the miss failed LOUD (batch nack), not silently. De-partitioned for
 -- beta on the same disposable-rows/drop-recreate pattern (migration 0009).
 --
--- Partitioning returns at Slice 21 (BQ archive + eviction), WITH automation
--- (decisions.md D29/D34). event_date stays NOT NULL + CHECK-consistent
+-- Partitioning is planned to return with BQ archive + eviction, WITH
+-- automation. event_date stays NOT NULL + CHECK-consistent
 -- (ck_ssce_event_date_matches_source_ts) so that re-partition is safe.
 --
 -- ----------------------------------------------------------------------------
@@ -89,7 +89,7 @@
 -- delta (positive = stock added, negative = stock removed).
 --
 -- ----------------------------------------------------------------------------
--- Phase 0 migration order
+-- Migration order (required for this DDL to succeed)
 -- ----------------------------------------------------------------------------
 --
 -- 1. Schemas exist: canonical, identity_mirror, config.
@@ -109,7 +109,7 @@
 
 
 -- ----------------------------------------------------------------------------
--- Table (plain for beta; Slice 21 re-partitions by event_date)
+-- Table (plain for beta; a future re-partition keys on event_date)
 -- ----------------------------------------------------------------------------
 
 CREATE TABLE canonical.store_sku_change_events (
@@ -117,7 +117,7 @@ CREATE TABLE canonical.store_sku_change_events (
     -- ---------- Surrogate key ----------
     id                              UUID                            NOT NULL DEFAULT uuidv7(),
 
-    -- ---------- Event date (Slice 21's re-partition key) ----------
+    -- ---------- Event date (the future re-partition key) ----------
     event_date                      DATE                            NOT NULL,
         -- Derived from source_event_timestamp::date at UTC. CHECK enforces.
 
@@ -192,19 +192,19 @@ CREATE TABLE canonical.store_sku_change_events (
         --   COST: supplier_id, po_id, etc.
         -- Shape per category documented in streaming consumer; not DB-enforced.
 
-    -- ---------- Source event identity (D33 dedup key; D38 resolution) ----------
+    -- ---------- Source event identity (read-time dedup key) ----------
     source_id                       VARCHAR(128) COLLATE "C"        NOT NULL,
         -- Source registration identifier of the originating source. Matches
         -- config.source_mappings.source_id and bronze.data_ingress_events
-        -- .source_id (varchar(128) COLLATE "C"). Component of the D33
+        -- .source_id (varchar(128) COLLATE "C"). Component of the
         -- read-time dedup key (tenant_id, store_id, source_id,
         -- source_event_id). Consumer-injected from the ingress.ready
         -- envelope, cross-checked against the GCS path and the bronze row.
     source_event_id                 VARCHAR(256) COLLATE "C"        NOT NULL,
-        -- Per-source event identifier completing the D33 dedup key. Change
+        -- Per-source event identifier completing the read-time dedup key. Change
         -- events carry no native source event-id column, so the deterministic
         -- fallback bronze_ref || ':' || chunk_row_index applies
-        -- (redelivery-stable, NOT correction-collapsing; D65).
+        -- (redelivery-stable, NOT correction-collapsing).
         -- Consumer-injected.
         -- NOTE: row_hash completes this dedup key but is declared LAST in this
         -- table, not here beside its siblings — see its comment for why.
@@ -219,7 +219,7 @@ CREATE TABLE canonical.store_sku_change_events (
     ingest_metadata                 JSONB                           NULL,
         -- JSONB: source_name, source_event_timestamp,
         -- dis_received_timestamp, dis_published_timestamp, csv_row_num.
-        -- (source_event_id moved to a first-class column, D38/0003.)
+        -- (source_event_id lives in its own first-class column, not here.)
 
     -- ---------- Redelivery idempotency (migration 0019) ----------
     --
@@ -233,16 +233,17 @@ CREATE TABLE canonical.store_sku_change_events (
         -- sha256 hex of the mapping-produced payload (orjson, sorted keys;
         -- streaming_consumer.pipeline.normalize.canonical_row_hash). The fifth
         -- component of uq_ssce_redelivery — see that index for why uniqueness
-        -- here does not contradict D33. Consumer-injected (migration 0019).
-        -- Change events always take the D65 fallback, so their dedup key is
+        -- here does not contradict the append-only posture. Consumer-injected
+        -- (migration 0019).
+        -- Change events always take the bronze fallback, so their dedup key is
         -- already bronze-scoped; the hash is what makes redelivery of the SAME
         -- bronze chunk idempotent.
 
     -- ---------- Primary key ----------
     CONSTRAINT pk_ssce
         PRIMARY KEY (id),
-        -- (id, event_date) while partitioned — the composite existed only to
-        -- satisfy the partition-key-in-PK requirement (the D77 PK precedent).
+        -- While partitioned this was (id, event_date) — the composite existed
+        -- only to satisfy Postgres's partition-key-in-PK requirement.
 
     -- ---------- Foreign keys ----------
     CONSTRAINT fk_ssce_tenant
@@ -301,7 +302,7 @@ CREATE INDEX ix_ssce_tenant_store_category_time
 CREATE INDEX ix_ssce_source_event_timestamp
     ON canonical.store_sku_change_events (source_event_timestamp);
 
--- D33 read-time latest-wins dedup window (D38/0003): partition prefix +
+-- Read-time latest-wins dedup window: partition prefix +
 -- event-time ordering for ROW_NUMBER() OVER (PARTITION BY tenant_id,
 -- store_id, source_id, source_event_id ORDER BY source_event_timestamp DESC, ...).
 CREATE INDEX ix_ssce_dedup_key
@@ -310,10 +311,10 @@ CREATE INDEX ix_ssce_dedup_key
 
 -- REDELIVERY IDEMPOTENCY (migration 0019). The ONLY uniqueness on this table.
 -- Same rationale as uq_ssse_redelivery on the sale table — see that comment for
--- the full argument. Applied here per D4: the two event tables share one sink and
+-- the full argument. Applied here because the two event tables share one sink and
 -- one failure mode, and fixing one while leaving the other is how the poll-loop
 -- swallow bled twice. Change events are MORE exposed, not less: they have no native
--- source event id at all, so every row keys on the D65 bronze fallback.
+-- source event id at all, so every row keys on the bronze fallback.
 CREATE UNIQUE INDEX uq_ssce_redelivery
     ON canonical.store_sku_change_events
     (tenant_id, store_id, source_id, source_event_id, row_hash);

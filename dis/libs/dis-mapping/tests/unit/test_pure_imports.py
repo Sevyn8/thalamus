@@ -1,4 +1,4 @@
-"""dis-mapping is pure and decoupled (slice-05 criterion 1): importing it must not
+"""dis-mapping is pure and decoupled: importing it must not
 pull in the sibling pipeline lib, the I/O-bearing DIS libs, or any DB/GCP client.
 
 Checked in a FRESH interpreter (subprocess; pattern from dis-pii): the shared

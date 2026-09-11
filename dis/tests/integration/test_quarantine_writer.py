@@ -1,4 +1,4 @@
-"""dis-quarantine against the live ithina_dis_db (Slice 11a).
+"""dis-quarantine against the live ithina_dis_db.
 
 WRITES to Postgres, so it runs only against ``ithina_dis_db`` on 5433 (never Customer
 Master on 5432); the ``dis-rls`` target guard (inherited by the writer) refuses anything
@@ -50,7 +50,7 @@ async def engine() -> AsyncIterator[AsyncEngine]:
     url = os.environ.get("POSTGRES_URL")
     if not url:
         raise StackRequiredError(
-            "POSTGRES_URL is not set — the Slice 11a quarantine-writer tests (load-bearing "
+            "POSTGRES_URL is not set — the quarantine-writer tests (load-bearing "
             "RLS + fail-loud proofs) refuse to skip silently. Bring up the stack "
             "(make run-local) and export POSTGRES_URL (5433 / ithina_dis_db)."
         )

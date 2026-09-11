@@ -97,7 +97,7 @@ def test_customer_master_read_error_preserves_context() -> None:
 
 
 def test_pipeline_mechanics_errors_root_at_dis_error() -> None:
-    # Slice 5: dis-mapping / dis-validation config-layer errors (per-cell and
+    # Dis-mapping / dis-validation config-layer errors (per-cell and
     # per-row data failures are typed result objects, never exceptions).
     assert issubclass(MappingError, DisError)
     assert issubclass(MappingConfigError, MappingError)
@@ -126,7 +126,7 @@ def test_validation_suite_error_preserves_context() -> None:
 
 
 def test_csv_ingest_errors_root_at_dis_error() -> None:
-    # Slice 9b: the worker raises only DisError-rooted errors (code convention).
+    # The worker raises only DisError-rooted errors (code convention).
     assert issubclass(CsvIngestError, DisError)
     assert issubclass(EventContractError, CsvIngestError)
     assert issubclass(EventPathMismatchError, CsvIngestError)
@@ -172,7 +172,7 @@ def test_preflight_failed_error_preserves_reason_and_detail() -> None:
 
 
 def test_auth_seam_errors_root_at_dis_error() -> None:
-    # Slice 13a: the dis-ui-server auth seam raises only DisError-rooted errors,
+    # The dis-ui-server auth seam raises only DisError-rooted errors,
     # mapped to 401/403 by the service's exception handlers (contract §2.3).
     assert issubclass(AuthTokenError, DisError)
     assert issubclass(TenantScopeError, DisError)
@@ -202,7 +202,7 @@ def test_ops_role_required_error_message() -> None:
 
 
 def test_data_endpoint_errors_root_at_dis_error() -> None:
-    # Slice 14b: the dis-ui-server data endpoints' error family (contract §7.4),
+    # The dis-ui-server data endpoints' error family (contract §7.4),
     # mapped to 404/409 (and a startup abort) by the service's handlers.
     assert issubclass(ResourceNotFoundError, DisError)
     assert issubclass(MappingTemplateNameConflictError, DisError)
@@ -251,7 +251,7 @@ def test_field_catalog_drift_error_preserves_column_names() -> None:
 
 
 def test_csv_upload_errors_root_at_dis_error() -> None:
-    # Slice 8: the csv-uploads endpoint's error family, mapped to 413/400/422/
+    # The csv-uploads endpoint's error family, mapped to 413/400/422/
     # 409/503 by the dis-ui-server exception handlers (contract §2.3).
     assert issubclass(PayloadTooLargeError, DisError)
     assert issubclass(UploadRequestError, DisError)

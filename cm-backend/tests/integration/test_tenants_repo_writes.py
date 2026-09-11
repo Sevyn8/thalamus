@@ -1,4 +1,4 @@
-"""Step 6.11.1 integration tests for TenantsRepo write methods.
+"""Integration tests for TenantsRepo write methods.
 
 16 tests in three groups:
 
@@ -94,9 +94,9 @@ async def cleanup_tenants(
                 ),
                 {"ids": created},
             )
-            # Step 6.20.1: ``repo.create`` now also inserts the tenant-root
-            # org_node. Both FKs back to tenants are ON DELETE RESTRICT;
-            # clear org_nodes before the tenants DELETE.
+            # ``repo.create`` also inserts the tenant-root org_node.
+            # Both FKs back to tenants are ON DELETE RESTRICT; clear
+            # org_nodes before the tenants DELETE.
             await session.execute(
                 text(
                     f"DELETE FROM {schema}.org_nodes "
@@ -104,10 +104,10 @@ async def cleanup_tenants(
                 ),
                 {"ids": created},
             )
-            # Slice 1: ``repo.create`` now provisions a 1:1
-            # tenant_onboarding row (flag 5b); FK ON DELETE RESTRICT.
-            # Slice 2/6: transition tests seed legal / billing / contact
-            # section rows plus (Slice 6) a verified document and an invited
+            # ``repo.create`` provisions a 1:1
+            # tenant_onboarding row; FK ON DELETE RESTRICT.
+            # Transition tests seed legal / billing / contact
+            # section rows plus a verified document and an invited
             # admin user (via ``_to_trial``) to pass the complete-onboarding
             # gate; all FK ON DELETE RESTRICT.
             for _t in (
@@ -157,14 +157,14 @@ def _base_create_kwargs(name: str, actor_id: UUID) -> dict[str, Any]:
 
 
 async def _seed_required_sections(session, tenant_id, actor_id) -> None:
-    """Make a tenant fully completable under the Slice-6 gate.
+    """Make a tenant fully completable under the complete-onboarding gate.
 
-    Slice 2 gated ONBOARDING -> TRIAL on legal + billing + >=1 contact;
-    Slice 6 (option a) adds the Auth0 organization provisioned, >=1 invited
-    admin user, and documents all-verified. Sections go through
-    ``OnboardingRepo``; the three new facts are direct session writes (they
-    are pure DB facts, not reachable via a repo method here). ``actor_id``
-    is a platform_users id, reused as the document's verified_by (FK).
+    The gate requires legal + billing + >=1 contact, the Auth0
+    organization provisioned, >=1 invited admin user, and documents
+    all-verified. Sections go through ``OnboardingRepo``; the three
+    other facts are direct session writes (they are pure DB facts,
+    not reachable via a repo method here). ``actor_id`` is a
+    platform_users id, reused as the document's verified_by (FK).
     No audit emission (``auth`` / ``request_id`` omitted).
     """
     schema = get_settings().db_schema
@@ -195,7 +195,7 @@ async def _seed_required_sections(session, tenant_id, actor_id) -> None:
         items=[{"contact_type": "PRIMARY", "name": "Dana Ops"}],
         actor_user_id=actor_id,
     )
-    # Slice 6 facts (direct writes; see test_ob1b pattern).
+    # Direct writes (see test_ob1b pattern).
     await session.execute(
         text(
             f"UPDATE {schema}.tenants SET auth0_org_id = :org WHERE id = :tid"
@@ -242,11 +242,10 @@ async def _seed_required_sections(session, tenant_id, actor_id) -> None:
 async def _to_trial(repo, session, tenant_id, actor_id) -> None:
     """Drive a freshly-created ONBOARDING tenant to TRIAL.
 
-    Slice 1: ``repo.create`` now lands the tenant in ONBOARDING, so
+    ``repo.create`` lands the tenant in ONBOARDING, so
     transition tests that start from TRIAL / ACTIVE first complete
-    onboarding. Slice 2: complete-onboarding now requires legal +
-    billing + >=1 contact, so seed those first. Asserts the transition
-    succeeded.
+    onboarding. complete-onboarding requires legal + billing + >=1
+    contact, so seed those first. Asserts the transition succeeded.
     """
     await _seed_required_sections(session, tenant_id, actor_id)
     _row, result = await repo.complete_onboarding(
@@ -263,8 +262,8 @@ async def _to_trial(repo, session, tenant_id, actor_id) -> None:
 async def test_rc1_create_happy_path(
     repo, make_platform_user, cleanup_tenants, platform_session
 ) -> None:
-    """Tenant inserted with status=ONBOARDING (Slice 1: the DDL default,
-    no longer TRIAL); modules row created; audit columns populated from
+    """Tenant inserted with status=ONBOARDING (the DDL default, not
+    TRIAL); modules row created; audit columns populated from
     actor_user_id."""
     actor = await make_platform_user(status="ACTIVE")
     row = await repo.create(
@@ -429,7 +428,7 @@ async def test_ru4_update_rename_to_self_succeeds(
 
 
 # ============================================================================
-# RU5-RU7: DB-constraint -> 422 mapping (Slice 7 item 1). These drive the
+# RU5-RU7: DB-constraint -> 422 mapping. These drive the
 # repo directly with values that bypass the request-schema bounds, so they
 # exercise the IntegrityError / DataError -> InvalidTenantFieldError mapping
 # that backstops the endpoint.
@@ -734,7 +733,7 @@ async def test_rt8_trial_to_active_then_active_to_suspended_to_active(
 
 
 # ============================================================================
-# R-OR: tenant-root org_node side-effect of repo.create (Step 6.20.1)
+# R-OR: tenant-root org_node side-effect of repo.create
 # ============================================================================
 
 
@@ -902,7 +901,7 @@ async def test_create_empty_slug_rejects_no_tenant_inserted(
 
 
 # ============================================================================
-# R-CO: complete_onboarding (Slice 1)
+# R-CO: complete_onboarding
 # ============================================================================
 
 
@@ -942,7 +941,7 @@ async def test_rco2_complete_onboarding_flips_status_and_stamps(
         platform_session, **_base_create_kwargs("RCO2-Complete", actor.id)
     )
     cleanup_tenants.append(created.tenant.id)
-    # Slice 2: complete-onboarding requires legal + billing + >=1 contact.
+    # Complete-onboarding requires legal + billing + >=1 contact.
     await _seed_required_sections(
         platform_session, created.tenant.id, actor.id
     )

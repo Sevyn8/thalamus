@@ -1,4 +1,4 @@
-"""Integration tests for /role-assignments router (Step 6.8.3 — Half 2).
+"""Integration tests for /role-assignments router.
 
 15 tests (R1-R15). Five LOAD-BEARING:
 
@@ -6,10 +6,9 @@
       (security-load-bearing: platform-side has no RLS; app-layer
       routing is the only barrier).
   R8  Cross-tenant injection rejection at DB layer (composite FK
-      from Step 6.8.1 D-34 / AI-RBAC-06).
-  R12 PLATFORM no-impersonation regression (FN-AB-14 anti-pattern
-      retired in 6.8.1; PLATFORM JWT sees both tables in one query
-      without per-row impersonation).
+      constraint).
+  R12 PLATFORM no-impersonation: PLATFORM JWT sees both tables in
+      one query without per-row impersonation.
 
 Plus:
   R3  TENANT JWT sees own-tenant tenant_assignments only (RLS).
@@ -104,17 +103,16 @@ async def test_r2_tenant_jwt_does_not_see_platform_assignments(
     """LOAD-BEARING: TENANT JWT response has empty platform_assignments
     block AND the platform-side Repo method was NOT invoked.
 
-    platform_user_role_assignments has NO RLS (per Step 6.8.1 D-34).
-    The router's app-layer routing is the only barrier preventing
-    a TENANT JWT from seeing every platform-side assignment in the
-    DB. We assert BOTH the response shape AND the no-call invariant
-    (via patch on the Repo method).
+    platform_user_role_assignments has NO RLS. The router's
+    app-layer routing is the only barrier preventing a TENANT JWT
+    from seeing every platform-side assignment in the DB. We assert
+    BOTH the response shape AND the no-call invariant (via patch on
+    the Repo method).
 
-    Post Step 6.9.3.2: JWT switched from random-UUID `_tenant_jwt` to
-    `tenant_owner_jwt_factory` which builds a synthetic OWNER-like
-    user with ADMIN.USERS.VIEW.TENANT grant in the tenant; gate
-    passes via direct grant; the no-call invariant remains the
-    load-bearing assertion.
+    The JWT comes from `tenant_owner_jwt_factory`, which builds a
+    synthetic OWNER-like user with an ADMIN.USERS.VIEW.TENANT grant
+    in the tenant; the gate passes via that direct grant, and the
+    no-call invariant remains the load-bearing assertion.
     """
     tenant = await make_tenant(name="R2-Tenant")
     jwt = await tenant_owner_jwt_factory(tenant.id)
@@ -158,10 +156,10 @@ async def test_r3_tenant_jwt_own_tenant_only(
     """RLS scoping verified: tenant A and tenant B each have an
     assignment; tenant A's JWT sees only its own.
 
-    Post Step 6.9.3.2: JWT switched from random-UUID `_tenant_jwt` to
-    `tenant_owner_jwt_factory(tenant_a.id)` which builds a synthetic
-    OWNER user with ADMIN.USERS.VIEW.TENANT grant in tenant_a; gate
-    passes; RLS scopes tenant_assignments to A.
+    The JWT comes from `tenant_owner_jwt_factory(tenant_a.id)`, which
+    builds a synthetic OWNER user with an ADMIN.USERS.VIEW.TENANT
+    grant in tenant_a; the gate passes and RLS scopes
+    tenant_assignments to A.
     """
     tenant_a = await make_tenant(name="R3-A")
     tenant_b = await make_tenant(name="R3-B")
@@ -431,9 +429,8 @@ async def test_r8_cross_tenant_injection_rejected_at_db_layer(
     a row whose ``tenant_id`` mismatches the parent tenant_user's
     tenant_id at INSERT time.
 
-    Step 6.8.1 D-34 / AI-RBAC-06 closure: cross-tenant injection is
-    structurally impossible at the schema layer (replaces the v2
-    app-layer pre-check).
+    Cross-tenant injection is structurally impossible at the schema
+    layer; there is no app-layer pre-check to bypass.
     """
     from sqlalchemy import text
     from admin_backend.db.session import get_tenant_session
@@ -686,8 +683,8 @@ async def test_r13_audience_check_triggers(
     make_tenant_user,
     make_org_node,
 ):
-    """Both audience-check triggers from Step 6.8.1 reject the
-    audience-mismatched INSERT:
+    """Both audience-check triggers reject the audience-mismatched
+    INSERT:
 
       enforce_platform_role_audience: rejects TENANT-audience role
         on platform_user_role_assignments.

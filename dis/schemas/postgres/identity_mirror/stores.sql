@@ -50,9 +50,9 @@ CREATE TABLE identity_mirror.stores (
     store_code          TEXT COLLATE "C"                    NULL,
         -- Customer Master's authoritative external code for the store
         -- (core.stores.store_code, e.g. 'TX-102'). Copied as-is by Mirror
-        -- Sync; nullable because the source column is nullable
-        -- (decisions.md D55). Readability only — never a translation bridge;
-        -- the load-bearing identity is store_id (D37).
+        -- Sync; nullable because the source column is nullable.
+        -- Readability only — never a translation bridge;
+        -- the load-bearing identity is store_id.
     status              TEXT COLLATE "C"                    NOT NULL,
         -- Store lifecycle status. Mirrors CM core.store_status_enum:
         -- OPENING, ACTIVE, INACTIVE, CLOSED.

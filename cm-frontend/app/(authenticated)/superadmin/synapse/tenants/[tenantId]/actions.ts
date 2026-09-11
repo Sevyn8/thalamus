@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { synapsePost } from "@/lib/synapse/server-client";
 
-// THE SECOND SERVER ACTION IN THIS CONSOLE (slice 5e), and server-side for the same
+// THE SECOND SERVER ACTION IN THIS CONSOLE, and server-side for the same
 // reason as the first rather than for tidiness. Reaching the BFF needs the user's
 // Auth0 token AND a Google ID token minted from the runtime service account's
 // metadata server; a browser has neither, and SYNAPSE_BFF_URL is not NEXT_PUBLIC_.

@@ -1,6 +1,6 @@
-"""Migration 0013 (config.sources registry) — target safety + idempotency (Slice 51c, D123).
+"""Migration 0013 (config.sources registry) — target safety + idempotency.
 
-Proves, against an ephemeral scratch DB (Slice 51c, D122):
+Proves, against an ephemeral scratch DB:
 
   * **Target-safety guard** (pure, always-run, never skips): refuses Customer Master and any
     non-DIS database; passes the DIS database.
@@ -15,7 +15,7 @@ Proves, against an ephemeral scratch DB (Slice 51c, D122):
     The re-application is driven through alembic (the path that actually corrupted the resident
     DB), not a direct Python call to ``upgrade()``.
 
-Downgrade-reversibility is deferred until staging (D99); the downgrade leg is authored in the
+Downgrade-reversibility is deferred until staging; the downgrade leg is authored in the
 migration. Only migration 0013 is gated this slice — other non-idempotent migrations (e.g. 0016
 telemetry.connector_health) are surfaced, not fixed (deferred trigger, no D-number).
 """

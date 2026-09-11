@@ -346,9 +346,9 @@ async def test_c5_the_prune_is_actually_called_with_the_version_just_written(
 async def test_c6_reconfiguring_replaces_rather_than_duplicating(
     make_client: Any, make_tenant: Any, tenant_owner_jwt_factory: Any, session_factory: Any
 ) -> None:
-    """THE UPSERT'S ARBITER, EXERCISED. ON CONFLICT reads the primary-key index, which is a SELECT
-    privilege; slice 5e lost two days to a role that lacked it. CM holds SELECT for its two reads,
-    so the second save updates rather than raising a duplicate-key error."""
+    """THE UPSERT'S ARBITER, EXERCISED. ON CONFLICT reads the primary-key index, which requires
+    a SELECT privilege. CM holds SELECT for its two reads, so the second save updates rather
+    than raising a duplicate-key error."""
     tenant = await make_tenant(name=f"chan-{uuid4().hex[:8]}", with_root=True)
     jwt = await tenant_owner_jwt_factory(
         tenant.id, with_grants=[("ADMIN", "CHANNELS", "CONFIGURE", "TENANT")]
@@ -484,7 +484,7 @@ async def test_p2_a_tenant_caller_is_refused_at_the_platform_route(
     """The audience pin refuses a TENANT caller before any permission is resolved.
 
     THIS TEST WAS FIRST WRITTEN TO GRANT THE CALLER ADMIN.CHANNELS.VIEW.GLOBAL and assert the
-    audience gate refused them anyway. The database refused to set that up: the Step 6.20.3
+    audience gate refused them anyway. The database refused to set that up: the
     trigger ``enforce_role_audience_scope_coherence`` raises on any attempt to give a
     TENANT-audience role a GLOBAL-scope permission, and ``enforce_tenant_role_audience`` stops a
     tenant user holding a PLATFORM-audience role. So a TENANT caller holding a GLOBAL grant IS

@@ -4,7 +4,7 @@ Each alias encodes one ``varchar(n)`` / ``char(n)`` / ``numeric(p,s)`` so the
 Pydantic models validate to the same shape the DDL enforces (acceptance: field
 types match the DDL). Value-range / cross-field CHECK constraints (e.g. ``>= 0``,
 ``unit_sale_price <= unit_retail_price``) are deliberately NOT modelled here —
-those belong to the database and to dis-validation (Slice 5).
+those belong to the database and to dis-validation.
 """
 
 from __future__ import annotations

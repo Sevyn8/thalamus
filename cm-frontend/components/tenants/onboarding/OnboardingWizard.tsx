@@ -262,8 +262,10 @@ export function OnboardingWizard({ tenantId }: { tenantId: string | null }) {
     // confirm), never during render. dirtyRef is a ref (not state) on
     // purpose: the child steps report dirty from a form-state effect, and a
     // ref avoids the set-state-in-effect churn the codebase deliberately
-    // avoids (PATTERNS.md). The lint rule is conservative about passing any
-    // ref-touching callback to a child component.
+    // avoids: derived component state should be computed during render, not
+    // written back via setState inside a useEffect. The lint rule is
+    // conservative about passing any ref-touching callback to a child
+    // component.
     /* eslint-disable react-hooks/refs */
     if (activeKey === "company") {
       return (

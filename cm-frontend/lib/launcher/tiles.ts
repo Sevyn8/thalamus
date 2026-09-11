@@ -13,23 +13,21 @@ import {
 
 import type { ModuleCode } from "@/types/api";
 
-// Phase 5d.1: launcher tile registry. Eight entries (post Phase 5e.0
-// ROOS retirement): Admin + DIS as products with real routes (when
-// available), 4 product modules matching the module-access enum, plus
+// Launcher tile registry. Eight entries: Admin + DIS as products with
+// real routes, 4 product modules matching the module-access enum, plus
 // 2 forward-looking placeholders (Insights, Workforce) that are always
-// Coming Soon in v0.
+// Coming Soon.
 //
 // Visibility resolution lives in lib/launcher/visibility.ts; this
 // file only declares shape + display config.
 //
 // ===========================================================================
-// AXON SLICE 4: THE REGISTRY IS NOW KEYED BY MODULE CODE, AND THAT IS THE GUARD
+// THE REGISTRY IS KEYED BY MODULE CODE, AND THAT IS THE GUARD
 // ===========================================================================
-// It used to be one flat array where each entry carried a `moduleCode` field.
-// Nothing checked that the set of those fields covered `ModuleCode`, and
-// getVisibleTiles dropped any enabled module it had no tile for by returning an
-// empty array. A module granted to a tenant and missing from this file rendered
-// NOTHING and reported NOTHING.
+// A flat array where each entry carries a `moduleCode` field has nothing
+// checking that the set of those fields covers `ModuleCode`; a module granted
+// to a tenant and missing from this file would render NOTHING and report
+// NOTHING (getVisibleTiles would silently drop it).
 //
 // PRODUCT_TILES is a `Record<ModuleCode, ...>`, so the COMPILER refuses a missing
 // key and refuses an unknown one. `next build` typechecks, so that is a build
@@ -68,9 +66,8 @@ export type LauncherTileConfig = {
 };
 
 // Everything except the module code, which is injected from the key below so the
-// two cannot disagree. That is the one behaviour change a reader should notice:
-// there is no `moduleCode:` literal in the product entries any more, because a
-// key and a field saying the same thing is a pair that can drift.
+// two cannot disagree: there is no `moduleCode:` literal in the product entries,
+// because a key and a field saying the same thing is a pair that can drift.
 type ProductTileConfig = Omit<LauncherTileConfig, "moduleCode">;
 
 const PRODUCT_TILES: Record<ModuleCode, ProductTileConfig> = {
@@ -123,9 +120,9 @@ const PRODUCT_TILES: Record<ModuleCode, ProductTileConfig> = {
 // contract and is uniformly Coming Soon. It is not a module that lost its tile.
 //
 // Keeping the two kinds in separate arrays is what makes the distinction
-// structural. Before this, one `return []` in visibility.ts meant both "this is
-// a placeholder, correctly hidden" and "this module has no tile, silently
-// dropped", and the reader had no way to tell them apart.
+// structural. With one flat array, a single `return []` in visibility.ts would
+// mean both "this is a placeholder, correctly hidden" and "this module has no
+// tile, silently dropped", and the reader could not tell them apart.
 const PLACEHOLDER_TILES: LauncherTileConfig[] = [
   {
     id: "insights",

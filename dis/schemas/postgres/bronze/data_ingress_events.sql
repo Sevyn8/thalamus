@@ -10,12 +10,11 @@
 --   - Receivers (services/csv-ingest-worker, receiver-api, receiver-csv-erp,
 --     receiver-reverse-api). The receiver inserts with processing_status =
 --     'RECEIVED' or 'PUBLISHED' after Pub/Sub publish completes.
---   - Streaming consumer (services/streaming-consumer): SUPERSEDED design
---     (Slice 51a / D117). The consumer was intended to UPDATE processing_status
---     to PROCESSED/QUARANTINED/FAILED on completion, but that write was never
---     implemented (the consumer only READS bronze). processing_status is an
---     INGRESS-ONLY signal; run completion truth lives in audit.events and the
---     Ingestion Runs surface derives its verdict from there, not from this column.
+--   - Streaming consumer (services/streaming-consumer): does NOT write here — it
+--     only READS bronze. The vocab admits PROCESSED/QUARANTINED/FAILED but no
+--     writer advances processing_status past PUBLISHED; it is an INGRESS-ONLY
+--     signal. Run completion truth lives in audit.events and the Ingestion Runs
+--     surface derives its verdict from there, not from this column.
 --
 -- Read by:
 --   - Streaming consumer: fetches gcs_uri to read the payload.
@@ -33,7 +32,7 @@
 -- SET LOCAL app.tenant_id per event; dis-ui-server SET LOCAL for tenant queries.
 --
 -- ----------------------------------------------------------------------------
--- Phase 0 migration order
+-- Migration order (required for this DDL to succeed)
 -- ----------------------------------------------------------------------------
 --
 -- 1. Schemas exist: bronze, identity_mirror.
@@ -78,7 +77,7 @@ CREATE TABLE bronze.data_ingress_events (
     mapping_version_id          BIGINT                              NULL,
     template_id                 UUID                                NULL,
 
-    -- ---------- Upload provenance (informational, Slice 51a / D120) ----------
+    -- ---------- Upload provenance (informational) ----------
     original_filename           VARCHAR(512)                        NULL,
 
     -- ---------- Caller context ----------
@@ -141,7 +140,7 @@ CREATE TABLE bronze.data_ingress_events (
 CREATE INDEX ix_bdie_tenant_received_at
     ON bronze.data_ingress_events (tenant_id, received_at DESC);
 
--- Keyset (cursor) pagination for the Ingestion Runs surface (Slice 51b, D124): the row-value
+-- Keyset (cursor) pagination for the Ingestion Runs surface: the row-value
 -- boundary (received_at, id) < (:r, :i) seeks directly into this composite (a true Index Cond,
 -- zero rows removed by filter -- proven by EXPLAIN). Superset of ix_bdie_tenant_received_at
 -- above; that narrower index is kept for now (dropping it as redundant is a deferred write-cost

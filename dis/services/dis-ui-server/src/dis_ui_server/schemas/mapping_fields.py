@@ -6,7 +6,7 @@ mandatory-ness and guidance are per target model. ``mandatory`` means "must be
 PROVIDED by the template — by rename or by a constant/copy/date_from_datetime
 derive", not "a CSV column must point at it".
 
-The object shape is UNIFORM across every template type (Slice 14d): ten keys in
+The object shape is UNIFORM across every template type: ten keys in
 the order below, with JSON ``null`` (never the string ``"null"``) for empty
 values. ``section`` is the within-packet grouping label; ``template_type`` is the
 PACKET AXIS and is NOT a field key — it parameterises which set is served (the
@@ -43,7 +43,7 @@ FieldDatatype = Literal["text", "integer", "number", "date", "datetime", "boolea
 class TemplateMappingField(BaseModel):
     """One mappable canonical field, structure derived + labels authored.
 
-    Field order IS the wire order (Slice 14d uniform 10-key shape):
+    Field order IS the wire order:
     ``key, display_name, section, mandatory, constraints, datatype, description,
     allowed_values, max_length, sink``.
     """

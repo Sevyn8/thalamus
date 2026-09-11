@@ -1,4 +1,4 @@
-"""Integration tests for StoresRepo (Step 6.17.2).
+"""Integration tests for StoresRepo.
 
 Real Postgres, real schema, real RLS. No FastAPI machinery. Sessions
 come from ``get_tenant_session`` via the ``platform_session`` and

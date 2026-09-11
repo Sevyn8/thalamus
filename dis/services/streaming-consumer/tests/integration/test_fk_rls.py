@@ -1,4 +1,4 @@
-"""AC4: the no-orphan composite FK (D39), both ways, and RLS isolation.
+"""AC4: the no-orphan composite FK, both ways, and RLS isolation.
 
 ERROR-not-skip: conftest raises StackRequiredError when the stack is absent.
 
@@ -64,9 +64,9 @@ async def test_fk_no_orphan_both_ways(
     # Absent pair: the ENVELOPE names a store UUID identity_mirror does not hold
     # (a malformed producer — the bronze row keeps a valid store, since bronze
     # carries its own composite FK). The consumer trusts the event's identity
-    # (D54), so the canonical composite FK (tenant_id, store_id) ->
+    # , so the canonical composite FK (tenant_id, store_id) ->
     # identity_mirror.stores is the last line of defense and fails LOUD at the
-    # write (D39).
+    # write.
     orphan_store = new_uuid7()
     bad = seed_chunk(
         dis_admin,

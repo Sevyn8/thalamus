@@ -1,7 +1,7 @@
-"""Wire shape for ``POST /v1/csv-uploads`` (Slice 8, contract §8).
+"""Wire shape for ``POST /v1/csv-uploads``.
 
 One response model: what the synchronous upload resolved and produced. Identity
-values are the RESOLVED internal UUIDs (D37/D52) plus the readable codes; the
+values are the RESOLVED internal UUIDs plus the readable codes; the
 ``upload_id`` is the deterministic ``us_`` lineage id that fills the
 ``csv.received`` ``upload_session_id`` role (the worker's D58 idempotency
 component) — returned so the caller can correlate a retry with its original.

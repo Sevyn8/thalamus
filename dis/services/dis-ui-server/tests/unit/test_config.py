@@ -51,8 +51,8 @@ def test_present_required_env_resolves(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_service_constants_frozen() -> None:
     assert SERVICE_NAME == "dis-ui-server"
     assert API_PREFIX == "/api/v1"
-    # Slice 8: the publish target defaults to the contract name (hard rule 10) and
-    # the upload ceiling (the synchronous-streaming register entry's decision value).
+    # The publish target defaults to the contract topic name; the upload ceiling
+    # is a frozen constant with body headroom above the file cap.
     assert CSV_RECEIVED_TOPIC == "csv.received"
     assert CSV_UPLOAD_MAX_FILE_BYTES == 10 * 1024 * 1024
     assert CSV_UPLOAD_BODY_CEILING_BYTES > CSV_UPLOAD_MAX_FILE_BYTES
@@ -77,7 +77,7 @@ def test_csv_received_topic_honours_env_override(monkeypatch: pytest.MonkeyPatch
         importlib.reload(config_module)
 
 
-# -- Slice 34a operational knobs (GEMINI_MODEL / _TIMEOUT_S / _THINKING_BUDGET) ------
+# -- Gemini operational knobs (GEMINI_MODEL / _TIMEOUT_S / _THINKING_BUDGET) ---------
 
 
 def _clear_new_gemini(monkeypatch: pytest.MonkeyPatch) -> None:

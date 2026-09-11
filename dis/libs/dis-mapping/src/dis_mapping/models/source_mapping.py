@@ -1,27 +1,26 @@
 """``SourceMapping`` — the validated in-memory form of ``config.source_mappings.mapping_rules``.
 
-The live JSONB shape is ``{version, rename, normalize, cast, derive}`` (introspected
-slice-05; the field is named ``normalize``, not ``transforms`` — see decisions.md
-D49). The live row's sub-objects are empty (``{}``), so the inner shape is defined
-HERE, not by live data (the column comment delegates: "documented in
-libs/dis-mapping"). Onboarding (Slice 14) generates against this model.
+The live JSONB shape is ``{version, rename, normalize, cast, derive}`` (the field
+is named ``normalize``, not ``transforms``). The inner shape of the sub-objects is
+defined HERE, not by live data (the column comment delegates: "documented in
+libs/dis-mapping"). Onboarding generates against this model.
 
 - ``rename``: source column -> canonical column.
 - ``normalize``: canonical column -> ORDERED LIST of atomic transforms, applied in
   declared sequence (an empty list is a valid no-op).
-- ``cast``: canonical column -> target type (runs after normalize; D20 ordering is
+- ``cast``: canonical column -> target type (runs after normalize; the ordering is
   load-bearing).
 - ``derive``: canonical column -> ORDERED LIST starting with a generator
   (``copy`` / ``constant`` / ``date_from_datetime``) followed by normalize-vocabulary
-  ops (derive is bounded to the same declarative vocabulary; slice-05).
+  ops (derive is bounded to the same declarative vocabulary).
 
-ALL config validation happens at construction (`MappingConfigError`, code-quality
-rule 4) — including cross-spec composition typing for derive lists, which is
+ALL config validation happens at construction (`MappingConfigError`)
+— including cross-spec composition typing for derive lists, which is
 decidable here because every intermediate dtype is known from the cast specs.
 
 What this model deliberately has no field for: ``tenant_id`` / ``store_id`` /
 ``trace_id`` / ``mapping_version_id`` — those are consumer-injected after the
-engine runs (hard rule 5, D8, D22); the engine cannot stamp what it never holds.
+engine runs; the engine cannot stamp what it never holds.
 """
 
 from __future__ import annotations
@@ -55,7 +54,7 @@ class SourceMapping(BaseModel):
         """The canonical columns this mapping produces, in declaration order.
 
         This is the contribution's exact column set: rename targets then derive
-        targets. Nothing else is ever emitted (slice-05 criterion 2/7).
+        targets. Nothing else is ever emitted.
         """
         return tuple(self.rename.values()) + tuple(self.derive.keys())
 
@@ -121,7 +120,7 @@ class SourceMapping(BaseModel):
         validate_derive_generator_args(generator, column)
 
         # Generator source columns must be rename targets (derive cannot chain off
-        # another derive target — build to current need; slice-05 scope boundary).
+        # another derive target — deliberately unsupported).
         if generator.op in ("copy", "date_from_datetime"):
             source = generator.args["source_column"]
             if source not in rename_targets:

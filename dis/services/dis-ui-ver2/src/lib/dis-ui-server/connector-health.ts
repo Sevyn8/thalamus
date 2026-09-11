@@ -6,14 +6,14 @@ import { isRealMode } from './mode'
 
 // Connector Health (tenant slice). Shaped EXACTLY to the real dis-ui-server contract
 // (services/dis-ui-server/.../schemas/connector_health.py: ConnectorHealthListResponse /
-// ConnectorHealthRow, Phase A / D116): GET /api/v1/connector-health — one row per connector
+// ConnectorHealthRow): GET /api/v1/connector-health — one row per connector
 // (config.sources entry), carrying worker-produced liveness/freshness telemetry
 // (telemetry.connector_health) coalesced with the bronze last-arrival. Mode-aware: real mode
 // calls the live endpoint; fixture mode (default + tests) returns inlined rows so local dev
 // needs no backend.
 //
-// HONEST RENDERING (the core discipline — D116): the wire carries only what is emitted. Phase A
-// has ONE producer (csv-ingest-worker, CSV), so for CSV connectors last_seen_at + status are real
+// HONEST RENDERING (the core discipline): the wire carries only what is emitted. There is
+// ONE producer (csv-ingest-worker, CSV), so for CSV connectors last_seen_at + status are real
 // (emit/coalesce) but auth_expires_at / rate_limit_state / missed_intervals are NULL → the surface
 // renders "—". The 3 deferred receivers (api/webhook/sftp) have no producer → status='pending',
 // every field null. The UI NEVER fabricates the mockup's illustrative values.

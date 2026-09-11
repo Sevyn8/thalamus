@@ -1,6 +1,6 @@
 import type { Persona } from "@/lib/auth/personas";
 
-// Phase 5d.9: launcher welcome polish helpers. Pure functions
+// Launcher welcome polish helpers. Pure functions
 // (no hooks, no React); product-agnostic so they live at the
 // cross-product lib/format/ level rather than lib/dis/ or
 // lib/launcher/.
@@ -8,7 +8,7 @@ import type { Persona } from "@/lib/auth/personas";
 // Time staleness during long sessions: greeting is computed at
 // render time. If the user keeps the launcher open across a
 // boundary (e.g., 4:55pm → 5:05pm), the prefix stays stale until
-// reload. Accepted trade-off for v1 — welcome polish is not
+// reload. Accepted trade-off — welcome polish is not
 // load-bearing UX; adding a boundary-tick refresh would be ~15
 // LOC of complexity for marginal benefit.
 

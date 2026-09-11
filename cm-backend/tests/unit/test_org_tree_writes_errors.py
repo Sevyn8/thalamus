@@ -1,4 +1,4 @@
-"""Unit tests for Step 6.13 error envelope semantics.
+"""Unit tests for the org-tree write error envelope semantics.
 
 Verifies http_status + code mapping + Q7 context-vs-details posture.
 """

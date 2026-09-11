@@ -1,4 +1,4 @@
-"""Per-stage fire-and-forget audit emission (hard rule 11, D43, D44).
+"""Per-stage fire-and-forget audit emission.
 
 One thin wrapper over the ``dis-audit`` writer. Stage vocabulary is dis-audit's
 CLOSED enum — the worker adds no members. The mapping for this service:
@@ -6,18 +6,18 @@ CLOSED enum — the worker adds no members. The mapping for this service:
 - intake / path cross-check / preflight outcome → ``Stage.RECEIVED``
   (preflight detail rides ``event_data``; there is deliberately no PREFLIGHT member)
 - the idempotent no-op → ``Stage.RECEIVED`` + ``Outcome.DUPLICATE_NOOP`` with
-  ``prior_trace_id`` as a COLUMN (Slice 30c, the D42 revision); the resume
+  ``prior_trace_id`` as a COLUMN; the resume
   publish → ``Outcome.RETRIED`` (a retry-completion made legible)
 - the PII gate → ``Stage.PII_TOKENIZED``
 - the bronze write → ``Stage.BRONZE_WRITTEN``
 - the ``ingress.ready`` publish → ``Stage.INGRESS_PUBLISHED``
 
-Every event carries the known ``tenant_id`` (D43 — identity is on the csv.received
+Every event carries the known ``tenant_id`` (identity is on the csv.received
 event from the first stage), the read ``trace_id``, and the load-bearing id
 (``data_ingress_event_id`` where a bronze row exists). Failures in emission are
-logged and NEVER raised — the one sanctioned swallow (code-quality rule 6) — and
-never block the data path. Duplicate audit rows are tolerated (D44). A swallowed
-audit failure is logged as alert-worthy (the Slice 6 D45 mitigation).
+logged and NEVER raised — the one sanctioned swallow — and
+never block the data path. Duplicate audit rows are tolerated. A swallowed
+audit failure is logged as alert-worthy.
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ class WorkerAudit:
         """Emit one stage event. Never raises; never blocks the data path.
 
         ``failure_code`` takes a :class:`~dis_audit.FailureCode` member (a
-        ``StrEnum``, Slice 30b stable vocabulary); ``duration_ms`` is the
+        ``StrEnum`` stable vocabulary); ``duration_ms`` is the
         pipeline's lap-timer stage span.
         """
         log = _log.bind(stage=str(stage.value), tenant_id=str(tenant_id), trace_id=str(trace_id))
@@ -81,7 +81,7 @@ class WorkerAudit:
             written = await self._writer.write(event)
             if not written:
                 # The writer already logged its own failure detail; this line is the
-                # service-side alert-worthy marker (D45 silent-loss mitigation).
-                log.error("audit write reported failure; data path continues (hard rule 11)")
-        except Exception:  # noqa: BLE001 - the ONE sanctioned swallow (hard rule 11)
+                # service-side alert-worthy marker against silent audit loss.
+                log.error("audit write reported failure; data path continues")
+        except Exception:  # noqa: BLE001 - the one sanctioned swallow; audit never blocks the data path
             log.exception("audit emission raised; swallowed so the data path continues")

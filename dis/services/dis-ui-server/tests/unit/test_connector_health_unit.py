@@ -1,4 +1,4 @@
-"""Unit tests for Connector Health (GET /connector-health), D116.
+"""Unit tests for Connector Health (GET /connector-health).
 
 Two halves. PURE: the read-side status derivation (``derive_status`` precedence + freshness
 threshold), and the handler's row->wire mapper (the last_seen COALESCE of worker telemetry with
@@ -151,7 +151,7 @@ def test_to_row_prefers_worker_last_seen() -> None:
 
 
 def test_to_row_coalesces_bronze_when_no_health_row() -> None:
-    # The coalesce D116 requires: a source with bronze activity but NO health row still shows
+    # The required coalesce: a source with bronze activity but NO health row still shows
     # a real last_seen (from bronze MAX(received_at)) and reads healthy/stale off it.
     wire = _to_row(
         _fake_row(

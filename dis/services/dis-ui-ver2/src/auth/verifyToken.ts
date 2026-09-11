@@ -16,9 +16,9 @@ export class TokenInvalidError extends Error {
   }
 }
 
-// HMAC key for the dev stub. Real-mode seam (decisions.md D25 / slice 13): replace
-// this with a JWKS remote key set (jose createRemoteJWKSet) keyed by the Customer
-// Master issuer/audience. The claim-to-snapshot mapping below stays the same.
+// HMAC key for the dev stub. Real-mode seam: the production swap is a JWKS remote
+// key set (jose createRemoteJWKSet) keyed by the Customer Master issuer/audience.
+// The claim-to-snapshot mapping below stays the same either way.
 const KEY = new TextEncoder().encode(STUB_SECRET)
 
 function isStringArray(value: unknown): value is string[] {
@@ -26,7 +26,7 @@ function isStringArray(value: unknown): value is string[] {
 }
 
 // Maps the Customer Master token claims (sub, tenant_id, store_id, user_type, roles -
-// the shape pinned by Sanjeev's slice-2 fakes, PROVISIONAL pending D25) to the
+// a PROVISIONAL shape) to the
 // AuthSnapshot. Profile fields (email, name, tenant_name) are NOT token claims and
 // are not read here; they come from the GET /me profile call.
 function toSnapshot(payload: JWTPayload): AuthSnapshot {
@@ -54,7 +54,7 @@ function toSnapshot(payload: JWTPayload): AuthSnapshot {
     throw new TokenInvalidError('invalid-claims', 'Token has an invalid roles claim')
   }
 
-  // user_type is the backend's authoritative tenant-vs-ops discriminator (D91). The
+  // user_type is the backend's authoritative tenant-vs-ops discriminator. The
   // frontend maps the known values and leaves anything else (absent / unrecognized)
   // null — it trusts the claim but does not enforce user_type<->tenant_id coherence.
   const userType =

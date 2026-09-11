@@ -14,7 +14,7 @@ import { distinctTenants, matchesTenant, SYSTEM_TENANT, tenantFull, tenantName }
 // row (NO extra call — there is no GET /runs/{id}), and a KEYSET pager (D124: forward Next off
 // next_cursor, page-stack Prev; a filter change resets the cursor so a stale one is never replayed).
 //
-// HONEST RENDERING (D119): real values where the wire carries them; per-column "—"/deferred labels
+// HONEST RENDERING: real values where the wire carries them; per-column "—"/deferred labels
 // where null (store / source / template / file / mapping version / published / completed). The two
 // DERIVED fields are computed from present data only — sourceUnregistered = source_name==null, and
 // the reconcile line from input_row_count vs accepted+quarantined (the wire does NOT guarantee they
@@ -67,7 +67,7 @@ function sourceUnregistered(r: RunRow): boolean {
 
 // DERIVED reconcile line. The wire exposes three INDEPENDENT numbers (input from the worker's
 // DuckDB preflight; accepted/quarantined from the consumer's Polars parse) and never asserts they
-// sum equal (D119). We state the split honestly and, when all three are known, either confirm they
+// sum equal. We state the split honestly and, when all three are known, either confirm they
 // reconcile or represent the gap — we never force "reconciles to input" when it does not.
 type ReconcileTone = 'ok' | 'warn' | 'fail' | 'mut'
 const TONE_BOX: Record<ReconcileTone, string> = { ok: 'okbox', warn: 'warnbox', fail: 'failbox', mut: 'note' }
@@ -315,7 +315,7 @@ export function IngestionRuns() {
   // CURRENT page only (never pushed into the keyset query, which would break cursor stability) —
   // the toolbar notes this. TENANT view never sees it.
   const [tenantFilter, setTenantFilter] = useState<string | null>(null)
-  // Keyset pagination (D124): a stack of the cursors used to reach each page (page 0 = no cursor).
+  // Keyset pagination: a stack of the cursors used to reach each page (page 0 = no cursor).
   // Prev pops the stack; Next pushes the current page's next_cursor. Any filter change RESETS this,
   // so a cursor issued under one filter set is never replayed under another (the wire 422s on that).
   const [pageCursors, setPageCursors] = useState<(string | undefined)[]>([undefined])

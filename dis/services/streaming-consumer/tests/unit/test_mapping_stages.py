@@ -1,4 +1,4 @@
-"""AC6: the four sub-stages apply via dis-mapping against the seeded mapping.
+"""The four sub-stages apply via dis-mapping against the seeded mapping.
 
 One representative op per sub-stage, asserted on the engine output for the
 committed sale fixture mapping:
@@ -9,7 +9,7 @@ committed sale fixture mapping:
 - derive:    ``event_date`` from the timestamp's UTC date; ``event_subtype`` and
              ``currency`` as constants
 
-The no-escape-hatch property (D61) is review-only — a test cannot prove a
+The no-escape-hatch property is review-only — a test cannot prove a
 feature's absence — but the import/scope check here backs the review: no module
 in the service performs dynamic imports or evals (the registry seam does not
 exist).
@@ -54,7 +54,7 @@ def test_four_sub_stages_apply() -> None:
 
 
 def test_no_dynamic_transform_seam_in_source() -> None:
-    # Backs the D61 review-only property: no importlib / __import__ / eval / exec
+    # Backs the review-only no-escape-hatch property: no importlib / __import__ / eval / exec
     # anywhere in the service source — the named-custom-transform registry seam
     # does not exist.
     offenders: list[str] = []

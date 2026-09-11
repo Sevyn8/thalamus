@@ -1,11 +1,10 @@
-"""``config.source_mappings`` — the mapping-template version row (live-introspected 14b).
+"""``config.source_mappings`` — the mapping-template version row.
 
-Column set, constraints, and defaults mirror the LIVE table (Slice 14a,
-Alembic 0005; introspected in 14b plan mode): 16 columns, RLS ON+FORCE with the
-single-GUC ``tenant_isolation`` policy (D69), template grain
-``(tenant_id, source_id, template_id)`` (D68). This model is SHAPE only — no DDL
-is ever emitted from it (14a settled the schema; ``Base.metadata.create_all`` is
-never called in this service).
+Column set, constraints, and defaults mirror the LIVE table (Alembic 0005):
+16 columns, RLS ON+FORCE with the single-GUC ``tenant_isolation`` policy,
+template grain ``(tenant_id, source_id, template_id)``. This model is SHAPE
+only — no DDL is ever emitted from it (the schema is settled by the
+migration; ``Base.metadata.create_all`` is never called in this service).
 
 Two deliberate mapping quirks, both load-bearing:
 
@@ -48,15 +47,15 @@ class SourceMappingRow(Base):
     # Trigger-assigned (see module docstring); never sent on INSERT.
     version_seq_per_source: Mapped[int] = mapped_column(SmallInteger)
 
-    # Lifecycle (D17 vocabulary; CHECK ck_csm_status_vocab).
+    # Lifecycle.
     status: Mapped[str] = mapped_column(Text)
 
-    # Packet axis (Slice 14d): snapshot | sales | inventory_change. Stored, not
+    # Packet axis: snapshot | sales | inventory_change. Stored, not
     # inferred; the vocabulary is code-enforced (dis_validation.TEMPLATE_TYPES),
     # no DB enum/CHECK. Set at creation; lineage-fixed (carried onto chained DRAFTs).
     template_type: Mapped[str] = mapped_column(Text)
 
-    # Mapping payload (D49 shape; validated by dis-mapping SourceMapping before any write).
+    # Mapping payload.
     mapping_rules: Mapped[dict[str, Any]] = mapped_column(JSONB)
     pre_validation_suite_ref: Mapped[str | None] = mapped_column(String(256))
     post_validation_suite_ref: Mapped[str | None] = mapped_column(String(256))

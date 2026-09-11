@@ -1,4 +1,4 @@
-"""Step 6.16.4 : audit emission for PATCH /api/v1/roles/{role_id}.
+"""Audit emission for PATCH /api/v1/roles/{role_id}.
 
 Roles are platform-scope catalogue rows; per LD7 every audit row for
 PATCH /roles routes to ``platform_activity_audit_logs`` with

@@ -1,5 +1,5 @@
 -- ============================================================================
--- axon_reader grants: the delivery ledger's ONLY read credential (Axon slice 3).
+-- axon_reader grants: the delivery ledger's ONLY read credential.
 --
 -- THE SIXTH NARROW ROLE IN THIS ESTATE, and the second in Axon. The pair is the
 -- whole design: sql/06's axon_sender can write one table and read nothing;
@@ -11,9 +11,9 @@
 --   synapse_writer      the ORCHESTRATOR. INSERT on synapse.actions, the run
 --                       state machine, nothing on provision.
 --   synapse_lifecycle   the console's alert decisions. INSERT on
---                       synapse.action_events and nothing else (slice 5d).
+--                       synapse.action_events and nothing else.
 --   synapse_provisioner enablement. INSERT on synapse.provision plus the two
---                       SELECTs its pre-flight cannot run without (slice 5e).
+--                       SELECTs its pre-flight cannot run without.
 --   axon_sender         one INSERT, on one table, and NO SELECT ANYWHERE.
 --   axon_reader         THIS FILE. SELECT on two tables, and NO WRITE VERB
 --                       ANYWHERE.
@@ -48,12 +48,12 @@
 -- is what keeps that true from the other side, so that adding a console cannot
 -- quietly add a way to edit the evidence the console displays.
 --
--- NO ON CONFLICT ANYWHERE, and it is worth saying in a read file: slice 5e
--- shipped ON CONFLICT against a role with no SELECT and every enable in
--- production failed with `permission denied for table provision` behind a green
--- apply. Nothing in this slice writes, so nothing needs it. If a later slice
--- wants it, it needs SELECT on the ARBITER INDEX, and that is a grant decision
--- to make with the code, not after it.
+-- NO ON CONFLICT ANYWHERE, and it is worth saying in a read file: production
+-- once shipped ON CONFLICT against a role with no SELECT, and every enable
+-- failed with `permission denied for table provision` behind a green apply.
+-- Nothing here writes, so nothing needs it. If a future change wants it, it
+-- needs SELECT on the ARBITER INDEX, and that is a grant decision to make with
+-- the code, not after it.
 --
 -- ----------------------------------------------------------------------------
 -- SELECT ON THE TENANT LEDGER IS NOT ENOUGH TO READ IT, AND THAT IS THE POINT
@@ -196,7 +196,7 @@ GRANT SELECT ON axon.tenant_deliveries   TO axon_reader;
 --    check alone cannot prove. As axon_reader:
 --
 --      SELECT count(*) FROM axon.platform_deliveries;
---      -- -> at least 1 (slice 1 wrote a real row on 2026-08-11)
+--      -- -> at least 1
 --
 --    ZERO HERE IS A FAULT, not an empty table. That table has no RLS, so a zero
 --    means you are connected to the wrong database.

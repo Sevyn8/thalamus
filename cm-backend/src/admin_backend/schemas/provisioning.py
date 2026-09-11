@@ -1,4 +1,4 @@
-"""Response models for the Auth0 provisioning actions (Slice 2c).
+"""Response models for the Auth0 provisioning actions.
 
 Both actions are Auth0-side only (D-39): they report what was provisioned in
 Auth0 and never imply a CM DB write. ``created`` / ``user_created`` distinguish

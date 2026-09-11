@@ -1,4 +1,4 @@
-"""Step 2.4 lifespan / startup-gate tests.
+"""Lifespan / startup-gate tests.
 
 5 tests:
     L1: Lifespan with valid Settings + healthy DB role completes;
@@ -14,9 +14,9 @@
         propagates out of lifespan. Engine is still created (it
         precedes the check); auth_client is not.
     L5: AUTH_CLIENT_MODE=AUTH0 constructs an Auth0Client in the
-        lifespan (Slice 1); app.state.auth_client satisfies AuthClient.
+        lifespan; app.state.auth_client satisfies AuthClient.
 
-L2-L5 must NOT use get_settings() (Step 2.3 wrapped Settings in an
+L2-L5 must NOT use get_settings() (Settings is wrapped in an
 @lru_cache; cached values would survive across tests in the same
 process and miss env-var changes). Each test constructs Settings()
 directly OR clears the cache before exercising the lifespan.
@@ -152,7 +152,7 @@ async def test_l4_privilege_gate_raise_propagates() -> None:
 
 
 # ---------------------------------------------------------------------------
-# L5: AUTH0 mode constructs Auth0Client in the lifespan (Slice 1)
+# L5: AUTH0 mode constructs Auth0Client in the lifespan
 # ---------------------------------------------------------------------------
 
 
@@ -160,7 +160,7 @@ async def test_l5_auth0_mode_constructs_auth0_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """AUTH_CLIENT_MODE=AUTH0 constructs an Auth0Client in the lifespan
-    (Slice 1 replaced the old pending-Auth0 NotImplementedError). The
+. The
     lifespan completes; app.state.auth_client is an Auth0Client that
     satisfies the AuthClient Protocol. PyJWKClient is lazy, so no
     network call is made and the real Auth0 tenant is never hit."""

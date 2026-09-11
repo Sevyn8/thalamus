@@ -1,6 +1,6 @@
 """Environment-resolved configuration for the worker.
 
-Required env (no silent default for a required value, code-quality rule 4 — a
+Required env (no silent default for a required value — a
 missing one raises ``CsvIngestError``):
 
 - ``POSTGRES_URL`` — the DIS write connection (``ithina_dis_user``). Reused by
@@ -12,19 +12,19 @@ missing one raises ``CsvIngestError``):
   cross-checked against this value (a mismatched bucket is a malformed producer).
 
 The topic/subscription names are frozen-contract constants, not deployment config:
-``csv.received`` is the trigger (D54), ``ingress.ready`` the publish target (hard
-rule 10), and the subscription is provisioned by ``tools/local/create_topics.py``
+``csv.received`` is the trigger, ``ingress.ready`` the publish target, and the
+subscription is provisioned by ``tools/local/create_topics.py``
 (`make topics-create`) — NEVER by worker runtime code, so an absent subscription
 is a loud startup error, not a silent auto-repair.
 
-The dedup window is a decision value (24h, build-guide Slice 9b), not config.
+The dedup window is a fixed policy value (24h), not config.
 
-Optional env (slice 40a, the toggled readiness-healthz wrapper):
+Optional env (the toggled readiness-healthz wrapper):
 
 - ``RUN_HEALTH_SERVER`` — ``"true"``/``"1"`` → run the /healthz HTTP server
   alongside the pull loop (Cloud Run Service mode). Unset/other → pure loop
   (local dev; future Worker Pools). A legitimately-optional boolean with a
-  default-off, not a rule-4 silent fallback: absence is a valid configuration.
+  default-off, not a silent fallback: absence is a valid configuration.
 - ``PORT`` — the healthz server's port (Cloud Run injects it). REQUIRED — raises —
   only when ``RUN_HEALTH_SERVER`` is on; never read otherwise (no new required
   local env).
@@ -47,7 +47,7 @@ _PORT = "PORT"
 SERVICE_NAME = "csv-ingest-worker"
 
 # The worker SUBSCRIBES to csv.received (via CSV_RECEIVED_SUBSCRIPTION) and PUBLISHES
-# ingress.ready. The contract names (hard rule 10) remain the defaults, so local dev
+# ingress.ready. The frozen contract names remain the defaults, so local dev
 # (provisioned by tools/local/create_topics.py, no env set) is unchanged. Deployment
 # overrides INGRESS_READY_TOPIC and CSV_RECEIVED_SUBSCRIPTION with the actually-
 # provisioned short names (terraform sources them from the pubsub module output, so
@@ -57,14 +57,14 @@ CSV_RECEIVED_TOPIC = "csv.received"
 INGRESS_READY_TOPIC = resolve_pubsub_name("INGRESS_READY_TOPIC", "ingress.ready")
 CSV_RECEIVED_SUBSCRIPTION = resolve_pubsub_name("CSV_RECEIVED_SUBSCRIPTION", "csv-ingest-worker.csv.received")
 
-# The idempotency window (decisions/build-guide: same content hash + upload session +
-# tenant within 24h returns the prior trace_id). Measured against the prior bronze
+# The idempotency window: same content hash + upload session +
+# tenant within 24h returns the prior trace_id. Measured against the prior bronze
 # row's received_at — the only NOT NULL persisted timestamp, server-side and
 # monotonic; the event's received_ts is producer-controlled and would skew under
 # redelivery / late delivery.
 DEDUP_WINDOW_HOURS = 24
 
-# Readiness staleness threshold (slice 40a): /healthz reports stale past this many
+# Readiness staleness threshold: /healthz reports stale past this many
 # seconds since the loop's last heartbeat. Sized above the worst expected loop
 # iteration (10s pull timeout + 1s error sleep + chunk-processing headroom) — a
 # long pure-CPU stretch must not flap readiness; a dead loop must trip it.

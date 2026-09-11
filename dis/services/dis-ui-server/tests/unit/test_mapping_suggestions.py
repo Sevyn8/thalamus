@@ -132,7 +132,7 @@ def test_handler_rejects_a_malformed_profile(suggest_client: TestClient, mint_to
     assert resp.status_code == 422
 
 
-# -- type-aware catalog selection (D90) ---------------------------------------------
+# -- type-aware catalog selection ---------------------------------------------------
 
 
 class _RecordingSuggester:
@@ -260,11 +260,11 @@ def test_suggester_falls_back_when_the_model_errors() -> None:
     assert suggestions[0].suggested_target in CATALOG_KEYS
 
 
-# -- Slice 34a: defaults, deadline, client reuse (criteria 2, 4, 5) -----------------
+# -- defaults, deadline, client reuse -----------------------------------------------
 
 
 def test_suggester_defaults_disable_thinking_and_set_the_deadline() -> None:
-    # Criterion 2: with no model/timeout/thinking passed (env unset -> None -> default),
+    # With no model/timeout/thinking passed (env unset -> None -> default),
     # thinking is disabled and the SDK deadline is 20s. Evidence from state/config, not a call.
     suggester = GeminiSuggester("a-project", "a-location")
     assert suggester._thinking_budget == 0
@@ -367,7 +367,7 @@ def test_call_model_wires_deadline_and_thinking_into_the_real_sdk_call(
     assert constructions["n"] == 1
 
 
-# -- Slice 34a: elapsed_ms on the response (criterion 9) ----------------------------
+# -- elapsed_ms on the response -----------------------------------------------------
 
 
 class _SlowSuggester:

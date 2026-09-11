@@ -11,7 +11,7 @@ import type { ChannelWire, SourceRow } from '../lib/dis-ui-server/sources'
 import { Sources } from './Sources'
 import { TemplateDetail } from './TemplateDetail'
 
-// Phase B (D112): the Upload guard now derives from the source CHANNEL (GET /sources), not the
+// Phase B: the Upload guard now derives from the source CHANNEL (GET /sources), not the
 // wire-defaulted ingestion_mode — hide Upload ONLY for api/reverse_api; allow for
 // file/csv/erp/NULL/missing (no regression). Plus the Data Pipelines Method column from the real
 // channel. Fixture-mode renders with the query caches seeded to control the channel.

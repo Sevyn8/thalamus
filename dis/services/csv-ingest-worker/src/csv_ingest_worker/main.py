@@ -3,7 +3,7 @@
 Exit codes (the mirror-sync pattern): 0 clean shutdown, 2 configuration error
 (missing required env, absent subscription — both loud, never defaulted).
 
-Slice 40a (the toggled readiness-healthz wrapper): with ``RUN_HEALTH_SERVER`` on
+The toggled readiness-healthz wrapper: with ``RUN_HEALTH_SERVER`` on
 (Cloud Run Service mode), the /healthz server and the pull loop run as sibling
 async tasks under the one event loop; off/unset (local dev; future Worker Pools),
 the pure loop runs via the verbatim ``await subscriber.run_forever()`` — the SAME
@@ -44,7 +44,7 @@ async def _run() -> int:
             publisher=PubsubPublisher(project_id=config.pubsub_project_id),
             audit=WorkerAudit(select_writer(AuditBackend.POSTGRES, engine=engine)),
             bronze_bucket=config.bronze_bucket,
-            pii_backend=None,  # v1.0: NO real backend exists; the gate fails loud (D40)
+            pii_backend=None,  # no real PII backend exists; the gate fails loud
         )
         subscriber = Subscriber(project_id=config.pubsub_project_id, pipeline=pipeline)
         if config.run_health_server:
@@ -64,7 +64,7 @@ async def _run() -> int:
                 tg.create_task(subscriber.run_forever())
                 tg.create_task(server.serve())
         else:
-            # Local / Worker Pools mode: the pure loop — today's line, verbatim.
+            # Local / Worker Pools mode: the pure loop, no server object.
             await subscriber.run_forever()
     finally:
         await engine.dispose()

@@ -1,15 +1,15 @@
-"""dis-validation — Pandera suites for the two validation gates (slice-05; D18, D21).
+"""dis-validation — Pandera suites for the two validation gates.
 
 - Source-shape (pre-mapping): judges a raw chunk in the tenant's vocabulary.
 - Canonical-shape (post-mapping): judges a mapped contribution against the
   invariants of the source-owned, mapping-produced columns of ONE named
-  ``dis-canonical`` model — never the consumer-injected columns (D8).
+  ``dis-canonical`` model — never the consumer-injected columns.
 - Provenance registry + drift guard: the mapping-produced-vs-consumer-injected
   line, drawn from the live schema, asserted both directions (errors, never skips).
 
 Pure lib: no Postgres, GCS, Pub/Sub, network, or file I/O. Suite definitions are
 handed in by the caller; loading them from ``config.source_mappings`` is the
-consumer's side-input (Slice 10).
+streaming consumer's side-input.
 """
 
 from __future__ import annotations

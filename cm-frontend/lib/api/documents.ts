@@ -8,14 +8,14 @@ import type {
   DocumentsListResponse,
 } from "@/types/api";
 
-// Client-onboarding documents data layer (Slice 4), wired against the
-// backend documents endpoints (Slice 3). Object content never proxies
+// Client-onboarding documents data layer over the backend documents
+// endpoints. Object content never proxies
 // through this app: upload and download go direct to GCS via V4 signed
 // URLs (see lib/api/upload.ts for the direct PUT). The signed-URL
 // endpoints (upload-url, download-url) return 503 DOCUMENT_STORAGE_UNAVAILABLE
 // when storage is not configured (local dev has no GCS); the caller renders
 // a "document storage not configured" state rather than crashing. GET list
-// is a pure DB read and works without GCS. Verify / reject (Slice 6) are
+// is a pure DB read and works without GCS. Verify / reject are
 // pure DB writes (CONFIGURE gate, same as the other document routes) and
 // drive the documents all-verified fact the review gate requires.
 

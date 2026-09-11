@@ -14,11 +14,11 @@ dependencies = [
     "pydantic-settings>=2.6",
     "pyjwt[crypto]>=2.8",
     "python-json-logger>=2.0,<4.0",
-    # Runtime HTTP client for the Auth0 Management API (Slice 2b, D-39). Was
+    # Runtime HTTP client for the Auth0 Management API. Was
     # previously dev-only (TestClient); promoted to a runtime dependency for
     # Auth0ManagementClient's outbound calls.
     "httpx>=0.27",
-    # GCS client for tenant-document storage (Slice 3): V4 signed PUT/GET
+    # GCS client for tenant-document storage: V4 signed PUT/GET
     # URLs. Signing is offline when the credentials carry a private key
     # (unit tests inject an in-memory service-account credential); on Cloud
     # Run it uses keyless IAM signBlob (runtime SA + serviceAccountTokenCreator).
@@ -52,12 +52,12 @@ asyncio_mode = "auto"
 # collection errors rather than failures.
 testpaths = ["tests"]
 
-# google-cloud-storage (Slice 3 GCS signer) ships no py.typed marker, so
+# google-cloud-storage (the GCS signer) ships no py.typed marker, so
 # mypy --strict reports import-untyped on `google.cloud.storage`. Scope the
 # ignore narrowly to that namespace; google.auth / google.oauth2 ARE typed
 # and stay checked. Does not relax strictness for any first-party module.
 #
-# google-cloud-secret-manager (Axon slice 5 channel vault) joined the same
+# google-cloud-secret-manager (the channel credential vault) joined the same
 # namespace and CHANGED HOW MYPY RESOLVES IT. `google.cloud` is a namespace
 # package: with one distribution present mypy fell back to the missing-imports
 # ignore below, and with two it began resolving the package and reporting

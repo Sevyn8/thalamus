@@ -1,4 +1,4 @@
-"""Pydantic schemas for the client-onboarding wizard (Slice 2).
+"""Pydantic schemas for the client-onboarding wizard.
 
 Section resources (legal profile, tax registrations, billing profile,
 contacts) plus the onboarding-state resource. Reads use
@@ -23,8 +23,8 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 # The fixed wizard-section vocabulary. current_step and every
-# section_status key are validated against this set (Slice 2 item 4 +
-# refinement 1). Ordered as the wizard presents them.
+# section_status key are validated against this set. Ordered as the
+# wizard presents them.
 WIZARD_SECTION_KEYS: tuple[str, ...] = (
     "company",
     "legal",
@@ -173,19 +173,19 @@ class ContactsReplaceRequest(BaseModel):
 
 
 # Derived provisioning-check status. TRUE/FALSE are the live derivations
-# (auth0_organization from tenants.auth0_org_id since Slice 5 option a;
-# admin_invited from tenant_users.invited_at). UNKNOWN is retained in the
-# vocabulary for facts that may not be derivable from cm-backend's own
-# schema in the future; no field currently emits it.
+# (auth0_organization from tenants.auth0_org_id; admin_invited from
+# tenant_users.invited_at). UNKNOWN is retained in the vocabulary for
+# facts that may not be derivable from cm-backend's own schema in the
+# future; no field currently emits it.
 ProvisioningStatus = Literal["TRUE", "FALSE", "UNKNOWN"]
 
 
 class OnboardingDocumentsBlock(BaseModel):
-    """Slice 3: the documents entry in ``sections_present`` is a block of
+    """The documents entry in ``sections_present`` is a block of
     verification-status counts (not a bare bool). ``all_verified`` is the
-    review-gate signal the wizard consumes in Slice 6: true only when at
-    least one document exists AND none are PENDING_REVIEW or REJECTED
-    (i.e. every document is VERIFIED)."""
+    review-gate signal the wizard consumes: true only when at least one
+    document exists AND none are PENDING_REVIEW or REJECTED (i.e. every
+    document is VERIFIED)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -203,15 +203,15 @@ class OnboardingSectionsPresent(BaseModel):
     tax: bool
     billing: bool
     contacts: bool
-    # Slice 3: documents becomes a counts block (wire-contract change from
-    # the Slice-2 bool). complete-onboarding gating is unchanged.
+    # Documents is a counts block, not a bare bool.
+    # complete-onboarding gating is unchanged.
     documents: OnboardingDocumentsBlock
 
 
 class OnboardingProvisioning(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    # Derived from tenants.auth0_org_id (Slice 5 option a): TRUE once the
+    # Derived from tenants.auth0_org_id: TRUE once the
     # Auth0 Organization is provisioned and its id persisted, else FALSE.
     auth0_organization: ProvisioningStatus
     # Derived live from tenant_users.invited_at IS NOT NULL.

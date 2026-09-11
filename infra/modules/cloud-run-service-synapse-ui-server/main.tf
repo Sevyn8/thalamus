@@ -6,17 +6,17 @@
 #
 # READS AS synapse_reader, AND WRITES EXACTLY TWO TABLES AS TWO OTHER ROLES.
 #
-# This paragraph said "the synapse_reader DSN and nothing else" until slice 5d
-# falsified it, and then named ONE write credential until 5e falsified that. The
-# posture is now three DSNs and the shape is what matters: each write credential
-# is ONE VERB ON ONE TABLE.
+# This paragraph used to say "the synapse_reader DSN and nothing else," and
+# then named only one write credential — both became false as more were added.
+# The posture is now three DSNs and the shape is what matters: each write
+# credential is ONE VERB ON ONE TABLE.
 #
 #   synapse_reader      every GET.
 #   synapse_lifecycle   INSERT on synapse.action_events. The console records a
-#                       snooze, dismissal or acknowledgement (slice 5d).
+#                       snooze, dismissal or acknowledgement.
 #   synapse_provisioner INSERT on synapse.provision, plus the two SELECTs its
 #                       pre-flight cannot run without. The console enables a
-#                       monitor for a tenant (slice 5e). NO UPDATE, so it cannot
+#                       monitor for a tenant. NO UPDATE, so it cannot
 #                       disable one or edit a timezone: enablement is one
 #                       direction at the database, not by convention.
 #
@@ -106,12 +106,12 @@ resource "google_secret_manager_secret_iam_member" "lifecycle_url" {
   member    = "serviceAccount:${google_service_account.synapse_ui_server.email}"
 }
 
-# The provisioner DSN (slice 5e). Created out of band like the other two.
+# The provisioner DSN. Created out of band like the other two.
 #
-# ALL FOUR PIECES LAND IN THIS SLICE, DELIBERATELY: this data source, the IAM
+# ALL FOUR PIECES LAND TOGETHER, DELIBERATELY: this data source, the IAM
 # member below it, the env block in the container, and the depends_on entry.
-# Slice 5d shipped the config change and the env var without the wiring, and the
-# write path sat dead in staging for two days behind a passing apply, because
+# Shipping the config change and the env var without the wiring once left the
+# write path dead in staging for two days behind a passing apply, because
 # terraform validated a module that was internally consistent and simply did not
 # set a variable the image required. The apply was green; the revision failed its
 # health check; staging kept serving the previous one. Nothing in a plan says
@@ -131,10 +131,10 @@ resource "google_secret_manager_secret_iam_member" "provisioner_url" {
 # =============================================================================
 # AXON: THREE SECRETS, AND ALL FOUR PIECES OF EACH LAND IN THE SLICE THAT ADDS IT.
 # =============================================================================
-# The data source, the IAM member, the env block and the depends_on entry. Slice
-# 5d is the reason that sentence is written out rather than assumed: it shipped
-# the config change and the env var and NOT the wiring, and the write path sat
-# dead in staging for two days behind a green apply. A module that never
+# The data source, the IAM member, the env block and the depends_on entry. That
+# sentence is written out rather than assumed because it happened once before:
+# shipping the config change and the env var and NOT the wiring left the write
+# path dead in staging for two days behind a green apply. A module that never
 # references a variable cannot fail on it, and a plan cannot say "the container
 # needs an env var you did not write".
 #
@@ -142,7 +142,7 @@ resource "google_secret_manager_secret_iam_member" "provisioner_url" {
 # tests/test_deployment_posture.py::test_every_secret_iam_member_is_listed_in_the_services_depends_on
 # PARSES this file, so both grants below are covered the moment they land.
 
-# THE PUBLISHER GRANT, WHICH REPLACED THE SENDER'S DSN IN SLICE 2.
+# THE PUBLISHER GRANT, WHICH REPLACED THE SENDER'S DSN.
 #
 # This service used to hold axon_sender (INSERT on axon.platform_deliveries),
 # because the 5e enable route sent in-process and wrote the ledger row itself. It
@@ -163,7 +163,7 @@ resource "google_pubsub_topic_iam_member" "axon_send_publisher" {
   member  = "serviceAccount:${google_service_account.synapse_ui_server.email}"
 }
 
-# THE READ HALF OF THE PAIR (Axon slice 3). axon_reader holds SELECT on BOTH
+# THE READ HALF OF THE PAIR. axon_reader holds SELECT on BOTH
 # ledgers and no write verb anywhere, which is the exact opposite of the role
 # above and is why it is a second secret rather than a second use of the first.
 # Reusing the sender's DSN would have meant granting SELECT to the send path, so
@@ -335,9 +335,9 @@ resource "google_cloud_run_v2_service" "synapse_ui_server" {
         value = var.jwt_audience
       }
 
-      # THE FIRST OF TWO database credentials. This said "the ONLY database
-      # credential this service is given" until slice 5d added the lifecycle DSN
-      # below, which would have made it false the moment the block landed. There
+      # THE FIRST OF TWO database credentials. This once said "the ONLY database
+      # credential this service is given," which became false the moment the
+      # lifecycle DSN below was added. There
       # is still deliberately no SYNAPSE_WRITER_URL block; the service refuses to
       # start if one appears.
       env {
@@ -350,16 +350,16 @@ resource "google_cloud_run_v2_service" "synapse_ui_server" {
         }
       }
 
-      # The SECOND, added by slice 5d and UNWIRED FOR TWO DAYS: the service has
-      # refused to start without it since that slice, which is why v6 and v7 both
+      # The SECOND, and once UNWIRED FOR TWO DAYS: the service has refused to
+      # start without it since it was added, which is why v6 and v7 both
       # failed health check and staging kept serving v5. synapse_lifecycle can
       # INSERT on synapse.action_events and nothing else, so the console can
       # record a snooze, dismissal or acknowledgement WITHOUT being able to write
       # synapse.actions, which is the orchestrator's table via synapse_writer.
       #
-      # THIS COMMENT SAID "The SECOND and last". It was wrong within one slice, and
+      # THIS COMMENT ONCE SAID "The SECOND and last". It was wrong soon after, and
       # it is left corrected rather than deleted: "and last" was a prediction about
-      # future slices dressed as a fact about this file.
+      # the future dressed as a fact about this file.
       env {
         name = "SYNAPSE_LIFECYCLE_URL"
         value_source {
@@ -370,7 +370,7 @@ resource "google_cloud_run_v2_service" "synapse_ui_server" {
         }
       }
 
-      # The THIRD (slice 5e). synapse_provisioner can INSERT on synapse.provision
+      # The THIRD. synapse_provisioner can INSERT on synapse.provision
       # and SELECT the two tables the enablement pre-flight reads, and nothing
       # else. NO UPDATE anywhere, which is what makes "the console cannot disable a
       # tenant or edit a timezone" a property of the grant rather than of the code:
@@ -400,7 +400,7 @@ resource "google_cloud_run_v2_service" "synapse_ui_server" {
         value = var.project_id
       }
 
-      # THE FIFTH DSN, AND IT IS THE FOURTH'S OPPOSITE (Axon slice 3). axon_reader
+      # THE FIFTH DSN, AND IT IS THE FOURTH'S OPPOSITE. axon_reader
       # holds SELECT on both ledgers and NO write verb anywhere. The console's
       # delivery surface reads through it; nothing writes through it.
       #
@@ -427,7 +427,7 @@ resource "google_cloud_run_v2_service" "synapse_ui_server" {
         value = var.axon_platform_oncall_email
       }
 
-      # NOT A CREDENTIAL, AND STILL REQUIRED (slice 5e). Provisioning is gated on
+      # NOT A CREDENTIAL, AND STILL REQUIRED. Provisioning is gated on
       # the Customer Master permission ADMIN.TENANTS.CONFIGURE.GLOBAL, checked
       # server-side against CM's /api/v1/me/can-do with the CALLER'S OWN Auth0
       # token forwarded. Synapse defines no permission, stores no grant and holds

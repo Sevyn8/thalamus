@@ -1,4 +1,4 @@
-"""Step 2.4 integration tests for /api/v1/health and /api/v1/ready.
+"""Integration tests for /api/v1/health and /api/v1/ready.
 
 6 tests:
     H1: GET /api/v1/health returns 200 with status/service/version body.

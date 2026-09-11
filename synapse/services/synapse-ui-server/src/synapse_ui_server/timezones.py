@@ -3,7 +3,7 @@
 =================================================================================================
 THE DEFECT THIS MODULE EXISTS TO MAKE IMPOSSIBLE
 =================================================================================================
-Slice 5e populated the timezone picker from the BROWSER, with
+The timezone picker used to be populated from the BROWSER, with
 ``Intl.supportedValuesOf("timeZone")``. On staging the picker offered ``Asia/Calcutta`` and
 ``Asia/Katmandu``, did not offer ``Asia/Kolkata`` AT ALL, and every enable was refused with a 422
 before the INSERT. Every tenant in production is ``Asia/Kolkata``, so the control could not emit

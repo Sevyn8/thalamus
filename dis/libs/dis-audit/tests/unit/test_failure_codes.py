@@ -1,8 +1,8 @@
-"""The Slice 30b stable failure vocabulary: membership, the registry, the fallback.
+"""The stable failure vocabulary: membership, the registry, the fallback.
 
 ``failure_code`` has NO live CHECK (a free varchar(64)), so — like ``Stage`` —
 closure is dis-audit's type-level guarantee and these unit pins are the guard.
-The superset rule: every pre-30b emitted value maps to a member with its detail
+The superset rule: every emitted value maps to a member with its detail
 preserved (the mapping table lives in ``failure_codes.py``'s member comments).
 """
 

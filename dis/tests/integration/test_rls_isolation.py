@@ -1,6 +1,6 @@
 """RLS isolation: a tenant-scoped session cannot read another tenant's rows (AC2/AC3).
 
-This is the load-bearing test of Slice 4. It WRITES to Postgres, so it runs only
+This is the load-bearing RLS isolation test. It WRITES to Postgres, so it runs only
 against ``ithina_dis_db`` on 5433 (never Customer Master on 5432); the ``dis-rls``
 target guard refuses anything else.
 
@@ -64,12 +64,12 @@ async def engine() -> AsyncIterator[AsyncEngine]:
     url = os.environ.get("POSTGRES_URL")
     if not url:
         raise StackRequiredError(
-            "POSTGRES_URL is not set — the Slice 4 RLS isolation test (load-bearing "
+            "POSTGRES_URL is not set — the RLS isolation test (load-bearing "
             "AC2) refuses to skip silently. Bring up the stack (make run-local) and "
             "export POSTGRES_URL (5433 / ithina_dis_db)."
         )
 
-    # Identity FK targets (tenants A and B) come from the Slice 2 seeder; idempotent.
+    # Identity FK targets (tenants A and B) come from the seeder; idempotent.
     from dis_testing.seed import seed_default_fixtures
 
     try:
@@ -165,7 +165,7 @@ async def test_tenant_isolation_is_symmetric(engine: AsyncEngine) -> None:
         assert id_a in a_visible and id_b not in a_visible, "tenant A leaked B's row (or lost its own)"
         assert id_b in b_visible and id_a not in b_visible, "tenant B leaked A's row (or lost its own)"
     finally:
-        # A test that mutates the shared live DB restores it (D100): delete both bronze rows,
+        # A test that mutates the shared live DB restores it: delete both bronze rows,
         # each scoped to its tenant (bronze is FORCE RLS).
         async with rls_session(engine, _TENANT_A) as conn:
             await conn.execute(text("DELETE FROM bronze.data_ingress_events WHERE id = :id"), {"id": id_a})
@@ -174,7 +174,7 @@ async def test_tenant_isolation_is_symmetric(engine: AsyncEngine) -> None:
 
 
 async def test_no_tenant_context_reads_zero_rows(engine: AsyncEngine) -> None:
-    # Negative control (Slice 1 smoke parity). Unset GUC → current_setting(..., true)
+    # Negative control. Unset GUC → current_setting(..., true)
     # is NULL → tenant_id = NULL matches nothing → zero rows. This is exactly what
     # would fail if the scope were not set or the role could bypass RLS.
     assert await _visible_ids(engine, tenant_id=None) == set()

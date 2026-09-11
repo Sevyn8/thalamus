@@ -6,8 +6,8 @@
 -- Identical shape, constraints, and RLS to canonical; lets the operator
 -- inspect realistic event output before promoting the mapping to ACTIVE.
 --
--- Same partitioning posture as canonical (plain for beta; Slice 21
--- re-partitions by event_date). Same atomic dual-write pattern (paired with
+-- Same partitioning posture as canonical (plain for beta; a future
+-- re-partition keys on event_date). Same atomic dual-write pattern (paired with
 -- staging.store_sku_current_position in one Cloud SQL transaction).
 --
 -- Constraint and index names prefixed with `_st_` to distinguish from
@@ -17,20 +17,20 @@
 -- Every row carries mapping_version_id (architecture B1, v0.6).
 --
 -- ----------------------------------------------------------------------------
--- Partitioning: none for beta (D77 scope revised)
+-- Partitioning: none for beta
 -- ----------------------------------------------------------------------------
 -- This is a PLAIN table. It was PARTITION BY RANGE (event_date) with a fixed
 -- bootstrap-created daily window, no DEFAULT partition, and no automation —
--- the same write-cliff shape Slice 30a removed from audit.events (D77), except
+-- the same write-cliff shape audit.events was de-partitioned to remove, except
 -- here the miss failed LOUD (batch nack), not silently. De-partitioned for
 -- beta on the same disposable-rows/drop-recreate pattern (migration 0009).
 --
--- Partitioning returns at Slice 21 (BQ archive + eviction), WITH automation
--- (decisions.md D29/D34). event_date stays NOT NULL + CHECK-consistent
+-- Partitioning is planned to return with BQ archive + eviction, WITH
+-- automation. event_date stays NOT NULL + CHECK-consistent
 -- (ck_st_ssse_event_date_matches_sale_timestamp) so that re-partition is safe.
 --
 -- ----------------------------------------------------------------------------
--- Phase 0 migration order (required for this DDL to succeed)
+-- Migration order (required for this DDL to succeed)
 -- ----------------------------------------------------------------------------
 --
 -- 1. Schemas exist: canonical, identity_mirror, config.
@@ -53,7 +53,7 @@
 
 
 -- ----------------------------------------------------------------------------
--- Table (plain for beta; Slice 21 re-partitions by event_date)
+-- Table (plain for beta; a future re-partition keys on event_date)
 -- ----------------------------------------------------------------------------
 
 CREATE TABLE staging.store_sku_sale_events (
@@ -61,7 +61,7 @@ CREATE TABLE staging.store_sku_sale_events (
     -- ---------- Surrogate key ----------
     id                          UUID                                NOT NULL DEFAULT uuidv7(),
 
-    -- ---------- Event date (Slice 21's re-partition key) ----------
+    -- ---------- Event date (the future re-partition key) ----------
     event_date                  DATE                                NOT NULL,
 
     -- ---------- Identity ----------
@@ -155,8 +155,8 @@ CREATE TABLE staging.store_sku_sale_events (
     -- ---------- Primary key ----------
     CONSTRAINT pk_st_ssse
         PRIMARY KEY (id),
-        -- (id, event_date) while partitioned — the composite existed only to
-        -- satisfy the partition-key-in-PK requirement (the D77 PK precedent).
+        -- While partitioned this was (id, event_date) — the composite existed
+        -- only to satisfy Postgres's partition-key-in-PK requirement.
 
     -- ---------- Foreign keys ----------
     CONSTRAINT fk_st_ssse_tenant

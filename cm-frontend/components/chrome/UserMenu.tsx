@@ -28,10 +28,10 @@ function initialsOf(name: string): string {
     .join("");
 }
 
-// Phase 5f.W.1: per-user role display deferred until /api/v1/role-
-// assignments?user_id={me} wires (Phase 5f.Z.x or later). For now,
-// show the userType from the JWT (PLATFORM admin vs Tenant member).
-// Role-name specificity returns when role-assignments is consumed.
+// Per-user role display is deferred until /api/v1/role-assignments?
+// user_id={me} wires. For now, show the userType from the JWT
+// (PLATFORM admin vs Tenant member). Role-name specificity returns
+// when role-assignments is consumed.
 function userTypeLabel(persona: Persona): string {
   return persona.userType === "PLATFORM" ? "Platform admin" : "Tenant member";
 }

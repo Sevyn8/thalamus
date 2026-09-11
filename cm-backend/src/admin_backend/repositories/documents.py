@@ -1,4 +1,4 @@
-"""Data access for tenant onboarding documents (Slice 3).
+"""Data access for tenant onboarding documents.
 
 One ``DocumentsRepo`` covering the document rows on ``tenant_documents``.
 Raw ``text()`` SQL, every identifier schema-qualified via
@@ -7,7 +7,7 @@ GUCs (PLATFORM callers see all rows via the D-29 OR-branch; the endpoints
 are PLATFORM-audience-gated anyway).
 
 Write methods emit exactly one audit event per call via
-``emit_audit_event`` (resource_type TENANT, mirroring the Slice-2
+``emit_audit_event`` (resource_type TENANT, mirroring the
 onboarding repo). ``auth`` + ``request_id`` are optional and
 both-or-neither: repo-level tests may omit them to skip emission.
 

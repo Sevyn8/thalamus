@@ -1,4 +1,4 @@
-"""D6's table-name half. THIS TEST IS THE MECHANISM, not a belt.
+"""The table-name containment rule's enforcement half. THIS TEST IS THE MECHANISM, not a belt.
 
 The import-linter contracts in dis/pyproject.toml forbid dis_canonical / dis_rls /
 sqlalchemy to synapse.core, and they are real (verified by temporarily adding a
@@ -21,7 +21,7 @@ import pathlib
 
 SYNAPSE_SRC = pathlib.Path(__file__).resolve().parents[2] / "src" / "synapse"
 RESOLVERS = SYNAPSE_SRC / "resolvers"
-# The second package permitted to build SQL, added in slice 5. Resolvers READ canonical;
+# The second package permitted to build SQL. Resolvers READ canonical;
 # persistence WRITES synapse.actions. Both construct statements; nothing else may.
 PERSISTENCE = SYNAPSE_SRC / "persistence"
 
@@ -92,7 +92,7 @@ def test_the_last_sale_at_resolver_really_does_name_its_table() -> None:
 def test_the_collapse_helper_names_no_table_in_its_code() -> None:
     """The helper is parameterised, so its reusability is a code property worth pinning.
 
-    Prose is exempt: the module explains WHICH tables the D33 key was verified against, and
+    Prose is exempt: the module explains WHICH tables the dedup key was verified against, and
     it sits under resolvers/ where naming them is allowed. What must not appear is a table
     name inside a `table(...)` construct — that would make the helper sale-events-specific
     and silently un-reusable for change events.
@@ -114,7 +114,7 @@ def test_statement_constructors_are_imported_only_where_sql_is_built() -> None:
     whereas ``from sqlalchemy.ext.asyncio import AsyncEngine`` is a parameter type and
     nothing more.
 
-    THE PERMITTED SET WIDENED IN SLICE 5, and the guard is what forced the question. It said
+    THE PERMITTED SET WIDENED, and the guard is what forced the question. It said
     "only synapse/resolvers/" — true when written, when resolvers were the only package that
     touched a database — and ``synapse/persistence/`` then arrived legitimately constructing an
     INSERT. Widening the set beats deleting the guard: it still holds ``core`` pure (no SQL in

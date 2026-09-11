@@ -11,11 +11,11 @@ import type {
   TenantTier,
 } from "@/types/api";
 
-// Exported in Phase 5b.3 so DIS can build domain-specific chips
-// (RunStatus, StreamHealth, AlertSeverity, FreshnessState, ValidationResult,
-// DriftSeverity, etc.) by composing the base Chip with its own tone tables.
-// Existing Ithina typed wrappers below (StatusChip, TierChip, ResultChip,
-// ActionChip, ScopeChip) are unchanged.
+// Exported so DIS can build domain-specific chips (RunStatus, StreamHealth,
+// AlertSeverity, FreshnessState, ValidationResult, DriftSeverity, etc.) by
+// composing the base Chip with its own tone tables. Existing Ithina typed
+// wrappers below (StatusChip, TierChip, ResultChip, ActionChip, ScopeChip)
+// are unchanged.
 export type Tone = "green" | "amber" | "red" | "blue" | "violet" | "teal" | "purple" | "grey";
 
 // dis-ui-ver2's badge vocabulary. ver2 defines six status classes (.b-ok/.b-warn/.b-fail/
@@ -90,7 +90,7 @@ const DOT_CLASSES: Record<Tone, string> = {
 // (INVITED | ACTIVE | SUSPENDED), so PlatformUserStatus alone covers
 // both user audiences in the union. StoreStatus adds OPENING +
 // CLOSED on top of the existing ACTIVE/INACTIVE values it shares
-// with other audiences (Phase 5-stores 2026-05-18).
+// with other audiences.
 type AnyStatus =
   | TenantStatus
   | PlatformUserStatus

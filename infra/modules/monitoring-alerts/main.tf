@@ -278,7 +278,7 @@ resource "google_monitoring_alert_policy" "dlq_not_empty" {
       # THE REGEX IS ".*-dlq-sub" AND IT USED TO BE "dis-.*-dlq-sub". THE WIDENING IS THE
       # WHOLE POINT AND IT IS NOT COSMETIC.
       #
-      # Axon slice 2 added axon-send-requested-dlq-sub. Under the old pattern that queue was
+      # Adding axon-send-requested-dlq-sub exposed the gap. Under the old pattern that queue was
       # NOT MATCHED, so a dead-lettered send would have sat there unalerted for its 31 day
       # retention and then been deleted. The alert would have kept reporting healthy the
       # entire time, because it was reporting on a set that did not include the new queue.

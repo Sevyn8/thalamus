@@ -4,7 +4,7 @@
 # short so imports read `axon.send` rather than a prefixed variant.
 name = "thalamus-axon"
 version = "0.0.0"
-description = "Axon - the Thalamus communications and delivery plane. A PEER of DIS and of Synapse, not part of either. Holds ADDRESSES and SEND STATE and nothing else: auth, RBAC, roles and identity stay with Customer Master. Slice 1 is the delivery ledger split by audience, the Channel port, and one SendGrid email adapter for Sevyn8's own internal traffic."
+description = "Axon - the Thalamus communications and delivery plane. A PEER of DIS and of Synapse, not part of either. Holds ADDRESSES and SEND STATE and nothing else: auth, RBAC, roles and identity stay with Customer Master. The delivery ledger split by audience, the Channel port, and one SendGrid email adapter for Sevyn8's own internal traffic."
 requires-python = ">=3.12"
 dependencies = [
   # The two-GUC session discipline plus the FIRST-USE POSTURE GUARD. The guard is the reason

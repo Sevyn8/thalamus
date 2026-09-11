@@ -1,26 +1,25 @@
-"""Fire-and-forget audit emission for the CSV-upload receiver (hard rule 11, D43).
+"""Fire-and-forget audit emission for the CSV-upload receiver.
 
-The 9b ``WorkerAudit`` pattern, service-named. Stage vocabulary is dis-audit's
-CLOSED enum — this service adds no members. The mapping for the upload endpoint:
+Stage vocabulary is dis-audit's CLOSED enum — this service adds no members.
+The mapping for the upload endpoint:
 
 - an accepted upload (object written, ``csv.received`` published) →
   ``Stage.RECEIVED`` + ``Outcome.SUCCESS`` with ``event_data.phase =
   "csv_upload_phase1"`` — distinguishable from the worker's own RECEIVED row by
-  ``service_name`` (the closed-enum gap for a dedicated upload stage is the
-  registered D42/D45 follow-up, API_CONTRACT §9).
+  ``service_name`` (the closed enum has no dedicated upload stage).
 - a GCS-write or publish failure after identity is resolved →
   ``Stage.RECEIVED`` + ``Outcome.FAILURE`` (tenant + trace are known there).
 - 4xx rejections (multipart shape/size, tier-0, unknown/inactive template or
-  store) ALSO emit ``Stage.RECEIVED`` + ``Outcome.FAILURE`` (Slice 30b): tenant
+  store) ALSO emit ``Stage.RECEIVED`` + ``Outcome.FAILURE``: tenant
   and trace exist before the first gate, so the audit story starts at the
   rejection, with the stable ``FailureCode`` and the step/reason in
-  ``event_data``. Emit-then-re-raise: the §2.3 envelope and status codes are
+  ``event_data``. Emit-then-re-raise: the error envelope and status codes are
   untouched, and the fire-and-forget emit can never turn a 4xx into a 5xx.
 
 This endpoint is a receiver stage, so events carry the caller context columns
-(``auth_principal`` as ``user:{sub}`` per the live bronze column comment's
+(``auth_principal`` as ``user:{sub}``, matching the bronze principal
 vocabulary, ``client_ip``). Failures in emission are logged and NEVER raised —
-the one sanctioned swallow (code-quality rule 6); duplicates tolerated (D44).
+the one sanctioned swallow; duplicate audit rows are tolerated.
 """
 
 from __future__ import annotations
@@ -84,7 +83,7 @@ class UiAudit:
             written = await self._writer.write(event)
             if not written:
                 # The writer already logged its own failure detail; this line is the
-                # service-side alert-worthy marker (D45 silent-loss mitigation).
-                log.error("audit write reported failure; data path continues (hard rule 11)")
-        except Exception:  # noqa: BLE001 - the ONE sanctioned swallow (hard rule 11)
+                # service-side alert-worthy marker so a silent audit loss is visible.
+                log.error("audit write reported failure; data path continues")
+        except Exception:  # noqa: BLE001 - the ONE sanctioned swallow (audit is fire-and-forget)
             log.exception("audit emission raised; swallowed so the data path continues")

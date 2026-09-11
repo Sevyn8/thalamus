@@ -2,13 +2,8 @@
 # migrate-synapse — the way Synapse's alembic chain reaches a database
 # =============================================================================
 #
-# WHY THIS EXISTS. Before it, Synapse's chain had NO mechanism at all. Searched and reported:
-# there is no Cloud Run job, no script, no Makefile target and no DEPLOY.md entry naming
-# SYNAPSE_ADMIN_URL — the only references in the whole repository are env.py itself, two
-# integration-test docstrings, a comment in dis/infra/local/postgres-init.sql, and a local
-# probe database. HOW 0001-0003 REACHED STAGING IS NOT RECORDED ANYWHERE. That is the second
-# instance of the standing `no-migrate-dis-job-exists` ledger item: two planes, two alembic
-# chains, and neither had a way in.
+# This job is the ONLY mechanism that applies Synapse's alembic chain to a
+# deployed database; nothing else in the repository holds SYNAPSE_ADMIN_URL.
 #
 # SHAPE MIRRORS cloud-run-job-migrate-cm, deliberately and almost line for line, because that
 # job is the proven pattern in this project:

@@ -6,15 +6,14 @@ import { getMappingSuggestions } from './mapping-suggestions'
 import type { CatalogField, FieldDatatype, TemplateMappingField } from './mapping-fields'
 
 // =====================================================================================
-// Connect-a-source CSV branch. The POS/native-connector branch (the PosWizard stubs:
-// initiate/exchange OAuth, locations, POS mapping-suggestions, preview, create) was RETIRED
-// with PosWizard in S3 — the Square connector now has its own real journey
-// (routes/connect/square + lib/dis-ui-server/square-oauth.ts). What remains here is the CSV
-// wizard's REAL, deployed-endpoint path plus the mapping-suggestion shapes it shares:
+// Connect-a-source CSV branch. There is no POS/native-connector branch here — the Square
+// connector has its own real journey (routes/connect/square + lib/dis-ui-server/square-oauth.ts).
+// This is the CSV wizard's REAL, deployed-endpoint path plus the mapping-suggestion shapes it
+// shares:
 //   - analyzeCsvSample: client-side parse (papaparse, analyze-csv.ts) + POST /mapping-suggestions
-//     (type-aware, D90) for per-column targets/confidence/reasoning.
+//     (type-aware) for per-column targets/confidence/reasoning.
 //   - createCsvTemplate / validateCsvTemplate: POST /mapping-templates[/validate] with the
-//     Slice-16a semantic columns[] shape (D89).
+//     semantic columns[] shape.
 // =====================================================================================
 
 // ----- AI mapping suggestions (shapes shared by the CSV mapping step) -----------------
@@ -53,12 +52,12 @@ export type ConnectorMappingResponse = {
 // validate below are REAL, mode-aware calls to deployed endpoints.
 // =====================================================================================
 
-// REAL (D90): parse the uploaded file client-side (papaparse, analyze-csv.ts) into a column
+// REAL: parse the uploaded file client-side (papaparse, analyze-csv.ts) into a column
 // profile, then call the type-aware /mapping-suggestions endpoint PASSING `template_type` so
 // the suggested targets come from the SAME per-type catalog the mapping step's dropdown uses.
 // `detectedFormat` is null on purpose: the server returns no format, so the operator DECLARES
 // it in the mapping step (locale picker + per-column datetime format), which createCsvTemplate
-// assembles into the 16a `src_*` declarations. `catalog` is used ONLY by the fixture-mode
+// assembles into the `src_*` declarations. `catalog` is used ONLY by the fixture-mode
 // mechanical matcher (real mode ignores it and the server reads its own per-type catalog).
 export async function analyzeCsvSample(
   file: File,
@@ -99,11 +98,9 @@ export async function analyzeCsvSample(
   return { source: resp.source === 'llm' ? 'vertex' : 'fallback', fields }
 }
 
-// ----- Locale picker (build-ahead, full target set) -----------------------------------
-// US / EU / Swiss decimal+thousand presets. KNOWN GAP: as shipped in 16a, the create endpoint
-// accepts src_thousand_separator ONLY in {",", "'"} (NOT "."), so the EU dot-thousands preset
-// 422s until Sanjeev's 16b. We build the picker for ALL THREE locales anyway (per the brief);
-// the type below intentionally allows "." so the EU preset compiles and is offered.
+// ----- Locale picker (full target set) -------------------------------------------------
+// US / EU / Swiss decimal+thousand presets. The create endpoint accepts src_thousand_separator
+// in {".", ",", "'"} (schemas/mapping_templates.py), so all three presets are valid on the wire.
 export type LocaleKey = 'us' | 'eu' | 'swiss'
 export type LocalePreset = {
   key: LocaleKey
@@ -113,7 +110,7 @@ export type LocalePreset = {
 }
 export const LOCALE_PRESETS: LocalePreset[] = [
   { key: 'us', label: 'US (1,299.50)', decimal: '.', thousand: ',' },
-  { key: 'eu', label: 'EU (1.299,50)', decimal: ',', thousand: '.' }, // thousand "." 422s until 16b
+  { key: 'eu', label: 'EU (1.299,50)', decimal: ',', thousand: '.' },
   { key: 'swiss', label: "Swiss (1'299.50)", decimal: '.', thousand: "'" },
 ]
 export function localePreset(key: LocaleKey): LocalePreset {
@@ -122,7 +119,7 @@ export function localePreset(key: LocaleKey): LocalePreset {
 
 // Per-datetime-column format choices. The `value` is the wire token sent verbatim as
 // src_datetime_format in the create columns[] body (a READABLE token, never a strptime code):
-// Sanjeev's slice-16c translation layer converts the token to the engine format and REJECTS
+// the backend translation layer (mapping_translation.py) converts the token to the engine format and REJECTS
 // any token outside the locked five with a 4xx. This set is held in EXACT lockstep with that
 // backend set (DD-MM-YYYY, DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD, DD-MM-YY); labels are friendly,
 // only the value is load-bearing.
@@ -134,11 +131,10 @@ export const CSV_DATETIME_FORMATS: { value: string; label: string }[] = [
   { value: 'DD-MM-YY', label: 'Day-Month-Year, 2-digit year (31-12-25)' },
 ]
 
-// ----- Create (Slice-16a semantic columns[] contract, D89) ----------------------------
+// ----- Create (semantic columns[] contract) --------------------------------------------
 
-// One source-to-destination column declaration, mirroring the backend MappingColumn (16a).
-// src_thousand_separator allows "." (the EU preset) even though 16a only accepts {",", "'"};
-// EU dot-thousands therefore 422s until 16b (deliberate, see LOCALE_PRESETS).
+// One source-to-destination column declaration, mirroring the backend MappingColumn
+// (schemas/mapping_templates.py); src_thousand_separator spans {".", ",", "'"} like the contract.
 export type ConnectorColumn = {
   src_key: string
   dest_key: string // catalog key for the chosen template_type, or "__ignore__"
@@ -176,7 +172,7 @@ type RawCreateResponse = {
   draft_version: number | null
 }
 
-// The ONE create/validate wire body (Slice-16a semantic columns[] contract, D89). Both the create
+// The ONE create/validate wire body (semantic columns[] contract). Both the create
 // POST and the validate dry-run POST send EXACTLY this shape, so the dry-run validates the same
 // document create would submit — no divergent hand-built body.
 function toCreateBody(input: CreateCsvTemplateInput): Record<string, unknown> {
@@ -188,10 +184,9 @@ function toCreateBody(input: CreateCsvTemplateInput): Record<string, unknown> {
   }
 }
 
-// REAL (D89): POST /api/v1/mapping-templates with the semantic columns[] body (NO mapping_rules
-// - it is extra-forbidden and would 422). 16a shape-validates + returns a SYNTHETIC 201. Fixture
-// mode mirrors that synthetic shape (draft v1, no active). The create persists nothing until
-// 16c, so callers must present the result honestly (submitted, not live/listable/ingestible).
+// REAL: POST /api/v1/mapping-templates with the semantic columns[] body (NO mapping_rules
+// - it is extra-forbidden and would 422). The backend validates the columns, persists the
+// template, and writes the v1 ACTIVE (create-as-ACTIVE). Fixture mode mirrors that shape.
 export async function createCsvTemplate(input: CreateCsvTemplateInput): Promise<CreatedTemplate> {
   if (isRealMode()) {
     const raw = await postJson<RawCreateResponse>('/api/v1/mapping-templates', toCreateBody(input))
@@ -203,7 +198,7 @@ export async function createCsvTemplate(input: CreateCsvTemplateInput): Promise<
       draftVersion: raw.draft_version,
     }
   }
-  // Fixture: mirror the slice-16c REAL create (create-as-ACTIVE, D88): the row is written ACTIVE
+  // Fixture: mirror the REAL create (create-as-ACTIVE): the row is written ACTIVE
   // and persisted, so the response carries active_version 1 (no draft). Keeps dev/tests in step
   // with real behavior, so CsvCreatedStep shows "Created and live" consistently.
   return {

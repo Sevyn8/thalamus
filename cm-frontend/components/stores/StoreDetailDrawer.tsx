@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { EditStoreModal } from "./EditStoreModal";
 import type { StoreDetail, StoreStatus } from "@/types/api";
 
-// Phase 5-stores: state-transition matrix mirrors the backend's
+// State-transition matrix mirrors the backend's
 // `TRANSITION_MATRIX` (admin_backend/repositories/stores.py:93-98).
 // Liberal 9-cell graph: all transitions allowed EXCEPT `*→OPENING`.
 // CLOSED is reversible. Same-state rejected server-side; we filter

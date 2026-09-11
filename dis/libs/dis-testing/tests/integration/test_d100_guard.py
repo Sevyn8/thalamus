@@ -1,4 +1,4 @@
-"""Bite proof for the D100 post-suite clean-state guard.
+"""Bite proof for the post-suite clean-state guard.
 
 DB-backed and stack-gated (skips when ``POSTGRES_ADMIN_URL`` is unset), like the other
 integration tests in this dir. Each test injects ONE residue row, asserts the guard FAILS

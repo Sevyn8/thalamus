@@ -4,36 +4,36 @@ import type { AuthSnapshot } from '../../auth/AuthSnapshot'
 import { DisUiServerHttpError, getJson, patchJson, postJson } from './client'
 import { isRealMode } from './mode'
 
-// Mapping-template endpoints (slice 14b, D68): a mapping is a TEMPLATE - a version lineage
+// Mapping-template endpoints: a mapping is a TEMPLATE - a version lineage
 // per (tenant, source, template_id). Shaped EXACTLY to the real contracts
 // (services/dis-ui-server/.../schemas/mapping_templates.py): list MappingTemplate at
 // GET /api/v1/mapping-templates[?source_id=], detail MappingTemplateDetail at
 // GET /api/v1/mapping-templates/{template_id} (throw-style 404 for unknown), create at
 // POST /api/v1/mapping-templates, edit at PATCH /api/v1/mapping-templates/{template_id}.
-// Mode-aware (T10): real mode calls the live endpoints; fixture mode (default) returns the
+// Mode-aware: real mode calls the live endpoints; fixture mode (default) returns the
 // inlined fixtures, so local dev + tests work with no backend.
 //
-// Contract diff (T10): the real MappingTemplate/Detail wire shape has NO `ingestion_mode`
-// (it is a UI-only provisional field, T8/D-flag: the real model would derive it from the
+// Contract diff: the real MappingTemplate/Detail wire shape has NO `ingestion_mode`
+// (it is a UI-only provisional field: the real model would derive it from the
 // source connector type). The real branch defaults it to 'file' (today's only real grain is
 // file/CSV), keeping the UI type stable; the fixture carries explicit values.
 
 export type TemplateStatus = 'draft' | 'staged' | 'active' | 'deprecated'
 
-// Ingestion mode (T8): how data arrives for the source this template belongs to. 'file'
+// Ingestion mode: how data arrives for the source this template belongs to. 'file'
 // sources (CSV upload) accept a manual batch upload; 'api' sources (POS/ERP connectors like
 // Square) sync automatically, so there is no manual ingest action.
 //
-// PROVISIONAL + ISOLATED (FM4): the real contract does not expose this yet. In the real
+// PROVISIONAL + ISOLATED: the real contract does not expose this yet. In the real
 // model the mode derives from the source's connector type (config.source_mappings / the
 // connector registry), and the mapping-templates list response would denormalize it per
 // template (or the UI would join sources). Kept here, on the template fixture, so the UI can
 // gate the ingest affordance now; swap to the contract field when it lands.
 export type IngestionMode = 'file' | 'api'
 
-// Raw D49 SourceMapping (mapping_rules served raw by the backend): the FIELD half is
+// Raw SourceMapping (mapping_rules served raw by the backend): the FIELD half is
 // `rename` (source col -> canonical key); the FORMAT-RULES half is normalize/cast/derive
-// (date format, decimal separator, type casts) - the two concerns T2 lays out separately.
+// (date format, decimal separator, type casts) - two separate concerns.
 // Real TransformSpec shape (libs/dis-mapping/models/transform.py): { op, args } with args
 // NESTED. parse_date/parse_datetime use args.format (a polars strptime string) + (datetime)
 // args.timezone; parse_decimal uses args.decimal_separator + args.thousands_separator.
@@ -48,7 +48,7 @@ export type SourceMappingRules = {
 }
 
 export type MappingTemplateVersion = {
-  mapping_version_id: number // global BIGSERIAL (D22 pin / audit ref)
+  mapping_version_id: number // global BIGSERIAL (audit ref)
   version: number // per-template version_seq
   status: TemplateStatus
   mapping_rules: SourceMappingRules
@@ -56,7 +56,7 @@ export type MappingTemplateVersion = {
   transform_count: number
   predecessor_version_id: number | null
   created_at: string
-  created_by_user_id: string | null // raw UUID or null (Blocker 5 / D56 pending)
+  created_by_user_id: string | null // raw UUID or null (no display-name resolution)
   activated_at: string | null
   deprecated_at: string | null
 }
@@ -65,13 +65,12 @@ export type MappingTemplate = {
   template_id: string // UUID, lowercase string
   source_id: string
   template_name: string
-  // The packet axis (Slice 14d): 'sales' | 'inventory_change' | 'snapshot'. ADDITIVE + OPTIONAL
+  // The packet axis: 'sales' | 'inventory_change' | 'snapshot'. ADDITIVE + OPTIONAL
   // + READ-ONLY: surfaced from the real GET when present so the registry can show a friendly
-  // template-type label (resolved via GET /template-types display_name). The create/patch
-  // bodies do NOT carry it here - the create-path template_type wiring is a separate, pending
-  // change (Sanjeev's POST contract). Legacy/absent -> undefined (the UI degrades, no badge).
+  // template-type label (resolved via GET /template-types display_name).
+  // Legacy/absent -> undefined (the UI degrades, no badge).
   template_type?: string
-  ingestion_mode: IngestionMode // T8, provisional (see IngestionMode)
+  ingestion_mode: IngestionMode // provisional (see IngestionMode)
   latest_version: number
   active_version: number | null
   staged_version: number | null
@@ -93,8 +92,8 @@ export type MappingTemplateDetail = MappingTemplate & {
 // SourceMapping document server-side (translate_columns_to_mapping_rules). This is the
 // seam that keeps the UI-provisioned mapping equivalent to the spine's: the spine's
 // provisioning.snapshot_mapping_rules() is asserted equal to translate(columns) for the
-// SAME columns (connectors/.../test_provisioning_equivalence.py). PATCH still carries the
-// raw D49 document (edit path, unchanged).
+// SAME columns (connectors/.../test_provisioning_equivalence.py). PATCH carries the
+// raw SourceMapping document (edit path).
 export type MappingColumn = {
   src_key: string
   dest_key: string
@@ -107,7 +106,7 @@ export type MappingColumn = {
 export type MappingTemplateCreate = {
   source_id: string
   template_name: string
-  // The packet axis (D68 / Slice 14d): 'sales' | 'inventory_change' | 'snapshot'.
+  // The packet axis: 'sales' | 'inventory_change' | 'snapshot'.
   template_type: string
   columns: MappingColumn[]
   // PLATFORM impersonation target; the tenant path never sets it.
@@ -129,15 +128,15 @@ type RawMappingTemplateDetail = Omit<MappingTemplateDetail, 'ingestion_mode'> & 
   ingestion_mode?: IngestionMode
 }
 
-// SEED, keyed by tenant. manual_csv_upload carries two templates (the D68 multi-template
-// story: a source can carry sales / inventory / pricing). Rename targets are real T1
+// SEED, keyed by tenant. manual_csv_upload carries two templates (a source can carry
+// sales / inventory / pricing). Rename targets are real
 // catalog keys ONLY - store_id is identity-resolved and never a field-mapping target.
 const SALES_TEMPLATE_ID = '0190ac10-5a00-7000-8a00-0000000000a1'
 const INVENTORY_TEMPLATE_ID = '0190ac10-5a00-7000-8a00-0000000000a2'
 // A draft-only template (never activated): no active version, so a recurring batch cannot
-// reuse it. Exercises the active-version precondition (T4 FM3).
+// reuse it. Exercises the active-version precondition.
 const PRICING_TEMPLATE_ID = '0190ac10-5a00-7000-8a00-0000000000a3'
-// A template under a SECOND source, so the flat "Ingest Data" list (T5) spans more than one
+// A template under a SECOND source, so the flat "Ingest Data" list spans more than one
 // source and source context is meaningful (two templates can share a name across sources).
 const ORDERS_TEMPLATE_ID = '0190ac10-5a00-7000-8a00-0000000000b1'
 
@@ -403,9 +402,9 @@ function normalizeDetail(raw: RawMappingTemplateDetail): MappingTemplateDetail {
   return { ...raw, ingestion_mode: raw.ingestion_mode ?? 'file' }
 }
 
-// Fixture-mode synthesis (T10): build a plausible v1 detail from a create/edit request. No
+// Fixture-mode synthesis: build a plausible v1 detail from a create/edit request. No
 // mutable store - real mode is the source of truth for writes. `live` mirrors the backend
-// lifecycle: create writes the v1 ACTIVE (create-as-ACTIVE, D88), edit writes a DRAFT.
+// lifecycle: create writes the v1 ACTIVE (create-as-ACTIVE), edit writes a DRAFT.
 function synthV1Detail(
   templateId: string,
   sourceId: string,
@@ -508,7 +507,7 @@ export async function getMappingTemplate(
 }
 
 // PATCH /api/v1/mapping-templates/{template_id} -> MappingTemplateDetail (DRAFT edit / new
-// DRAFT, per the D17 lifecycle, server-side). Additive (T10): no screen consumer yet. Real
+// DRAFT, server-side lifecycle). No screen consumer yet. Real
 // mode patches; fixture synthesizes a DRAFT echoing the patch.
 export async function patchMappingTemplate(
   templateId: string,
@@ -527,14 +526,14 @@ export async function patchMappingTemplate(
     'manual_csv_upload',
     body.template_name ?? 'Template',
     body.mapping_rules ?? EMPTY_RULES,
-    false, // edit writes a DRAFT (the D17 lifecycle for changes)
+    false, // edit writes a DRAFT (the lifecycle for changes)
   )
 }
 
 // A fixed UUID for the fixture-mode synthesized create (no persistence; local dev/test only).
 const SYNTH_CREATE_TEMPLATE_ID = '0190ac10-5a00-7000-8a00-0000000000c1'
 
-// POST /api/v1/mapping-templates -> MappingTemplateDetail. Create-as-ACTIVE (D88): the BFF
+// POST /api/v1/mapping-templates -> MappingTemplateDetail. Create-as-ACTIVE: the BFF
 // writes the v1 ACTIVE in one step (no staged/activate ceremony). The body is COLUMN-based;
 // the BFF derives + validates the SourceMapping server-side. Real mode posts; fixture mode
 // synthesizes a v1 ACTIVE detail from the columns (rename = src_key -> dest_key) so local dev
@@ -556,7 +555,7 @@ export async function createMappingTemplate(
     body.source_id,
     body.template_name,
     rules,
-    true, // create writes the v1 ACTIVE (create-as-ACTIVE, D88)
+    true, // create writes the v1 ACTIVE (create-as-ACTIVE)
   )
 }
 
@@ -579,8 +578,8 @@ export async function createMappingTemplateIfAbsent(
   }
 }
 
-// Activation is no longer a separate step: create-as-ACTIVE (D88) writes the v1 ACTIVE in one
-// step, so go-live is immediately live and the draft -> activate ceremony was removed. Any future
+// Activation is not a separate step: create-as-ACTIVE writes the v1 ACTIVE in one
+// step, so go-live is immediately live. Any future
 // activate-a-new-version-in-an-existing-lineage path lives on dis-ui-server (and must deprecate
 // the prior active in one transaction); the UI does not call a separate /activate endpoint.
 

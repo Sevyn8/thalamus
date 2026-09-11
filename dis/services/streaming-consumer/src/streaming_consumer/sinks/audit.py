@@ -1,32 +1,31 @@
-"""Per-stage fire-and-forget audit emission (hard rule 11, D43, D44, D42).
+"""Per-stage fire-and-forget audit emission.
 
 One thin wrapper over the ``dis-audit`` writer. Stage vocabulary is dis-audit's
 CLOSED enum — this consumer adds no members. The mapping for this service:
 
 - intake + bronze/GCS fetch → ``Stage.RECEIVED`` (no consumer-fetch member exists;
-  ``service_name`` disambiguates from the receivers — registered with D42)
+  ``service_name`` disambiguates from the receivers)
 - mapping load + routing → ``Stage.MAPPING_LOOKED_UP``
 - the two gates → ``Stage.PRE_MAPPING_VALIDATED`` / ``Stage.POST_MAPPING_VALIDATED``
 - the engine → ``Stage.MAPPING_EXECUTED``
 - the dual-write → ``Stage.CANONICAL_WRITTEN``
 - ``Stage.IDENTITY_VALIDATED`` is deliberately NEVER emitted: no Identity Service
-  call exists (D28/Slice 13); the composite FK is the enforcement (D39).
+  call exists; the composite FK is the enforcement.
 
-**Duplicate representation (the D42 REVISION, Slice 30c)**: a dedup-key hit emits
-a ROW-scoped ``CANONICAL_WRITTEN`` event whose ``outcome`` IS the kind —
-``DUPLICATE_NOOP`` | ``DUPLICATE_OVERWRITTEN`` (both refine SUCCESS: the
-append-only insert genuinely landed, D33) — with ``prior_trace_id`` as a
-first-class column. Slice 10's deliberate event_data-JSONB resolution is
-superseded for console queryability; the non-queried detail stays in
-``event_data``::
+**Duplicate representation**: a dedup-key hit emits a ROW-scoped
+``CANONICAL_WRITTEN`` event whose ``outcome`` IS the kind —
+``DUPLICATE_NOOP`` (byte-identical redelivery; insert suppressed) |
+``DUPLICATE_OVERWRITTEN`` (correction; insert landed) — with ``prior_trace_id``
+as a first-class column so the duplicate is console-queryable; the non-queried
+detail stays in ``event_data``::
 
     {"row_hash": …,
      "dedup_key": {"store_id": …, "source_id": …, "source_event_id": …}}
 
-Every event carries the known ``tenant_id`` (D43), the read ``trace_id``,
-``mapping_version_id`` where known (D22 context), and the bronze id as the
-load-bearing id. Failures in emission are logged and NEVER raised (the one
-sanctioned swallow); duplicates are tolerated (D44).
+Every event carries the known ``tenant_id``, the read ``trace_id``,
+``mapping_version_id`` where known, and the bronze id as the load-bearing id.
+Failures in emission are logged and NEVER raised (the one sanctioned swallow);
+duplicate audit rows are tolerated.
 """
 
 from __future__ import annotations
@@ -72,8 +71,8 @@ class ConsumerAudit:
         """Emit one stage event. Never raises; never blocks the data path.
 
         ``failure_code`` takes a :class:`~dis_audit.FailureCode` member (a
-        ``StrEnum``, so the parameter stays ``str``-typed) — the Slice 30b
-        stable vocabulary; ``duration_ms`` is the orchestrator's lap-timer
+        ``StrEnum``, so the parameter stays ``str``-typed) — the stable
+        failure vocabulary; ``duration_ms`` is the orchestrator's lap-timer
         stage span.
         """
         log = _log.bind(stage=str(stage.value), tenant_id=str(tenant_id), trace_id=str(trace_id))
@@ -101,9 +100,9 @@ class ConsumerAudit:
             written = await self._writer.write(event)
             if not written:
                 # The writer already logged its own failure detail; this line is the
-                # service-side alert-worthy marker (D45 silent-loss mitigation).
-                log.error("audit write reported failure; data path continues (hard rule 11)")
-        except Exception:  # noqa: BLE001 - the ONE sanctioned swallow (hard rule 11)
+                # service-side alert-worthy marker so silent audit loss stays visible.
+                log.error("audit write reported failure; data path continues")
+        except Exception:  # noqa: BLE001 - the ONE sanctioned swallow: audit never blocks the data path
             log.exception("audit emission raised; swallowed so the data path continues")
 
     async def emit_duplicate(
@@ -117,16 +116,13 @@ class ConsumerAudit:
         bronze_id: UUID,
         mapping_version_id: int,
     ) -> None:
-        """One ROW-scoped duplicate event — the column representation (D42 revision).
+        """One ROW-scoped duplicate event — the column representation.
 
         ``hit.kind`` is exactly the ``DUPLICATE_NOOP`` | ``DUPLICATE_OVERWRITTEN``
         vocabulary, so the outcome IS the kind. Only the queried-by fields are columns;
         ``row_hash`` and ``dedup_key`` stay in ``event_data``.
 
-        THE TWO KINDS NOW MEAN DIFFERENT THINGS ABOUT THE WRITE (migration 0019), and
-        this docstring previously asserted the opposite — "both refine SUCCESS, the
-        append-only insert landed" — which stopped being true the moment redeliveries
-        began to be suppressed:
+        The two kinds mean different things about the write:
 
         - ``DUPLICATE_OVERWRITTEN`` — a correction. The insert LANDED (``rows_succeeded=1``).
         - ``DUPLICATE_NOOP`` — a byte-identical redelivery. The insert was SUPPRESSED
@@ -136,8 +132,8 @@ class ConsumerAudit:
         The stage stays ``CANONICAL_WRITTEN`` deliberately, and the row count is what
         carries the truth. A stage name is a PIPELINE LOCATION — where the event
         occurred — not an assertion that a row was written; every other member of the
-        closed vocabulary reads the same way, and FAILURE outcomes have always been
-        emitted under it. Minting a stage would mean migrating
+        closed vocabulary reads the same way, and FAILURE outcomes are emitted under
+        it too. Minting a stage would mean migrating
         ``ck_audit_events_stage_vocab``, the BigQuery ``stage`` description and every
         importer, to say something ``rows_succeeded=0`` already says exactly.
 

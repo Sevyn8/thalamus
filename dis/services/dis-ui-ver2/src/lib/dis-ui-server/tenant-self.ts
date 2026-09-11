@@ -24,7 +24,7 @@ import { isRealMode } from './mode'
 export type TenantSelf = {
   tenant_id: string // the caller's own tenant, echoed from the verified token
   name: string | null // null when the mirror has no row yet (lag), not an error
-  display_code: string | null // nullable at source (D55), served as-is
+  display_code: string | null // nullable at source, served as-is
 }
 
 // Fixture rows keyed by tenant_id, so a fixture persona resolves the same way a real token

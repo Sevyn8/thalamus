@@ -135,7 +135,7 @@ def _post(
 
 
 # ---------------------------------------------------------------------------
-# Happy path: D53 path, frozen-contract wire, audit, the 201 body.
+# Happy path: canonical bronze object path, frozen-contract wire, audit, the 201 body.
 # ---------------------------------------------------------------------------
 
 
@@ -156,7 +156,7 @@ def test_valid_upload_writes_d53_path_publishes_contract_valid_event_and_audits(
     assert body["row_count"] == 2
     assert body["status"] == "received"
 
-    # Exactly one object at the canonical D53 path (UUID tenant segment).
+    # Exactly one object at the canonical bronze object path (UUID tenant segment).
     [(object_key, data, content_type)] = storage.uploads
     assert object_key.startswith(f"tenant/{TENANT_A}/source/sc_pos_v1/yyyy=")
     assert object_key.endswith(f"{body['trace_id']}.csv")
@@ -184,7 +184,7 @@ def test_valid_upload_writes_d53_path_publishes_contract_valid_event_and_audits(
     assert event.auth_principal == "user:user-1"
     assert event.event_data is not None
     assert event.event_data["phase"] == "csv_upload_phase1"
-    # Slice 30b: whole-request elapsed on the single audit row.
+    # Whole-request elapsed on the single audit row.
     assert event.duration_ms is not None and event.duration_ms >= 0
 
 
@@ -207,7 +207,7 @@ def test_upload_id_is_deterministic_and_pattern_conformant(
     mint_token: Any,
 ) -> None:
     # The resolved idempotency mechanic: same bytes + identity → the same id
-    # (so a client retry collapses in the worker's D58 dedup); any component
+    # (so a client retry collapses in the worker's dedup); any component
     # change → a different id.
     client, _, publisher, _ = harness
     token = mint_token()
@@ -279,7 +279,7 @@ def test_missing_part_is_400_with_no_side_effects(
     assert envelope["code"] == "upload_request"
     assert envelope["details"]["part"] == missing_part
     assert not storage.uploads and not publisher.published
-    # Slice 30b: the 4xx family IS audited (emit-then-re-raise; the envelope above
+    # The 4xx family IS audited (emit-then-re-raise; the envelope above
     # proves the HTTP semantics are unchanged).
     [event] = writer.events
     assert event.outcome is Outcome.FAILURE
@@ -322,7 +322,7 @@ def test_tier0_failure_is_422_with_no_gcs_write_and_no_publish(
     assert envelope["details"]["reason"] == reason
     assert envelope["trace_id"] is not None  # minted at entry; on every envelope
     assert not storage.uploads and not publisher.published
-    # Slice 30b: the tier-0 rejection IS audited, reason-grained stable code.
+    # The tier-0 rejection IS audited, reason-grained stable code.
     expected_code = {
         "empty_file": "UPLOAD_EMPTY_FILE",
         "not_utf8": "UPLOAD_NOT_UTF8",
@@ -377,7 +377,7 @@ def test_unknown_or_cross_tenant_template_is_404(
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "resource_not_found"
     assert not storage.uploads and not publisher.published
-    # Slice 30b: audited with the step-disambiguated code (template, not store).
+    # Audited with the step-disambiguated code (template, not store).
     [event] = writer.events
     assert event.outcome is Outcome.FAILURE and event.failure_code == "TEMPLATE_NOT_FOUND"
 
@@ -407,7 +407,7 @@ def test_non_active_template_is_409(
     assert envelope["code"] == "mapping_state_conflict"
     assert envelope["details"]["actual"] == "DRAFT"
     assert not storage.uploads and not publisher.published
-    [event] = writer.events  # Slice 30b
+    [event] = writer.events
     assert event.outcome is Outcome.FAILURE and event.failure_code == "TEMPLATE_NOT_ACTIVE"
 
 
@@ -431,7 +431,7 @@ def test_unresolvable_store_code_is_404(
     assert response.status_code == 404  # a 404, NEVER a 409 oracle
     assert response.json()["error"]["code"] == "resource_not_found"
     assert not storage.uploads and not publisher.published
-    [event] = writer.events  # Slice 30b: store step, not template
+    [event] = writer.events  # store step, not template
     assert event.outcome is Outcome.FAILURE and event.failure_code == "STORE_NOT_FOUND"
 
 
@@ -457,7 +457,7 @@ def test_resolved_but_non_active_store_is_409_after_the_404_gate(
     assert envelope["details"]["expected"] == "ACTIVE"
     assert envelope["details"]["actual"] == status
     assert not storage.uploads and not publisher.published
-    [event] = writer.events  # Slice 30b
+    [event] = writer.events
     assert event.outcome is Outcome.FAILURE and event.failure_code == "STORE_NOT_ACTIVE"
 
 
@@ -477,7 +477,7 @@ def test_gcs_write_failure_is_503_and_nothing_is_published(
     assert response.json()["error"]["code"] == "storage"
     assert not publisher.published  # write-then-publish: no write, no event
     [event] = [e for e in writer.events if e.outcome is Outcome.FAILURE]
-    assert event.failure_code == "GCS_WRITE_FAILED"  # Slice 30b stable vocabulary
+    assert event.failure_code == "GCS_WRITE_FAILED"  # stable failure-code vocabulary
 
 
 def test_publish_failure_is_503_with_the_object_as_an_accepted_orphan(
@@ -493,14 +493,14 @@ def test_publish_failure_is_503_with_the_object_as_an_accepted_orphan(
     # a client retry converges via the deterministic upload_id instead.
     assert len(storage.uploads) == 1
     [event] = [e for e in writer.events if e.outcome is Outcome.FAILURE]
-    assert event.failure_code == "PUBLISH_FAILED"  # Slice 30b stable vocabulary
+    assert event.failure_code == "PUBLISH_FAILED"  # stable failure-code vocabulary
 
 
 def test_exploding_audit_backend_never_blocks_the_upload(
     harness: tuple[TestClient, _FakeStorage, _FakePublisher, _RecordingAuditWriter],
     mint_token: Any,
 ) -> None:
-    # Hard rule 11 at this service's audit seam (the repo's second emitter): a
+    # Audit is fire-and-forget at this service's seam: a
     # raising audit writer must not turn a successful upload into an error —
     # the object is written, the event published, the 201 served.
     client, storage, publisher, writer = harness
@@ -516,7 +516,7 @@ def test_exploding_audit_backend_never_changes_a_4xx_response(
     mint_token: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The Slice 30b HTTP-safety property at the 4xx wrap specifically: the wrap
+    """The HTTP-safety property at the 4xx wrap: the wrap
     is emit-then-re-raise, so a THROWING audit backend on a rejection path must
     leave the response the exact original clean 4xx (status + §2.3 envelope,
     trace_id excluded — it is per-request by design), never a 500, never a
@@ -640,7 +640,7 @@ def test_retry_after_publish_failure_converges_on_the_same_upload_id(
 ) -> None:
     # The client-retry idempotency story, end to end at this hop: attempt 1
     # orphans an object (publish down); the retry of the SAME bytes succeeds
-    # and carries the SAME upload_session_id, so the worker's D58 dedup sees
+    # and carries the SAME upload_session_id, so the worker's dedup sees
     # one logical upload.
     client, storage, publisher, _ = harness
     token = mint_token()

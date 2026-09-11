@@ -29,7 +29,7 @@ MappingTemplateStatus = Literal["draft", "staged", "active", "deprecated"]
 
 
 class MappingTemplateVersion(BaseModel):
-    """One version row of the lineage, rules served raw (D49)."""
+    """One version row of the lineage, rules served raw."""
 
     mapping_version_id: int  # global BIGSERIAL — the D22 canonical-row pin / audit reference
     version: int  # = version_seq_per_source (per-template counter, §2.6 wire name)
@@ -50,7 +50,7 @@ class MappingTemplate(BaseModel):
     template_id: str  # UUID, lowercase string
     source_id: str
     template_name: str
-    template_type: str  # packet axis (Slice 14d); lineage-fixed, set at creation
+    template_type: str  # packet axis; lineage-fixed, set at creation
     latest_version: int
     active_version: int | None
     staged_version: int | None
@@ -67,7 +67,7 @@ class MappingTemplateDetail(MappingTemplate):
 
 
 class MappingColumn(BaseModel):
-    """One source-to-destination column declaration (Slice 16a request shape).
+    """One source-to-destination column declaration.
 
     Carries semantic intent plus source-format declarations, NOT engine ops. The
     backend re-derives every catalog/sink fact from ``template_type`` + ``dest_key``
@@ -89,7 +89,7 @@ class MappingColumn(BaseModel):
 
 
 class MappingTemplateCreate(BaseModel):
-    """``POST /mapping-templates`` body (Slice 16a). Semantic intent per column; the
+    """``POST /mapping-templates`` body. Semantic intent per column; the
     handler shape-validates and returns a SYNTHETIC 201 (no persistence, no
     ``mapping_rules`` assembly — both land in 16c). ``source_id`` is validated
     well-formed only (no source registry exists, a deliberate slice limit)."""
@@ -98,12 +98,12 @@ class MappingTemplateCreate(BaseModel):
 
     source_id: str = Field(pattern=r"^[a-z0-9_]{1,128}$")
     template_name: str = Field(min_length=1, max_length=200)
-    # The packet axis (Slice 14d). Validated against the in-code vocabulary in the
+    # The packet axis. Validated against the in-code vocabulary in the
     # handler (a clean 400 InvalidTemplateTypeError, not a pydantic 422). Lineage-fixed
     # at creation thereafter.
     template_type: str
     columns: list[MappingColumn] = Field(min_length=1)
-    # PLATFORM impersonation only (Slice 17b): the acted-for tenant (internal UUID).
+    # PLATFORM impersonation only: the acted-for tenant (internal UUID).
     # Honoured ONLY on a verified PLATFORM token via resolve_acted_for(); a TENANT request
     # carrying it is REJECTED (403), never silently ignored. The discriminator is the
     # verified token user_type, NOT this field.
@@ -121,7 +121,7 @@ class MappingTemplatePatch(BaseModel):
 
     template_name: str | None = Field(default=None, min_length=1, max_length=200)
     mapping_rules: dict[str, Any] | None = None
-    # PLATFORM impersonation only (Slice 17b); see MappingTemplateCreate. NOT a content
+    # PLATFORM impersonation only; see MappingTemplateCreate. NOT a content
     # field — it does not satisfy the at-least-one-of (template_name / mapping_rules) rule.
     acting_for_tenant_id: UUID | None = None
 

@@ -1,7 +1,7 @@
-"""Sanity checks on the single source of fixture truth (identity-corrected, Slice 9a).
+"""Sanity checks on the single source of fixture truth.
 
 Baseline reality (real Customer Master set): 2 tenants (buc-ees, zabka-group) and
-6 stores, ALL coded and ALL ACTIVE. The nullable-store_code (D55) and inactive-store
+6 stores, ALL coded and ALL ACTIVE. The nullable-store_code and inactive-store
 edges are NOT in fx.STORES — they live as scoped edge fixtures in test_db_pull /
 test_csv_uploads_live, reverted in teardown.
 """
@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives.serialization import load_pem_private_key, l
 from dis_testing import fixtures as fx
 from dis_testing.errors import FixtureError
 
-# The retired invented identity form (D52). Lookbehind so legitimate us_*/ec_*
+# The retired invented identity form. Lookbehind so legitimate us_*/ec_*
 # forms never false-positive (e.g. 's_...' inside 'us_...').
 _RETIRED_FORM = re.compile(r"(?<![a-z0-9_])[ts]_[a-z0-9]{12}")
 
@@ -58,7 +58,7 @@ def test_default_set_shape() -> None:
 
 def test_all_stores_are_coded_and_active() -> None:
     # New baseline: no code-less store and no inactive store in fx.STORES. The
-    # D55 nullable-store_code edge and the inactive-store edge live as scoped
+    # nullable-store_code edge and the inactive-store edge live as scoped
     # fixtures in test_db_pull / test_csv_uploads_live, not in this baseline.
     assert all(s.store_code is not None for s in fx.STORES)
     assert all(s.status == "ACTIVE" for s in fx.STORES)

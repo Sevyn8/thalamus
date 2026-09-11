@@ -5,7 +5,7 @@
 # always-on Cloud Run Service (RUN_HEALTH_SERVER=true serves /healthz alongside
 # the pull loop). It subscribes to ingress.ready and dual-writes canonical rows
 # (hot + event) plus quarantine to the DB; it PUBLISHES NOTHING (terminal DB
-# writer). Unlike csv-ingest-worker (D58 hard pin at max=1), this consumer is
+# writer). Unlike csv-ingest-worker, this consumer is
 # concurrency-safe, so max_instances is a var (default 1) that is safe to raise.
 # DB connection is private-IP TCP through the connector (no socket, no
 # cloudsql.client). POSTGRES_URL is secret-backed by reference.
@@ -54,7 +54,7 @@ variable "min_instances" {
 
 variable "max_instances" {
   type        = number
-  description = "Maximum instances. Default 1: a single consumer is sufficient for staging. NOT a correctness constraint (streaming-consumer is concurrency-safe: atomic dual-write, read-time latest-wins); safe to raise, unlike csv-ingest-worker's D58 hard pin."
+  description = "Maximum instances. Default 1: a single consumer is sufficient for staging. NOT a correctness constraint (streaming-consumer is concurrency-safe: atomic dual-write, read-time latest-wins); safe to raise, unlike csv-ingest-worker's single-instance dedup hard pin."
   default     = 1
 }
 

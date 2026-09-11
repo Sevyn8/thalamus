@@ -1,4 +1,4 @@
-"""Step 6.16.5 : audit emission for module-access enable / disable.
+"""Audit emission for module-access enable / disable.
 
 Per-endpoint success + failure coverage. Each test exercises the
 real HTTP layer and queries the audit table for the matching row,
@@ -393,7 +393,7 @@ async def test_ms6_resource_label_resolves_from_lookups_display_name(
     """LOAD-BEARING — LD9: module's display label from core.lookups.
 
     e.g. ``GOAL_CONSOLE`` resolves to ``"Goal Console"`` (the
-    display_name seeded at Step 3.4.5 / 6.7), not the bare enum
+    display_name seeded in core.lookups), not the bare enum
     string.
     """
     tenant = await make_tenant(name="MS6-Tenant", with_root=True)

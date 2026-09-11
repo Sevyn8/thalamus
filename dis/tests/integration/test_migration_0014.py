@@ -1,7 +1,7 @@
-"""Migration 0014 (per-attribute change-signal columns on store_sku_current_position — Slice 50a).
+"""Migration 0014 (per-attribute change-signal columns on store_sku_current_position).
 
 Proves, against the resident DIS database (5433 / ithina_dis_db, read-only
-reference) and an ephemeral scratch DB (Slice 51c, D122):
+reference) and an ephemeral scratch DB:
 
   * **Target-safety guard** (pure, always-run, never skips): refuses Customer Master
     and any non-DIS database; passes the DIS database.
@@ -12,12 +12,11 @@ reference) and an ephemeral scratch DB (Slice 51c, D122):
     already present), and 0014's ADD COLUMN IF NOT EXISTS is a no-op, so a fresh bootstrap
     to head lands the identical two columns with identical nullability the delta path leaves.
 
-Downgrade-reversibility (the DROP/re-ADD round-trip) is deferred until staging (D99): the
+Downgrade-reversibility (the DROP/re-ADD round-trip) is deferred until staging: the
 downgrade leg is authored in the migration, but its round-trip test is skipped with the
 shared, greppable reason.
 
-See: docs/slices/slice-50a-change-stamp-columns.md, docs/scratch/slice-50a-plan.md,
-decisions.md D99 (downgrade defer), the 0012 fresh==migrated precedent.
+See: the 0012 fresh==migrated precedent.
 """
 
 from __future__ import annotations
@@ -136,7 +135,7 @@ def test_fresh_bootstrap_converges_with_delta_path(scratch_db: ScratchDB, admin_
     )
 
 
-# --- Downgrade round-trip: deferred until staging (D99) -----------------------
+# --- Downgrade round-trip: deferred until staging -----------------------
 
 
 @pytest.mark.skip(reason="downgrade-reversibility deferred until staging (D99)")

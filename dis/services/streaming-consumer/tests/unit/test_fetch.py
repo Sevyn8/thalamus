@@ -1,4 +1,4 @@
-"""parse_chunk: parses raw CSV with the envelope-carried delimiter (Slice 16f).
+"""parse_chunk: parses raw CSV with the envelope-carried delimiter.
 
 The worker detects the delimiter in preflight and carries it on ingress.ready; the
 consumer parses with it instead of a hardcoded comma. These pins cover the four
@@ -76,7 +76,7 @@ def test_empty_chunk_raises_loudly() -> None:
 async def test_fetch_chunk_parses_with_the_event_delimiter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Slice 16f WIRING: fetch_chunk must pass event.delimiter to parse_chunk, not a
+    # WIRING: fetch_chunk must pass event.delimiter to parse_chunk, not a
     # hardcoded comma. read_bronze_row is faked (no DB); the parse is real, so a ';'
     # event + ';' bytes must yield real columns. Kills a fetch_chunk comma-hardcode.
     source_id = "sc_pos_v1"

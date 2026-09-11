@@ -10,7 +10,7 @@ import {
 
 import { type EnableResult, enableMonitor } from "./actions";
 
-// THE SECOND INTERACTIVE COMPONENT IN THE SYNAPSE CONSOLE (slice 5e). Everything else
+// THE SECOND INTERACTIVE COMPONENT IN THE SYNAPSE CONSOLE. Everything else
 // is a server component rendering what the BFF returned.
 //
 // WHAT THIS CONTROL DELIBERATELY DOES NOT OFFER, because a form discards safety

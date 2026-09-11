@@ -27,18 +27,17 @@ import type {
 } from "@/types/api";
 import { cn } from "@/lib/utils";
 
-// Phase 5d.3: Role Assignments tab on /superadmin/roles.
+// Role Assignments tab on /superadmin/roles.
 //
 // Server-side RLS scopes for TENANT JWTs (Kowalski sees 0 platform
 // assignments + 4 Żabka tenant assignments). PLATFORM JWTs see the
 // fleet (3 platform + 19 tenant). UI hides the PLATFORM block for
 // TENANT personas entirely — matches the launcher's hide-vs-Coming-
-// Soon philosophy from 5d.1.
+// Soon philosophy.
 //
-// Org-node-level scoping (architectural finding from 5d.3
-// diagnostic): tenant assignments are scoped at org-node level
-// (HQ/region/store), NOT just tenant. Same user can hold OWNER at
-// the tenant root AND STORE_MANAGER at a specific store. The
+// Org-node-level scoping: tenant assignments are scoped at org-node
+// level (HQ/region/store), NOT just tenant. Same user can hold OWNER
+// at the tenant root AND STORE_MANAGER at a specific store. The
 // org_node column is load-bearing; without it the rows would read
 // as duplicate/contradictory.
 

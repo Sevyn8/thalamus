@@ -23,10 +23,10 @@ import { hasPermission } from "@/lib/auth/permissions-check";
 import { cn } from "@/lib/utils";
 import type { DeltaBlock, UnavailableReason } from "@/types/api";
 
-// Phase 5e.4: rewritten to consume Sanjeev's two card-shaped
-// dashboard endpoints. Split into Fleet metrics + Governance posture
-// sections; mapping converts response cards to KpiCard props
-// (delta-block to display string, mrr value-string to currency).
+// Consumes two card-shaped dashboard endpoints, split into Fleet
+// metrics + Governance posture sections; mapping converts response
+// cards to KpiCard props (delta-block to display string, mrr
+// value-string to currency).
 
 // Friendly-text for the v0 unavailable_reason vocabulary. Falls back
 // to raw enum on unknown values per ambiguity vi (defensive against
@@ -88,9 +88,9 @@ export default function DashboardPage() {
   const fleet = useFleetStats();
   const governance = useGovernanceStats();
 
-  // Phase 5g.1: fleet + governance endpoints are multi-audience and
-  // backend auto-scopes the response (sub_text re-labels per JWT), so
-  // both render unchanged for PLATFORM + TENANT. TopTenantsPanel calls
+  // Fleet + governance endpoints are multi-audience and backend
+  // auto-scopes the response (sub_text re-labels per JWT), so both
+  // render unchanged for PLATFORM + TENANT. TopTenantsPanel calls
   // GET /api/v1/tenants (cross-tenant list) which requires VIEW.GLOBAL
   // — hide for TENANT-OWNER so the panel doesn't render with a 403.
   // RecentActivityPanel is FeaturePending (audit-log backend not
@@ -114,11 +114,10 @@ export default function DashboardPage() {
     "TENANT",
   );
 
-  // Phase 5g.1.2: persona-aware heading copy. PLATFORM keeps the
-  // existing fleet-wide framing; TENANT-OWNER sees an org-scoped
-  // framing that mirrors the sidebar branding ("Admin" + tenant
-  // name). Cosmetic only — access control lives in the permission
-  // filters above, not in the heading.
+  // Persona-aware heading copy. PLATFORM keeps the fleet-wide framing;
+  // TENANT-OWNER sees an org-scoped framing that mirrors the sidebar
+  // branding ("Admin" + tenant name). Cosmetic only — access control
+  // lives in the permission filters above, not in the heading.
   const isTenantHeader = snapshot?.user?.userType === "TENANT";
   const tenantName = snapshot?.user?.tenantName;
   const headerTitle = isTenantHeader ? "Admin Dashboard" : "Superadmin Dashboard";
@@ -219,10 +218,9 @@ export default function DashboardPage() {
           />
         ) : governance.data ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {/* Phase 5g.1.3: "Guardrails fired (24h)" KPI removed
-                alongside the surface. "Pending approvals" stays but
-                routes to /approvals (the stub surface) since the
-                /superadmin/guardrails destination is gone. */}
+            {/* "Pending approvals" routes to /approvals (the stub
+                surface) — there is no /superadmin/guardrails
+                destination. */}
             <KpiCard
               icon={<Shield />}
               iconTone="orange"

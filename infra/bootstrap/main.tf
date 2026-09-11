@@ -71,7 +71,7 @@ resource "google_project_service" "baseline" {
     "iam.googleapis.com",
     "iamcredentials.googleapis.com",
     "vpcaccess.googleapis.com",
-    # Slice 6b. The Synapse orchestrator is the FIRST scheduled anything in this project —
+    # The Synapse orchestrator is the FIRST scheduled anything in this project —
     # nothing had ever needed Cloud Scheduler, which is why this was absent rather than
     # overlooked. Enabling it is a prerequisite for infra/envs/staging's
     # google_cloud_scheduler_job; without it the apply fails with a
@@ -90,7 +90,7 @@ resource "google_project_service" "baseline" {
     # fixes the App Engine region for the project PERMANENTLY — it cannot be changed or
     # removed. Choose the region deliberately; do not run it to clear an error.
     "cloudscheduler.googleapis.com",
-    # Slice 9. BOTH OF THESE WERE ALREADY ENABLED AND NEITHER WAS DECLARED, which is why
+    # BOTH OF THESE WERE ALREADY ENABLED AND NEITHER WAS DECLARED, which is why
     # they are here rather than being taken for granted. GCP auto-enables logging and
     # monitoring on a new project, so `gcloud services list --enabled` shows them today and
     # every log-based metric and alert policy in modules/monitoring-alerts depends on them —
@@ -99,7 +99,8 @@ resource "google_project_service" "baseline" {
     # VERIFIED, 2026-08-05: enabled live; present in infra/_import/cm-infra (the LEGACY CM
     # tree) and in NEITHER live baseline list. That combination — working, load-bearing,
     # undeclared — is the exists-but-not-wired shape this project keeps paying for, and it is
-    # free to ignore only until something depends on it. Slice 9 is that something.
+    # free to ignore only until something depends on it. The alerting in
+    # modules/monitoring-alerts is that something.
     #
     # Adding them is a NO-OP against the live project (google_project_service is idempotent
     # and these are already on). The value is that a rebuilt project gets them, and that a

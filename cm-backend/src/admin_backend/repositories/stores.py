@@ -1,9 +1,9 @@
 """StoresRepo — data access for the ``stores`` table.
 
-Reads (Step 6.17.2): ``list`` + ``get_by_id``.
-Writes (Step 6.17.3): ``create`` + ``update``.
+Reads: ``list`` + ``get_by_id``.
+Writes: ``create`` + ``update``.
 
-RLS-bound via session GUCs set by ``get_tenant_session`` (Step 2.2a);
+RLS-bound via session GUCs set by ``get_tenant_session``;
 the Repo accepts no ``tenant_id`` for visibility purposes per D-24.
 The optional ``tenant_id`` argument on ``list(...)`` is
 application-layer narrowing for PLATFORM callers who want to scope a
@@ -13,25 +13,24 @@ Per D-17, "row not visible" (whether absent or RLS-filtered) surfaces
 as ``None`` from ``get_by_id`` / ``update``. The router converts to 404
 ``STORE_NOT_FOUND``.
 
-Locked decision 2 (Step 6.17.2): the ``tenant_name`` label comes via
+Locked decision 2: the ``tenant_name`` label comes via
 LEFT JOIN to ``core.tenants`` rather than a correlated subquery —
 ``tenant_name`` is a sibling-table label, not an aggregate. LEFT (not
 INNER) so a hypothetical orphan row (no matching tenant) would surface
 in the list rather than disappear. ``stores.tenant_id`` is NOT NULL
 with an FK, so the LEFT/INNER distinction never fires in practice.
 
-Locked decision 3 (Step 6.17.2): 8 sort keys. ``tenant_name_asc``
+Locked decision 3: 8 sort keys. ``tenant_name_asc``
 (default) and ``tenant_name_desc`` apply a stable secondary sort by
 ``stores.name ASC`` so two stores in the same tenant page
 deterministically; the other 6 keys uniform-secondary-sort by
 ``stores.id ASC`` like the other repos.
 
-Step 6.17.3 writes (Pattern (b) per D-13). Raw ``text()`` with
+Writes (Pattern (b) per D-13). Raw ``text()`` with
 schema-qualified identifiers per CSD-03. Audit-actor population:
 both halves of each ``*_by_user_id`` / ``*_by_user_type`` pair are
 populated on every write to satisfy ``ck_stores_*_actor_pair``. Casts
-to ``actor_user_type_enum`` are explicit per the architecture_RBAC
-reference example. ``store_code`` uniqueness is pre-checked
+to ``actor_user_type_enum`` are explicit. ``store_code`` uniqueness is pre-checked
 case-insensitively to align with the DDL partial unique index
 ``uq_stores_tenant_store_code_lower``; ``org_node_id`` linkage is
 pre-checked for clean typed 409s.
@@ -66,7 +65,7 @@ from admin_backend.repositories.org_nodes import OrgNodesRepo
 from admin_backend.repositories.tenants import TransitionResult
 
 
-# Step 6.16.5 LD3: stores set-status per-target action code mapping.
+# LD3: stores set-status per-target action code mapping.
 # Each target status maps to exactly one success-path action code +
 # human label. Failure-path uses the AUDITED_ROUTES fallback
 # ("SET_STATUS" / "Status change") since the failure handler can't
@@ -84,7 +83,7 @@ _TRANSITION_ACTION_BY_TARGET: dict[StoreStatus, str] = {
 }
 
 
-# Module-level singleton (Step 6.21.2). Matches the established pattern
+# Module-level singleton. Matches the established pattern
 # in routers/v1/org_tree.py:101 (``_org_repo = OrgNodesRepo()``).
 # StoresRepo's atomic-pair writes call into OrgNodesRepo for the paired
 # STORE-type org_node operations (add at create, set_status at
@@ -93,7 +92,7 @@ _TRANSITION_ACTION_BY_TARGET: dict[StoreStatus, str] = {
 _org_nodes_repo = OrgNodesRepo()
 
 
-# Step 6.21.2: store status -> paired org_node status projection
+# Store status -> paired org_node status projection
 # (architecture.md A.5 "Status mapping"). The mapping loses information
 # (OPENING and ACTIVE both project to ACTIVE on the org_node side);
 # acceptable for v0 because no current consumer reads the org_node
@@ -132,13 +131,13 @@ SORT_MAP: dict[str, tuple[Any, ...]] = {
 DEFAULT_STORES_SORT: str = "tenant_name_asc"
 
 
-# Step 6.17.4: 9-cell liberal state-transition matrix per LD1. All
+# 9-cell liberal state-transition matrix per LD1. All
 # transitions allowed EXCEPT ``*->OPENING`` (3 rejected cells:
 # ACTIVE/INACTIVE/CLOSED -> OPENING). CLOSED is reversible.
 #
 # Same-state (e.g., ACTIVE -> ACTIVE) is NOT a key in any allowed set,
 # so falls through to ``TransitionResult.INVALID_STATE``. Mirrors the
-# tenants ``allowed_sources`` convention (Step 6.11): target state
+# tenants ``allowed_sources`` convention: target state
 # excluded from its own allowed-sources set; same-state rejected.
 TRANSITION_MATRIX: dict[StoreStatus, set[StoreStatus]] = {
     StoreStatus.OPENING:  {StoreStatus.ACTIVE, StoreStatus.INACTIVE, StoreStatus.CLOSED},
@@ -153,8 +152,7 @@ class StoresListRow:
     """Row carrier for ``list(...)``: ORM Store + joined tenant_name.
 
     The router maps this to ``StoreListItem`` via
-    ``_list_item_from_row``. Mirrors ``TenantListRow``'s shape from
-    Step 6.8.3.
+    ``_list_item_from_row``. Mirrors ``TenantListRow``'s shape.
     """
 
     store: Store
@@ -271,7 +269,7 @@ class StoresRepo:
         return StoreDetailRow(store=store_obj, tenant_name=tenant_name)
 
     # ============================================================================
-    # Step 6.17.3 writes.
+    # Writes.
     # ============================================================================
 
     async def _tenant_exists(
@@ -361,7 +359,7 @@ class StoresRepo:
         parent_org_node_id: UUID,
     ) -> None:
         """Pre-check that ``parent_org_node_id`` can parent the paired
-        STORE-type org_node about to be created (Step 6.21.2 LD11).
+        STORE-type org_node about to be created (LD11).
 
         Replaces the retired ``_check_org_node_for_store``: the v0
         architecture used to accept an existing ``org_node_id`` and link
@@ -450,8 +448,8 @@ class StoresRepo:
         """Atomic paired write: create the paired STORE-type org_node
         and the ``stores`` row in one transaction. Multi-audience (LD1).
 
-        Step 6.21.2 supersedes the Step 6.17.3 design which accepted an
-        existing ``org_node_id`` on the body. The new shape:
+        This supersedes an earlier design which accepted an
+        existing ``org_node_id`` on the body. The current shape:
 
           1. Validate ``tenant_id`` is RLS-visible (RLS-as-404 for
              cross-tenant TENANT JWTs).
@@ -573,10 +571,10 @@ class StoresRepo:
             "session"
         )
 
-        # Step 6.16.5 success audit emission. LD6: snapshot carries
+        # Success audit emission. LD6: snapshot carries
         # store identity + paired org_node id/name + the
         # ``org_node_created_atomically`` flag (always True in v0;
-        # 6.21.2 made atomic-pair the only POST /stores path; FN-AB-68
+        # atomic-pair is the only POST /stores path; FN-AB-68
         # reserves room for a future variant where this is False).
         if request_id is not None:
             snapshot = {
@@ -627,7 +625,7 @@ class StoresRepo:
         columns are absent from ``fields`` by construction (rejected by
         the schema's ``extra="forbid"``).
 
-        Step 6.21.2 cascade: when ``name``, ``store_code``, or
+        Cascade: when ``name``, ``store_code``, or
         ``parent_org_node_id`` are in ``fields``, the change propagates
         to the paired STORE-type org_node atomically inside the same
         request transaction:
@@ -721,7 +719,7 @@ class StoresRepo:
             "longitude": existing_row.longitude,
         }
 
-        # Step 6.21.2: cascade-prep pre-check on parent (404/422).
+        # Cascade-prep pre-check on parent (404/422).
         # Done before the store_code uniqueness check so the more
         # structurally-significant failure surfaces first.
         new_parent_id: UUID | None = None
@@ -751,7 +749,7 @@ class StoresRepo:
         # Build per-column SET clauses, with enum casts where the live
         # column is a named PG enum. ``stores`` has one such mutable
         # field: ``tax_treatment``. ``status`` is not in the allowlist
-        # (transitions land in Step 6.17.4). ``parent_org_node_id`` is
+        # (transitions land in the ``transition`` method). ``parent_org_node_id`` is
         # NOT a column on ``stores`` — it cascades to the paired
         # org_node only; excluded from the SET clause builder.
         _ENUM_CASTS: dict[str, str] = {
@@ -806,7 +804,7 @@ class StoresRepo:
                 # or concurrent delete); treat as RLS-as-404.
                 return None
 
-        # Step 6.21.2 cascade: name / store_code / parent_org_node_id
+        # Cascade: name / store_code / parent_org_node_id
         # propagate to the paired org_node via edit_node. edit_node
         # owns: SELECT FOR UPDATE on target, cycle / cascade-order
         # check on reparent, path rewrite (label + subtree), and
@@ -839,17 +837,17 @@ class StoresRepo:
         session.expire_all()
         result_row = await self.get_by_id(session, store_id)
 
-        # Step 6.16.5 success audit emission. LD11: before/after diff
+        # Success audit emission. LD11: before/after diff
         # carrying only the fields that actually changed. Note: under
-        # the 6.21.2 atomic-pair design, ``stores.org_node_id`` is
+        # the atomic-pair design, ``stores.org_node_id`` is
         # immutable via PATCH (the row's paired org_node never
         # changes). What the caller passes as ``parent_org_node_id``
         # cascades to the paired org_node's ``parent_id``; from the
         # store's vantage that's a "parent_org_node_id changed"
         # diff, not an "org_node_id changed" diff. LD7's framing of
-        # "org_node_id change" predates 6.21.2 and is reinterpreted
-        # here as parent_org_node_id, with both old and new parent
-        # names snapshotted for context.
+        # "org_node_id change" predates the atomic-pair redesign and
+        # is reinterpreted here as parent_org_node_id, with both old
+        # and new parent names snapshotted for context.
         if request_id is not None and result_row is not None:
             before_diff: dict[str, Any] = {}
             after_diff: dict[str, Any] = {}
@@ -932,7 +930,7 @@ class StoresRepo:
         return str(name) if name is not None else "<unknown>"
 
     # ============================================================================
-    # Step 6.17.4 set-status transition.
+    # Set-status transition.
     # ============================================================================
 
     async def transition(
@@ -959,8 +957,9 @@ class StoresRepo:
             populate atomically with the status flip.
           - **Class 2 (out-of-CLOSED)**: ``closed_at`` + ``closed_by_*``
             null atomically with the status flip. Historical closure
-            metadata is lost on the row (LD2); Step 6.2 audit_log
-            preserves the history when shipped.
+            metadata (LD2) is lost on the row; the success audit event
+            below records only the status before/after, not the
+            closed_* values.
           - **Class 3 (between non-CLOSED)**: closed_* columns
             untouched (they're already NULL by the DDL CHECK invariant).
 
@@ -1055,7 +1054,7 @@ class StoresRepo:
             },
         )
 
-        # Step 6.21.2 cascade: project the store status to the paired
+        # Cascade: project the store status to the paired
         # org_node's status via STORE_STATUS_TO_ORG_NODE_STATUS and
         # apply via OrgNodesRepo.set_status. The set_status method
         # handles the archived_* triplet symmetrically to the stores
@@ -1075,7 +1074,7 @@ class StoresRepo:
         session.expire_all()
         result_row = await self.get_by_id(session, store_id)
 
-        # Step 6.16.5 success audit emission per LD3. Action dispatch
+        # Success audit emission per LD3. Action dispatch
         # on target_status; standard transition payload shape.
         if request_id is not None and result_row is not None:
             action_code = _TRANSITION_ACTION_BY_TARGET[target_status]

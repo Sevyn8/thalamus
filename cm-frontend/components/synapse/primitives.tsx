@@ -2,7 +2,7 @@
 // "use client" — every Synapse page is a server component so the BFF stays
 // unreachable from the browser.
 //
-// FOLLOWS PATTERNS.md: the typography scale (text-display / text-body /
+// Uses the shared typography scale (text-display / text-body /
 // text-caption / text-label / text-micro), semantic colour tokens
 // (text-foreground-muted, bg-surface, border-border) rather than ad-hoc
 // zinc/slate/gray, and rounded-md for cards.
@@ -384,17 +384,18 @@ export function SectionHead({ children }: { children: ReactNode }) {
 // both as "cannot assess" would be a different guess. The third state says
 // exactly what is true: zero, and we cannot tell which.
 //
-// SLICE 5b NARROWED WHEN THAT HEDGE IS NEEDED, and did not remove it. The run row
-// now carries a refusal breakdown, so a run that refused series SAYS SO and the
-// screen names the reason. The hedge still applies where the breakdown is null —
-// a run that never reached its plan, or one predating migration 0005 — which is
-// exactly the case where the data genuinely cannot tell which.
+// THE HEDGE WAS LATER NARROWED, not removed. The run row now carries a
+// refusal breakdown, so a run that refused series SAYS SO and the screen
+// names the reason. The hedge still applies where the breakdown is null —
+// a run that never reached its plan, or one predating migration 0005 —
+// which is exactly the case where the data genuinely cannot tell which.
 export type Tone = "good" | "unknown" | "mute" | "stop";
 
-// DELEGATES TO THE HOUSE CHIP rather than restating its recipe. Chips.tsx already
-// carries the light-base + dark:-override pairs PATTERNS.md specifies; a second
-// copy here would be a second source of truth for what a status chip looks like,
-// and the copy that drifts is always the one nobody is looking at.
+// DELEGATES TO THE HOUSE CHIP rather than restating its recipe. Chips.tsx
+// already resolves each tone through one set of semantic tokens shared by
+// both themes; a second copy here would be a second source of truth for
+// what a status chip looks like, and the copy that drifts is always the
+// one nobody is looking at.
 const TONE_TO_CHIP: Record<Tone, ChipTone> = {
   good: "green",
   unknown: "amber",
@@ -805,7 +806,7 @@ export function SynapseDown({ message }: { message: string }) {
 // an operator. The row is gone, so the component is dead code rather than a
 // primitive waiting for a second use.
 //
-// THE BACKLOG IT DESCRIBED IS NOW DONE (slice 5b): the Plan signature returns
+// THE BACKLOG IT DESCRIBED IS NOW DONE: the Plan signature returns
 // refusals, migration 0005 stores them, and refusalSentence() below renders the
 // answer that row was apologising for not having. It is still not coming back —
 // the refusal now belongs ON the monitor's own line, not in a row of its own.

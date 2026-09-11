@@ -1,4 +1,4 @@
-"""The daily_series resolver and the shared D33 collapse, offline. No DB, no engine.
+"""The daily_series resolver and the shared dedup collapse, offline. No DB, no engine.
 
 THE LOAD-BEARING TESTS ARE THE SQL-SHAPE ONES, and they are the reason this file exists
 rather than leaving the collapse to an integration test. The collapse's correctness is
@@ -84,12 +84,12 @@ def _collapsed_sql(store_id: UUID | None = None) -> str:
 
 
 # ---------------------------------------------------------------------------
-# The collapse: the D33 key and the full tie-break
+# The collapse: the dedup key and the full tie-break
 # ---------------------------------------------------------------------------
 
 
 def test_the_collapse_distincts_on_the_four_d33_key_columns() -> None:
-    """The dedup key is (tenant_id, store_id, source_id, source_event_id) — D33/D38."""
+    """The dedup key is (tenant_id, store_id, source_id, source_event_id)."""
     assert DEDUP_KEY == ("tenant_id", "store_id", "source_id", "source_event_id")
     sql = _collapsed_sql()
     expected = ", ".join(f"canonical.store_sku_sale_events.{name}" for name in DEDUP_KEY)
@@ -126,7 +126,7 @@ def test_the_tiebreak_terminates_with_the_uuidv7_id() -> None:
 
 
 def test_the_full_tiebreak_is_in_the_documented_d33_order() -> None:
-    """The exact live mapping from decisions.md D38, as used by the streaming consumer."""
+    """The exact live mapping, as used by the streaming consumer."""
     order_by = _collapsed_sql().split("ORDER BY", 1)[1]
     tail = (
         "canonical.store_sku_sale_events.source_sale_timestamp DESC, "

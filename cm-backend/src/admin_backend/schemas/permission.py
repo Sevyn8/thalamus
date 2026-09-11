@@ -15,7 +15,7 @@ Three endpoints touch these schemas:
     with ``cells: list[bool]`` position-aligned to the ``roles`` column
     array.
 
-E6 invariants (M1-M8 in BUILD_PLAN's Step 6.1):
+Permission-matrix invariants:
   - ``len(row.cells) == len(roles)`` for every row.
   - ``cells[i]`` is the grant state for ``roles[i]``.
   - ``roles`` ordered audience_asc, name_asc.

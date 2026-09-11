@@ -25,7 +25,7 @@ export type TenantStatus = 'onboarding' | 'trial' | 'active' | 'suspended'
 export type ActableTenant = {
   tenant_id: string // internal UUID, lowercase string — the acted-for id
   name: string
-  display_code: string | null // nullable at source (D55), served as-is
+  display_code: string | null // nullable at source, served as-is
   status: TenantStatus
 }
 

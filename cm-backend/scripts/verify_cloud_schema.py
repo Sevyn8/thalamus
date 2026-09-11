@@ -1,29 +1,23 @@
-"""Verify Cloud SQL schema after Alembic bring-up. Step 4.1.
+"""Verify Cloud SQL schema after Alembic bring-up.
 
 Self-contained Python script using psycopg3 sync API. Connects via
 DATABASE_URL + DB_SCHEMA env vars and prints three blocks for human
 audit (output goes to Cloud Logging when run as a Cloud Run Job):
 
-  1. Tables in the configured schema (expected: 13 — the 12 application
-     tables for v0 plus `alembic_version` which Alembic creates itself.
-     The 12 are the 10 from raw_ddl plus tenant_module_access from
-     Step 3.4.5 plus the two role-assignment tables from Step 6.8.1
-     — platform_user_role_assignments and tenant_user_role_assignments
-     — replacing user_role_assignments which Step 6.8.1 dropped;
-     audit_logs lands at Step 6.2 and is not in scope here).
+  1. Tables in the configured schema. Expected: every table the
+     migration chain creates, plus `alembic_version` which Alembic
+     creates itself.
 
-  2. Tables with forcerowsecurity = true (expected: 6 multi-tenant
-     tables — tenants, tenant_users, org_nodes, stores,
-     tenant_user_role_assignments, tenant_module_access). Note:
-     platform_user_role_assignments has no RLS by design — it's
-     platform-global (mirrors platform_users' posture per D-12).
+  2. Tables with forcerowsecurity = true (the multi-tenant tables).
+     Note: platform_user_role_assignments has no RLS by design — it's
+     platform-global (mirrors platform_users' posture).
 
   3. Alembic head revision from the alembic_version table (expected
-     to match local head: 0644a4186e48 as of Step 3.6 lookups seed).
+     to match the local migration head).
 
 The script exits 0 on success and 1 on any DB error. Acceptance is
 determined by reading the printed output, not by the exit code alone:
-the counts above must match.
+the output must match the local migration chain.
 
 Usage (local):
     uv run python scripts/verify_cloud_schema.py

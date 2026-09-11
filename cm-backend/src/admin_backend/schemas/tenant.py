@@ -1,8 +1,6 @@
 """Pydantic v2 read schema for the Tenant resource.
 
-Applies the provisional API-contract defaults locked at Step 3.1
-(``docs/api-contract.md`` is still in template state, pending the
-Step 2.0 sync with the frontend developer):
+Applies the project's API-contract conventions:
 
   - Q1 (response naming): snake_case.
   - Q4 (datetimes): ISO 8601 with timezone offset (Pydantic v2 default
@@ -39,7 +37,7 @@ from admin_backend.models.tenant import (
 )
 from admin_backend.models.tenant_module_access import ModuleCode
 
-# Slice 7: monthly_revenue_usd is NUMERIC(15,2) in the DDL, so the largest
+# Monthly_revenue_usd is NUMERIC(15,2) in the DDL, so the largest
 # storable value is 13 integer digits + 2 decimals. Bounding the request
 # schema here rejects out-of-range values with a Pydantic 422 before the
 # DB raises numeric_value_out_of_range (defense-in-depth alongside the
@@ -80,7 +78,7 @@ class TenantRead(BaseModel):
 
 
 # =============================================================================
-# Step 3.3 schemas: list / stats / detail responses + Module + Pagination.
+# List / stats / detail response schemas: Module + Pagination.
 #
 # Wrapping convention (D-30): list endpoints wrap as `{items, pagination}`;
 # single-object endpoints return the object directly with no envelope. Field
@@ -137,7 +135,7 @@ class TenantsListItem(BaseModel):
 
 
 # =============================================================================
-# Step 6.11.1 write schemas: TenantCreateRequest, TenantPatchRequest.
+# Write schemas: TenantCreateRequest, TenantPatchRequest.
 #
 # Both ``extra="forbid"``. Server-side fields (``id``, ``status``,
 # ``created_at``, ``updated_at``, ``suspended_*``, ``terminated_*``) are
@@ -325,7 +323,7 @@ class TenantDetail(BaseModel):
     suspended_at: datetime | None
     terminated_at: datetime | None
 
-    # ---- Aggregates added at Step 3.3 ----
+    # ---- Aggregate fields ----
     num_stores: int
     num_users_active: int
     modules: list[Module]

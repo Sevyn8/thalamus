@@ -1,10 +1,8 @@
 """Environment-resolved configuration for the consumer.
 
-Required env (no silent default for a required value, code-quality rule 4 — a
-missing one raises ``DisError``; this service deliberately defines no new error
-class because ``libs/dis-core`` is outside its blast radius; a
-``StreamingConsumerError`` family is a registered want for the next
-dis-core-touching slice):
+Required env (no silent default for a required value — a missing one raises
+``DisError``; this service defines no new error class and reuses
+``libs/dis-core``'s ``DisError``):
 
 - ``POSTGRES_URL`` — the DIS write connection (``ithina_dis_user``). Reused by
   ``dis-rls`` ``create_rls_engine``, which positively asserts
@@ -14,19 +12,20 @@ dis-core-touching slice):
   split by ``dis-storage`` ``split_object_uri`` and cross-checked against this.
 
 The topic/subscription names are frozen-contract constants, not deployment config:
-``ingress.ready`` is the trigger (hard rule 10) and the subscription is provisioned
+``ingress.ready`` is the trigger and the subscription is provisioned
 by ``tools/local/create_topics.py`` (``make topics-create``) — NEVER by consumer
 runtime code, so an absent subscription is a loud startup error.
 
-``BATCH_SIZE_ROW_PAIRS`` is the architecture-4.6 per-tenant transaction grain
-(~500 row-pairs); the rollback unit of the atomic dual-write (D30 holds per batch).
+``BATCH_SIZE_ROW_PAIRS`` is the per-tenant transaction grain (~500 row-pairs);
+the rollback unit of the atomic dual-write (atomicity holds per batch).
 
-Optional env (slice 40a, the toggled readiness-healthz wrapper):
+Optional env (the toggled readiness-healthz wrapper):
 
 - ``RUN_HEALTH_SERVER`` — ``"true"``/``"1"`` → run the /healthz HTTP server
   alongside the pull loop (Cloud Run Service mode). Unset/other → pure loop
   (local dev; future Worker Pools). A legitimately-optional boolean with a
-  default-off, not a rule-4 silent fallback: absence is a valid configuration.
+  default-off, not a silent fallback for a required value: absence is a valid
+  configuration.
 - ``PORT`` — the healthz server's port (Cloud Run injects it). REQUIRED — raises —
   only when ``RUN_HEALTH_SERVER`` is on; never read otherwise (no new required
   local env).
@@ -49,7 +48,7 @@ _PORT = "PORT"
 SERVICE_NAME = "streaming-consumer"
 
 # This consumer SUBSCRIBES to ingress.ready (via INGRESS_READY_SUBSCRIPTION). The
-# contract names (hard rule 10) remain the defaults, so local dev (provisioned by
+# frozen-contract names remain the defaults, so local dev (provisioned by
 # tools/local/create_topics.py, no env set) is unchanged. Deployment overrides
 # INGRESS_READY_SUBSCRIPTION with the actually-provisioned short name (terraform sources
 # it from the pubsub module output, so app and infra cannot drift). INGRESS_READY_TOPIC
@@ -60,13 +59,13 @@ INGRESS_READY_SUBSCRIPTION = resolve_pubsub_name(
     "INGRESS_READY_SUBSCRIPTION", "streaming-consumer.ingress.ready"
 )
 
-# Architecture 4.6: manual batching, ~500 rows per per-tenant transaction. One
-# ingress chunk carries one tenant, so batches are chunk-sequential; each batch is
-# the either-or-neither rollback unit (D30 at batch grain; redelivery + D33
-# read-time dedup + the D64 conditional upsert converge a partially-landed chunk).
+# Manual batching: ~500 rows per per-tenant transaction. One ingress chunk
+# carries one tenant, so batches are chunk-sequential; each batch is the
+# either-or-neither rollback unit (redelivery + read-time dedup + the
+# conditional upsert converge a partially-landed chunk).
 BATCH_SIZE_ROW_PAIRS = 500
 
-# Readiness staleness threshold (slice 40a): /healthz reports stale past this many
+# Readiness staleness threshold: /healthz reports stale past this many
 # seconds since the loop's last heartbeat. Sized above the worst expected loop
 # iteration (10s pull timeout + 1s error sleep + chunk-processing headroom) — a
 # long pure-CPU stretch must not flap readiness; a dead loop must trip it.

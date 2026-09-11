@@ -1,8 +1,8 @@
-"""Tenant onboarding document endpoints (Slice 3).
+"""Tenant onboarding document endpoints.
 
 All routes are tenant-scoped under ``/tenants/{tenant_id}/documents`` and
 gated ``ADMIN.TENANTS.CONFIGURE.GLOBAL`` with ``audience="PLATFORM"``
-(staff onboarding, D-12), mirroring the Slice-2 onboarding router.
+(staff onboarding, D-12), mirroring the gate used by ``routers/v1/onboarding.py``.
 
 Object content never proxies through the backend: upload and download go
 direct to GCS via V4 signed URLs minted by the ``SignedUrlGenerator`` seam
@@ -65,7 +65,7 @@ _logger = logging.getLogger("admin_backend.documents")
 
 
 def _gate() -> Any:
-    """ADMIN.TENANTS.CONFIGURE.GLOBAL, PLATFORM audience (Slice-2 pattern)."""
+    """ADMIN.TENANTS.CONFIGURE.GLOBAL, PLATFORM audience."""
     return require(
         ModuleCode.ADMIN,
         PermissionResource.TENANTS,

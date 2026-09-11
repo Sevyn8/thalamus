@@ -6,11 +6,11 @@ Stands in for the real Customer Master so DIS can be tested without it. It:
   * creates/serves upload sessions (``us_*``),
   * emits ``identity.changed`` Pub/Sub events on a "change".
 
-HARD BOUNDARIES (slice scope):
+HARD BOUNDARIES:
   * **No real authentication / authorization.** It signs whatever token is asked
     for; it validates no credentials and enforces no access. The signature +
     JWKS exist only so the *consumer's* verification path is exercised for real.
-  * **No identity resolution** (that's the Identity Service fake / Slice 13).
+  * **No identity resolution** (that's the Identity Service fake).
 
 PROVISIONAL (R2/R3): the Customer Master contract is not yet signed off. The JWT
 claim set, JWKS shape, issuer/audience, and the very fact that this fake (rather
@@ -75,10 +75,10 @@ def issue_jwt(
 def build_identity_changed(req: ChangeRequest) -> dict[str, object]:
     """Build an ``identity.changed`` message conforming to the frozen schema.
 
-    Identity fields are the internal UUIDs (D52); the payload carries ``status``
-    replicated verbatim (D46 — never an ``is_active`` boolean) plus the
+    Identity fields are the internal UUIDs; the payload carries ``status``
+    replicated verbatim (never an ``is_active`` boolean) plus the
     authoritative external code (``display_code`` for tenants, ``store_code`` for
-    stores, omitted when the source carries none — D55). A ``deactivated`` event
+    stores, omitted when the source carries none). A ``deactivated`` event
     maps to the entity's inactive lifecycle status.
     """
     payload: dict[str, object]
@@ -141,8 +141,8 @@ class UploadSessionRequest(BaseModel):
 class UploadSessionResponse(BaseModel):
     # tenant_id/store_id carry the authoritative external codes (display_code /
     # store_code) — a CM-facing artifact never exposes internal UUIDs. This is an
-    # approximation of the unseen real CM API shape, registered in decisions.md
-    # for the CM contract sign-off. store_id is None for a code-less store.
+    # approximation of the unseen real CM API shape, pending CM contract
+    # sign-off. store_id is None for a code-less store.
     upload_session_id: str
     tenant_id: str
     store_id: str | None
@@ -224,7 +224,7 @@ def create_app(publisher: Publisher | None = None) -> FastAPI:
         sessions[session_id] = {
             "upload_session_id": session_id,
             "tenant_id": tenant.display_code,
-            "store_id": store.store_code,  # None for a code-less store (D55)
+            "store_id": store.store_code,  # None for a code-less store
             "expires_at": expires_at,
         }
         return UploadSessionResponse(**sessions[session_id])

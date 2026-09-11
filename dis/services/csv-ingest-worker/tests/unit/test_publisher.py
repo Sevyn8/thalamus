@@ -1,5 +1,5 @@
 """ingress.ready envelope: frozen-contract population + drift guard (AC6) and the
-emulator-or-ambient construction (slice 40a)."""
+emulator-or-ambient construction."""
 
 from __future__ import annotations
 
@@ -55,11 +55,11 @@ def test_populates_every_required_field_from_event_and_bronze() -> None:
     assert envelope.tenant_id == UUID(_CSV_EXAMPLE["tenant_id"])
     assert envelope.store_id == UUID(_CSV_EXAMPLE["store_id"])
     assert envelope.source_id == _CSV_EXAMPLE["source_id"]
-    assert envelope.template_id == UUID(_CSV_EXAMPLE["template_id"])  # verbatim pass-through (D71)
+    assert envelope.template_id == UUID(_CSV_EXAMPLE["template_id"])  # verbatim pass-through
     assert envelope.bronze_ref == _BRONZE_ID
     assert envelope.gcs_uri == _CSV_EXAMPLE["gcs_uri"]
     # received_ts is when DIS durably accepted (bronze received_at), NOT the
-    # producer's csv.received.received_ts (the dual-received_ts note, D59).
+    # producer's csv.received.received_ts (the dual-received_ts distinction).
     assert envelope.received_ts == _RECEIVED_AT
     assert envelope.replay is False
     assert envelope.parent_trace_id is None
@@ -89,7 +89,7 @@ def test_absent_codes_are_omitted_never_fabricated() -> None:
 
 
 def test_resume_path_publishes_under_the_passed_prior_trace() -> None:
-    # D59: the resume branch publishes under the PRIOR ingest's trace_id, which the
+    # The resume branch publishes under the PRIOR ingest's trace_id, which the
     # builder takes explicitly — also a read trace, never minted.
     event = parse_csv_received(_event_bytes())
     prior_trace = UUID("019e0000-0000-7000-8000-00000000aaaa")
@@ -102,7 +102,7 @@ def test_resume_path_publishes_under_the_passed_prior_trace() -> None:
     )
     assert envelope.trace_id == prior_trace
     # template_id comes off the INCOMING event, never a bronze read — by
-    # construction the builder takes no bronze row, so a pre-Slice-8 prior row
+    # construction the builder takes no bronze row, so a legacy prior row
     # with a NULL template_id column cannot wedge the resume publish.
     assert envelope.template_id == event.template_id
 
@@ -135,7 +135,7 @@ def test_wire_form_without_codes_still_validates() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Delimiter (Slice 16f): populated from the detected separator, on the wire,
+# Delimiter: populated from the detected separator, on the wire,
 # and a non-comma value validates against the frozen contract.
 # ---------------------------------------------------------------------------
 
@@ -183,7 +183,7 @@ def test_contract_is_additional_properties_false() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Runtime publisher is emulator-or-ambient (slice 40a): no-emulator constructs.
+# Runtime publisher is emulator-or-ambient: no-emulator constructs.
 # ---------------------------------------------------------------------------
 
 

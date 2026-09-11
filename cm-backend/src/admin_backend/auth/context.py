@@ -1,6 +1,6 @@
 """AuthContext: the verified identity context derived from a valid JWT.
 
-Per D-24 (CLAUDE.md), the JWT carries identity claims only. No roles,
+The JWT carries identity claims only. No roles,
 no permissions. Permission resolution happens in-app per request from
 the DB tables (roles, permissions, role_permissions,
 user_role_assignments).

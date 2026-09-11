@@ -1,4 +1,4 @@
-"""dis-audit against the live ithina_dis_db (Slice 6 AC2/AC3/AC4/AC6).
+"""dis-audit against the live ithina_dis_db.
 
 WRITES to Postgres, so it runs only against ``ithina_dis_db`` on 5433 (never Customer
 Master on 5432); the ``dis-rls`` target guard (inherited by the writer) refuses anything
@@ -54,7 +54,7 @@ async def engine() -> AsyncIterator[AsyncEngine]:
     url = os.environ.get("POSTGRES_URL")
     if not url:
         raise StackRequiredError(
-            "POSTGRES_URL is not set — the Slice 6 audit-writer tests (load-bearing AC3/AC4) "
+            "POSTGRES_URL is not set — the audit-writer tests (load-bearing AC3/AC4) "
             "refuse to skip silently. Bring up the stack (make run-local) and export "
             "POSTGRES_URL (5433 / ithina_dis_db)."
         )
@@ -97,12 +97,12 @@ async def _read_row_by_trace(engine: AsyncEngine, tenant_id: str, trace_id: str)
     return dict(row) if row is not None else None
 
 
-# ---- AC2 (HARDENED, Slice 30c): the live schema matches the frozen contract at FULL
+# ---- AC2 (HARDENED): the live schema matches the frozen contract at FULL
 # shape grain — names both directions PLUS type, nullability, and character length.
-# Pre-30c this guard was a column-NAME-set match only, so a type narrowing or a
-# nullability flip passed the guard and died silently at INSERT under fire-and-forget
-# (the D45 silent-loss class). The pure diff_schema is narrowing-proven in the lib's
-# unit tests; here it runs against the REAL information_schema.
+# A column-NAME-set-only match would let a type narrowing or a nullability flip pass
+# the guard and die silently at INSERT under fire-and-forget. The pure diff_schema is
+# narrowing-proven in the lib's unit tests; here it runs against the REAL
+# information_schema.
 async def test_live_schema_matches_contract_full_shape(engine: AsyncEngine) -> None:
     async with engine.connect() as conn:
         live_rows = [
@@ -144,9 +144,9 @@ async def _check_vocab(engine: AsyncEngine, conname: str) -> set[str]:
 async def test_outcome_vocab_matches_live_check(engine: AsyncEngine) -> None:
     live = await _check_vocab(engine, "ck_audit_events_outcome_vocab")
     assert {o.value for o in Outcome} == live
-    # FLIPPED by Slice 30c (the D42 revision): the D33 duplicate outcomes are now
-    # first-class in the live CHECK — promoted from event_data for console
-    # queryability, superseding the Slice-10 JSONB resolution.
+    # The duplicate outcomes are first-class in the live CHECK — promoted from
+    # event_data for console queryability rather than resolved only in the
+    # JSONB payload.
     assert "DUPLICATE_NOOP" in live and "DUPLICATE_OVERWRITTEN" in live
 
 
@@ -158,7 +158,7 @@ async def test_event_scope_vocab_matches_live_check(engine: AsyncEngine) -> None
 async def _cleanup_audit_trace(engine: AsyncEngine, tenant_id: str, trace_id: str) -> None:
     """Revert the audit.events rows a test inserted (the test_quarantine_writer idiom).
     audit.events is FORCE RLS; the tenant GUC scopes the DELETE. A test that mutates the
-    shared live DB restores it (D100)."""
+    shared live DB restores it."""
     async with engine.connect() as conn:
         async with conn.begin():
             await conn.execute(text("SELECT set_config('app.tenant_id', :t, true)"), {"t": tenant_id})
@@ -200,7 +200,7 @@ async def test_writer_lands_audit_event(engine: AsyncEngine) -> None:
 async def test_writer_lands_event_crossing_utc_date_boundary(engine: AsyncEngine) -> None:
     # 2026-06-04 01:30 +05:30 == 2026-06-03 20:00 UTC: local date and UTC date differ. The live
     # ck_audit_events_event_date_matches CHECK (event_date = (ts AT TIME ZONE 'UTC')::date) must
-    # accept the model's UTC-derived date on a REAL insert (plain table since Slice 30a; any date lands).
+    # accept the model's UTC-derived date on a REAL insert (plain table; any date lands).
     ist = timezone(timedelta(hours=5, minutes=30))
     trace_id = new_uuid7()
     try:

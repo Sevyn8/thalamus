@@ -38,7 +38,7 @@ def _bearer(token: str) -> dict[str, str]:
 def _fake_row(**overrides: Any) -> Any:
     """A stand-in for a SQLAlchemy Row over the projection + store_name (attribute access).
 
-    Carries EVERY served column (Slice 52a: 43 canonical columns + store_name) so ``_to_row`` reads
+    Carries EVERY served column (43 canonical columns + store_name) so ``_to_row`` reads
     exactly what the SELECT projects — a missing attribute here is the same drift a prod row would hit.
     """
     base: dict[str, Any] = {
@@ -142,7 +142,7 @@ def test_to_row_maps_canonical_row_to_wire() -> None:
     dumped = wire.model_dump()
     assert "mapping_version_id" not in dumped  # renamed to mapping_version
     assert "tenant_id" not in dumped  # scope, never on the wire
-    assert "ingest_metadata" not in dumped  # operator-excluded (Slice 52a)
+    assert "ingest_metadata" not in dumped  # operator-excluded
 
 
 def test_to_row_null_stock_and_event_at() -> None:
@@ -208,7 +208,7 @@ def test_wire_field_set_is_lockstep_with_projection() -> None:
 
 
 def test_store_join_carries_mandatory_tenant_predicate() -> None:
-    # Criterion 6 (structural half): identity_mirror.stores is RLS-OFF (D41), so the store-side
+    # Structural half: identity_mirror.stores is RLS-OFF, so the store-side
     # tenant predicate in the JOIN ON clause is the ONLY tenant isolation on that table and has no
     # behavioural signature (store_id is globally unique + base rows are RLS-forced). This test
     # FAILS if that predicate is ever deleted from the join.
@@ -218,7 +218,7 @@ def test_store_join_carries_mandatory_tenant_predicate() -> None:
     compiled = str(stmt.compile())  # default compiler renders schema-qualified table.column = table.column
     assert "LEFT OUTER JOIN identity_mirror.stores" in compiled
     assert "identity_mirror.stores.tenant_id = canonical.store_sku_current_position.tenant_id" in compiled, (
-        "the mandatory store-side tenant predicate is missing from the join (D41 leak surface)"
+        "the mandatory store-side tenant predicate is missing from the join (cross-tenant leak surface)"
     )
     assert "identity_mirror.stores.store_id = canonical.store_sku_current_position.store_id" in compiled
 

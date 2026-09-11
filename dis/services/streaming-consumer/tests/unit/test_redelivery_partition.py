@@ -1,12 +1,13 @@
 """``_partition_redeliveries``: the write-time half of redelivery idempotency (0019).
 
-THE BUG IT CLOSES: ``_detect_duplicates`` already classified every row as
-``DUPLICATE_NOOP`` (identical payload under an existing dedup key) or
-``DUPLICATE_OVERWRITTEN`` (a correction), inside the write transaction — and then the
-insert proceeded unconditionally, so a retry appended a full duplicate set. These cases
-pin the verdict being ACTED on, and pin the two ways it must NOT over-reach:
+``_detect_duplicates`` classifies every row as ``DUPLICATE_NOOP`` (identical payload
+under an existing dedup key) or ``DUPLICATE_OVERWRITTEN`` (a correction), inside the
+write transaction; without this partition acting on that verdict, a retry would append
+a full duplicate set. These cases pin the verdict being ACTED on, and pin the two ways
+it must NOT over-reach:
 
-- a correction (``DUPLICATE_OVERWRITTEN``) still lands, because D33 wants it appended;
+- a correction (``DUPLICATE_OVERWRITTEN``) still lands — the event log is append-only,
+  so corrections are retained as new rows;
 - a hit whose hash does not match THIS row still lands, because one batch can carry
   several rows under one dedup key and only the matching one is the redelivery.
 
@@ -65,7 +66,7 @@ def test_identical_redelivery_is_suppressed() -> None:
 
 
 def test_correction_still_lands() -> None:
-    """D33 is not repealed: a different payload under the same key is appended."""
+    """Append-only corrections: a different payload under the same key is appended."""
     row = _row("T-1:1", "hash-b")
     to_insert, suppressed = _partition_redeliveries([row], [_hit("T-1:1", "hash-b", "DUPLICATE_OVERWRITTEN")])
     assert to_insert == [row]

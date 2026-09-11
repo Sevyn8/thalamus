@@ -1,19 +1,17 @@
 """Integration tests for StoresRepo write methods.
 
-C/U/T-series shipped at Step 6.17.3 / 6.17.4. PW-series (paired-write
-cascade) shipped at Step 6.21.2.
-
   C1-C8: create — happy path, optionals, RLS, store_code duplicate,
          parent-not-found / parent-different-tenant, audit-actor pair,
-         DDL-default status. Step 6.21.2 retired C7 (already-linked
-         failure mode structurally unreachable under atomic-pair).
+         DDL-default status. C7 (already-linked failure mode) is
+         retired: it's structurally unreachable under the atomic-pair
+         create.
   U1-U8: update — happy, empty, same-as-current, store_code rename,
          rename-to-self, unknown id, cross-tenant RLS-as-None,
          audit-actor + updated_at.
   T1-T13: transition state machine.
-  PW1-PW10 (Step 6.21.2): paired-write cascade behaviour — atomic
-         org_node + store create, validation gates on parent, cascade
-         on name/store_code/parent change, cascade on status, mapping
+  PW1-PW10: paired-write cascade behaviour — atomic org_node + store
+         create, validation gates on parent, cascade on
+         name/store_code/parent change, cascade on status, mapping
          dict correctness. PW6 splits into PW6a (store_code collision)
          and PW6b (org_node code collision via cascade).
 
@@ -78,8 +76,8 @@ async def cleanup_stores(
 ) -> AsyncIterator[list[UUID]]:
     """Tracks store IDs created via ``repo.create`` and DELETEs at teardown.
 
-    Step 6.21.2: ``repo.create`` now produces a paired STORE-type
-    org_node alongside each store. The cleanup fixture captures the
+    ``repo.create`` produces a paired STORE-type org_node alongside
+    each store. The cleanup fixture captures the
     paired ``org_node_id`` BEFORE deleting the store (so the FK ref
     is gone when we drop the org_node) and DELETEs both rows in
     sequence.
@@ -126,9 +124,9 @@ async def cleanup_stores(
 def _platform_auth(actor_id: UUID) -> AuthContext:
     """Synthetic PLATFORM AuthContext for repo.create / update / transition.
 
-    Step 6.21.2: ``StoresRepo.{create,update,transition}`` now take
-    ``auth: AuthContext`` directly (replacing the prior
-    ``actor_user_id`` + ``actor_user_type`` pair). Tests build a
+    ``StoresRepo.{create,update,transition}`` take ``auth:
+    AuthContext`` directly (not an ``actor_user_id`` +
+    ``actor_user_type`` pair). Tests build a
     minimal valid AuthContext with the actor's id; ``user_type``
     defaults to PLATFORM (callers needing TENANT pass a custom auth).
     Matches the shape used by ``conftest.platform_auth``.
@@ -173,10 +171,10 @@ def _base_create_kwargs(
 ) -> dict[str, Any]:
     """Minimal valid kwargs for ``repo.create``.
 
-    Step 6.21.2 renamed ``org_node_id`` -> ``parent_org_node_id``
-    (required; the server now creates the paired STORE-type org_node
-    fresh) and replaced ``actor_user_id`` / ``actor_user_type`` with a
-    single synthesised ``auth: AuthContext``.
+    The kwarg is ``parent_org_node_id`` (required; the server creates
+    the paired STORE-type org_node fresh), and the actor is a single
+    synthesised ``auth: AuthContext`` rather than an
+    ``actor_user_id`` / ``actor_user_type`` pair.
     """
     if actor_type == ActorUserType.TENANT:
         auth = _tenant_auth(actor_id, tenant_id)
@@ -205,7 +203,7 @@ async def make_parent_org_node(
     """Convenience: build a tenant-root + an HQ child; return the
     HQ id as a valid ``parent_org_node_id`` for ``repo.create``.
 
-    Step 6.21.2: stores attach to a non-STORE parent in the org tree.
+    Stores attach to a non-STORE parent in the org tree.
     Most C/U/T tests don't care which type of parent — they just need
     a valid one. This fixture returns an HQ-typed node (one level
     below the TENANT root), suitable for cascade-order under STORE.
@@ -271,7 +269,7 @@ async def test_c1_create_happy_path(
     assert row.store.latitude == Decimal("12.345678")
     assert row.store.longitude == Decimal("-23.456789")
     assert row.tenant_name == "C1-Tenant"
-    # Step 6.21.2: paired STORE-type org_node exists and is linked.
+    # Paired STORE-type org_node exists and is linked.
     assert row.store.org_node_id is not None
 
 
@@ -285,7 +283,7 @@ async def test_c2_create_optional_fields_omitted(
 ) -> None:
     """Optional fields (lat, lng, address) default to None.
 
-    Step 6.21.2: ``org_node_id`` is no longer optional on the body
+    ``org_node_id`` is not part of the request body
     (``parent_org_node_id`` is required and the server provisions
     ``org_node_id`` server-side); the freshly-created store always
     has a non-NULL ``org_node_id``.
@@ -388,13 +386,12 @@ async def test_c5_create_with_cross_tenant_parent_raises_parent_not_found(
     """parent_org_node_id belonging to tenant B can't link a store
     under tenant A.
 
-    Step 6.21.2 (LD12 retirement of OrgNodeNotForStoreError): the new
     ``_check_parent_node_for_store`` reads the parent under the
     request's tenant_id via the SELECT WHERE clause; a cross-tenant
     parent surfaces as ``ParentNodeNotFoundError`` (404), collapsing
-    "not visible" and "different tenant" per D-17. PLATFORM session
-    can see both org_nodes globally, but the same-tenant filter in
-    the SELECT enforces the rule.
+    "not visible" and "different tenant" into one error. PLATFORM
+    session can see both org_nodes globally, but the same-tenant
+    filter in the SELECT enforces the rule.
     """
     t_a = await make_tenant(name="C5-A")
     t_b = await make_tenant(name="C5-B")
@@ -436,11 +433,8 @@ async def test_c6_create_with_unknown_parent_raises_parent_not_found(
     cleanup_stores,
     platform_session,
 ) -> None:
-    """Non-existent parent_org_node_id -> ParentNodeNotFoundError (404).
-
-    Step 6.21.2 (LD12 retirement): assertion target changed from
-    OrgNodeNotForStoreError to ParentNodeNotFoundError per the new
-    _check_parent_node_for_store helper.
+    """Non-existent parent_org_node_id -> ParentNodeNotFoundError (404),
+    raised by the ``_check_parent_node_for_store`` helper.
     """
     t = await make_tenant(name="C6-Tenant")
     actor = await make_platform_user(status="ACTIVE")
@@ -459,9 +453,9 @@ async def test_c6_create_with_unknown_parent_raises_parent_not_found(
         )
 
 
-# Step 6.21.2 (LD12): test_c7 ("already linked" failure mode) deleted.
-# The "already linked" case is structurally unreachable under the new
-# atomic-pair architecture — the server creates the paired STORE-type
+# test_c7 ("already linked" failure mode) does not exist: the case
+# is structurally unreachable under the atomic-pair architecture —
+# the server creates the paired STORE-type
 # org_node fresh inside the same transaction; there is no
 # user-supplied org_node_id to be "already linked" to another store.
 # The DDL partial unique index ``uq_stores_org_node_id`` still backs
@@ -832,7 +826,7 @@ async def test_u8_update_populates_updated_by_pair_and_bumps_updated_at(
 
 
 # ============================================================================
-# T: state transitions (Step 6.17.4)
+# T: state transitions
 #
 # Each test creates a store via ``make_store`` (which uses the fixture's
 # committed-INSERT path) and exercises one matrix cell via
@@ -1331,7 +1325,7 @@ async def test_t16_pattern_b_audit_actor_invariants(
 
 
 # ============================================================================
-# PW: Step 6.21.2 paired-write cascade tests.
+# PW: paired-write cascade tests.
 #
 # These exercise the atomic store + paired STORE-type org_node behaviour:
 # create writes both rows in one transaction; update cascades shared
@@ -1376,7 +1370,7 @@ async def test_pw1_create_with_valid_parent_creates_paired_org_node(
     rows (stores + paired STORE-type org_nodes) exist and link 1:1.
     Audit-actor pair populated on both rows.
 
-    Verifies the core Step 6.21.2 invariant: the org_node is created
+    Verifies the core atomic-pair invariant: the org_node is created
     server-side; the store's org_node_id links to it; the org_node's
     code matches the store's store_code (field ownership per
     architecture.md A.5).
@@ -1607,10 +1601,10 @@ async def test_pw6a_update_store_code_cascades_with_stores_collision(
     """LOAD-BEARING: PATCH store_code -> 409 DUPLICATE_STORE_CODE when
     case-insensitive collision against another store in the same tenant.
 
-    PW6 splits at Step 6.21.2 design (Deviation #7) into 6a (store-vs-
-    store collision via _raise_if_store_code_taken) and 6b (store-vs-
-    org_node code collision via the cascade UPDATE). This test covers
-    6a's narrower scope."""
+    PW6 splits into 6a (store-vs-store collision via
+    _raise_if_store_code_taken) and 6b (store-vs-org_node code
+    collision via the cascade UPDATE). This test covers 6a's
+    narrower scope."""
     t = await make_tenant(name="PW6a-Tenant")
     parent_id = await make_parent_org_node(t.id, "pw6a")
     actor = await make_platform_user(status="ACTIVE")

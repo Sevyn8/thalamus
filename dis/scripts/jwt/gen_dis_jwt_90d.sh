@@ -9,8 +9,8 @@
 #
 # These are DEV-STUB tokens: HS256-signed with the constant secret the
 # dis-ui-server verifier checks (services/dis-ui-server/src/dis_ui_server/auth/
-# verifier.py). NOT production credentials. The 13b JWKS/RS256 swap (D25)
-# replaces the verifier; these tokens stop working then.
+# verifier.py). NOT production credentials: they verify only when dis-ui-server
+# runs in STUB auth mode; the AUTH0/JWKS mode rejects them.
 #
 # Unlike the admin-backend generate_7d.sh, this does NO database lookup. The 10
 # users (sub = auth0_sub, tenant_id = CLOUD core.tenants.id) are pinned inline,

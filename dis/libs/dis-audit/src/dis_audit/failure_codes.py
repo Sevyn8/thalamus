@@ -1,6 +1,6 @@
-"""The stable ``failure_code`` vocabulary ``dis-audit`` owns (Slice 30b).
+"""The stable ``failure_code`` vocabulary ``dis-audit`` owns.
 
-Before this slice ``failure_code`` was an unstable mix: exception class names
+Without this, ``failure_code`` would be an unstable mix: exception class names
 (the consumer catch-all), per-site strings (``path_mismatch``,
 ``gcs_write_failed``), raw reason codes (``not_csv``), stage names, and pandera
 check names. That defeats "all X failures" queries. :class:`FailureCode` is the
@@ -10,8 +10,8 @@ Like :class:`~dis_audit.stages.Stage`, closure is a TYPE-LEVEL guarantee: the
 live ``failure_code`` column is a free ``varchar(64)`` with no CHECK, so the
 lib is the vocabulary's owner and no DDL is involved.
 
-Information-loss guarantee (the superset rule): every pre-30b value maps to a
-member; variable detail that cannot be enumerated moves to ``event_data``
+Information-loss guarantee (the superset rule): every value maps to a member;
+variable detail that cannot be enumerated moves to ``event_data``
 (``check`` for pandera check names, ``exception_class`` for unmapped exception
 types under :attr:`FailureCode.INFRA_FAILURE`, ``reason`` for tier-0) or stays
 in ``failure_message``.
@@ -75,7 +75,7 @@ class FailureCode(StrEnum):
     MAPPING_EXECUTION_FAILED = "MAPPING_EXECUTION_FAILED"  # gate summary
     POST_VALIDATION_FAILED = "POST_VALIDATION_FAILED"  # gate summary
     VALIDATION_ROW_FAILED = "VALIDATION_ROW_FAILED"  # ROW scope; check -> event_data
-    HOT_POSITION_MISSING = "HOT_POSITION_MISSING"  # the REVISED-D63 hot-merge miss
+    HOT_POSITION_MISSING = "HOT_POSITION_MISSING"  # hot-merge position miss
 
     # -- the fallback ------------------------------------------------------------
     # Any exception type the registry does not map. The class name is preserved

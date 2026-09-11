@@ -1,6 +1,6 @@
 """Lookup ORM model.
 
-Maps the ``lookups`` table created at Step 1.4. Each row is a
+Maps the ``lookups`` table. Each row is a
 ``(list_name, code, display_name)`` reference entry — the platform's
 source of truth for enum-style display data the API exposes to
 frontends.
@@ -13,9 +13,8 @@ soft-deactivates entries without deleting them.
 The table is platform-global: no ``tenant_id``, no RLS — same lists
 for all tenants in v0.
 
-Step 3.4.5 introduces this model so ``TenantsRepo`` can JOIN it for
-the per-tenant modules subquery. Future endpoints (``/api/v1/lookups``)
-will read from it directly.
+``TenantsRepo`` JOINs it for the per-tenant modules subquery, and
+``/api/v1/lookups`` reads from it directly.
 """
 from datetime import datetime
 from uuid import UUID

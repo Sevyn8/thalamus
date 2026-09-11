@@ -1,4 +1,4 @@
-"""Integration tests for the stores set-status endpoint (Step 6.17.4).
+"""Integration tests for the stores set-status endpoint.
 
 Coverage shape:
 
@@ -423,7 +423,7 @@ def test_mg_set_status_endpoint_carries_gate_marker() -> None:
 
 
 # ============================================================================
-# SS: Step 6.21.2 set-status cascade tests.
+# SS: set-status cascade tests.
 #
 # End-to-end via the set-status endpoint. Confirms that the cascade to
 # the paired STORE-type org_node's status + archived_* triplet runs

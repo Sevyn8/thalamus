@@ -5,8 +5,8 @@
 # =============================================================================
 # WHY THIS EXISTS
 # =============================================================================
-# Slice 9 cost EIGHT API rejections, one plan-apply cycle each, and every one of them was
-# knowable beforehand. `terraform validate` and `terraform plan` check schema — is the field the
+# Building this module's alerts cost EIGHT API rejections, one plan-apply cycle each, and every
+# one of them was knowable beforehand. `terraform validate` and `terraform plan` check schema — is the field the
 # right type, in the right block — and the Monitoring API rejects COMBINATIONS: an aligner that
 # cannot apply to a metric's valueType, a reducer that cannot apply to the aligner's OUTPUT type,
 # an alignment period past a ceiling. No static check reaches any of that.

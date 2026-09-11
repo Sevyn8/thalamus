@@ -27,7 +27,7 @@ export type StepRailProps = {
   // Draft-saved indicator.
   saving: boolean;
   savedLabel: string | null;
-  // Slice 7 item 2: the set of steps to render. Onboarding passes all
+  // The set of steps to render. Onboarding passes all
   // seven (the default); edit mode passes the six non-review sections.
   steps?: readonly WizardStep[];
   // Onboarding shows progress affordances (completion ticks, warning

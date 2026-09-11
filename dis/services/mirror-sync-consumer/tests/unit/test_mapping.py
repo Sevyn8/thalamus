@@ -41,7 +41,7 @@ def test_tenant_from_row_maps_id_to_tenant_id() -> None:
 
 
 def test_tenant_from_row_copies_null_display_code_faithfully() -> None:
-    # D55: the source column is nullable; the projection copies NULL as-is.
+    # The source column is nullable; the projection copies NULL as-is.
     tenant = CmTenant.from_row(
         {
             "id": _TENANT_UUID,
@@ -93,7 +93,7 @@ def test_store_from_row_maps_id_to_store_id() -> None:
 
 
 def test_store_from_row_copies_null_store_code_faithfully() -> None:
-    # D55: store_code is nullable at source; copied as-is, never defaulted.
+    # store_code is nullable at source; copied as-is, never defaulted.
     store = CmStore.from_row(
         {
             "id": _STORE_UUID,

@@ -1,7 +1,7 @@
 """Async SQLAlchemy engine factory and runtime privilege check.
 
-The engine is created from Settings at app startup (Step 2.4 wires
-this into the FastAPI lifespan). Pool configuration is conservative
+The engine is created from Settings at app startup (the FastAPI
+lifespan wires this). Pool configuration is conservative
 for v0; tune post-launch if metrics show contention.
 
 Connect-time hook sets `search_path` for every new physical connection
@@ -28,8 +28,7 @@ from admin_backend.errors import AppRolePrivilegeError
 
 # Re-export so existing `from admin_backend.db.engine import
 # AppRolePrivilegeError` callers (e.g. tests/unit/test_engine.py) keep
-# working. Canonical home is admin_backend.errors per the Step 2.3
-# structured-error refactor.
+# working. Canonical home is admin_backend.errors.
 __all__ = [
     "AppRolePrivilegeError",
     "create_engine",
@@ -99,8 +98,7 @@ async def assert_app_role_no_bypassrls(engine: AsyncEngine) -> None:
 
     Either attribute bypasses RLS entirely, regardless of FORCE on
     tables. This function MUST run at app startup; if it raises, the
-    app must refuse to start. Step 2.4 wires this into the FastAPI
-    lifespan.
+    app must refuse to start. The FastAPI lifespan wires this in.
 
     Note: `current_user` returns the active role. v0 does not use SET
     ROLE anywhere, so current_user equals the originally-connected

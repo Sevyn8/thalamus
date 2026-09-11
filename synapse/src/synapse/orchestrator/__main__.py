@@ -61,7 +61,7 @@ from synapse.registry import max_rungs
 #
 # ONE OUTPUT PATH, not two. A human-readable report alongside the structured one would be two
 # representations of the same events, free to drift; a hand-run reads the JSON, which carries
-# the same content it used to print.
+# the full content.
 _log = get_logger("synapse-orchestrator")
 
 

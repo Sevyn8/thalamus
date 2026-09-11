@@ -36,7 +36,7 @@ TWO RLS SCOPES IN ONE PROCESS, which is the structural thing to understand befor
 The enumerating session physically cannot write, and the acting session physically cannot touch
 another tenant. Neither property depends on this package being careful.
 
-TWO ENGINES, as slice 5 established: ``synapse_reader`` for everything read, ``synapse_writer``
+TWO ENGINES: ``synapse_reader`` for everything read, ``synapse_writer``
 for the action log and the run table. The split is a grant, not a convention.
 """
 

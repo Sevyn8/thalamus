@@ -1,4 +1,4 @@
-"""Audit log read endpoints (Step 6.16.3).
+"""Audit log read endpoints.
 
 Two GET handlers under ``/audit/activities``; the parent ``/api/v1``
 prefix comes from ``settings.api_prefix`` at ``app.include_router``
@@ -15,8 +15,8 @@ accepted. Audience-driven branching happens inside the repo (LD1):
 
 Gate: ``ADMIN.AUDIT_LOG.VIEW.TENANT`` on both endpoints. SUPER_ADMIN +
 PLATFORM_ADMIN + SUPPORT_ADMIN pass via the GLOBAL→TENANT scope
-cascade (they hold ``.GLOBAL`` per the Step 6.16.3 operator catalogue
-update); TENANT OWNER (and other tenant roles holding ``.VIEW.TENANT``)
+cascade (they hold ``.GLOBAL`` per the operator catalogue); TENANT
+OWNER (and other tenant roles holding ``.VIEW.TENANT``)
 pass via the direct grant. No anchor_dep (LD8): both endpoints are
 list/detail reads scoped by caller audience + RLS; no per-row anchor
 cascade applies.
@@ -94,9 +94,9 @@ def _compose_what(row: AuditActivityDetailRow) -> str:
 def _list_item_from_row(row: AuditActivityDetailRow) -> AuditActivityListItem:
     """Map the repo's 19+scope row to the 14-field wire list item.
 
-    Step 6.16.7 LD10 / LD11 : 6 new fields populated. ``what`` is
-    composed at read time from ``resource_type`` + ``resource_subtype``
-    + ``resource_label`` via the LD12 helper.
+    Per LD10 / LD11, ``what`` is composed at read time from
+    ``resource_type`` + ``resource_subtype`` + ``resource_label`` via
+    the LD12 helper.
     """
     return AuditActivityListItem(
         id=row.id,

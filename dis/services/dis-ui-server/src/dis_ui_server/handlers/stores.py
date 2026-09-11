@@ -1,4 +1,4 @@
-"""``GET /stores-onboarded`` — the token tenant's mirrored stores (slice 14b a).
+"""``GET /stores-onboarded`` — the token tenant's mirrored stores.
 
 Tenant from the verified token ONLY (no path/query parameter exists, so none
 can be honoured); the read goes through the single ``repos/stores.py``
@@ -74,12 +74,12 @@ async def get_stores_onboarded_for_tenant(
 
     ``/stores-onboarded`` is token-tenant-pinned; a PLATFORM ops caller carries no tenant
     claim, so the acted-for tenant rides the PATH — the read-side analog of the write
-    impersonation (Slice 17b / D92), honoured ONLY on a PLATFORM + ``dis:ops`` token.
+    impersonation, honoured ONLY on a PLATFORM + ``dis:ops`` token.
     ``require_read_scope`` yields ``is_platform`` True for exactly that posture (PLATFORM
     without ``dis:ops`` is already a 403 there); a TENANT caller has no business on this
     cross-tenant surface (it uses ``/stores-onboarded``), so it is refused 403. The read still
     goes through the single ``repos/stores.py`` chokepoint that owns the in-query tenant
-    predicate (D41) — here scoped to the acted-for tenant.
+    predicate — here scoped to the acted-for tenant.
     """
     if not scope.is_platform:
         raise TenantScopeError(

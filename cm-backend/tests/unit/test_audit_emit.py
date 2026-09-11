@@ -112,9 +112,9 @@ def test_ae1_route_normal_with_tenant_id_builds_tenant_table_row() -> None:
     assert row.tenant_id == tenant_id
     assert row.tenant_name == "Buc-ee's"
     assert row.action == "UPDATE"
-    # Step 6.16.7 LD8 : "Updated" -> "Edited".
+    # UPDATE's action label is "Edited", not "Updated".
     assert row.action_label == "Edited"
-    # Step 6.16.7 LD13 : new columns populated on the ORM row.
+    # Actor-enrichment columns populated on the ORM row.
     assert row.actor_organization_name == "Buc-ee's"
     assert row.actor_roles == "Owner"
     assert row.resource_subtype is None
@@ -192,7 +192,7 @@ def test_ae4_actor_type_from_auth_maps_correctly() -> None:
 
 def test_ae5_label_for_action_covers_v0_vocabulary() -> None:
     assert _label_for_action("CREATE") == "Created"
-    # Step 6.16.7 LD8 : "Updated" -> "Edited".
+    # UPDATE's action label is "Edited", not "Updated".
     assert _label_for_action("UPDATE") == "Edited"
     assert _label_for_action("SUSPEND") == "Suspended"
     assert _label_for_action("ACTIVATE") == "Activated"
@@ -331,8 +331,8 @@ def test_ae7_create_builder_includes_roles_list_with_frozen_labels() -> None:
 def test_ae8_update_builder_carries_before_after_role_or_permission_lists() -> None:
     """UPDATE payload carries the full before+after role list when role
     diff fired (tenant-users PATCH) OR the full before+after permission
-    list when permission diff fired (roles PATCH). Per Phase 1 Q1 both
-    halves are full lists, not diffs.
+    list when permission diff fired (roles PATCH). Both halves are
+    full lists, not diffs.
     """
     role_a = uuid.uuid4()
     role_b = uuid.uuid4()
@@ -455,7 +455,7 @@ def test_ae9_optional_sub_keys_for_denied_and_invariant() -> None:
 
 
 # ---------------------------------------------------------------------------
-# AE10 : Step 6.16.5 — CREATE-shape snapshot carries new optional sub-keys
+# AE10 : CREATE-shape snapshot carries optional sub-keys
 # without explicit builder kwargs (callers compose the dict directly).
 # ---------------------------------------------------------------------------
 
@@ -517,21 +517,20 @@ def test_ae10_create_snapshot_includes_atomic_and_parent_name_when_supplied() ->
 
 
 # ---------------------------------------------------------------------------
-# AE11 : Step 6.16.5 LD3 — stores set-status per-target action label
+# AE11 : stores set-status per-target action label
 # dispatch (LOAD-BEARING : the user-facing action-label contract).
 # ---------------------------------------------------------------------------
 
 
 def test_ae11_label_for_action_covers_step_6_16_5_vocabulary() -> None:
     """LOAD-BEARING: stores set-status per-target action codes and the
-    module-access ENABLE / DISABLE codes resolve to the locked LD3
-    labels.
+    module-access ENABLE / DISABLE codes resolve to the locked labels.
 
-    OPEN_SOFT is reserved for ``target=OPENING`` per FN-AB-68 (no
-    transition cell currently produces it; label stays in vocabulary
-    for D-31 append-only stability).
+    OPEN_SOFT is reserved for ``target=OPENING`` (no transition cell
+    currently produces it; the label stays in the vocabulary because
+    the action-label vocabulary is append-only).
     """
-    # Stores set-status per-target codes (LD3).
+    # Stores set-status per-target codes.
     assert _label_for_action("OPEN_SOFT") == "Soft-opened"
     assert _label_for_action("ACTIVATE") == "Activated"
     assert _label_for_action("CLOSE") == "Closed"
@@ -541,13 +540,12 @@ def test_ae11_label_for_action_covers_step_6_16_5_vocabulary() -> None:
     assert _label_for_action("ENABLE") == "Enabled"
     assert _label_for_action("DISABLE") == "Disabled"
 
-    # Failure-path SET_STATUS fallback. Step 6.16.7 LD8 :
-    # "Status change" -> "Set status".
+    # Failure-path SET_STATUS fallback label.
     assert _label_for_action("SET_STATUS") == "Set status"
 
 
 # ---------------------------------------------------------------------------
-# Step 6.16.7 unit tests : LD12 + LD9 + LD8 + helpers
+# Label / composition helper unit tests
 # ---------------------------------------------------------------------------
 
 

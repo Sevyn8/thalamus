@@ -1,4 +1,4 @@
-"""End-to-end csv.received delivery proof (AC1/AC2): a test plays Phase 1 and
+"""End-to-end csv.received delivery proof: a test plays the producer and
 publishes csv.received on the REAL emulator topic; the worker's subscriber pulls,
 processes, acks; ingress.ready arrives on a verify subscription; redelivery no-ops.
 
@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.integration
 
 _GOOD_CSV = b"sku,store_section,qty_sold,unit_price\nA-1,front,5,9.99\nB-2,back,3,4.50\n"
-_PROJECT = pubsub_test_project()  # D100: tests run on a project residents never subscribe to
+_PROJECT = pubsub_test_project()  # tests run on a project residents never subscribe to
 
 
 def _unique_session_id() -> str:
@@ -112,7 +112,7 @@ async def test_end_to_end_csv_received_to_ingress_ready(
     bucket = stack_env["GCS_BUCKET_BRONZE"]
     verify_client, verify_path = verify_subscription
 
-    # ---- Phase 1 (played by the test): object lands, csv.received published.
+    # ---- Producer side (played by the test): object lands, csv.received published.
     trace_id = new_uuid7()
     cleanup_traces.append(trace_id)
     received = now_utc()
@@ -124,7 +124,7 @@ async def test_end_to_end_csv_received_to_ingress_ready(
         ext="csv",
     )
     storage.upload_bytes(key, _GOOD_CSV, content_type="text/csv")
-    template_id = new_uuid7()  # Slice 8 carry: required on the contract (D71)
+    template_id = new_uuid7()  # required on the contract
     event_payload = {
         "schema_version": 1,
         "trace_id": str(trace_id),
@@ -140,7 +140,7 @@ async def test_end_to_end_csv_received_to_ingress_ready(
     }
     EmulatorPublisher(project_id=_PROJECT).publish(CSV_RECEIVED_TOPIC, json.dumps(event_payload).encode())
 
-    # ---- Phase 2 (the worker under test): pull, process, ack.
+    # ---- Worker side (under test): pull, process, ack.
     handled = await wired_subscriber.poll_once()
     assert handled >= 1
 
@@ -157,7 +157,7 @@ async def test_end_to_end_csv_received_to_ingress_ready(
     assert row.store_id == PRIMARY_STORE.uuid
     assert row.payload_sha256 == hashlib.sha256(_GOOD_CSV).hexdigest()
     assert row.processing_status == "PUBLISHED"
-    assert row.template_id == template_id  # persisted for replay lineage (Slice 8 / D71)
+    assert row.template_id == template_id  # persisted for replay lineage
 
     # ingress.ready arrived, carrying the EVENT's trace (read, never minted) and
     # the bronze pointer the streaming consumer needs.
@@ -167,7 +167,7 @@ async def test_end_to_end_csv_received_to_ingress_ready(
     assert envelope["bronze_ref"] == str(row.id)
     assert envelope["tenant_id"] == str(PRIMARY_TENANT.uuid)
     assert envelope["gcs_uri"] == event_payload["gcs_uri"]
-    assert envelope["template_id"] == str(template_id)  # carried verbatim (D71)
+    assert envelope["template_id"] == str(template_id)  # carried verbatim
 
     # The message was ACKed: another poll re-processes nothing for this trace.
     await wired_subscriber.poll_once()
@@ -192,7 +192,7 @@ async def test_end_to_end_csv_received_to_ingress_ready(
         e for e in map(json.loads, _drain(verify_client, verify_path)) if e["trace_id"] == str(trace_id)
     ] == []
     with dis_admin.connect() as conn:
-        # Slice 30c (the D42 revision): the dedup no-op's outcome IS the kind,
+        # The dedup no-op's outcome IS the kind,
         # and the prior trace is a COLUMN.
         noop = conn.execute(
             text(

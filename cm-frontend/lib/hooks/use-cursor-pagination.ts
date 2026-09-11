@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 
-// Phase 5h.1 (2026-05-21): generic cursor-pagination state helper.
+// Generic cursor-pagination state helper.
 // Backend's CursorPagination shape (next_cursor / prev_cursor /
 // has_more / limit) is the source of truth for forward navigation;
 // the spec calls prev_cursor "a future affordance" and currently

@@ -1,4 +1,4 @@
-"""Trust-boundary scope proofs (D54, hard rule 4): the SDK holds no Identity Service
+"""Trust-boundary scope proofs: the SDK holds no Identity Service
 dependency and no trace_id minting surface.
 
 Mirrors csv-ingest-worker's ``test_trust_boundary``: a test cannot prove a behaviour's
@@ -42,15 +42,17 @@ def _imports_and_names(source: Path) -> tuple[set[str], set[str]]:
 
 
 def test_no_module_imports_identity_service_surface() -> None:
-    # D54: the connector reads identity off the trigger; no Identity Service client,
+    # The connector reads identity off the trigger; no Identity Service client,
     # no resolve call, no external-to-internal translation.
     for source in _SOURCES:
         modules, names = _imports_and_names(source)
         assert not any(m.startswith("dis_core.identity") for m in modules), (
-            f"{source.name} imports dis_core.identity (D54 violation)"
+            f"{source.name} imports dis_core.identity (trust-boundary violation)"
         )
         for forbidden in ("resolve_from_upload", "resolve_from_token"):
-            assert forbidden not in names, f"{source.name} references {forbidden!r} (D54 violation)"
+            assert forbidden not in names, (
+                f"{source.name} references {forbidden!r} (trust-boundary violation)"
+            )
 
 
 def test_no_module_references_the_trace_mint() -> None:

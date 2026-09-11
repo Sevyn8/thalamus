@@ -1,20 +1,18 @@
 """The inbound ``ingress.ready`` envelope, typed against the frozen contract.
 
 One Pydantic model per the committed ``contracts/pubsub/ingress.ready.schema.json``
-(hard rule 10: read and populate, never change shape). The unit drift guard
-reconciles this model's field set against the contract file both directions, so a
-contract edit and this model cannot silently diverge.
+— the consumer reads and populates the contract shape, never changes it. The unit
+drift guard reconciles this model's field set against the contract file both
+directions, so a contract edit and this model cannot silently diverge.
 
 A contract violation (missing/empty/malformed required field) raises
-``EventContractError`` (code-quality rule 4: required values never fall back
-silently; the class lives under the ``CsvIngestError`` family in dis-core — reused
-here rather than minting a sibling, since dis-core is outside this slice's blast
-radius). Terminal for the message: a redelivery of the same malformed envelope
+``EventContractError`` — required values never fall back silently. The class lives
+under the ``CsvIngestError`` family in dis-core, reused here rather than minting a
+sibling. Terminal for the message: a redelivery of the same malformed envelope
 fails identically, so the subscriber acks it.
 
-The consumer READS identity and ``trace_id`` off this event and mints neither
-(hard rule 4, D54 trust model); ``ingress.resubmit`` (replay) is Slice 12 and is
-not parsed here.
+The event is the trust boundary: the consumer READS identity and ``trace_id`` off
+it and mints neither. ``ingress.resubmit`` (replay) is not parsed here.
 """
 
 from __future__ import annotations
@@ -40,27 +38,26 @@ class IngressReadyEvent(BaseModel):
     tenant_id: UUID
     store_id: UUID
     source_id: str = Field(min_length=1)
-    # CONSUMED since Slice 8a (D71 closed): the mapping template the payload was
-    # uploaded against, required by the contract. It keys the active-mapping
-    # lookup (pipeline/mapping.py), so the consumer applies the exact template's
-    # rules — a second ACTIVE template per source is safe. Absent is structurally
-    # unreachable downstream: a message without it fails THIS model's parse
-    # (contract-reject, terminally acked) before any pipeline stage runs.
+    # The mapping template the payload was uploaded against, required by the
+    # contract. It keys the active-mapping lookup (pipeline/mapping.py), so the
+    # consumer applies the exact template's rules — a second ACTIVE template per
+    # source is safe. Absent is structurally unreachable downstream: a message
+    # without it fails THIS model's parse (contract-reject, terminally acked)
+    # before any pipeline stage runs.
     template_id: UUID
     bronze_ref: UUID
     gcs_uri: str = Field(min_length=1)
     received_ts: datetime
-    # The CSV field separator the worker detected in preflight (Slice 16f); passed to
-    # pl.read_csv(separator=...) at fetch. Single-char, default "," — a pre-16f or
-    # replayed message that lacks it parses as comma (backward-compatible), the same
-    # behaviour as before this slice.
+    # The CSV field separator the worker detected in preflight; passed to
+    # pl.read_csv(separator=...) at fetch. Single-char, default "," — a message
+    # that lacks it parses as comma.
     delimiter: str = Field(default=",", min_length=1, max_length=1)
-    # Optional in the schema, producer-required when publishing (D52). Readability
+    # Optional in the schema, producer-required when publishing. Readability
     # only; never a substitute for the UUIDs.
     tenant_display_code: str | None = None
     store_code: str | None = None
-    # Replay markers (Slice 12 consumes ingress.resubmit; fresh ingress arrives
-    # with replay absent/false — the model still parses the contract faithfully).
+    # Replay markers: fresh ingress arrives with replay absent/false — the model
+    # still parses the contract faithfully.
     replay: bool = False
     parent_trace_id: UUID | None = None
 

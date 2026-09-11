@@ -1,4 +1,4 @@
-"""Unit tests for Step 6.13 org-tree write schemas.
+"""Unit tests for the org-tree write schemas.
 
 Pure Pydantic-level checks. No DB, no auth.
 """

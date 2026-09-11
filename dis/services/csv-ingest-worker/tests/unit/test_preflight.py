@@ -1,6 +1,6 @@
 """Structural preflight: accepts well-formed CSV, fails loud + typed otherwise (AC3).
 
-Includes the DuckDB pinned-behaviour CANARY (Slice 5 pattern): the specific DuckDB
+Includes the DuckDB pinned-behaviour CANARY: the specific DuckDB
 behaviours the preflight relies on are asserted directly, so a version bump that
 changes them fails here, not in production. No version string is asserted.
 """
@@ -40,11 +40,11 @@ def test_well_formed_csv_passes_with_structure() -> None:
     assert result.row_count == 3
     assert result.size_bytes == len(_WELL_FORMED)
     assert len(result.column_types) == 4
-    assert result.delimiter == ","  # the comma fixture sniffs as comma (Slice 16f)
+    assert result.delimiter == ","  # the comma fixture sniffs as comma
 
 
 # ---------------------------------------------------------------------------
-# Delimiter detection (Slice 16f): the separator sniff_csv detects is captured
+# Delimiter detection: the separator sniff_csv detects is captured
 # and carried on PreflightResult. Comma, semicolon, tab, pipe.
 # ---------------------------------------------------------------------------
 
@@ -115,7 +115,7 @@ def test_failure_detail_never_carries_file_content() -> None:
 
 
 # ---------------------------------------------------------------------------
-# CANARY: the DuckDB behaviours the preflight relies on (Slice 5 pattern).
+# CANARY: the DuckDB behaviours the preflight relies on.
 # A version bump that changes any of these must fail HERE.
 # ---------------------------------------------------------------------------
 
@@ -134,7 +134,7 @@ def test_canary_sniff_csv_binds_prepared_param_and_returns_columns_shape(
         con.close()
     assert row is not None
     delimiter, has_header, columns = row
-    # Relied-on (Slice 16f): Delimiter comes back as a single-character string.
+    # Relied-on: Delimiter comes back as a single-character string.
     assert isinstance(delimiter, str) and len(delimiter) == 1
     assert delimiter == ","
     assert has_header is True
@@ -144,7 +144,7 @@ def test_canary_sniff_csv_binds_prepared_param_and_returns_columns_shape(
 
 
 def test_canary_sniff_csv_detects_semicolon_delimiter(tmp_path: Path) -> None:
-    # Relied-on (Slice 16f): a non-comma file is sniffed with its real delimiter,
+    # Relied-on: a non-comma file is sniffed with its real delimiter,
     # exposed in the Delimiter column as a single char.
     path = tmp_path / "canary_semi.csv"
     path.write_bytes(b"sku;qty;price\nA-1;5;9.99\n")

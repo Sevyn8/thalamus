@@ -1,12 +1,12 @@
-"""dis-enrichment — pure lookup-enrichment over a canonical contribution (slice-5b).
+"""dis-enrichment — pure lookup-enrichment over a canonical contribution.
 
 ``apply_enrichment(contribution, facts, table=...)`` overwrites the registered
 canonical fields for ``table`` with the authoritative internal-source values the
-consumer hands in — the lib's value WINS over the mapping (D95). It resolves each
+consumer hands in — the lib's value WINS over the mapping. It resolves each
 field from an authoritative internal source NAMED in the registry, but reads
 NOTHING itself: the consumer does the I/O and hands in the already-read facts (the
 pure-lib / consumer-does-I/O split that mirrors dis-mapping). Enrichment runs
-before post-validation, so its values pass the same canonical-shape gate (D94).
+before post-validation, so its values pass the same canonical-shape gate.
 
 Lookup only — never computed/derived attributes (velocity, stock age, cost trend);
 those are the daily-compute service, out of scope for this lib forever.

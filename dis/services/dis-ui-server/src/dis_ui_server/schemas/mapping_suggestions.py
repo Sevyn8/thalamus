@@ -5,7 +5,7 @@ few sample values); response is one suggestion per column, plus a ``source`` fla
 (``llm`` when Gemini produced them, ``fallback`` when the mechanical matcher did)
 so the UI labels honestly. ``suggested_target`` is always a catalog key or null;
 the endpoint validates targets against the field catalog so the model cannot
-invent a field. See docs/slices/llm-mapping-suggestion-contract.md.
+invent a field.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ class MappingSuggestionRequest(BaseModel):
     columns: list[ColumnProfile] = Field(min_length=1)
     source_id: str | None = None  # optional prompt context; advisory, never trusted for scope
     template_name: str | None = None  # optional prompt context
-    # Type-aware suggestions (D90): when present + valid, the endpoint scores against THAT
+    # Type-aware suggestions: when present + valid, the endpoint scores against THAT
     # type's per-type field catalog (snapshot included). When ABSENT, the endpoint falls back
     # to the legacy sales+inventory_change union (so the not-yet-retired /upload onboarding flow,
     # which sends no template_type, is unchanged). Present + invalid -> 400 invalid_template_type.
@@ -59,5 +59,5 @@ class MappingSuggestionResponse(BaseModel):
     suggestions: list[Suggestion]
     # Wall-clock ms of suggestion generation (measured at the handler around the whole
     # suggester call): the model call on the llm path, or the failed attempt plus the fallback
-    # compute on the degrade path. Additive/nullable; null only if unmeasured (Slice 34a).
+    # compute on the degrade path. Additive/nullable; null only if unmeasured.
     elapsed_ms: int | None = None

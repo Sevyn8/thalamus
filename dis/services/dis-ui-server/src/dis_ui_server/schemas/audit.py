@@ -11,8 +11,8 @@ read the same dict, the filter cannot drift from the display. The ``DUPLICATE_*`
 which the DDL notes REFINES SUCCESS but keeps queryable - collapses to one ``duplicate``
 wire bucket (the reverse crosswalk returns both DB members), exactly as the quarantine stage
 crosswalk collapses leftovers into ``other``. Lookup is EXPLICIT (never ``.get`` with a
-default): a genuinely NEW DB outcome is absent from the map and fails loud (KeyError -> 500),
-the no-silent-fallback posture (root CLAUDE.md code-quality rule 4).
+default): a genuinely NEW DB outcome is absent from the map and fails loud (KeyError -> 500) —
+never a silent fallback.
 """
 
 from __future__ import annotations
@@ -55,8 +55,8 @@ class AuditEventRow(BaseModel):
 
     ``auth_principal`` and ``client_ip`` are deliberately ABSENT: caller-context PII that
     never reaches the tenant wire. The UI renders the "Who" column from ``service_name`` +
-    the token's ``user_type`` (non-PII); a NAMED-actor display is pending a decision on
-    ``auth_principal`` exposure (docs/decisions.md), not built this slice.
+    the token's ``user_type`` (non-PII); a NAMED-actor display would require a decision on
+    ``auth_principal`` exposure, and is not built.
     """
 
     id: str

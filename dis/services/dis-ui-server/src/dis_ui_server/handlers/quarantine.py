@@ -1,4 +1,4 @@
-"""The Quarantine console endpoints (slice 15a) - two tenant-facing reads.
+"""The Quarantine console endpoints - two tenant-facing reads.
 
 ``GET /quarantine`` - the tenant's held items (rows ∪ chunks), newest first, with
 four server-side filters (Source, Error type, Status, Time) and the header's
@@ -14,7 +14,7 @@ here (the single crosswalk in ``schemas/quarantine.py``); the repo speaks DB
 vocabulary only.
 
 Honest semantics: Status ``resolved`` returns empty today because no row can be
-resolved (D82, status=NEW only); the value stays in the filter, forward-compatible.
+resolved; the value stays in the filter, forward-compatible.
 The ORIGINAL PAYLOAD is DEFERRED (build-cost, not PII - CSV beta carries none): the
 field is present and returns ``null`` until a fast-follow wires the GCS read.
 """
@@ -118,7 +118,7 @@ def _compose_context(stage_wire: StageWire, failure_context: dict[str, Any] | No
 
 
 def _to_failures(failure_context: dict[str, Any] | None) -> list[QuarantineFailure]:
-    """Structured per-failure detail (Slice 52b), built defensively from failure_context.
+    """Structured per-failure detail, built defensively from failure_context.
 
     Reads the SAME ``failures[]`` the flattened ``error_context`` string reads (so the
     two are consistent), but returns the typed shape. A non-dict element or one missing
@@ -194,7 +194,7 @@ def _to_detail(row: Row[Any]) -> QuarantineDetail:
         error_context=_compose_context(stage_wire, row.failure_context),  # UNCHANGED (52b keeps it)
         failures=_to_failures(row.failure_context),  # 52b: structured, alongside error_context
         original_payload=None,  # DEFERRED (build-cost fast-follow); contract-stable null
-        chain_depth=0,  # no parent_trace_id lineage until Slice 12
+        chain_depth=0,  # no parent_trace_id lineage is tracked yet
     )
 
 

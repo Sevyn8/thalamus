@@ -1,4 +1,4 @@
-"""Step 6.11.1 unit tests for the 4 new ClientError subclasses.
+"""Unit tests for the tenant-write ClientError subclasses.
 
 Each test asserts the class-level (http_status, code, public_message)
 and that ``build_error_payload`` produces the expected envelope. Per

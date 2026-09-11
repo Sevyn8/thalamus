@@ -33,41 +33,33 @@ learn the id it wrote without a privilege the role must not hold. The caller min
 discipline for the same reason).
 
 =================================================================================================
-ON CONFLICT WOULD FAIL HERE EXACTLY AS IT FAILED IN SLICE 5e. READ THIS BEFORE ADDING IT.
+ON CONFLICT WOULD FAIL HERE. READ THIS BEFORE ADDING IT.
 =================================================================================================
-There is NO IDEMPOTENCY MECHANISM in this slice, deliberately, because there is nothing to be
-idempotent against: the call is in-process and synchronous, once per producer event. A second
-operator action is a second delivery and a second row, which is correct.
+Pub/Sub redelivers, so the same message can arrive twice, and the obvious idempotency mechanism
+is a natural key plus ``ON CONFLICT ... DO NOTHING``. IT WILL FAIL. ON CONFLICT has to READ the
+arbiter index to detect the conflict, that read needs SELECT, and this role holds none: the
+statement fails with ``permission denied`` at runtime, not at deploy.
 
-THE QUEUE CHANGES THAT. Pub/Sub redelivers, so the same message can arrive twice and the obvious
-mechanism is a natural key plus ``ON CONFLICT ... DO NOTHING``. IT WILL FAIL. ON CONFLICT has to
-READ the arbiter index to detect the conflict, that read needs SELECT, and this role holds none.
-Slice 5e shipped exactly that and every enable in production failed with
-``permission denied for table provision`` from deploy until it was found.
+THE MECHANISM USED INSTEAD NEEDS NO CONSTRAINT AND NO GRANT: CATCH THE UNIQUE VIOLATION. The
+INSERT raises SQLSTATE 23505 and is matched on the SQLSTATE together with the CONSTRAINT NAME
+(never on message text, and never on the SQLSTATE alone: 23505 is raised by every unique
+constraint in the database and a broad except turns an unrelated integrity failure into a silent
+success).
 
-SLICE 2 CHOSE ANSWER 1, AND IT NEEDED NO CONSTRAINT AND NO GRANT. The two answers were:
+WHAT MAKES THAT FREE. The natural key is already the primary key. ``pk_platform_deliveries`` is
+on ``delivery_id``, and the PRODUCER mints that id and puts it in the queue envelope. A
+redelivered message therefore carries the same id and reaches the same primary key, so a
+constraint that already exists is the idempotency mechanism. Catching a violation is server side;
+only ON CONFLICT needs to READ the arbiter index, so the write stays possible from a role holding
+no SELECT on the table it writes.
 
-  1. CATCH THE UNIQUE VIOLATION. Let the INSERT raise SQLSTATE 23505 and match on the SQLSTATE
-     together with the CONSTRAINT NAME (never on message text, and never on the SQLSTATE alone:
-     23505 is raised by every unique constraint in the database and a broad except turns an
-     unrelated integrity failure into a silent success). This is what 5e was fixed to do.
-  2. DEDUPLICATE BEFORE THE WRITE, in the consumer, on a producer-supplied key.
+WHY NOT DEDUPLICATE BEFORE THE WRITE in the consumer instead: that needs somewhere to remember
+what has been seen. Pub/Sub's ``message_id`` is stable across redeliveries of one publish but a
+PUBLISHER RETRY mints a new one, so it does not deduplicate the case that matters; and a dedup
+table is a table plus a grant plus a retention question.
 
-WHAT MADE 1 FREE. The natural key was already the primary key. ``pk_platform_deliveries`` is on
-``delivery_id``, and slice 2 moved the mint of that id from this module to the PRODUCER, which
-puts it in the queue envelope. A redelivered message therefore carries the same id and reaches
-the same primary key, so the constraint that already existed is the idempotency mechanism. No new
-constraint, no migration, and NO GRANT CHANGE: catching a violation is server side, and only
-ON CONFLICT needs to READ the arbiter index. 5e proves the point from a role that holds no SELECT
-on the table it writes.
-
-WHY 2 LOST. It needs somewhere to remember what it has seen. Pub/Sub's ``message_id`` is stable
-across redeliveries of one publish but a PUBLISHER RETRY mints a new one, so it does not
-deduplicate the case that matters; a dedup table is a table plus a grant plus a retention
-question. Its stated advantage was costing no grant, and answer 1 turned out to cost none either.
-
-WHAT THIS DOES NOT MAKE IDEMPOTENT, stated here because the asymmetry is the residual of the
-whole slice: THE LEDGER WRITE IS IDEMPOTENT, THE SEND IS NOT. See ``send.py``.
+WHAT THIS DOES NOT MAKE IDEMPOTENT, stated here because the asymmetry matters: THE LEDGER WRITE
+IS IDEMPOTENT, THE SEND IS NOT. See ``send.py``.
 """
 
 from __future__ import annotations
@@ -100,9 +92,10 @@ class DeliveryState(StrEnum):
     one yet. The name is the guard: a state called ``sent`` would make every future reader of
     this ledger believe something it cannot support.
 
-    THERE IS NO ``queued``. Nothing can produce it: the row is written after the provider answers
-    because there is no queue. It arrives with the queue, and it arrives together with the UPDATE
-    grant that moving a row between states requires.
+    THERE IS NO ``queued``. Nothing can produce it: the row states an OUTCOME and is written
+    after the provider answers. The queue in front of the send path persists the message, not a
+    ledger row. A ``queued`` state arrives together with the UPDATE grant that moving a row
+    between states requires, and this role holds none.
     """
 
     ACCEPTED = "accepted"
@@ -113,7 +106,7 @@ class DeliveryState(StrEnum):
 class SuppressionReason(StrEnum):
     """Why a message was deliberately not sent. Mirrors ck_platform_deliveries_suppression_vocab.
 
-    NONE OF THESE CAN OCCUR IN THIS SLICE, and they are declared anyway. Platform email has an
+    NONE OF THESE CAN OCCUR ON THE PLATFORM PATH, and they are declared anyway. Platform email has an
     address from configuration, a credential of Sevyn8's own, no consent gate (internal on-call
     is not a data subject being marketed to) and no template. All four become reachable for
     TENANT traffic, where the tenant is the sender and any of them can be the honest answer.
@@ -256,12 +249,11 @@ def _is_duplicate_delivery(exc: DBAPIError) -> bool:
     direction for four lines.
 
     =============================================================================================
-    23503 IS NOW A REACHABLE FAILURE ON THE TENANT LEDGER, AND THIS CLASSIFIER DOES NOT KNOW IT
+    23503 IS A REACHABLE FAILURE ON THE TENANT LEDGER, AND THIS CLASSIFIER DOES NOT KNOW IT
     =============================================================================================
-    Slice 4 put a composite FOREIGN KEY on axon.tenant_deliveries (tenant_id,
-    template_version_id) referencing axon.channel_templates. So a tenant delivery naming a
-    template version that does not exist, or that belongs to ANOTHER TENANT, now fails with
-    SQLSTATE 23503 rather than 23505.
+    A composite FOREIGN KEY on axon.tenant_deliveries (tenant_id, template_version_id)
+    references axon.channel_templates. So a tenant delivery naming a template version that does
+    not exist, or that belongs to ANOTHER TENANT, fails with SQLSTATE 23503 rather than 23505.
 
     NOT LIVE TODAY. This function serves record_platform_delivery, which writes the PLATFORM
     ledger, and that table has no foreign key at all: ck_platform_deliveries_no_template forces

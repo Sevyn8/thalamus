@@ -29,10 +29,9 @@ Notes on shape:
 
 - Audit FKs (``*_by_user_id``) are typed FKs at the DB layer per D-13's
   Pattern (a). The SQLAlchemy ``ForeignKey(...)`` declaration is
-  intentionally omitted at this step: ``PlatformUser`` doesn't exist
-  until Step 5.1 and a forward reference here would create a chicken-
-  and-egg problem at metadata-creation time. The DB still enforces the
-  FK; the ORM just doesn't model the relationship for v0.
+  intentionally omitted here, matching the project convention used by
+  the other Pattern (a) audit-actor columns: the DB still enforces the
+  FK, the ORM just doesn't model the relationship.
 
 - The four enum columns reference Postgres enum types already created
   by the DDL; ``create_type=False`` keeps SQLAlchemy from trying to
@@ -185,9 +184,9 @@ class Tenant(Base):
     )
 
     # ---------- Audit (Pattern (a) per D-13: typed FKs to platform_users) ----------
-    # FK declarations are intentionally absent at this step; PlatformUser
-    # lands in Step 5.1. The DB still enforces the FK constraints; the
-    # ORM just doesn't model the relationship for v0.
+    # FK declarations are intentionally absent here; the DB still
+    # enforces the FK constraints, the ORM just doesn't model the
+    # relationship.
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

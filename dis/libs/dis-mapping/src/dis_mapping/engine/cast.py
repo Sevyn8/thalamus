@@ -1,6 +1,6 @@
 """The cast sub-stage: canonical string representation -> target type.
 
-Runs AFTER normalize (D20; the ordering is load-bearing): normalize produced
+Runs AFTER normalize (the ordering is load-bearing): normalize produced
 canonical representations (ISO dates/datetimes, ``.``-decimal numbers,
 ``true``/``false`` booleans), so the cast is mechanical. A value the target type
 still refuses is the same per-cell failure shape as a normalization failure, with

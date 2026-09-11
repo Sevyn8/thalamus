@@ -1,13 +1,13 @@
 """Identity Service client interface and HTTP implementation.
 
-``IdentityClient`` is the Protocol every consumer programs against. The Slice 2
-fake and the Slice 13 real service both sit behind ``HttpIdentityClient`` —
-"drop-in" means swapping the ``base_url`` (``IDENTITY_SERVICE_URL``), nothing in
-caller code changes.
+``IdentityClient`` is the Protocol every consumer programs against. Any server
+implementation (fake or real) sits behind ``HttpIdentityClient`` — "drop-in"
+means swapping the ``base_url`` (``IDENTITY_SERVICE_URL``), nothing in caller
+code changes.
 
 The client's error types (``IdentityClientError`` and subclasses) live in the
-shared ``dis_core.errors`` hierarchy (consolidated there in Slice 3). They are
-imported here and re-exported by ``dis_core.identity`` so existing imports
+shared ``dis_core.errors`` hierarchy. They are imported here and re-exported
+by ``dis_core.identity`` so existing imports
 (``from dis_core.identity import IdentityNotFoundError``) keep working.
 """
 
@@ -47,7 +47,7 @@ class IdentityClient(Protocol):
     """The four Identity Service methods (architecture §4.2 / OpenAPI v1).
 
     Async because every DIS consumer (receivers, streaming-consumer, dis-ui-server)
-    is async FastAPI. The real Slice 13 service is reached the same way.
+    is async FastAPI, and a real Identity Service is reached the same way.
     """
 
     async def resolve_from_token(self, jwt: str) -> Identity: ...
@@ -62,8 +62,8 @@ class IdentityClient(Protocol):
 class HttpIdentityClient:
     """HTTP implementation of :class:`IdentityClient` (talks the OpenAPI contract).
 
-    Works against any server honoring the contract — the Slice 2 fake or the real
-    Slice 13 service. Pass ``base_url`` from ``IDENTITY_SERVICE_URL``. An
+    Works against any server honoring the contract — a fake or a real Identity
+    Service. Pass ``base_url`` from ``IDENTITY_SERVICE_URL``. An
     ``httpx.AsyncClient`` may be injected (e.g. an ASGI transport pointing at the
     in-process fake) for tests; otherwise one is created and owned by this client.
     """
@@ -155,7 +155,7 @@ class HttpIdentityClient:
 
 
 def _dump(payload: object) -> dict[str, object]:
-    # mode="json" because ValidateRequest carries UUID fields (Slice 9a, D37):
+    # mode="json" because ValidateRequest carries UUID fields:
     # the httpx json= encoder cannot serialise a raw uuid.UUID.
     if hasattr(payload, "model_dump"):
         return payload.model_dump(mode="json")  # type: ignore[no-any-return]

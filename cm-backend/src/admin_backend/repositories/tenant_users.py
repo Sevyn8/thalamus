@@ -25,12 +25,11 @@ Per D-17, missing OR RLS-filtered rows surface as ``None`` from
 Mirrors ``PlatformUsersRepo``: stateless singleton at module level,
 each method takes ``session`` as the first positional argument, no
 instance state. Sort-key validation reuses the shared
-``InvalidSortKeyError`` from ``repositories._errors`` (introduced at
-Step 5.1; promoted to a shared module at Step 5.2 so this Repo and
-future ones import the same class).
+``InvalidSortKeyError`` from ``repositories._errors`` so this Repo and
+future ones import the same class.
 
-Step 6.8.3 — A1/A2 augmentation. ``list(...)`` and ``get_by_id(...)``
-now return row carriers (``TenantUserListRow`` /
+``list(...)`` and ``get_by_id(...)``
+return row carriers (``TenantUserListRow`` /
 ``TenantUserDetailRow``) carrying both the ORM row and a per-row
 ``roles: list[dict[str, Any]]`` produced by a correlated jsonb_agg
 subquery. Mirrors ``repositories/tenants.py:list_with_aggregates``
@@ -86,14 +85,14 @@ from admin_backend.repositories.tenants import TransitionResult
 # method parameters to keep the annotations resolvable.
 RoleIdList = list[UUID]
 
-# Step 6.14: a single role-anchor assignment as a (role_id, org_node_id)
+# A single role-anchor assignment as a (role_id, org_node_id)
 # tuple. The Pydantic ``RoleAssignmentItem`` carries the same two
 # fields; the repo accepts pre-flattened tuples so it stays a pure
 # data-access layer (no Pydantic import).
 RoleAssignmentTuple = tuple[UUID, UUID]
 RoleAssignmentList = list[RoleAssignmentTuple]
 
-# Step 6.16.4: shape of an audit-row role-item with frozen labels per
+# Shape of an audit-row role-item with frozen labels per
 # LD9. Module-level alias because inside the class body ``list``
 # resolves to the bound method ``.list()`` even under ``from __future__
 # import annotations``; same trick as ``RoleAssignmentList``.
@@ -103,11 +102,11 @@ RoleLabelList = list[RoleLabelDict]
 # Constraint name of the partial-UNIQUE index that licenses Pattern B
 # (same role at distinct anchors) while blocking duplicate ACTIVE rows.
 # Matched against ``IntegrityError`` content to scope the catch to the
-# concurrent-edit race; other IntegrityErrors propagate (per the Step
-# 6.14 LD7 operator note).
+# concurrent-edit race; other IntegrityErrors propagate (per the
+# LD7 operator note).
 _UQ_ACTIVE_INDEX_NAME = "uq_tenant_user_role_assignments_active"
 
-# Slice 9: the global one-email-per-tenant_users index. It is the
+# The global one-email-per-tenant_users index. It is the
 # authoritative backstop for cross-tenant email collisions that the
 # RLS-scoped app-layer pre-check cannot see under a TENANT session, and
 # for the concurrent same-email create/rename race.
@@ -169,7 +168,7 @@ def _roles_subq() -> Any:
     row. Yields a JSONB array (decoded by psycopg as ``list[dict]``)
     where each element is the 8-field ``UserRoleAssignmentItem`` shape.
 
-    Composite-key joins (per Step 6.8.1 D-34, AI-RBAC-06):
+    Composite-key joins (per D-34, AI-RBAC-06):
     ``tenant_user_role_assignments`` is joined to ``tenant_users`` via
     the composite ``(tenant_id, tenant_user_id)`` (correlated to the
     outer ``TenantUser`` row), and to ``org_nodes`` via the composite
@@ -178,7 +177,7 @@ def _roles_subq() -> Any:
     consistent with the storage invariant.
 
     All assignments are returned regardless of status (locked decision
-    6 of Step 6.8.3); ``ORDER BY granted_at DESC, id ASC`` inside the
+    6); ``ORDER BY granted_at DESC, id ASC`` inside the
     aggregate keeps the wire shape deterministic.
 
     COALESCE-to-``'[]'::jsonb`` so users with zero assignments get an
@@ -187,8 +186,7 @@ def _roles_subq() -> Any:
     # Cast the assignment status enum to text so jsonb_build_object
     # emits a clean string ("ACTIVE" / "INACTIVE") that Pydantic's
     # str-Enum coerces. Same gotcha as the module enum cast in
-    # tenants.py:_modules_subq (per "Note on PG enum columns" in
-    # CLAUDE.md).
+    # tenants.py:_modules_subq.
     status_as_text = cast(TenantUserRoleAssignment.status, String)
     item_object = func.jsonb_build_object(
         "assignment_id", TenantUserRoleAssignment.id,
@@ -337,7 +335,7 @@ class TenantUsersRepo:
         return rows, total
 
     # ------------------------------------------------------------------
-    # Step 6.10.1 write methods
+    # Write methods
     # ------------------------------------------------------------------
     #
     # All three methods use raw ``text()`` SQL with explicit schema
@@ -360,7 +358,7 @@ class TenantUsersRepo:
         """Validate every ``role_id`` exists, is non-ARCHIVED, and is
         TENANT-audience.
 
-        Step 6.14 extends 6.10.1's ``_resolve_role_audience`` with an
+        Extends role-audience validation with an
         ARCHIVED check, aggregated with missing into ``INVALID_ROLE``.
         The audience mismatch keeps its existing
         ``INVALID_ROLE_AUDIENCE`` code (distinct from
@@ -430,7 +428,7 @@ class TenantUsersRepo:
         """Validate every ``org_node_id`` is in the supplied
         ``tenant_id`` and is non-ARCHIVED.
 
-        Step 6.14 pre-check. The composite FK
+        Pre-check. The composite FK
         ``fk_tenant_user_role_assignments_org_node_same_tenant`` would
         reject cross-tenant ``org_node_id`` at INSERT time; the
         pre-check surfaces it as a clean 422 ahead of the write.
@@ -487,7 +485,7 @@ class TenantUsersRepo:
         email: str,
         exclude_user_id: UUID | None,
     ) -> None:
-        """Global one-email-one-identity pre-check (Slice 9).
+        """Global one-email-one-identity pre-check.
 
         An email may belong to exactly ONE entity platform-wide: one
         platform user OR one tenant user of exactly one tenant. This
@@ -547,9 +545,8 @@ class TenantUsersRepo:
     ) -> bool:
         """Return True iff ``tenant_id`` is visible to this session.
 
-        Step 6.14 replaces ``_lookup_tenant_root`` (retired with the
-        tenant-root-only anchor pattern of 6.10.1). The create path
-        now needs to know whether the tenant is visible at all (so
+        The create path
+        needs to know whether the tenant is visible at all (so
         cross-tenant probes from a TENANT JWT still surface as 404);
         anchor validity is the
         ``_validate_org_nodes`` pre-check's concern.
@@ -650,7 +647,7 @@ class TenantUsersRepo:
         """Return the current ACTIVE (role_id, org_node_id) tuples for
         ``tenant_user_id`` under ``SELECT ... FOR UPDATE``.
 
-        Step 6.14 diff-replace foundation. Locking the current set
+        Diff-replace foundation. Locking the current set
         inside the request transaction blocks parallel transactions
         from racing the same user's assignments between our SELECT
         and our INSERT/UPDATE writes.
@@ -690,7 +687,7 @@ class TenantUsersRepo:
         actor_user_type: ActorUserType,
     ) -> None:
         """Apply the diff between ``current_set`` and ``desired_set``
-        (Step 6.14 LD3):
+        (LD3):
 
           - (current ∩ desired): NO WRITE; rows retain original
             ``granted_at`` / ``granted_by_*`` / ``updated_at``.
@@ -833,7 +830,7 @@ class TenantUsersRepo:
         satisfy the complete-onboarding gate) even when provisioning
         failed and no email was sent.
 
-        Step 6.14 (vs 6.10.1): ``role_assignments`` is a list of
+        ``role_assignments`` is a list of
         ``(role_id, org_node_id)`` tuples. Tenant-root-only anchoring
         is retired; any non-archived org_node in the same tenant is
         acceptable. The repo runs the diff-replace helper against an
@@ -928,7 +925,7 @@ class TenantUsersRepo:
         # request-scope session has not committed yet).
         await session.flush()
 
-        # Step 6.16.4 audit emission. Success row goes to
+        # Audit emission. Success row goes to
         # tenant_activity_audit_logs (route_to_platform=False).
         # Same-transaction with the data write per LD2. Both `auth`
         # and `request_id` are required together: providing only one
@@ -982,7 +979,7 @@ class TenantUsersRepo:
         request_id: UUID | None = None,
     ) -> TenantUserDetailRow | None:
         """Partial update of one ``tenant_users`` row, with optional
-        role diff-replace semantics (Step 6.14 LD3).
+        role diff-replace semantics (LD3).
 
         ``fields`` is the caller's ``exclude_unset=True`` dump of the
         Pydantic patch body. Allowed keys: ``full_name``, ``email``,
@@ -1151,7 +1148,7 @@ class TenantUsersRepo:
         session.expire_all()
         result_row = await self.get_by_id(session, user_id)
 
-        # Step 6.16.4 audit emission. Normal routing (tenant_id set;
+        # Audit emission. Normal routing (tenant_id set;
         # route_to_platform=False). Same-transaction success row.
         # ``before`` / ``after`` carry only the changed field-level
         # columns (full_name / email) plus, when a roles diff fired,
@@ -1328,7 +1325,7 @@ class TenantUsersRepo:
         session.expire_all()
         result_row = await self.get_by_id(session, user_id)
 
-        # Step 6.16.4 audit emission. Normal routing (tenant_id set;
+        # Audit emission. Normal routing (tenant_id set;
         # route_to_platform=False). Same-transaction success row.
         # ``action`` is SUSPEND or ACTIVATE per ``target_status``.
         if (
@@ -1538,8 +1535,8 @@ class TenantUsersRepo:
         auth: AuthContext | None = None,
         request_id: UUID | None = None,
     ) -> tuple[TenantUserDetailRow | None, TransitionResult]:
-        """Record that an invitation was sent: set ``invited_at`` (Slice 2d-send,
-        D-41). Called only AFTER a successful ticket generation + email send, so
+        """Record that an invitation was sent: set ``invited_at``
+        (D-41). Called only AFTER a successful ticket generation + email send, so
         ``invited_at`` is the "invite sent" marker.
 
         Sets ``invited_at = now()`` plus the PLATFORM ``updated_by`` actor pair

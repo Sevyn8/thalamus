@@ -1,7 +1,7 @@
 """Loader for tenant_module_access (specialised: audit-actor synthesis).
 
-The seed Excel for ``tenant_module_access`` predates Step 3.4.5 and
-does not carry audit-actor columns. The DDL requires three NOT NULL
+The seed Excel for ``tenant_module_access`` predates the audit-actor
+columns and does not carry them. The DDL requires three NOT NULL
 FKs to ``platform_users``:
 
   - ``enabled_by_user_id``  (NOT NULL)
@@ -20,8 +20,7 @@ Why synthesise rather than edit the Excel: the seed Excel is a
 for tenant_module_access is a system concern (the platform admin
 managed the entitlement); it isn't tenant-author data. Carrying it
 in the Excel would conflate two concerns and require a per-row
-edit that adds no information. See CLAUDE.md "Note on seed Excel
-shape" for the captured convention.
+edit that adds no information.
 
 ``disabled_by_user_id`` stays NULL because every seed row has
 ``status='ENABLED'``; the DDL's ``ck_tenant_module_access_disabled_pair``

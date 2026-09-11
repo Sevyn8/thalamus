@@ -1,5 +1,5 @@
 -- ============================================================================
--- axon_tenant_reader grants: the TENANT-scoped read credential (Axon slice 2).
+-- axon_tenant_reader grants: the TENANT-scoped read credential.
 --
 -- THE SEVENTH NARROW ROLE IN THIS ESTATE, AND THE THIRD IN AXON. The three
 -- Axon roles are not three variations on a theme; each can do exactly one job
@@ -42,10 +42,9 @@
 -- IT HAS NO CONSUMER, AND THAT IS DELIBERATE RATHER THAN AN OVERSIGHT
 -- ----------------------------------------------------------------------------
 -- Nothing in this repository connects as axon_tenant_reader today. There is no
--- tenant-facing Axon surface, no route and no read path, and slice 2 builds
--- none: its subject is the queue, and adding a tenant surface would widen the
--- blast radius of a slice that is already changing how every platform send
--- happens.
+-- tenant-facing Axon surface, no route and no read path: the current work here
+-- is the queue, and adding a tenant surface now would widen the blast radius
+-- of a change that is already touching how every platform send happens.
 --
 -- WHAT IT BUYS BY EXISTING NOW is that the separation is settled BEFORE there
 -- is a caller to be tempted. The alternative shape, build the tenant surface
@@ -54,7 +53,7 @@
 -- the narrow one did not exist on the day somebody needed a query to work.
 --
 -- IT IS ALSO INERT. A role nothing connects as changes no behaviour, so this
--- file cannot break slice 2 and cannot break anything already running.
+-- file cannot break anything already running.
 --
 -- ----------------------------------------------------------------------------
 -- SELECT ON A FORCE RLS TABLE IS NOT ENOUGH TO READ IT, AND THAT IS THE POINT
@@ -68,7 +67,8 @@
 -- THE FAILURE MODE IF THE SESSION IS WRONG IS A SILENT ZERO. A connection that
 -- never set the GUCs matches NO ROWS and RAISES NOTHING, for the table owner
 -- and for `postgres` alike. That has now bitten this project twelve times, once
--- on a DELETE run as the table owner and once during slice 3's own verification.
+-- on a DELETE run as the table owner and once during another role's own
+-- verification.
 --
 -- SO THIS GRANT IS HALF THE MECHANISM AND THE SESSION IS THE OTHER HALF. The
 -- day a tenant read path is built, it opens rls_session(engine, tenant_id) and
@@ -187,7 +187,7 @@ REVOKE ALL ON axon.platform_deliveries FROM axon_tenant_reader;
 --    `permission denied`, NOT a count and NOT zero. THIS IS THE ONE VERIFY THAT
 --    MATTERS MOST, because a zero here would be indistinguishable from a
 --    correct empty table on the OTHER ledger and would read as success. That
---    table is not empty: slice 1 wrote a real row on 2026-08-11.
+--    table is not empty: axon_sender has already written a real row into it.
 --
 -- 3. THE TENANT LEDGER IS REACHABLE, which the grant check alone cannot prove.
 --    As axon_tenant_reader, inside one transaction:

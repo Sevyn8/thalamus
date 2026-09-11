@@ -1,15 +1,13 @@
 """Structured stdout JSON logging configuration.
 
 GCP Cloud Logging picks up stdout JSON automatically; no agent needed.
-Per D-20, the v0 logging stack is python-json-logger (stdout) and
-prometheus-fastapi-instrumentator (metrics; lands at Step 7.2).
+The logging stack is python-json-logger writing JSON to stdout.
 
 The PyPI package is `python-json-logger` (with hyphens). Import path
 is `from pythonjsonlogger import jsonlogger` (no hyphens or
 underscores). Common gotcha; pinned in pyproject as
-`python-json-logger>=2.0,<4.0` per D-26-style version-stability
-discipline (v3.x still ships the `jsonlogger` import path; v4.x
-relocated it).
+`python-json-logger>=2.0,<4.0` (v3.x still ships the `jsonlogger`
+import path; v4.x relocated it).
 """
 import logging
 import sys

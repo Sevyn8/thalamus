@@ -1,7 +1,7 @@
 """Seed runner: orchestrates per-sheet loaders in FK dependency order.
 
-Skips ``audit_logs`` (no DDL — Step 6.2 territory). Loads the other
-10 sheets.
+Skips the workbook's ``audit_logs`` sheet (audit rows are emitted by
+the application, not seeded). Loads the other 10 sheets.
 
 Transaction boundaries: one transaction per sheet. Each loader
 commits at end of its ``load()`` function. If sheet N fails mid-load,
@@ -9,13 +9,12 @@ sheets 1..N-1 are committed and persisted; sheet N rolls back; sheets
 N+1..end never ran. The DB ends in a partial state. The user reruns
 with ``--reset`` for a clean slate. This is intentional for dev
 seeding — load what you can, fail loudly, surface the failing sheet
-by name. Production-style ingestion (Step 7.3.1) gets richer error
-handling.
+by name.
 
 Reference data (``lookups`` table) is NOT loaded by this script. The
-``lookups`` rows for ``module_code`` are seeded by Step 3.4.5's
-migration, so they exist post-migration. Future lookup categories
-are seeded via their own migrations.
+``lookups`` rows for ``module_code`` are seeded by migration, so they
+exist post-migration. Future lookup categories are seeded via their
+own migrations.
 """
 from __future__ import annotations
 
@@ -57,7 +56,7 @@ SHEETS_IN_ORDER = [
     ("user_role_assignments", user_role_assignments.load),
     ("tenant_module_access", tenant_module_access.load),
 ]
-SKIPPED_SHEETS: set[str] = {"audit_logs"}  # No DDL; Step 6.2 territory.
+SKIPPED_SHEETS: set[str] = {"audit_logs"}  # Audit rows are emitted, not seeded.
 
 EXCEL_PATH = Path("data/ithina_dev_seed_data.xlsx")
 
@@ -74,7 +73,7 @@ def _platform_auth() -> AuthContext:
     """Synthetic PLATFORM AuthContext for the loader's PLATFORM session.
 
     Mirrors the ``_VALID_AUTH_BASE`` shape used by the integration-test
-    conftest (Step 3.2 onwards): synthetic but Pydantic-valid values for
+    conftest: synthetic but Pydantic-valid values for
     the JWT claims (sub, iss, aud, exp, email) plus a sentinel
     ``user_id``. AuthContext's validators check field shape only — they
     don't query the DB — so this passes validation without referencing

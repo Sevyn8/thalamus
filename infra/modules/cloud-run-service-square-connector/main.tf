@@ -14,8 +14,8 @@
 #      the life of the task, so the worker's cpu_idle=false / min=max=1 pins
 #      have no analogue here. max_retries=0: a manually executed pull must fail
 #      loudly, not silently re-run (the retry would be SAFE - same run_key ->
-#      same connector_run_id -> the D58 dedup collapses it to duplicate_noop -
-#      but a silent retry hides the first failure).
+#      same connector_run_id -> the query-based dedup collapses it to
+#      duplicate_noop - but a silent retry hides the first failure).
 #   2. NO baked args. The run target (tenant/store/source/template/run-key) is
 #      supplied per execution via `gcloud run jobs execute --args`; terraform
 #      never names a tenant. A bare execute fails on argparse with exit 2,
@@ -183,7 +183,7 @@ resource "google_cloud_run_v2_job" "square_connector" {
   location = var.region
 
   template {
-    # Job-level: one task per execution, no parallelism. The D58 query-based dedup
+    # Job-level: one task per execution, no parallelism. The query-based dedup
     # is single-instance only, and one trigger is one task.
     task_count  = 1
     parallelism = 1

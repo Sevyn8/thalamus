@@ -93,10 +93,10 @@
 --   jsonb on storage (sorted keys, no whitespace), so equality is canonical. The
 --   same index over `json` or text would be silently defeated by key order.
 --
--- THE KEY ALONE WOULD REPEAT 0019'S MISTAKE. Uniqueness on the natural key would
+-- THE KEY ALONE IS NOT ENOUGH. Uniqueness on the natural key would
 -- suppress a legitimate CORRECTION — a changed quantity, or a changed arm after
--- a salt change — exactly as uniqueness on the D33 dedup key alone would have
--- silently dropped source corrections. So payload_hash is the final component: a
+-- a salt change — exactly as uniqueness on the canonical dedup key alone would
+-- silently drop source corrections. So payload_hash is the final component: a
 -- RETRY reproduces the payload byte-for-byte, the hash collides, the insert is
 -- suppressed; a CORRECTION differs, so it lands as its own row for `supersedes`
 -- to relate.
@@ -186,7 +186,7 @@ CREATE TABLE synapse.actions (
     -- ---------- Idempotency ----------
     payload_hash            VARCHAR(64) COLLATE "C"             NOT NULL,
 
-    -- ---------- Observations, not scores (slice 10) ----------
+    -- ---------- Observations, not scores ----------
     -- The finding's own measure at the moment this action was FIRST recorded. Neither is in
     -- payload_hash's material, so a re-run of the same slot is suppressed and the stored figure
     -- stays the first observation. One per analysis; the other is NULL.
@@ -296,14 +296,14 @@ CREATE TRIGGER trg_actions_append_only
 -- Row-Level Security
 --
 -- Same posture as every multi-tenant table in this database: enabled, FORCED,
--- one policy on tenant_id, two-GUC (D91). A multi-tenant table without it would
+-- one policy on tenant_id, two-GUC. A multi-tenant table without it would
 -- be the exception here, and adding RLS to a populated table is harder than
 -- adding it now.
 --
--- The policy reads the GENERATED tenant_id. Verified against Postgres before
--- this DDL was written: a policy may reference a STORED generated column, and
--- the WITH CHECK genuinely evaluates it — an insert whose target names a
--- different tenant than the session GUC is refused.
+-- The policy reads the GENERATED tenant_id. Postgres permits a policy to
+-- reference a STORED generated column, and the WITH CHECK genuinely evaluates
+-- it — an insert whose target names a different tenant than the session GUC is
+-- refused.
 -- ----------------------------------------------------------------------------
 
 ALTER TABLE synapse.actions ENABLE ROW LEVEL SECURITY;

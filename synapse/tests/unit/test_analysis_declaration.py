@@ -44,7 +44,7 @@ FIXTURE = (
 
 
 def test_a_gate_carries_both_the_threshold_and_the_policy() -> None:
-    """THE SLICE-2 SHAPE. Slice 1 had the number on the descriptor and the policy nowhere.
+    """THE CURRENT SHAPE. A prior version had the number on the descriptor and the policy nowhere.
 
     Both now arrive bound together from the caller, so a capability cannot dictate either and a
     caller cannot supply one without the other.
@@ -55,14 +55,14 @@ def test_a_gate_carries_both_the_threshold_and_the_policy() -> None:
 
 
 def test_a_gate_cannot_be_built_without_a_policy() -> None:
-    """A threshold with no policy is slice 1's unowned default coming back."""
+    """A threshold with no policy is the old unowned default coming back."""
     with pytest.raises(TypeError):
         MinHistoryDays(days=90)  # type: ignore[call-arg]
 
 
 def test_the_same_capability_takes_different_thresholds_from_different_callers() -> None:
     """The whole reason the threshold moved: dead stock's 90 and a forecast's 60 are both
-    legitimate requirements ON THE SAME ROWS, and slice 1 could hold only one."""
+    legitimate requirements ON THE SAME ROWS, and a single shared threshold could hold only one."""
     dead_stock_gate = MinHistoryDays(days=90, policy=SeriesPolicy.ANY_SERIES)
     forecast_gate = MinHistoryDays(days=60, policy=SeriesPolicy.ALL_SERIES)
     assert dead_stock_gate.days != forecast_gate.days
@@ -82,7 +82,7 @@ def test_a_gate_of_zero_days_is_refused() -> None:
 def test_an_unfitted_threshold_must_name_what_it_stands_in_for() -> None:
     """THE MECHANISM. The standing rule is that thresholds are fitted from the tenant's own
     data where possible and, where not, the constant names what it substitutes for. That worked
-    in slice 1 because a comment was there to be read — but a comment cannot be enforced and
+    before because a comment was there to be read — but a comment cannot be enforced and
     the next constant might not carry one. This can be."""
     with pytest.raises(ValueError, match="must name what it stands in for"):
         Threshold(name="stale_after_days", days=90, fitted=False, stands_in_for=None)
@@ -301,8 +301,8 @@ def test_every_declared_analysis_has_a_contract_fixture() -> None:
 
 
 def test_the_stockout_fixture_matches_the_declaration() -> None:
-    """The same drift check dead_stock has, for the second analysis — including the two fields
-    that are new in slice 7 and therefore have never been checked against a fixture before."""
+    """The same drift check dead_stock has, for the second analysis — including two fields
+    that have never been checked against a fixture before."""
     import json
     from pathlib import Path
 

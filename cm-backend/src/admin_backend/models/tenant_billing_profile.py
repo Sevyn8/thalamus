@@ -1,6 +1,6 @@
 """SQLAlchemy ORM model for the ``tenant_billing_profile`` table.
 
-Client onboarding, Slice 1. 1:1 with ``tenants`` (``UNIQUE(tenant_id)``).
+1:1 with ``tenants`` (``UNIQUE(tenant_id)``).
 
 ``payment_terms`` and ``currency`` are TEXT validated app-side against
 the ``payment_terms`` / ``currency`` ``lookups`` lists (flag 4). Email

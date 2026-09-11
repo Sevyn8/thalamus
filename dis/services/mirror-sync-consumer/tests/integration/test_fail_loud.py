@@ -1,6 +1,6 @@
-"""Criterion 4 (integration side): fail loud before writing; the silent-zero trap is real.
+"""Fail loud before writing; the silent-zero trap is real.
 
-The non-skippable anchor for criterion 4 is the pure-guard unit test
+The non-skippable anchor for the fail-loud property is the pure-guard unit test
 (``tests/unit/test_reader_guards.py``); these add the runtime evidence: a wrong CM target
 raises before any read of rows, and a read without the platform context really does return
 zero rows under the harness's FORCE RLS (the trap the context assertion protects against).

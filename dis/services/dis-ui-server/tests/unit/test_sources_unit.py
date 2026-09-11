@@ -1,4 +1,4 @@
-"""Unit tests for the source registry endpoints (GET/POST /sources), Phase A (D112).
+"""Unit tests for the source registry endpoints (GET/POST /sources).
 
 DB-free. Auth/scope gates (401/403 incl. the TENANT-names-a-tenant 403 that resolves BEFORE
 any DB touch), body validation (422 on a bad channel), and — with the repo monkeypatched — the

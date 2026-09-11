@@ -1,12 +1,11 @@
-"""``POST /v1/csv-uploads`` — CSV upload Phase 1, synchronous (Slice 8).
+"""``POST /v1/csv-uploads`` — synchronous CSV upload.
 
-Supersedes the D36 signed-URL mechanic and closes D54's completion-detection
-fork (register entry at the commit gate): the file streams THROUGH this handler
-in one request — size-guarded mid-stream, tier-0 gated (D51/D52), identity
-resolved once (D37: tenant from the verified token, store from the mirror,
-source from the template lineage), written to the canonical GCS path (D53),
-audited, and announced via ``csv.received`` (D54: the worker trusts the event
-and re-resolves nothing). No bronze write here — the worker owns bronze (D5).
+The file streams THROUGH this handler in one request — size-guarded
+mid-stream, tier-0 gated, identity resolved once (tenant from the verified
+token, store from the mirror, source from the template lineage), written to
+the canonical GCS path, audited, and announced via ``csv.received`` (the
+worker trusts the event and re-resolves nothing). No bronze write here — the
+worker owns bronze.
 
 The handler is SEQUENCE only (one concern per function): every gate and
 resolution lives in its own module (``upload_stream`` / ``tier0`` / the repos /
@@ -17,9 +16,9 @@ resolution lives in its own module (``upload_stream`` / ``tier0`` / the repos /
     GCS write (503) → publish (503; the object stays as an accepted orphan) →
     audit → 201.
 
-trace_id is minted HERE (with §4.3, the only minting sites in this service) and
-bound to the request context so every error envelope and audit row carries it
-(hard rule 4: this endpoint IS the receiver).
+trace_id is minted HERE (the only minting site in this service) and bound to
+the request context so every error envelope and audit row carries it — this
+endpoint is the receiver.
 """
 
 from __future__ import annotations
@@ -70,22 +69,22 @@ router = APIRouter()
 
 _log = get_logger(SERVICE_NAME)
 
-# The store lifecycle states a CSV may be uploaded against (operator decision,
-# Slice 8 review): ACTIVE only. OPENING has no live operations generating data
+# The store lifecycle states a CSV may be uploaded against: ACTIVE only.
+# OPENING has no live operations generating data
 # yet — an upload there is more likely an onboarding mistake than real ingress,
 # and a re-upload after activation is cheap. INACTIVE/CLOSED are not ingesting.
 _UPLOADABLE_STORE_STATUSES = frozenset({"ACTIVE"})
 
 
 def derive_upload_session_id(tenant_id: UUID, store_id: UUID, template_id: UUID, payload_sha256: str) -> str:
-    """The deterministic per-upload lineage id (the resolved D54/D58 mechanic).
+    """The deterministic per-upload lineage id.
 
     ``us_`` + the first 12 lowercase-hex chars of SHA-256 over the upload's
     logical identity (tenant | store | template | content hash). Deterministic on
     purpose: a client RETRY of the same bytes re-derives the same id, so the
     worker's 24h dedup key ``(tenant, source_payload_id, payload_sha256)`` fires
     and exactly one bronze row exists per logical upload — a random mint would
-    give every retry a fresh key and double-count id-less sources (D65). Hex is a
+    give every retry a fresh key and double-count id-less sources. Hex is a
     subset of the contract's ``^us_[a-z0-9]{12}$``, so the wire pattern holds.
     """
     digest = hashlib.sha256(f"{tenant_id}|{store_id}|{template_id}|{payload_sha256}".encode()).hexdigest()
@@ -122,7 +121,7 @@ def _parse_template_id(parsed: ParsedUpload) -> UUID:
         ) from exc
 
 
-# Tier-0's closed reason set -> the stable vocabulary (Slice 30b).
+# Tier-0's closed reason set -> the stable vocabulary.
 _TIER0_CODES: dict[str, FailureCode] = {
     "empty_file": FailureCode.UPLOAD_EMPTY_FILE,
     "not_utf8": FailureCode.UPLOAD_NOT_UTF8,
@@ -132,7 +131,7 @@ _TIER0_CODES: dict[str, FailureCode] = {
 
 
 def _rejection_code(step: str, exc: DisError) -> FailureCode:
-    """The stable ``FailureCode`` for a 4xx rejection (Slice 30b).
+    """The stable ``FailureCode`` for a 4xx rejection.
 
     ``step`` disambiguates the two ``ResourceNotFoundError`` sources (template
     vs store); class identity decides the rest. An unexpected ``DisError`` in
@@ -160,10 +159,10 @@ async def upload_csv(
     identity: Annotated[Identity, Depends(require_tenant)],
 ) -> CsvUploadResult:
     """One synchronous upload: multipart ``file`` + ``template_id`` + ``store_code``."""
-    tenant_id = tenant_uuid_of(identity)  # token only — never the body (14b rule)
-    trace_id = new_trace_id()  # this endpoint IS the receiver (hard rule 4)
-    # Bound WITHOUT a reset, deliberately: the §2.3 exception handlers render the
-    # envelope AFTER this coroutine unwinds, and they read the trace off this
+    tenant_id = tenant_uuid_of(identity)  # token only — never the body
+    trace_id = new_trace_id()  # this endpoint IS the receiver
+    # Bound WITHOUT a reset, deliberately: the app-level exception handlers render
+    # the envelope AFTER this coroutine unwinds, and they read the trace off this
     # context. The contextvar is task-local (one ASGI task per request), so the
     # binding dies with the request and cannot leak across requests.
     bind_trace_id(trace_id)
@@ -182,10 +181,10 @@ async def _process_upload(
     t0 = time.monotonic()
 
     # Steps 1-4 are the 4xx gate sequence. A rejection emits one FAILURE audit
-    # with its stable FailureCode and then re-raises UNCHANGED (Slice 30b:
-    # emit-then-re-raise — status codes and the §2.3 envelope are untouched;
-    # the emit is fire-and-forget, so an audit failure can never turn a clean
-    # 4xx into a 5xx). `step` disambiguates the two ResourceNotFoundError sites.
+    # with its stable FailureCode and then re-raises UNCHANGED (emit-then-
+    # re-raise — status codes and the error envelope are untouched; the emit is
+    # fire-and-forget, so an audit failure can never turn a clean 4xx into a
+    # 5xx). `step` disambiguates the two ResourceNotFoundError sites.
     step = "upload"
     try:
         # 1. Stream + limits (413 mid-stream) and multipart shape (400). The body is
@@ -198,7 +197,7 @@ async def _process_upload(
         template_id = _parse_template_id(parsed)
         store_code = parsed.fields["store_code"].strip()
 
-        # 2. Tier-0 structural gate (D51/D52): a failure is a clean 422 — no GCS
+        # 2. Tier-0 structural gate: a failure is a clean 422 — no GCS
         #    write, no publish, nothing persisted.
         step = "tier0"
         tier0 = run_tier0(parsed.file_bytes, tenant_id=str(tenant_id), trace_id=str(trace_id))
@@ -235,7 +234,7 @@ async def _process_upload(
 
     display_code = await get_tenant_display_code(engine, tenant_id)
 
-    # 5. Lineage + path (D53: UUID tenant segment; one timestamp keeps the path
+    # 5. Lineage + path (UUID tenant segment; one timestamp keeps the path
     #    date and the event's received_ts coherent).
     payload_sha256 = hashlib.sha256(parsed.file_bytes).hexdigest()
     upload_id = derive_upload_session_id(tenant_id, store.store_id, template_id, payload_sha256)
@@ -251,7 +250,7 @@ async def _process_upload(
 
     # 6. GCS write, THEN publish (the worker fetches the object on consume; the
     #    reverse order would race a 404). The blocking client runs off the event
-    #    loop (anyio, the root-CLAUDE.md async pattern).
+    #    loop via anyio.
     try:
         await anyio.to_thread.run_sync(
             lambda: storage.upload_bytes(object_key, parsed.file_bytes, content_type="text/csv")
@@ -284,7 +283,7 @@ async def _process_upload(
         received_ts=received_ts,
         tenant_display_code=display_code,
         store_code=store_code,
-        # The parsed original upload name (Slice 51a / D120); truncated to the column width,
+        # The parsed original upload name; truncated to the column width,
         # OMITTED when the multipart part carried none. Carried for the runs surface only.
         file_name=parsed.filename[:512] if parsed.filename else None,
     )
@@ -349,7 +348,7 @@ async def _process_upload(
 
 
 def _elapsed_ms(t0: float) -> int:
-    """Whole-request elapsed for this endpoint's single audit row (Slice 30b)."""
+    """Whole-request elapsed for this endpoint's single audit row."""
     return max(int((time.monotonic() - t0) * 1000), 0)
 
 
@@ -386,8 +385,8 @@ async def _emit_failure(
 
 
 def _auth_principal(identity: Identity) -> str:
-    # The live bronze auth_principal comment's vocabulary: user:{user_id} for
-    # csv_upload. Reused here so audit and bronze speak one principal form.
+    # user:{user_id} matches the principal vocabulary bronze uses for
+    # csv_upload, so audit and bronze speak one principal form.
     return f"user:{identity.user_id}"
 
 

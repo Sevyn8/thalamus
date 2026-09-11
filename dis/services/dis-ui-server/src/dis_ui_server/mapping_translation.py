@@ -1,6 +1,6 @@
-"""Slice 16c: translate the create CONTRACT into an engine ``mapping_rules`` document.
+"""Translate the create CONTRACT into an engine ``mapping_rules`` document.
 
-The ``POST /mapping-templates`` request (Slice 16a) carries semantic intent per column
+The ``POST /mapping-templates`` request carries semantic intent per column
 (``src_key`` -> ``dest_key`` + source-format declarations), NOT engine ops. This module
 turns that into a ``dis_mapping.SourceMapping`` dict (rename / normalize / cast / derive):
 
@@ -12,14 +12,14 @@ turns that into a ``dis_mapping.SourceMapping`` dict (rename / normalize / cast 
   separators (thousands ABSENT -> an explicit ``null`` arg).
 - **cast** — derived from the target's canonical datatype; decimal carries the precision and
   scale reflected from the dis-canonical model (internal, never the request).
-- **derive** — always empty: the contract does not express derive (Slice 16c scope).
+- **derive** — always empty: the contract does not express derive.
 
 The produced dict is handed to ``validate_mapping_rules_for_type`` (the semantic gate) BEFORE
 any write; an unknown date token (outside the locked five) or an unmappable datatype is a
 clean ``MappingConfigError`` (-> 400) here, so nothing invalid can reach the gate or the DB.
 
 The accepted DATE-format token set is exactly five, in lockstep with the frontend picker
-(``services/dis-ui/src/components/locale-rules.ts``); a sixth is added backend-side before the
+(``services/dis-ui-ver2/src/components/locale-rules.ts``); a sixth is added backend-side before the
 picker offers it. The contract carries the friendly token (``DD-MM-YYYY``); the engine takes a
 strptime code (``%d-%m-%Y``), so this module owns the conversion.
 """
@@ -147,7 +147,7 @@ def _cast_spec(
 
 
 def translate_columns_to_mapping_rules(body: MappingTemplateCreate, *, tenant_id: str) -> dict[str, Any]:
-    """Translate the Slice 16a create contract into a ``mapping_rules`` document (dict).
+    """Translate the create contract into a ``mapping_rules`` document (dict).
 
     Routes by ``template_type`` to the canonical model, then per column builds rename +
     (declaration-driven) normalize + (datatype-driven) cast. ``__ignore__`` columns are

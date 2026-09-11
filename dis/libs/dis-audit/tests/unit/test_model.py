@@ -60,7 +60,7 @@ def test_extra_fields_forbidden() -> None:
 def test_insert_params_omit_server_defaulted_columns() -> None:
     params = _event(event_data={"written_to_table": "store_sku_sale_events"}).to_insert_params()
     assert "id" not in params and "_loaded_at" not in params and "loaded_at" not in params
-    assert len(params) == 22  # +prior_trace_id (Slice 30c, the D42 revision)
+    assert len(params) == 22  # includes prior_trace_id
     # event_data is serialised to a JSON string (cast to JSONB in SQL).
     assert isinstance(params["event_data"], str)
     # Enums are sent as their string value.
@@ -71,4 +71,4 @@ def test_insert_params_omit_server_defaulted_columns() -> None:
 def test_db_column_names_alias_aware() -> None:
     cols = AuditEvent.db_column_names()
     assert "_loaded_at" in cols and "loaded_at" not in cols
-    assert len(cols) == 24  # +prior_trace_id (Slice 30c, the D42 revision)
+    assert len(cols) == 24  # includes prior_trace_id

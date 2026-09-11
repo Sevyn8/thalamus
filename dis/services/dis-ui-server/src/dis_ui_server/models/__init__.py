@@ -1,8 +1,7 @@
-"""ORM rows on ``db.Base`` (D67) — config.source_mappings + identity_mirror reads.
+"""ORM rows on ``db.Base`` — config.source_mappings + identity_mirror reads.
 
 These models are typed table metadata for Core-style execution on the
-``rls_session`` connection (service CLAUDE.md durable invariant); they are
-never attached to an ``AsyncSession``.
+``rls_session`` connection; they are never attached to an ``AsyncSession``.
 """
 
 from dis_ui_server.models.audit_event import AuditEvent

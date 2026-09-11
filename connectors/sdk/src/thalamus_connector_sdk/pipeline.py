@@ -4,14 +4,14 @@ Mirrors csv-ingest-worker's ``pipeline.py`` with the PRODUCER inversion: the CSV
 reads a pre-existing GCS object a producer wrote; the connector IS the producer, so the
 worker's read-and-cross-check step is replaced by extract, serialize, upload. From the
 bronze write onward the logic is the worker's, reused: dedup via ``find_prior``, the
-metadata-only ``insert_row``, the ``ingress.ready`` publish after bronze lands (D5), and
-``mark_published`` (D59 resume-and-mark on redelivery).
+metadata-only ``insert_row``, the ``ingress.ready`` publish after bronze lands, and
+``mark_published`` (resume-and-mark on redelivery).
 
-Identity and ``trace_id`` are READ off the trigger and never minted (D54, hard rule 4);
-this module imports no ``dis_core.identity``. The only minted id is the bronze row PK via
-``dis_core`` ``new_uuid7``.
+Identity and ``trace_id`` are READ off the trigger and never minted (the trigger is the
+trust boundary); this module imports no ``dis_core.identity``. The only minted id is the
+bronze row PK via ``dis_core`` ``new_uuid7``.
 
-CONCURRENCY: the dedup is query-based (D58), correct for a SINGLE worker instance; the
+CONCURRENCY: the dedup is query-based, correct for a SINGLE worker instance; the
 same caveat as the CSV worker's bronze dedup applies.
 """
 
@@ -83,7 +83,7 @@ _log = get_logger(_SDK_SERVICE)
 
 # Tier 1 of the connector-health emit swallow: the DB errors that are genuinely
 # TRANSIENT. A blip here must not kill ingest, so it is warned and swallowed
-# (D116, hard rule 11). Deliberately NARROW: SQLAlchemy's ProgrammingError (bad
+# (telemetry never blocks ingest). Deliberately NARROW: SQLAlchemy's ProgrammingError (bad
 # SQL), ArgumentError and InvalidRequestError are programming defects and fall
 # through to the tier-2 catch, which logs them at ERROR under a BUG marker.
 # Nothing propagates from either tier, so a class missed here is loud, not fatal.
@@ -201,7 +201,7 @@ class ConnectorPipeline:
             return await self._handle_duplicate(trigger, prior, lap)
 
         # 5. Structural preflight (the adapter's; the SDK's run_preflight is the
-        #    reusable default). Failure -> FAILED bronze row, no publish (D5).
+        #    reusable default). Failure -> FAILED bronze row, no publish.
         preflight = self.adapter.preflight(extract)
         if not preflight.ok:
             return await self._handle_preflight_failure(trigger, data, payload_sha256, preflight, lap)
@@ -228,7 +228,7 @@ class ConnectorPipeline:
             },
         )
 
-        # 6. PII gate over the CSV header, BEFORE the bronze write (hard rule 2).
+        # 6. PII gate over the CSV header, BEFORE the bronze write.
         detected = await self._gate_pii(trigger, preflight, lap)
 
         # 7. Upload the CSV object; the connector is the producer.
@@ -275,7 +275,7 @@ class ConnectorPipeline:
             event_data={"pii_columns_detected": len(detected)},
         )
 
-        # 9. Publish AFTER bronze lands (D5), then stamp the publish (D59).
+        # 9. Publish AFTER bronze lands, then stamp the publish.
         envelope = self._build_envelope(
             trigger, trace_id=trigger.trace_id, bronze_ref=bronze_id, gcs_uri=gcs_uri, received_at=received_at
         )
@@ -292,7 +292,7 @@ class ConnectorPipeline:
             event_data={"topic": INGRESS_READY_TOPIC},
         )
         # This path EXTRACTED, so it knows the posture authoritatively: a None here is
-        # "no rate-limit response this run" and CLEARS a stored throttle (D116).
+        # "no rate-limit response this run" and CLEARS a stored throttle.
         await self._emit_health_seen(
             trigger,
             dropped_count=extract.dropped_count,
@@ -343,7 +343,7 @@ class ConnectorPipeline:
     async def _handle_duplicate(
         self, trigger: ConnectorTrigger, prior: PriorIngest, lap: _Lap
     ) -> ConnectorOutcome:
-        """Redelivery semantics (D59): full no-op, or resume the lost publish.
+        """Redelivery semantics: full no-op, or resume the lost publish.
 
         The object was already uploaded under the prior trace (the connector is the
         producer), so the resume path reuses ``prior.gcs_uri`` and does NOT re-upload;
@@ -399,7 +399,7 @@ class ConnectorPipeline:
         lap: _Lap,
     ) -> ConnectorOutcome:
         """Preflight failure: upload the object (so the FAILED row's gcs_uri resolves
-        for ops), write a FAILED bronze row + FAILURE audit, NO publish, terminal (D5).
+        for ops), write a FAILED bronze row + FAILURE audit, NO publish, terminal.
 
         The FAILED row makes the failure durable/ops-queryable and lets the dedup absorb
         a redelivery of the same bad extract (mirrors the CSV worker).
@@ -537,7 +537,7 @@ class ConnectorPipeline:
         stream = "+".join(domain.value for domain in trigger.domains)
         return f"{self.connector_name}:{stream}:{received_at.isoformat()}"
 
-    # -- connector-health emit (D116): additive + fire-and-forget ---------------
+    # -- connector-health emit: additive + fire-and-forget -----------------------
 
     async def _emit_terminal_failure(self, trigger: ConnectorTrigger, exc: ConnectorError, lap: _Lap) -> None:
         """Audit a terminal (pre-bronze) failure + stamp connector-health error."""
@@ -586,19 +586,19 @@ class ConnectorPipeline:
                     rate_limit_state=rate_limit_state,
                 )
         except _TRANSIENT_DB_ERRORS:
-            # Tier 1: a transient DB blip. Warn and swallow (D116, hard rule 11).
+            # Tier 1: a transient DB blip. Warn and swallow (telemetry never blocks ingest).
             _log.bind(
                 stage="connector_health",
                 tenant_id=str(trigger.tenant_id),
                 trace_id=str(trigger.trace_id),
                 source_id=trigger.source_id,
             ).warning("connector-health seen-emit failed; ingest unaffected (fire-and-forget)")
-        except Exception:  # noqa: BLE001 - telemetry never blocks ingest (D116, hard rule 11)
+        except Exception:  # noqa: BLE001 - telemetry never blocks ingest
             # Tier 2: anything else reaching here is a PROGRAMMING error (TypeError,
             # AttributeError, KeyError, bad SQL). Still swallowed - the behaviour is
             # right, a broken emit must not block ingest - but logged at ERROR with a
-            # traceback under a `bug` marker so it is findable. This is the tier that
-            # hid a broken duplicate-path emit behind a green test board for weeks.
+            # traceback under a `bug` marker so it is findable rather than hiding
+            # behind a green test board.
             _log.bind(
                 stage="connector_health",
                 tenant_id=str(trigger.tenant_id),
@@ -630,14 +630,14 @@ class ConnectorPipeline:
                     rate_limit_state=rate_limit_state,
                 )
         except _TRANSIENT_DB_ERRORS:
-            # Tier 1: a transient DB blip. Warn and swallow (D116, hard rule 11).
+            # Tier 1: a transient DB blip. Warn and swallow (telemetry never blocks ingest).
             _log.bind(
                 stage="connector_health",
                 tenant_id=str(trigger.tenant_id),
                 trace_id=str(trigger.trace_id),
                 source_id=trigger.source_id,
             ).warning("connector-health error-emit failed; ingest unaffected (fire-and-forget)")
-        except Exception:  # noqa: BLE001 - telemetry never blocks ingest (D116, hard rule 11)
+        except Exception:  # noqa: BLE001 - telemetry never blocks ingest
             # Tier 2: a PROGRAMMING error. Swallowed, but ERROR + traceback + `bug`
             # marker so it surfaces. See the seen-emit twin above.
             _log.bind(

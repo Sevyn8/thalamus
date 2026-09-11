@@ -1,4 +1,4 @@
-"""Unit tests for the Step 6.15 ``ModuleAccessRead`` schema.
+"""Unit tests for the ``ModuleAccessRead`` schema.
 
 S1 — enum fields serialise as canonical string values (``module`` /
 ``status``) rather than ``repr``-style strings, mirroring the

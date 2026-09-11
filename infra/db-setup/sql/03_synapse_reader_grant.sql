@@ -5,7 +5,7 @@
 -- writes a DIS table. This file gives its role exactly the two CANONICAL tables its
 -- resolvers name, and nothing else.
 --
--- SINCE SLICE 5 the role also holds SELECT on synapse.actions — Synapse's OWN
+-- The role also holds SELECT on synapse.actions — Synapse's OWN
 -- schema, granted by sql/04, so the action log can be read back without an admin
 -- credential. Still read-only everywhere: appending is synapse_writer's job, a
 -- separate role holding INSERT and nothing else.
@@ -19,9 +19,9 @@
 -- ----------------------------------------------------------------------------
 -- RUN AS: THE OWNER OF `canonical` — WHICH DIFFERS BY ENVIRONMENT
 -- ----------------------------------------------------------------------------
---   STAGING : `postgres`. DIS's Alembic was run as postgres against the shared
---             `thalamus` database (../README.md status note, 2026-07-20), so
---             cloudsqlsuperuser owns canonical there.
+--   STAGING : `postgres`. DIS's Alembic is run as postgres against the shared
+--             `thalamus` database (see ../README.md), so cloudsqlsuperuser
+--             owns canonical there.
 --   LOCAL   : `ithina_dis_admin`. docker-compose's POSTGRES_USER runs the local
 --             Alembic, so it owns canonical on 5433/ithina_dis_db.
 --
@@ -171,7 +171,7 @@ REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA canonical FROM s
 
 
 -- ============================================================================
--- identity_mirror: the tenant and store names the CONSOLE reads (slice 8a)
+-- identity_mirror: the tenant and store names the CONSOLE reads
 -- ============================================================================
 -- WHY THIS ROLE AND NOT AN HTTP CALL. synapse-ui-server's /fleet, /tenants/{id}
 -- and /runs all join identity_mirror for a name. The alternative considered was
@@ -192,8 +192,8 @@ REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA canonical FROM s
 -- BOTH TABLES, NOT JUST tenants. stores is counted in _FLEET and in _TENANT;
 -- granting only tenants moves the failure rather than fixing it.
 --
--- NO RLS TO SATISFY, VERIFIED FOUR WAYS rather than assumed, because this
--- project has lost six incidents to the FORCE RLS silent zero: neither table has
+-- NO RLS TO SATISFY, VERIFIED rather than assumed, because the FORCE RLS
+-- silent zero is indistinguishable from success: neither table has
 -- ENABLE ROW LEVEL SECURITY, nor FORCE, nor any CREATE POLICY, and both DDL
 -- files state "RLS not enabled" in their table comments. So a missing grant here
 -- fails LOUDLY with 42501 rather than returning zero rows — and the grant alone
@@ -229,20 +229,26 @@ REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA identity_mirror 
 --        FROM information_schema.role_table_grants
 --       WHERE grantee = 'synapse_reader'
 --       ORDER BY 1, 2;
---      -> canonical | store_sku_current_position | SELECT
---         canonical | store_sku_sale_events      | SELECT
---         synapse   | actions                    | SELECT
---         synapse   | provision                  | SELECT
---         synapse   | run                        | SELECT
+--      -> canonical       | store_sku_current_position | SELECT
+--         canonical       | store_sku_sale_events      | SELECT
+--         identity_mirror | stores                     | SELECT
+--         identity_mirror | tenants                    | SELECT
+--         synapse         | action_events              | SELECT
+--         synapse         | actions                    | SELECT
+--         synapse         | actions_analytical         | SELECT
+--         synapse         | provision                  | SELECT
+--         synapse         | quarantined_tenants        | SELECT
+--         synapse         | run                        | SELECT
 --
---    THE THIRD ROW ARRIVED IN SLICE 5 and this block said "exactly two" until then.
---    synapse_reader was granted SELECT on the action log because something will read
---    it back, and the alternative was every read-side test holding an admin
---    credential — a worse posture than a read-only role reading a read-only thing.
---    THE LAST TWO ARRIVED IN SLICE 6a with migration 0003: the orchestrator
---    enumerates synapse.provision under PLATFORM scope, and synapse.run is read
---    back to show what ran. All three synapse grants are issued by the migrations
---    and sql/04, not here; this list is the whole picture.
+--    The synapse rows are read-back grants: synapse_reader holds SELECT on the
+--    action log because something must read it back, and the alternative — every
+--    read-side test holding an admin credential — is a worse posture than a
+--    read-only role reading a read-only thing. The orchestrator enumerates
+--    synapse.provision under PLATFORM scope, and synapse.run is read back to
+--    show what ran. The synapse-side grants are issued by the migrations and
+--    sql/04, not here — see sql/04 for the full synapse-schema posture (it also
+--    grants the reader SELECT on synapse.action_events, quarantined_tenants and
+--    actions_analytical).
 --
 -- 2. The role cannot bypass RLS. Both columns must be `f`. If either is `t`,
 --    tenant isolation is void for this role and dis-rls will refuse the engine on

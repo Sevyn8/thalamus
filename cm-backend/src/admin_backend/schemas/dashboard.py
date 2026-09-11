@@ -1,4 +1,4 @@
-"""Pydantic v2 schemas for the dashboard stats endpoints (Step 6.5).
+"""Pydantic v2 schemas for the dashboard stats endpoints.
 
 Two endpoints back the Platform Dashboard's KPI grid (Frontend spec
 7.1):
@@ -32,8 +32,7 @@ on Postgres NUMERIC's canonical-string representation flowing through
 the driver; the dashboard endpoint is an aggregate ``SUM(...)`` whose
 Decimal precision can be ``Decimal('0E-2')`` or similar on edge
 paths, so the explicit format is the safer guarantee for this
-contract. Different contracts, different posture (Q2 confirmed at
-Step 6.5 design review, 2026-05-06).
+contract. Different contracts, different posture.
 """
 from __future__ import annotations
 

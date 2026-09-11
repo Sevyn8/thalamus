@@ -1,12 +1,12 @@
 """UUIDv7 generation — the single home for new identifiers in DIS.
 
-Root CLAUDE.md hard rule 3: every PK and identifier uses this helper; never
-``uuid.uuid4``. UUIDv7 is time-ordered, which keeps index locality good for the
-high-volume canonical/event tables.
+Every PK and identifier uses this helper; never ``uuid.uuid4``. UUIDv7 is
+time-ordered, which keeps index locality good for the high-volume
+canonical/event tables.
 
 This is the *client-side* generator (``uuid_utils.uuid7``), returning a stdlib
 ``uuid.UUID`` so Pydantic and SQLAlchemy treat it as an ordinary UUID. The
-Postgres ``public.uuidv7()`` function (Slice 1) is the *server-side* default that
+Postgres ``public.uuidv7()`` function is the *server-side* default that
 stamps DB-generated PKs; the two are independent implementations that both emit
 valid version-7 UUIDs. Use this helper for anything generated in Python
 (``trace_id``, client-minted ids); let the DB default handle server-side PKs.

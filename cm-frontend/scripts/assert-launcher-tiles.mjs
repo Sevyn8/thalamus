@@ -2,8 +2,8 @@
 // Fail the build if the launcher's tile registry and the ModuleCode union disagree.
 //
 // THE DEFECT THIS EXISTS FOR. lib/launcher/visibility.ts resolves a tenant's tiles by looking
-// each enabled module code up in LAUNCHER_TILES. Before Axon slice 4 a code with no tile
-// produced an empty array: the module vanished from the launcher and nothing anywhere reported
+// each enabled module code up in LAUNCHER_TILES. A code with no tile
+// produces an empty array: the module vanishes from the launcher and nothing anywhere reports
 // it. A tenant granted a module would see one fewer workspace than they were entitled to, with
 // no error, no log and no way to tell it apart from not being granted it at all.
 //

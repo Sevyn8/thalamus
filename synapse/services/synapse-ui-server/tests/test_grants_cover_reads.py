@@ -162,7 +162,7 @@ def _resolve_constants(source: str) -> str:
 def _grant_sources() -> dict[str, str]:
     """Every file that can change this role's privileges, hand-run and migrated alike.
 
-    SQL LINE COMMENTS ARE STRIPPED FROM THE HAND-RUN FILES, and slice 5e is why. These files
+    SQL LINE COMMENTS ARE STRIPPED FROM THE HAND-RUN FILES, and here is why. These files
     document each other at length: sql/05's header explains the sql/04 pairing defect by QUOTING
     sql/04's ``REVOKE ALL ON ALL TABLES IN SCHEMA synapse FROM synapse_reader``, and the
     hazard regex below matched the quotation. It reported sql/05 as stripping six tables it does

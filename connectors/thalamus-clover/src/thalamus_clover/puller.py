@@ -184,7 +184,7 @@ class CloverPuller:
         self._absorbed_rate_limit = False
 
     def rate_limit_state(self) -> str | None:
-        """The coarse posture for ``telemetry.connector_health.rate_limit_state`` (D116).
+        """The coarse posture for ``telemetry.connector_health.rate_limit_state``.
 
         ``RATE_LIMIT_THROTTLED`` once this instance has absorbed a 429, else None. None is a
         positive "no rate-limit response observed", which is what clears a stored posture.

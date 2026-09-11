@@ -1,4 +1,4 @@
-// Phase 5n.4: backend not shipped (no /api/v1/notifications endpoint).
+// Backend not shipped (no /api/v1/notifications endpoint).
 // Replace with real hook + list when notifications endpoint ships.
 
 import { PageHeader } from "@/components/shared/PageHeader";

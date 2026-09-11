@@ -1,10 +1,10 @@
-"""Unit tests for the Identity Service fake (identity-corrected, Slice 9a).
+"""Unit tests for the Identity Service fake.
 
 Every response is validated against the authoritative OpenAPI component schema.
 The fake is also driven through ``HttpIdentityClient`` to confirm the drop-in
 client interface works against it. Identity model: ``tenant_id``/``store_id``
-are the internal UUIDs (the field a caller writes identity from, D37);
-``display_code``/``store_code`` ride alongside (D55).
+are the internal UUIDs (the field a caller writes identity from);
+``display_code``/``store_code`` ride alongside.
 """
 
 from __future__ import annotations
@@ -163,10 +163,10 @@ def _edge_store(monkeypatch: pytest.MonkeyPatch, *, store_code: str | None, stat
 def test_none_coded_store_reachable_by_uuid_validate(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Named check (Slice 9a): a store with store_code=None cannot be named by
-    # code (faithful to the source), but it is never silently unreachable — the
-    # UUID-keyed validate path reaches it. The baseline is all-coded, so the
-    # code-less store is a test-scoped edge fixture.
+    # A store with store_code=None cannot be named by code (faithful to the
+    # source), but it is never silently unreachable — the UUID-keyed validate
+    # path reaches it. The baseline is all-coded, so the code-less store is a
+    # test-scoped edge fixture.
     uncoded = _edge_store(monkeypatch, store_code=None, status="INACTIVE")
     tenant = fx.tenant_by_display_code(uncoded.tenant_display_code)
     resp = client.post(
@@ -182,9 +182,9 @@ def test_none_coded_store_reachable_by_uuid_validate(
 def test_identity_omits_store_code_when_fixture_code_is_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Named check (Slice 9a): the fake's identity builder, given the None-coded
-    # fixture, carries store_code=None — the envelope's "populate when present"
-    # contract (D55) starts here. Code-less store is a test-scoped edge fixture.
+    # The fake's identity builder, given the None-coded fixture, carries
+    # store_code=None — the envelope's "populate when present" contract starts
+    # here. Code-less store is a test-scoped edge fixture.
     uncoded = _edge_store(monkeypatch, store_code=None, status="INACTIVE")
     identity = _identity_for(uncoded.tenant_display_code, None)
     # Default store resolution picks the tenant's first store; build the identity
@@ -198,7 +198,7 @@ def test_identity_omits_store_code_when_fixture_code_is_none(
         source="customer_master",
     )
     assert explicit.store_code is None
-    # On the wire the absent code is OMITTED, not null ("populate when present", D55).
+    # On the wire the absent code is OMITTED, not null ("populate when present").
     dumped = explicit.model_dump(mode="json", exclude_none=True)
     assert "store_code" not in dumped
     _assert_valid("Identity", dumped)

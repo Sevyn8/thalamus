@@ -1,6 +1,6 @@
 """Bronze fetch: cross-check the pointer, read the bronze row, download the chunk.
 
-The event is the trust boundary (D54): identity and ``trace_id`` are READ off it,
+The event is the trust boundary: identity and ``trace_id`` are READ off it,
 never re-resolved. The cross-checks here are consistency checks against that
 boundary, not re-resolution:
 
@@ -17,8 +17,8 @@ and 12) — RLS scoping doubles as the tenant cross-check: another tenant's
 ``bronze_ref`` reads as absent.
 
 The chunk parses to an all-string Polars frame (``infer_schema=False``): the
-mapping engine's normalize sub-stage owns string→canonical conversion (D20);
-nothing is type-guessed here. The chunk arrives ALREADY tokenized (D24) — no
+mapping engine's normalize sub-stage owns string→canonical conversion;
+nothing is type-guessed here. The chunk arrives ALREADY tokenized — no
 ``dis-pii`` dependency, and the frame is never logged.
 """
 
@@ -71,8 +71,9 @@ def cross_check_path(event: IngressReadyEvent, *, bronze_bucket: str) -> str:
     """Verify the event's ``gcs_uri`` against the bucket, path scheme, and identity.
 
     Returns the object key for the download. Raises ``EventPathMismatchError`` on
-    any disagreement (terminal-shaped, but Slice 10's minimal disposition still
-    nacks failures after the FAILURE audit; see the service CLAUDE.md).
+    any disagreement (terminal-shaped; this runs pre-fetch, so ``dis_channel`` is
+    still unknown and the quarantine known-columns guard excludes it — the
+    FAILURE audit is emitted and the message nacks).
     """
     bucket, object_key = split_object_uri(event.gcs_uri)
     if bucket != bronze_bucket:
@@ -140,9 +141,9 @@ async def read_bronze_row(engine: AsyncEngine, event: IngressReadyEvent) -> Bron
 def parse_chunk(data: bytes, *, separator: str, tenant_id: str, trace_id: str) -> pl.DataFrame:
     """Parse the CSV bytes to an all-string frame; empty/unparseable raises loudly.
 
-    ``separator`` is the delimiter the worker detected and carried on the envelope
-    (Slice 16f) — no longer a hardcoded comma. Polars' default ``"`` quoting still
-    applies, so a quoted field containing the separator stays one field (verified).
+       ``separator`` is the delimiter the worker detected and carried on the envelope
+    — no longer a hardcoded comma. Polars' default ``"`` quoting still
+       applies, so a quoted field containing the separator stays one field (verified).
     """
     try:
         frame = pl.read_csv(io.BytesIO(data), separator=separator, infer_schema=False)
@@ -174,9 +175,9 @@ async def fetch_chunk(
     ``on_bronze`` fires the moment the bronze row is read, BEFORE the download
     and parse: the caller's flow context learns ``bronze_id``/``dis_channel``
     even when a later step of this stage raises, so a download/parse failure is
-    classifiable as POST-fetch (the Slice 11a known-columns guard keys on
+    classifiable as POST-fetch (the known-columns guard keys on
     ``dis_channel``; without this, a deterministic unparseable/empty bronze
-    object could never be held and nacked forever — the storm class).
+    object could never be held and would nack forever — the storm class).
     """
     object_key = cross_check_path(event, bronze_bucket=bronze_bucket)
     bronze = await read_bronze_row(engine, event)
@@ -194,11 +195,11 @@ async def fetch_chunk(
 
 @dataclass(frozen=True)
 class StoreFacts:
-    """The store row's enrichment facts (slice-5b), read once and handed in.
+    """The store row's enrichment facts, read once and handed in.
 
-    ``tax_treatment`` feeds the event-path injection (unchanged) AND the
-    current-position enrichment (D98); ``currency`` is current-position enrichment
-    (D95). Both are NOT NULL on ``identity_mirror.stores``.
+        ``tax_treatment`` feeds the event-path injection (unchanged) AND the
+        current-position enrichment; ``currency`` is current-position enrichment
+    . Both are NOT NULL on ``identity_mirror.stores``.
     """
 
     tax_treatment: str
@@ -208,12 +209,12 @@ class StoreFacts:
 async def read_store_facts(engine: AsyncEngine, event: IngressReadyEvent) -> StoreFacts:
     """Read the store's enrichment facts from ``identity_mirror.stores`` (one round-trip).
 
-    A data-need read (the consumer denormalizes onto sale/hot rows and enriches the
-    current-position row per D95/D98), NOT an identity validation — existence
-    enforcement at the write is the composite FK (D39); no Identity Service is called
-    (D28, Slice 13). Widened from the former ``tax_treatment``-only read to also
-    return ``currency`` (same key, single round-trip). The store-absent precondition
-    (D96) is unchanged: a missing row fails loud here.
+        A data-need read (the consumer denormalizes onto sale/hot rows and enriches the
+        current-position row per D95/D98), NOT an identity validation — existence
+        enforcement at the write is the composite FK; no Identity Service is called
+    . Widened from the former ``tax_treatment``-only read to also
+        return ``currency`` (same key, single round-trip). The store-absent precondition
+     is unchanged: a missing row fails loud here.
     """
     async with rls_session(engine, event.tenant_id) as conn:
         row = (

@@ -1,4 +1,4 @@
-"""Step 6.14 unit tests for the new error envelopes.
+"""Unit tests for the tenant-users write error envelopes.
 
 Pure error-class tests with no DB or HTTP. Confirms the
 ``build_error_payload`` shape and the Q7 structured-context posture

@@ -8,7 +8,7 @@ quarantine-rate rule (null-or-float) rather than fragile exact numbers; the
 exact-count behaviour is pinned by the DB-free unit test (mapping) and is best
 spot-checked against the staging tenant that carries real canonical rows.
 
-Loud-error posture (the Slice 4/7/8 lesson): a missing stack env var ERRORS, never skips.
+Loud-error posture: a missing stack env var ERRORS, never skips.
 """
 
 from __future__ import annotations
@@ -108,7 +108,7 @@ async def test_sources_connected_is_tenant_scoped(stack_env: dict[str, str]) -> 
 
     Measured as deltas around a seed of 2 distinct sources for A + 1 for B (config.source_mappings
     is RLS two-GUC; the admin seed bypasses RLS, the scoped reads go through read_session). The
-    autouse identity-sync fixture provides the tenant FK targets. Seeded rows are removed (D100).
+    autouse identity-sync fixture provides the tenant FK targets. Seeded rows are removed.
     """
     admin_engine = create_async_engine(stack_env["POSTGRES_ADMIN_URL"])
     rls_engine = create_rls_engine(stack_env["POSTGRES_URL"])
@@ -188,8 +188,7 @@ def test_by_tenant_reconciles_with_the_fleet_aggregate_for_platform(
     # Reconcile invariant: sum of per-tenant slices == the fleet aggregate.
     assert sum(e["rows_ingested_24h"] for e in bt) == body["rows_ingested_24h"]
     assert (
-        sum(e["quarantine_24h"]["quarantined_rows"] for e in bt)
-        == body["quarantine_24h"]["quarantined_rows"]
+        sum(e["quarantine_24h"]["quarantined_rows"] for e in bt) == body["quarantine_24h"]["quarantined_rows"]
     )
 
 

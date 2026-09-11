@@ -17,9 +17,9 @@ Two model_validators refuse production with stub-shaped configuration:
      auth0.com pattern, custom domains, etc.) by checking only for
      stub markers rather than whitelisting Auth0 patterns.
 
-This is a Pydantic-level gate at config-load time. The actual
-app-startup refusal happens at Step 2.4 main.py; this layer ensures
-Settings refuses to validate.
+This is a Pydantic-level gate at config-load time. main.py also
+refuses to start the app under the same conditions; this layer
+ensures Settings refuses to validate.
 """
 import re
 from functools import lru_cache
@@ -100,7 +100,7 @@ class Settings(BaseSettings):
     # domain or non-standard path. Unused in STUB mode. iss / aud are reused
     # from jwt_issuer / jwt_audience; no separate auth0_issuer / auth0_audience.
     auth0_jwks_url: str | None = None
-    # Auth0 Management API (Slice 2 provisioning, D-39): M2M client-credentials
+    # Auth0 Management API: M2M client-credentials
     # for the "Cortex CM Backend M2M" app. Left None here on purpose: they are
     # NOT required merely because AUTH_CLIENT_MODE=AUTH0 (that mode only means
     # "verify Auth0 tokens" and is exercised without provisioning, e.g. the L5
@@ -115,7 +115,7 @@ class Settings(BaseSettings):
     auth0_mgmt_client_id: str | None = None
     auth0_mgmt_client_secret: str | None = None
     auth0_mgmt_audience: str | None = None
-    # SendGrid email + Auth0 ticket redirect (Slice 2d-send, D-41). CM's first
+    # SendGrid email + Auth0 ticket redirect. CM's first
     # outbound-email integration. Left permissive here; the send-invitation
     # action requires sendgrid_api_key + auth0_ticket_result_url at send time
     # (raising ProvisioningUnavailableError if unset), consistent with the
@@ -124,14 +124,14 @@ class Settings(BaseSettings):
     sendgrid_api_key: str | None = None
     sendgrid_from_email: str = "noreply@sevyn8.com"
     auth0_ticket_result_url: str | None = None
-    # The Auth0 database-connection name create_user targets (Slice 2c). Left
+    # The Auth0 database-connection name create_user targets. Left
     # None here: it is tenant Auth0 config, not derivable, and NOT required
     # merely because AUTH_CLIENT_MODE=AUTH0. The tenant-user provisioning action
     # requires it at run time (raising ProvisioningUnavailableError if unset),
     # consistent with the auth0_mgmt_* creds posture. Unused in STUB mode.
     auth0_mgmt_db_connection: str | None = None
 
-    # GCS tenant-documents storage (Slice 3). The bucket that holds
+    # GCS tenant-documents storage. The bucket that holds
     # tenant onboarding documents; signed PUT/GET URLs are minted against
     # it. Left permissive here (None) on purpose, matching the
     # sendgrid_api_key / auth0_mgmt_* posture: it is NOT required merely
@@ -139,7 +139,7 @@ class Settings(BaseSettings):
     # document endpoints that mint signed URLs require it at request time,
     # raising DocumentStorageUnavailableError (503) if unset. Unused in
     # STUB mode unless document endpoints are exercised.
-    # The GCP project holding tenant channel credentials (Axon slice 5). Lazy, like every
+    # The GCP project holding tenant channel credentials. Lazy, like every
     # other integration credential above: absent means the channels write path refuses with
     # CHANNELS_UNAVAILABLE at use time rather than blocking boot, so a revision without it
     # comes up healthy and every other surface keeps working. It is a project id, not a
@@ -182,7 +182,7 @@ class Settings(BaseSettings):
 
     # API URL prefix applied at app.include_router(prefix=...) and used
     # for the OpenAPI/docs/redoc/health/ready URLs. Forward-compat lever
-    # for a future v2 cutover (Step 3.3).
+    # for a future v2 cutover.
     api_prefix: str = "/api/v1"
 
     # Service version reported in /api/v1/health and the FastAPI

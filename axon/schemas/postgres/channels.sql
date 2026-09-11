@@ -1,8 +1,8 @@
 -- ============================================================================
 -- axon.channel_connections + axon.channel_templates: the tenant channel rails.
 --
--- WHAT THIS FILE IS FOR. Slice 1 built a ledger that can RECORD a tenant send and
--- slice 2 built a queue that can CARRY one. Neither can decide whether a tenant
+-- WHAT THIS FILE IS FOR. The ledger RECORDS a tenant send and the queue CARRIES
+-- one. Neither can decide whether a tenant
 -- send is possible, and the two questions that decide it are "is this channel
 -- connected for this tenant" and "is there an approved template for this class".
 -- Those are these two tables.
@@ -39,19 +39,21 @@
 --      quiet, and the two need different actions.
 --
 -- ----------------------------------------------------------------------------
--- NOTHING READS OR WRITES EITHER TABLE IN THIS SLICE, AND THAT IS THE PRECEDENT
+-- WHO TOUCHES THESE TABLES
 -- ----------------------------------------------------------------------------
--- Both ship EMPTY and UNGRANTED, exactly as axon.tenant_deliveries did in slice 1
--- and for the argument 06_axon_sender_grant.sql records: a grant arrives with the
--- code that needs it, together with the session posture that code must open.
--- Granting SELECT to axon_reader now would create a credential reaching tables no
--- code opens a session against, and granting INSERT to anything would create a
--- writer before the surface that writes exists.
+-- axon.channel_connections is written and read by Customer Master's
+-- user_admin_backend role (09_cm_channel_connections_grant.sql): the tenant
+-- administrator enters channel configuration through CM. axon.channel_templates
+-- ships EMPTY and UNGRANTED, for the argument 06_axon_sender_grant.sql records:
+-- a grant arrives with the code that needs it, together with the session posture
+-- that code must open. Granting SELECT to axon_reader now would create a
+-- credential reaching a table no code opens a session against, and granting
+-- INSERT to anything would create a writer before the surface that writes exists.
 --
--- The tables are built now anyway, for slice 1's reason and it has not changed:
--- altering RLS on a populated table is a live-data operation, and the USING versus
--- WITH CHECK decision is better made in daylight than by whoever writes the first
--- tenant send under time pressure.
+-- The registry table is built ahead of its writer anyway, and the reason has not
+-- changed: altering RLS on a populated table is a live-data operation, and the
+-- USING versus WITH CHECK decision is better made in daylight than by whoever
+-- writes the first tenant send under time pressure.
 --
 -- ----------------------------------------------------------------------------
 -- NOTHING HERE HAS EVER EXECUTED BEFORE STAGING
@@ -87,16 +89,20 @@ CREATE EXTENSION IF NOT EXISTS btree_gist;
 -- The natural writer for this table is an upsert on (tenant_id, channel): a tenant
 -- administrator saves the form twice and the second save must update rather than
 -- fail. ON CONFLICT reads the ARBITER INDEX, which is a SELECT privilege on this
--- table, and axon_sender holds no SELECT anywhere by deliberate design.
+-- table, and axon_sender holds no SELECT anywhere by deliberate design. Customer
+-- Master's user_admin_backend is the writer today and holds the SELECT its upsert
+-- needs (09_cm_channel_connections_grant.sql).
 --
--- THAT EXACT MISTAKE COST SLICE 5e TWO DAYS of every enable in production failing
--- with `permission denied` behind a green apply, and 06_axon_sender_grant.sql
--- records it in full along with the two mechanisms that work: catch SQLSTATE 23505
--- matched TOGETHER WITH the constraint name, or deduplicate before the write.
+-- A WRITING ROLE WITHOUT SELECT FAILS AT RUNTIME, NOT AT DEPLOY: every write fails
+-- with `permission denied` behind a green apply (incident 5e, two days of every
+-- production enable failing). 06_axon_sender_grant.sql records it in full along
+-- with the two mechanisms that work without SELECT:
+-- catch SQLSTATE 23505 matched TOGETHER WITH the constraint name, or deduplicate
+-- before the write.
 --
--- Whichever the writing slice chooses, it must choose it WITH its grant, in that
--- slice. A writer added first and a grant added afterwards is the failure this
--- comment exists to prevent, and it will not announce itself in a plan.
+-- Any new writer must choose its mechanism WITH its grant, in the same change. A
+-- writer added first and a grant added afterwards is the failure this comment
+-- exists to prevent, and it will not announce itself in a plan.
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS axon.channel_connections (
 
@@ -125,12 +131,11 @@ CREATE TABLE IF NOT EXISTS axon.channel_connections (
     -- THE SECRET's NAME, NEVER ITS VALUE AND NEVER A VERSION.
     --
     -- WRITTEN BY THE WRITER, READ VERBATIM BY THE READER, DERIVED BY NOBODY ELSE.
-    -- Slice 4 said both sides would derive it from a shared axon.vault helper. That
-    -- helper was deleted in slice 5: Customer Master is the writer and cannot import
-    -- this package (not a uv workspace member, and its Dockerfile builds from
-    -- cm-backend/ with no path to axon/), so a shared function had one caller and
-    -- would have become two definitions free to disagree. CM derives the name and
-    -- stores it here; Axon reads this column and never derives.
+    -- There is deliberately NO shared naming helper: Customer Master is the writer
+    -- and cannot import this package (not a uv workspace member, and its Dockerfile
+    -- builds from cm-backend/ with no path to axon/), so a shared function would
+    -- have one caller and become two definitions free to disagree. CM derives the
+    -- name and stores it here; Axon reads this column and never derives.
     --
     -- CM'S DERIVATION IS STILL DETERMINISTIC, AND THAT IS NOT STYLE. The Secret
     -- Manager write and this row's write cannot be atomic. If the secret lands and
@@ -192,7 +197,7 @@ COMMENT ON TABLE axon.channel_connections IS
 COMMENT ON COLUMN axon.channel_connections.status IS
 'pending | connected | disabled. Only `pending` is reachable today: `connected` means a send was accepted on this channel and no adapter beyond email exists to accept one.';
 
--- LEDGER ITEM, DELIBERATELY NOT SYNCED IN SLICE 5. The COMMENT below is corrected in
+-- LEDGER ITEM, DELIBERATELY NOT YET SYNCED. The COMMENT below is corrected in
 -- this file, but the LIVE comment in staging still reads "from axon.vault.secret_id_for",
 -- because migration 0002 already applied the old text and updating it needs a new axon
 -- revision, which needs a synapse-ui-server image rebuild (that image is what migrate-axon
@@ -275,8 +280,8 @@ CREATE INDEX IF NOT EXISTS ix_channel_connections_channel_status
 -- 'no_approved_template' ALREADY EXISTS IN BOTH SUPPRESSION VOCABULARIES, on
 -- axon.platform_deliveries and axon.tenant_deliveries alike, and nothing is added
 -- here. IT IS CURRENTLY UNREACHABLE: nothing in axon/src/axon/send.py can emit it,
--- because there is no registry to miss. THIS TABLE IS WHAT MAKES IT REACHABLE, and
--- the slice that teaches the send path to resolve a template is the slice in which
+-- because there is no registry to miss. THIS TABLE IS WHAT MAKES IT REACHABLE:
+-- whatever teaches the send path to resolve a template is the change in which
 -- that reason starts appearing in the ledger.
 CREATE TABLE IF NOT EXISTS axon.channel_templates (
 
@@ -510,10 +515,10 @@ CREATE POLICY channel_templates_tenant_isolation
 --
 -- IT COSTS NO GRANT. The same probe confirmed the writing role needed no SELECT on
 -- the referenced table for the check to run, so this constraint does not force a
--- read privilege onto axon_sender and slice 1's "a credential that cannot read
+-- read privilege onto axon_sender, and the "a credential that cannot read
 -- cannot be made to leak a ledger" posture is unaffected.
 --
--- template_version_id STAYS NULLABLE in this slice. Every existing row is NULL, and
+-- template_version_id STAYS NULLABLE. Every existing row is NULL, and
 -- email traffic legitimately has no approved template. It becomes NOT NULL for the
 -- channels that render through a template on the day an adapter renders one.
 --

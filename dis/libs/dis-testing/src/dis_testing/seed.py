@@ -1,24 +1,24 @@
 """Test fixture seeder.
 
 Writes the default ``config.source_mappings`` row (:mod:`dis_testing.fixtures`)
-into the DIS database so later slices' tests have a default mapping to exercise
+into the DIS database so tests have a default mapping to exercise
 FK and RLS behaviour against.
 
 SCOPE — read carefully:
-  * **Test infrastructure only.** Never a runtime path. Runtime source-mapping
-    creation is Slice 14; this seeder is the test shortcut for it.
+  * **Test infrastructure only.** Never a runtime path; this seeder is the test
+    shortcut for runtime source-mapping creation.
   * **The seeder no longer writes ``identity_mirror``.** ``identity_mirror`` is
-    OWNED by mirror-sync (Slice 7, DB-pull from the Customer Master stand-in) —
+    OWNED by mirror-sync (DB-pull from the Customer Master stand-in) —
     the only path that populates tenants/stores, in tests as in production. The
     seeder's job is reduced to ``config.source_mappings``; the FK target for the
     mapping (the tenant in ``identity_mirror.tenants``) must already exist, so a
     sync MUST precede the seed (see :func:`dis_testing.identity_sync`). The
     seeder enforces this with a fail-loud FK pre-check.
   * **DIS database only.** It uses ``POSTGRES_URL`` (5433 / ithina_dis_db) and has
-    no code path to Customer Master (5432). See the Slice 2 plan §1.
+    no code path to Customer Master (5432).
   * **Direct SQLAlchemy is intentional here.** The root rule "canonical reads/writes
     go through libs/dis-rls" is about *canonical* schemas; this writes only to
-    ``config``. ``config.source_mappings`` is RLS ON since Slice 14a, so the mapping
+    ``config``. ``config.source_mappings`` is RLS ON, so the mapping
     existence-check + INSERT set the transaction-local ``app.tenant_id`` GUC
     (the NOBYPASSRLS service role would otherwise read zero rows and fail the
     policy WITH CHECK).
@@ -62,7 +62,7 @@ _INSERT_MAPPING = text(
     """
 )
 
-# config.source_mappings is RLS ON (FORCE, Slice 14a); the seeding role is
+# config.source_mappings is RLS ON (FORCE); the seeding role is
 # NOBYPASSRLS, so the mapping check/insert need the transaction-local GUC.
 _SET_TENANT_GUC = text("SELECT set_config('app.tenant_id', :tenant_id, true)")
 
@@ -80,7 +80,7 @@ class SeedSummary:
 def _resolve_url(url: str | None) -> str:
     resolved = url or os.environ.get("POSTGRES_URL")
     if not resolved:
-        # No silent default for a required value (root CLAUDE.md error rule).
+        # No silent default for a required value.
         raise SeedError("POSTGRES_URL is not set and no url was passed to the seeder")
     return resolved
 
@@ -107,7 +107,7 @@ def _seed(eng: Engine) -> SeedSummary:
     # conflict). identity_mirror is OWNED by mirror-sync — the seeder no longer
     # writes it. The mapping's tenant FK target must already be mirrored, so a
     # sync MUST precede this seed; assert it loudly rather than fail the FINAL
-    # FK INSERT with an opaque IntegrityError. RLS ON (Slice 14a): scope the
+    # FK INSERT with an opaque IntegrityError. RLS ON: scope the
     # transaction to the fixture tenant first — without the GUC the existence
     # check reads zero rows and the INSERT fails the policy WITH CHECK.
     mapping = fx.DEFAULT_SOURCE_MAPPING

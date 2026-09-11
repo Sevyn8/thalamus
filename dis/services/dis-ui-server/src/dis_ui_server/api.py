@@ -4,13 +4,9 @@ The prefix mechanism is a plain ``APIRouter(prefix=API_PREFIX)`` that
 ``main.py`` includes once; handlers attach their routers here and inherit the
 deployed base without restating it. The contract's relative
 ``/v1/<group>/<resource>`` paths are unchanged (only the deployed base is
-``/api/v1``), and dis-ui's ``client.ts`` fetch base must agree when the
-frontend's real mode wires up (13b/19, contract Appendix B; flagged to the UI
-engineer). Health probes deliberately do NOT live here: ``/healthz`` and
-``/readyz`` stay at the root per infra convention.
-
-Slice 14b mounts the first data endpoints: the store list, the field catalog,
-and the mapping-template resource. Slice 8 mounts the synchronous CSV upload.
+``/api/v1``), and the frontend's fetch base must agree. Health probes
+deliberately do NOT live here: ``/healthz`` and ``/readyz`` stay at the root
+per infra convention.
 """
 
 from __future__ import annotations

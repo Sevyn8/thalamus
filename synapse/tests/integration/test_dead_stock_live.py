@@ -73,10 +73,10 @@ async def test_it_resolves_and_both_fetchers_execute() -> None:
     from synapse.core.last_sale_at import LastSaleAtRow
     from synapse.registry import resolve_declaration
 
-    # BY NAME, NOT BY POSITION. This was a one-element unpack until slice 4 added
-    # expires_after_days, and it broke here silently: the integration suite only runs
-    # inside a staging window, so the three unit-test call sites were fixed the same day
-    # and these two went unnoticed until the next window.
+    # BY NAME, NOT BY POSITION. A positional unpack breaks silently if a threshold field
+    # is ever added or reordered: the integration suite only runs inside a staging window,
+    # so unit-test call sites can be fixed the same day while these two go unnoticed until
+    # the next window.
     stale_after = next(t for t in DEAD_STOCK.thresholds if t.name == "stale_after_days")
     feed_stale_after = next(t for t in DEAD_STOCK.thresholds if t.name == "feed_stale_after_days")
     engine = create_rls_engine(DSN)

@@ -49,10 +49,10 @@ resource "google_project_iam_member" "pubsub_viewer" {
 # --- Secrets. Data sources, so a missing secret fails the PLAN, not the boot. ---
 #
 # ALL FOUR PIECES OF EACH LAND HERE: the data source, the IAM member, the env
-# block, and the depends_on entry. Slice 5d is why that sentence is written out
-# rather than assumed: it shipped the config change and the env var and NOT the
-# wiring, and the write path sat dead in staging for two days behind a green
-# apply. The depends_on half is checked rather than remembered, by
+# block, and the depends_on entry. That sentence is written out rather than
+# assumed because this once shipped the config change and the env var and NOT
+# the wiring, and the write path sat dead in staging for two days behind a
+# green apply. The depends_on half is checked rather than remembered, by
 # tests/test_axon_sender_posture.py, which parses this file.
 
 data "google_secret_manager_secret" "sender_url" {
@@ -161,8 +161,8 @@ resource "google_cloud_run_v2_service" "axon_sender" {
 
       # THE WRITE CREDENTIAL, and the only one this service has. axon_sender:
       # INSERT on axon.platform_deliveries, no SELECT anywhere, nothing on the
-      # tenant ledger. It moved HERE from synapse-ui-server in slice 2, because
-      # that service stopped writing the ledger when the enable route became a
+      # tenant ledger. It moved HERE from synapse-ui-server because that
+      # service stopped writing the ledger when the enable route became a
       # publish. A credential mounted on a process that no longer uses it is a
       # privilege nobody is accounting for.
       env {
@@ -212,7 +212,7 @@ resource "google_cloud_run_v2_service" "axon_sender" {
   # EVERY iam_member IN THIS MODULE MUST BE LISTED. The implicit dependency from
   # a secret env block is on the DATA SOURCE, not on the grant, so Terraform is
   # free to create the revision before the binding exists or propagates and the
-  # container then fails to read its own credential. That is slice 5d's defect,
+  # container then fails to read its own credential. That has happened before,
   # and tests/test_axon_sender_posture.py parses this file to check the list
   # rather than leaving it to a reader to remember.
   depends_on = [

@@ -1,10 +1,10 @@
-"""Step 2.2a unit tests for the async engine factory and privilege check.
+"""Unit tests for the async engine factory and privilege check.
 
 8 tests:
     T1: create_engine() yields an AsyncEngine that connects.
     T2: connect-time hook sets search_path to db_schema, public.
     T3: privilege check passes against live local DB
-        (NOSUPERUSER NOBYPASSRLS per Step 1.5).
+        (the app role is provisioned NOSUPERUSER NOBYPASSRLS).
     T4: privilege check raises for SUPERUSER alone.
     T5: privilege check raises for BYPASSRLS alone.
     T6: privilege check raises for both attributes set.
@@ -75,7 +75,7 @@ async def test_t2_search_path_set_at_connect(
 
 
 async def test_t3_privilege_check_passes_locally(engine: AsyncEngine) -> None:
-    """Local app role is NOSUPERUSER NOBYPASSRLS (Step 1.5); check passes."""
+    """Local app role is NOSUPERUSER NOBYPASSRLS; check passes."""
     await assert_app_role_no_bypassrls(engine)
 
 

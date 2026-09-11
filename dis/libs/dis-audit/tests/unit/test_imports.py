@@ -1,8 +1,8 @@
 """Dependency direction (AC1): dis-audit depends on dis-core + dis-rls only.
 
 A fresh interpreter check: importing dis_audit must not pull dis_mapping / dis_validation /
-dis_canonical (no Slice 5 surface; mapping_version_id is a value the caller supplies, not a
-code dependency). dis_rls IS expected (the chosen write posture, decisions.md D43).
+dis_canonical (mapping_version_id is a value the caller supplies, not a code dependency).
+dis_rls IS expected (the chosen write posture).
 """
 
 from __future__ import annotations

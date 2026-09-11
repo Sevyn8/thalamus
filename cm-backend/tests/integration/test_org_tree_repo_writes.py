@@ -1,4 +1,4 @@
-"""Step 6.13 integration tests for ``OrgNodesRepo`` write methods.
+"""Integration tests for ``OrgNodesRepo`` write methods.
 
 Six tests covering the LD-driven behaviours:
 
@@ -176,7 +176,7 @@ async def test_rt1_add_node_locks_parent_before_insert(
             )
 
 
-# ---- RT7: add_node parentless resolves to tenant root (Slice 8) -----------
+# ---- RT7: add_node parentless resolves to tenant root ---------------------
 
 
 async def test_rt7_add_node_parentless_resolves_to_tenant_root(
@@ -187,7 +187,7 @@ async def test_rt7_add_node_parentless_resolves_to_tenant_root(
     session_factory: async_sessionmaker[AsyncSession],
     platform_auth: AuthContext,
 ) -> None:
-    """Slice 8: ``add_node(parent_id=None)`` on a root-only tenant
+    """``add_node(parent_id=None)`` on a root-only tenant
     resolves the parent to the TENANT root and inserts under it. HQ under
     TENANT is legal (cascade ordinals 0 < 2). This is the first-node case
     the org page's empty-state CTA drives.
@@ -227,7 +227,7 @@ async def test_rt8_add_node_parentless_rootless_tenant_raises_404(
     session_factory: async_sessionmaker[AsyncSession],
     platform_auth: AuthContext,
 ) -> None:
-    """Slice 8 (repo-only coverage): ``add_node(parent_id=None)`` on a
+    """Repo-only coverage: ``add_node(parent_id=None)`` on a
     tenant with no TENANT root raises ParentNodeNotFoundError (404), not a
     raw 500. The API path never reaches this branch with a missing root:
     the router's gate uses ``anchor_dep=get_tenant_anchor``, which 404s a
@@ -484,7 +484,7 @@ def test_rt6_is_descendant_helper() -> None:
     assert _is_descendant("t.bu1", "t.bu1.hq") is False
 
 
-# ---- RT7: set_status (Step 6.21.2 — cascade target) ----------------------
+# ---- RT7: set_status (cascade target) ----------------------
 
 
 async def test_rt7_set_status_into_archived_populates_triplet(

@@ -1,6 +1,6 @@
-"""Chunk accounting — every input row exactly once (slice-05 adversarial pass).
+"""Chunk accounting — every input row exactly once.
 
-The consumer's deferred X% threshold (B2, Slice 10) is only computable if the
+The streaming consumer's pass-threshold is only computable if the
 engine accounts for EVERY input row exactly once: either in the contribution
 (locatable via ``source_row_indices``) or carrying at least one failure — never
 both, never neither. A silently dropped row (swallowed exception, a filter losing

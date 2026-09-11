@@ -54,9 +54,9 @@ by the executability test tripping it at limit=500 on ~600 groups — the resolv
 truncate. That behaviour now has a test of its own instead of being discovered by accident.
 
 WHAT NONE OF THEM COVER, because Synapse cannot write a DIS table: that a CORRECTION
-collapses to one figure, and that a D65 id-less-source correction does NOT. Both need rows
-inserted through the mapping pipeline, and both are already asserted in the streaming
-consumer's suite (``test_read_time_dedup.py`` pins the D65 case at two surviving keys).
+collapses to one figure, and that a correction from a source with no transaction id does NOT.
+Both need rows inserted through the mapping pipeline, and both are already asserted in the
+streaming consumer's suite (``test_read_time_dedup.py`` pins that case at two surviving keys).
 """
 
 from __future__ import annotations
@@ -150,7 +150,7 @@ async def test_the_collapse_is_valid_postgres_and_the_rows_project() -> None:
     So the window is small, because executability needs no volume at all. The residual is
     stated rather than hidden: at beta-target volume even seven days could exceed the
     ceiling for a busy tenant. If this ever trips, that is the runaway guard doing its job;
-    narrow further or paginate (D124), and do NOT raise the limit. The guard's own behaviour
+    narrow further or paginate with a keyset, and do NOT raise the limit. The guard's own behaviour
     is owned by test_the_runaway_guard_refuses_rather_than_truncating, not by this test.
     """
     from dis_rls import create_rls_engine
@@ -172,7 +172,7 @@ async def test_the_collapse_is_valid_postgres_and_the_rows_project() -> None:
 async def test_the_collapse_yields_exactly_one_row_per_dedup_key(
     require_canonical_rows: RequireRows,
 ) -> None:
-    """THE D33 PROPERTY, checked against raw counts rather than asserted.
+    """THE COLLAPSE-TO-ONE-ROW-PER-DEDUP-KEY PROPERTY, checked against raw counts rather than asserted.
 
     DATA REQUIRED. Counts distinct dedup keys directly, then counts the rows the collapse
     returns; they must be equal. On an empty table that is ``0 == 0``, which would report
@@ -333,7 +333,7 @@ async def test_an_impossible_threshold_yields_precondition_unmet_with_a_real_mea
         produces_signals=DAILY_SERIES.produces_signals,
         gates=DAILY_SERIES.gates,
     )
-    # The IMPOSSIBLE THRESHOLD is now the CALLER's, which is the slice-2 shape: the descriptor
+    # The IMPOSSIBLE THRESHOLD is the CALLER's to supply: the descriptor
     # says only that this capability can be gated on history coverage.
     impossible_gate = MinHistoryDays(days=10_000, policy=SeriesPolicy.ANY_SERIES)
     monkeypatch.setattr(

@@ -1,6 +1,6 @@
 """Minimal, test-only exceptions for dis-testing.
 
-These descend from the shared ``dis_core.errors.DisError`` root (Slice 3), so the
+These descend from the shared ``dis_core.errors.DisError`` root, so the
 whole DIS error tree is single-rooted, but the test-specific leaves stay here:
 ``TestInfraError`` / ``FixtureError`` / ``SeedError`` are test-infra concepts and
 must not leak into production ``dis-core``. The dependency direction is

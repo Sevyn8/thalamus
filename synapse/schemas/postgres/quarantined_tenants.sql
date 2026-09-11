@@ -23,8 +23,8 @@
 -- is the part that stops the next person getting this wrong.
 --
 -- decafbad is not merely an id to exclude. It is a REAL PROVISIONED TENANT with
--- real orchestrator behaviour: it has runs, and its freshness WARNINGs are what
--- verified slice 9's alert emission. Its ACTIONS are fixture writes; its RUNS
+-- real orchestrator behaviour: it has runs, and its freshness WARNINGs exercise
+-- the alert emission path. Its ACTIONS are fixture writes; its RUNS
 -- are genuine executions worth watching. A predicate records the exclusion and
 -- says nothing about that asymmetry, so the next person asking "should the
 -- freshness alerting exclude it too?" gets no answer. The `note` column answers
@@ -37,8 +37,8 @@
 -- SCOPE IS ACTIONS ONLY, DELIBERATELY
 -- ---------------------------------------------------------------------------
 -- synapse.run and the freshness path are NOT filtered. Quarantining them would
--- hide working machinery and would have suppressed the very signal that proved
--- slice 9 works. The asymmetry is principled rather than lazy.
+-- hide working machinery and suppress the very signal that shows the alert
+-- pipeline working. The asymmetry is principled rather than lazy.
 --
 -- IF RUN DATA EVER BECOMES A MODEL INPUT — "how often does this analysis produce
 -- actions" is a natural weight-fitting denominator — the same exposure appears
@@ -109,8 +109,8 @@ COMMENT ON COLUMN synapse.quarantined_tenants.note IS
 -- SECURITY. A view executes with its OWNER's rights by default, so an ordinary
 -- view over an RLS table is a cross-tenant read hole — the exact opposite of
 -- what this object is for. security_invoker makes the querying role's policies
--- apply. DIS learned this at config.source_mappings_v (Slice 14a); this is the
--- second instance and it is not a coincidence worth rediscovering.
+-- apply. DIS's config.source_mappings_v carries the same guard for the same
+-- reason.
 --
 -- NOT EXISTS rather than a LEFT JOIN with an IS NULL: one row per action either
 -- way, and the anti-join cannot accidentally duplicate a row if the registry

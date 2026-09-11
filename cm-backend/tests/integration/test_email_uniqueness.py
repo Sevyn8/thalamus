@@ -1,4 +1,4 @@
-"""Slice 9 (one email = one identity) tests.
+"""One email = one identity tests.
 
 Covers the migration pre-flight detection helper, the post-migration
 index swap, the DB global-uniqueness backstop under a TENANT (RLS-scoped)

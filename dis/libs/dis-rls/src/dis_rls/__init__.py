@@ -2,7 +2,7 @@
 
 Every canonical read/write in DIS goes through :func:`rls_session`, which opens a
 per-tenant scoped transaction (``SET LOCAL app.tenant_id``) so one tenant cannot
-read another's rows (root CLAUDE.md hard rules 1 & 12).
+read another's rows.
 
 The caller owns the engine (created via :func:`create_rls_engine`); there is no
 hidden process-wide engine, so there is no untested cross-event-loop singleton

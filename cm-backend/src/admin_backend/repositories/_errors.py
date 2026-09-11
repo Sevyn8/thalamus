@@ -6,10 +6,6 @@ and caught in routers, where they are re-mapped to HTTP-shaped
 
 Lives in its own underscore-prefixed module because every Repo
 imports it but it isn't part of the Repo public surface.
-
-History: introduced at Step 5.1 inside ``repositories/platform_users.py``.
-Promoted to a shared module at Step 5.2 so ``TenantUsersRepo`` (and
-future Repos) can import the same class instead of duplicating it.
 """
 from __future__ import annotations
 

@@ -350,9 +350,9 @@ async def test_a_capability_with_no_gates_needs_no_probe_call(
 
 
 def test_two_gates_of_the_same_kind_cannot_be_expressed() -> None:
-    """A PROPERTY SLICE 2 REMOVED, recorded rather than quietly dropped.
+    """A PROPERTY THE CURRENT DESIGN REMOVED, recorded rather than quietly dropped.
 
-    Slice 1 had `test_every_declared_precondition_is_evaluated_not_just_the_first`, which built
+    A prior version had `test_every_declared_precondition_is_evaluated_not_just_the_first`, which built
     a synthetic descriptor declaring `(MinHistoryDays(60), MinHistoryDays(90))` and asserted both
     were reported. That test cannot be written now, and the reason is that the inversion made it
     MEANINGLESS rather than merely awkward: gates are declared as KINDS, a caller binds at most
@@ -394,11 +394,11 @@ async def test_resolve_refuses_a_gate_the_capability_does_not_declare() -> None:
 async def test_the_policy_a_caller_supplies_is_the_one_applied(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """THE POINT OF SLICE 2, in one assertion: the SAME measurement, two verdicts.
+    """THE POINT OF POLICY-AWARE RESOLUTION, in one assertion: the SAME measurement, two verdicts.
 
     3 of 66 series qualifying is genuinely satisfied for a caller that needs any series and
-    genuinely unmet for one that needs all of them. Slice 1 could not express the difference —
-    its module-level placeholder made everyone's answer the ANY answer.
+    genuinely unmet for one that needs all of them. A prior version could not express the
+    difference — its module-level placeholder made everyone's answer the ANY answer.
     """
     monkeypatch.setattr(registry_module, "_REGISTRY", _stub_registry(qualifying=3, measured=66))
 
@@ -415,8 +415,8 @@ async def test_the_threshold_a_caller_supplies_is_the_one_probed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """min_days is a CALLER-SUPPLIED ARGUMENT now. Dead stock's 90 and a forecast's 60 reach
-    the same capability's probe as different numbers, which slice 1's descriptor constant made
-    impossible."""
+    the same capability's probe as different numbers, which a shared descriptor constant used
+    to make impossible."""
     calls: list[tuple[str, object]] = []
     monkeypatch.setattr(registry_module, "_REGISTRY", _stub_registry(qualifying=66, calls=calls))
     for days in (60, 90):
@@ -770,7 +770,7 @@ async def test_one_unregistered_requirement_blocks_the_declaration_and_says_whic
 async def test_a_precondition_unmet_requirement_blocks_and_keeps_its_counts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """THE SECOND DISTINGUISHABLE BLOCK, and the one slice 1 built the three outcomes for: the
+    """THE SECOND DISTINGUISHABLE BLOCK, of the three outcomes this registry distinguishes: the
     capability EXISTS and this tenant is short, by a number the console can render."""
     gated = replace(
         DEAD_STOCK,
@@ -807,7 +807,7 @@ async def test_both_requirements_are_evaluated_even_when_the_first_blocks(
 async def test_the_declarations_own_gates_are_what_get_bound(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Slice 2's inversion paying off: the threshold and policy come from the DECLARATION, so two
+    """The threshold and policy come from the DECLARATION, so two
     analyses requiring one capability at different thresholds each get their own answer."""
     calls: list[tuple[str, object]] = []
     gated = replace(

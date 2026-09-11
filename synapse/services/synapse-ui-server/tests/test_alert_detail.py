@@ -63,15 +63,15 @@ def _alert(**overrides: Any) -> dict[str, Any]:
         "store_name": "Mokotow",
         "product_name": "Vitamin C 500mg",
         "current_stock_qty": Decimal("38.000"),
-        # No operator has acted on this target: the "open" state (slice 5d).
+        # No operator has acted on this target: the "open" state.
         "lifecycle_verb": None,
         "lifecycle_reason": None,
         "lifecycle_snoozed_until": None,
         "lifecycle_recorded_at": None,
         "lifecycle_actor": None,
-        # B2a widened _ALERT_COLUMNS with the SERVER-DERIVED state, so this fixture carries the
-        # new row shape. The 5c page's BEHAVIOUR is unchanged: it renders the state it is given
-        # rather than deriving one, and for an untouched target that state is 'open' either way.
+        # _ALERT_COLUMNS carries the SERVER-DERIVED state, so this fixture carries that row
+        # shape. The page's BEHAVIOUR renders the state it is given rather than deriving one,
+        # and for an untouched target that state is 'open' either way.
         "lifecycle_state": "open",
     }
     base.update(overrides)
@@ -160,7 +160,7 @@ def test_both_display_joins_are_left_joins() -> None:
     which is exactly when someone is looking at it."""
     for statement in (reads._ALERT_DETAIL, reads._TENANT_ALERTS):
         sql = str(statement)
-        # Three now: the two display joins plus the lifecycle LATERAL added in 5d. Counted
+        # Three now: the two display joins plus the lifecycle LATERAL. Counted
         # rather than merely present, so an INNER creeping in anywhere fails here.
         assert sql.count("LEFT JOIN") == 3, sql
         assert "JOIN identity_mirror.stores" in sql
@@ -430,9 +430,9 @@ def test_every_route_in_this_service_requires_platform() -> None:
     here serves a tenant: every non-health route depends on require_platform. A new route added
     without it fails here rather than at review.
 
-    THE SEARCH IS RECURSIVE, AND SLICE 5e IS WHY. It used to read the route's TOP-LEVEL
-    dependencies only, which was exactly right while every route declared
-    ``Depends(require_platform)`` itself. 5e's enable route declares
+    THE SEARCH IS RECURSIVE, AND THE ENABLE ROUTE IS WHY. A flat search over the route's
+    TOP-LEVEL dependencies only was exactly right while every route declared
+    ``Depends(require_platform)`` itself. The enable route instead declares
     ``Depends(require_tenant_configure)``, which in turn declares ``Depends(require_platform)``,
     so the PLATFORM check still runs first and a TENANT token is still refused before anything
     else happens. A flat search would have reported that route as unguarded.

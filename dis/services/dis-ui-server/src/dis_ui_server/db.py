@@ -2,17 +2,13 @@
 
 This service uses the SQLAlchemy ORM / declarative layer where other DIS
 services use Core/text, justified by its CRUD and system-of-record nature
-(``config.source_mappings``, later slices). The layer choice carries a
-decisions.md D-number assigned by the operator at the Slice-13a commit gate.
+(``config.source_mappings``).
 
-The load-bearing constraint (root CLAUDE.md hard rule 1): any future model
-declared on :class:`Base` executes ONLY inside ``rls_session(engine, tenant_id)``
-— never a raw ``AsyncSession``, never a second engine. The engine itself comes
-from ``dis-rls`` ``create_rls_engine`` so the ``current_database()=='ithina_dis_db'``
-+ NOBYPASSRLS posture guard applies to every connection this service ever opens.
-
-Slice 13a declares no models (there are no endpoints); the base exists so later
-slices attach to an already-wired foundation instead of improvising one.
+The load-bearing constraint: any model declared on :class:`Base` executes ONLY
+inside ``rls_session(engine, tenant_id)`` — never a raw ``AsyncSession``, never
+a second engine. The engine itself comes from ``dis-rls`` ``create_rls_engine``
+so the ``current_database()=='ithina_dis_db'`` + NOBYPASSRLS posture guard
+applies to every connection this service ever opens.
 
 Engine creation is LAZY (no connection at construction): the lifespan creates
 the engine without touching the network, so an unreachable database never
@@ -35,10 +31,9 @@ from dis_ui_server.config import UiServerConfig
 
 
 class Base(DeclarativeBase):
-    """Declarative root for this service's future CRUD models.
+    """Declarative root for this service's ORM models.
 
-    Every model on this base executes through the dis-rls session only
-    (service CLAUDE.md durable invariant). No models exist in Slice 13a.
+    Every model on this base executes through the dis-rls session only.
     """
 
 
@@ -51,7 +46,7 @@ def create_engine_from_config(config: UiServerConfig) -> AsyncEngine:
     return create_rls_engine(config.postgres_url)
 
 
-# ---- Slice 17b: two-GUC scope-aware session openers ----
+# ---- Two-GUC scope-aware session openers ----
 #
 # Primitive args (bool / UUID), NOT the auth ``ReadScope``/``WriteScope`` value objects,
 # so this module never imports ``auth.scope`` (which would form db -> auth -> ... a cycle
@@ -62,7 +57,7 @@ def create_engine_from_config(config: UiServerConfig) -> AsyncEngine:
 async def read_session(
     engine: AsyncEngine, *, is_platform: bool, tenant_id: UUID | None
 ) -> AsyncIterator[AsyncConnection]:
-    """Open the read session for a resolved read scope (Slice 17b).
+    """Open the read session for a resolved read scope.
 
     PLATFORM see-all -> ``rls_platform_session(engine, None)`` (every tenant, via the
     policy USING branch). A pinned TENANT scope -> ``rls_session(engine, tenant_id)``
@@ -83,7 +78,7 @@ async def read_session(
 async def write_session(
     engine: AsyncEngine, *, is_platform: bool, acted_for: UUID
 ) -> AsyncIterator[AsyncConnection]:
-    """Open the write session for the resolved acted-for tenant (Slice 17b).
+    """Open the write session for the resolved acted-for tenant.
 
     A PLATFORM actor (impersonation) -> ``rls_platform_session(engine, acted_for)``:
     see-all reads within the transaction, writes pinned to ``acted_for`` by the policy

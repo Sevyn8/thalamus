@@ -116,7 +116,7 @@ function SortHeader({
 // Dashboard (index) — mockup KPI row + cards wired to REAL endpoints where the data exists.
 // REAL: Sources connected (metrics.sources_connected), Rows ingested (rows_ingested_24h), Quality
 // pass rate (derived from quarantine_24h), the per-template Flow table, and Recent ingestion runs
-// (a bounded slice of GET /runs, D111). PENDING (L1, no data/route on main): Freshness-within-SLA
+// (a bounded slice of GET /runs). PENDING (no data/route on main): Freshness-within-SLA
 // (no cadence stored) and the Needs-attention alert feed — shown as clearly-marked placeholders,
 // NOT fabricated numbers.
 export function Dashboard() {
@@ -343,7 +343,7 @@ export function Dashboard() {
         {/* Recent ingestion runs — REAL: a bounded recent slice of GET /runs. Columns
             Run·Source·Status·Accepted/Quarantined·When. The rebuilt /runs carries the two real
             terminal counts (accepted + quarantined; the old 3-way Acc/Rev/Rej "needs review" bucket
-            was dropped from the wire, D119). Honest "—" where a count is null (non-terminal run),
+            is not on the wire). Honest "—" where a count is null (non-terminal run),
             same as the Ingestion Runs surface. */}
         <div className="card">
           <div className="hd">

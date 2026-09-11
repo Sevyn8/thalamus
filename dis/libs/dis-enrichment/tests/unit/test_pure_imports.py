@@ -1,4 +1,4 @@
-"""dis-enrichment is pure and decoupled (slice-5b): importing it must not pull in the
+"""dis-enrichment is pure and decoupled: importing it must not pull in the
 sibling pipeline libs, the I/O-bearing DIS libs, or any DB/GCP client.
 
 Checked in a FRESH interpreter (subprocess; pattern from dis-mapping): the shared

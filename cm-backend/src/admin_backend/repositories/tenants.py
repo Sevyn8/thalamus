@@ -3,7 +3,7 @@
 The Repo class owns SELECT queries on ``tenants``. It does NOT set
 tenant context, NOT begin transactions, NOT handle commits/rollbacks.
 The session passed in already carries ``app.tenant_id`` and
-``app.user_type`` GUCs set by ``get_tenant_session`` (Step 2.2a); RLS
+``app.user_type`` GUCs set by ``get_tenant_session``; RLS
 filtering is therefore automatic. The Repo is unaware of multi-tenancy
 mechanics.
 
@@ -18,8 +18,8 @@ visibility-bearing method. Tenant context flows through the session,
 never through method parameters. Adding such an argument would create
 a second source of tenant identity that bypasses RLS.
 
-Step 3.3 added the aggregate-shaped methods (``list_with_aggregates``,
-``get_by_id_with_aggregates``, ``count_for_stats``) and the row
+The aggregate-shaped methods (``list_with_aggregates``,
+``get_by_id_with_aggregates``, ``count_for_stats``) return row
 dataclasses that carry the per-row aggregate values back to the
 router. The aggregate subqueries are scalar, correlated to the outer
 ``Tenant`` row, and inherit the same RLS filtering as the outer
@@ -27,8 +27,7 @@ select — D-29's PLATFORM OR-branch makes platform-wide aggregates
 behave correctly, and TENANT-scoped aggregates filter to the tenant's
 own row.
 
-Step 3.4.5 (FN-AB-16 RESOLVED) replaced the per-tenant module-list
-stub with a real per-row scalar subquery against
+The per-tenant module list is a per-row scalar subquery against
 ``tenant_module_access`` joined to ``lookups`` for display-name
 resolution. The subquery uses ``jsonb_agg(... ORDER BY ...)`` so the
 modules array comes back already shaped as
@@ -78,11 +77,10 @@ from admin_backend.models.tenant_user import TenantUser, TenantUserStatus
 from admin_backend.repositories._errors import InvalidSortKeyError
 
 
-# Step 6.20.1: mechanical slug for tenant-root org_node (code, path)
-# derivation. Pure-function, module-level so unit tests can exercise
-# without DB. The rule is intentionally simpler than the seed shape;
-# editorial overrides (Buc-ee's -> BUC-EES) are not in scope here. See
-# LD3 in prompts/step-6_20_1-impl-2026-05-18.md.
+# Mechanical slug for tenant-root org_node (code, path) derivation.
+# Pure-function, module-level so unit tests can exercise without DB.
+# The rule is intentionally simpler than the seed shape; editorial
+# overrides (Buc-ee's -> BUC-EES) are not in scope here.
 _SLUG_NON_ALPHANUMERIC_RE = re.compile(r"[^a-z0-9]+")
 _SLUG_MAX_LEN = 64
 
@@ -133,12 +131,11 @@ def slug_for_tenant_root(
     return trimmed.upper(), trimmed.replace("-", "_")
 
 
-# Step 6.4 sort vocabulary. Six column-based keys land at module level
+# Sort vocabulary. Six column-based keys land at module level
 # (the column expressions are stable across calls). Four aggregate-based
 # keys (num_users_active_*, num_stores_*) are built per-call inside
 # ``list_with_aggregates`` because their underlying scalar subqueries
-# are constructed there — see Step 3.3 / Step 5.2's TenantUser stub
-# swap. The full 10-key set is enumerated by ``TENANTS_SORT_KEYS`` for
+# are constructed there. The full 10-key set is enumerated by ``TENANTS_SORT_KEYS`` for
 # validation; the resolution to ORDER BY clauses happens inside the
 # method.
 #
@@ -169,10 +166,8 @@ TENANTS_SORT_KEYS: frozenset[str] = frozenset(
 ) | _AGGREGATE_TENANTS_SORT_KEYS
 
 # Default sort. Mirrors PlatformUsersRepo / TenantUsersRepo precedent.
-# Step 6.4's note: pre-Step-6.4 the endpoint had NO sort param and the
-# Repo hardcoded ``name ASC``. Callers who don't pass ``sort`` now
-# receive ``created_at_desc`` (newest first) — a deliberate behaviour
-# change rather than preserving the prior implicit ordering.
+# Callers who don't pass ``sort`` receive ``created_at_desc`` (newest
+# first).
 DEFAULT_TENANTS_SORT: str = "created_at_desc"
 
 
@@ -200,11 +195,10 @@ def _modules_subq() -> Any:
     # would be ignored.
     # Cast tenant_module_access.module (PG enum module_code_enum) to
     # text so it can be compared to lookups.code (TEXT). Postgres does
-    # not implicitly cast varchar/text vs a named enum type — same
-    # gotcha that bit Step 3.3's TenantUser.status (see "Note on PG
-    # enum columns" in CLAUDE.md). Casting once in the JOIN is cleaner
-    # than declaring lookups.code as the enum type (which would couple
-    # the platform-global lookups table to one specific enum).
+    # not implicitly cast varchar/text vs a named enum type. Casting
+    # once in the JOIN is cleaner than declaring lookups.code as the
+    # enum type (which would couple the platform-global lookups table
+    # to one specific enum).
     module_as_text = cast(TenantModuleAccess.module, String)
     ordered_module_object = aggregate_order_by(
         func.jsonb_build_object(
@@ -261,7 +255,7 @@ class TenantDetailRow:
 
 
 class TransitionResult(StrEnum):
-    """Outcome enum for ``TenantsRepo.transition`` (Step 6.11.1).
+    """Outcome enum for ``TenantsRepo.transition``.
 
     Three values: ``OK`` (UPDATE succeeded), ``NOT_FOUND`` (row missing
     or RLS-filtered), ``INVALID_STATE`` (current status doesn't permit
@@ -275,9 +269,8 @@ class TransitionResult(StrEnum):
 
 # Allowed source states per target status - the tenant lifecycle matrix.
 # ``transition`` handles SUSPENDED/ACTIVE; ``complete_onboarding`` handles
-# the Slice 1 ONBOARDING -> TRIAL transition. Both read this single map so
-# the lifecycle has one source of truth (the "extend the allowed_sources
-# map" step of Slice 1).
+# the ONBOARDING -> TRIAL transition. Both read this single map so
+# the lifecycle has one source of truth.
 _TRANSITION_ALLOWED_SOURCES: dict[str, frozenset[str]] = {
     "SUSPENDED": frozenset({"TRIAL", "ACTIVE"}),
     "ACTIVE": frozenset({"TRIAL", "SUSPENDED"}),
@@ -285,7 +278,7 @@ _TRANSITION_ALLOWED_SOURCES: dict[str, frozenset[str]] = {
 }
 
 
-# Slice 7: DB constraint -> 422 field mapping for tenant writes. A CHECK
+# DB constraint -> 422 field mapping for tenant writes. A CHECK
 # violation (IntegrityError) or numeric overflow (DataError) on a tenant
 # INSERT/UPDATE is mapped to InvalidTenantFieldError naming the field,
 # instead of bubbling as an unhandled 500. Constraint names are the DDL
@@ -351,7 +344,7 @@ class TenantsRepo:
         tenant_id: UUID,
         org_id: str,
     ) -> None:
-        """Stamp the tenant's Auth0 Organization id (Slice 5, option a).
+        """Stamp the tenant's Auth0 Organization id.
 
         Called by ``provision-auth0`` after the Auth0 get-or-create, so
         ``onboarding-state`` can report a durable ``auth0_organization``
@@ -393,7 +386,7 @@ class TenantsRepo:
         return list(result.scalars().all())
 
     # ------------------------------------------------------------------
-    # Step 3.3 aggregate-shaped methods
+    # Aggregate-shaped methods
     # ------------------------------------------------------------------
 
     async def list_with_aggregates(
@@ -580,7 +573,7 @@ class TenantsRepo:
         return total_tenants, total_stores
 
     # ------------------------------------------------------------------
-    # Step 6.11.1 write methods
+    # Write methods
     # ------------------------------------------------------------------
     #
     # All three methods use raw ``text()`` SQL with explicit schema
@@ -662,15 +655,14 @@ class TenantsRepo:
     ) -> TenantDetailRow:
         """Insert one ``tenants`` row + N ``tenant_module_access`` rows.
 
-        The tenant lands in ``status='ONBOARDING'`` (the DDL default):
-        the Slice 1 change removed the prior ``CAST('TRIAL' ...)`` literal
+        The tenant lands in ``status='ONBOARDING'`` (the DDL default),
         so new tenants enter the onboarding lifecycle;
         ``POST /tenants/{id}/complete-onboarding`` moves ONBOARDING ->
         TRIAL. The initial 1:1 ``tenant_onboarding`` row is provisioned
-        here in the same transaction (flag 5b).
+        here in the same transaction.
         ``actor_user_id`` is the JWT user_id; it must be a valid
         ``platform_users.id`` (Pattern (a) FK per D-13). The PATCH /
-        POST surface is platform-only at Step 6.11 so this is satisfied
+        POST surface is platform-only, so this is satisfied
         by construction; FK violation would surface as 500 if a
         non-PLATFORM caller somehow reached this method.
 
@@ -680,7 +672,7 @@ class TenantsRepo:
         Raises ``DuplicateTenantNameError`` (409) if a tenant with
         ``name`` already exists.
 
-        Step 6.20.1: also inserts the tenant-root ``org_nodes`` row in
+        Also inserts the tenant-root ``org_nodes`` row in
         the same transaction. The row's ``(code, path)`` is derived from
         ``display_code`` (if provided) else ``name`` via
         ``slug_for_tenant_root``. Empty-slug input raises
@@ -696,8 +688,7 @@ class TenantsRepo:
         )
 
         # Derive (code, path) BEFORE the tenants INSERT so a 422 from an
-        # empty slug rejects the request without side effects. Per
-        # refined LD2 in the Step 6.20.1 impl prompt.
+        # empty slug rejects the request without side effects.
         org_node_code, org_node_path = slug_for_tenant_root(
             name, display_code
         )
@@ -751,10 +742,10 @@ class TenantsRepo:
             _map_tenant_write_error(exc)
         new_tenant_id: UUID = insert_tenant.scalar_one()
 
-        # Step 6.20.1: tenant-root org_node row. Same transaction as the
+        # Tenant-root org_node row. Same transaction as the
         # tenants INSERT above and the per-module loop below; rollback
         # on any failure leaves no partial state. Pattern (b) audit-actor
-        # pair per D-13 / LD7; ``app.user_type='PLATFORM'`` is set by
+        # pair per D-13; ``app.user_type='PLATFORM'`` is set by
         # ``get_tenant_session`` and the gate's ``audience='PLATFORM'``
         # invariant means the actor is always a PLATFORM user here.
         # ``ck_org_nodes_root_parent_consistency`` enforces the
@@ -814,7 +805,7 @@ class TenantsRepo:
                 },
             )
 
-        # Slice 1 (flag 5b): provision the 1:1 tenant_onboarding row so
+        # Provision the 1:1 tenant_onboarding row so
         # wizard state exists from creation and complete-onboarding always
         # has a row to stamp. current_step / completed_* start NULL;
         # section_status defaults to '{}' via the DDL. Same transaction as
@@ -846,10 +837,11 @@ class TenantsRepo:
             "the same session"
         )
 
-        # Step 6.16.2 audit emission. Success row goes to
-        # platform_activity_audit_logs per the design-doc-named
-        # exception (route_to_platform=True). Same-transaction with
-        # the data write per LD7. Both `auth` and `request_id` are
+        # Audit emission. Success row goes to
+        # platform_activity_audit_logs via the route_to_platform=True
+        # exception (POST /tenants routes to the platform table even
+        # though tenant_id is set). Same-transaction with the data
+        # write. Both `auth` and `request_id` are
         # required together: providing only one is a developer bug;
         # repo-level tests that pass neither skip emission cleanly.
         if auth is not None and request_id is not None:
@@ -1011,8 +1003,8 @@ class TenantsRepo:
         session.expire_all()
         result_row = await self.get_by_id_with_aggregates(session, tenant_id)
 
-        # Step 6.16.2 audit emission. Normal routing (tenant_id set,
-        # not the named exception). Same-transaction success row.
+        # Audit emission. Normal routing (tenant_id set;
+        # not the create-path route_to_platform exception). Same-transaction success row.
         if auth is not None and request_id is not None and result_row is not None:
             after_values = {k: fields[k] for k in fields}
             tenant_name_now = result_row.tenant.name
@@ -1121,7 +1113,7 @@ class TenantsRepo:
             session, tenant_id
         )
 
-        # Step 6.16.2 audit emission. Normal routing (tenant_id set);
+        # Audit emission. Normal routing (tenant_id set);
         # action is SUSPEND or ACTIVATE per the target. Same-transaction
         # success row.
         if auth is not None and request_id is not None and result_row is not None:
@@ -1173,7 +1165,7 @@ class TenantsRepo:
             ``_TRANSITION_ALLOWED_SOURCES['TRIAL']``).
           - ``(row, OK)`` after the status flip + completion stamp.
 
-        Gating (Slice 6 option a): raises ``OnboardingIncompleteError``
+        Gating: raises ``OnboardingIncompleteError``
         (409) unless ALL of these hold: legal profile, billing profile,
         at least one contact, the Auth0 organization provisioned
         (tenants.auth0_org_id set), at least one invited admin user
@@ -1189,7 +1181,7 @@ class TenantsRepo:
         creation, so the UPDATE always targets an existing row.
         SELECT FOR UPDATE locks the tenants row against a concurrent
         transition. Emits one COMPLETE_ONBOARDING audit event on success
-        (Slice 2 item 5); ``auth`` + ``request_id`` are both-or-neither.
+; ``auth`` + ``request_id`` are both-or-neither.
         """
         schema = get_settings().db_schema
 
@@ -1206,10 +1198,9 @@ class TenantsRepo:
         if current.status not in _TRANSITION_ALLOWED_SOURCES["TRIAL"]:
             return None, TransitionResult.INVALID_STATE
 
-        # Gating (Slice 6 option a): legal profile + billing profile +
+        # Gating: legal profile + billing profile +
         # >=1 contact + Auth0 org provisioned + >=1 invited admin user +
-        # documents all-verified. All pure DB reads (auth0_org_id since
-        # Slice 5; documents verification since Slice 3). The onboarding
+        # documents all-verified. All pure DB reads. The onboarding
         # wizard's client gate mirrors these exactly.
         presence = (
             await session.execute(
@@ -1287,7 +1278,7 @@ class TenantsRepo:
         session.expire_all()
         result_row = await self.get_by_id_with_aggregates(session, tenant_id)
 
-        # Slice 2 item 5: one COMPLETE_ONBOARDING success audit event.
+        # One COMPLETE_ONBOARDING success audit event.
         if (
             auth is not None
             and request_id is not None

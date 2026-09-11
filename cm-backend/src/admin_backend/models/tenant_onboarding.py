@@ -1,9 +1,8 @@
 """SQLAlchemy ORM model for the ``tenant_onboarding`` table.
 
-Client onboarding, Slice 1. 1:1 with ``tenants`` (``UNIQUE(tenant_id)``).
+1:1 with ``tenants`` (``UNIQUE(tenant_id)``).
 Holds wizard state: ``current_step``, per-section ``section_status``
-(JSONB map of section-key -> status-code; wizard section endpoints are
-out of scope this slice), and the completion stamp
+(JSONB map of section-key -> status-code), and the completion stamp
 (``completed_by_user_id`` FK to ``platform_users`` + ``completed_at``,
 paired by a DDL CHECK).
 

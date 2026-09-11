@@ -68,33 +68,35 @@
 // superadmin reading every tenant's provisioning, runs and action counts leaves
 // no trace — not because the identity is unknown, but because nothing persists it.
 //
-// Fine for slice 8a for a narrow reason rather than a comfortable one: every
-// route is read-only, so the worst an unattributable request can do is look. Not
-// fine for a write — an unattributable INSERT into synapse.provision changes a
-// customer's configuration with nobody's name on it, and enabled_at is a
-// denominator.
+// Fine for the current read-only routes for a narrow reason rather than a
+// comfortable one: every route is read-only, so the worst an unattributable
+// request can do is look. Not fine for a write — an unattributable INSERT
+// into synapse.provision changes a customer's configuration with nobody's
+// name on it, and enabled_at is a denominator.
 //
 // ============================================================================
-// THE TRIGGER HAS FIRED, TWICE, AND THIS PARAGRAPH SAID IT HAD NOT
+// A COMMENT NAMING ITS OWN FALSIFICATION CONDITION IS STILL A CLAIM
 // ============================================================================
-// It read "THE TRIGGER IS UNCHANGED: THE FIRST SYNAPSE ROUTE THAT WRITES, which
-// is 8b." That was already false when 5d shipped the alert-decision POST, and it
-// stayed on the page while a second write landed in 5e. A comment naming its own
-// falsification condition is worth more than one that is merely correct today,
-// and it still goes stale silently, because nothing re-reads it when the
-// condition fires. This is the second instance of that exact failure in this
-// console; the other is in the ingress paragraph of the BFF's terraform module.
+// This file once asserted that no Synapse route wrote yet. That became false
+// when the alert-decision write shipped, and stayed on the page while a
+// second write (provisioning-enable) landed after it. A comment naming its
+// own falsification condition is worth more than one that is merely correct
+// today, and it still goes stale silently, because nothing re-reads it when
+// the condition fires. This is the second instance of that exact failure in
+// this console; the other is in the ingress paragraph of the BFF's terraform
+// module.
 //
 // WHERE THE TWO WRITES STAND NOW:
 //
-//   5d, alert decisions -> synapse.action_events carries actor_subject on every
-//        row. The decision and its attribution are the same row, so this one is
-//        genuinely closed.
-//   5e, provisioning    -> NOT CLOSED. synapse.provision records enabled_at and
-//        records NOBODY. The BFF emits a structured log line carrying the Auth0
-//        subject, the tenant, the analysis and the timezone, and a log line is
-//        not an audit record: Cloud Logging's retention is the ceiling and
-//        nothing can answer "who enabled this monitor" from the database at all.
+//   Alert decisions      -> synapse.action_events carries actor_subject on
+//        every row. The decision and its attribution are the same row, so
+//        this one is genuinely closed.
+//   Provisioning-enable  -> NOT CLOSED. synapse.provision records enabled_at
+//        and records NOBODY. The BFF emits a structured log line carrying
+//        the Auth0 subject, the tenant, the analysis and the timezone, and a
+//        log line is not an audit record: Cloud Logging's retention is the
+//        ceiling and nothing can answer "who enabled this monitor" from the
+//        database at all.
 //
 // THE REAL HOME is synapse.provision_events, append-only, the same shape as
 // synapse.action_events. It is deferred because it IS the append-only enablement
@@ -102,9 +104,9 @@
 // DISABLE as that table's trigger, not the first enable. Both get built together
 // when a disable arrives.
 //
-// UNTIL THEN 5e MUST NOT REACH A PRODUCTION TENANT. Same standing condition as
-// the provisioning permission being known-broader than the act; see
-// synapse_ui_server/cm_permissions.py.
+// UNTIL THEN THE PROVISIONING-ENABLE WRITE MUST NOT REACH A PRODUCTION
+// TENANT. Same standing condition as the provisioning permission being
+// known-broader than the act; see synapse_ui_server/cm_permissions.py.
 //
 // LOCALLY there is no metadata server, so SYNAPSE_BFF_TOKEN (a token minted by
 // hand) is used if present. Absent both, the call fails loudly rather than going
@@ -168,10 +170,10 @@ async function userAccessToken(): Promise<string> {
   }
 }
 
-// A GET helper and, since slice 5d, exactly one POST helper. The comment here used
-// to read "there is no post/put/delete helper, deliberately: slice 8a holds no write
-// path" — and it was right that adding a mutation should mean adding it in both
-// places, visibly. This is that, done visibly.
+// A GET helper and exactly one POST helper. The comment here used to say
+// there was no write path at all, deliberately — and it was right that
+// adding a mutation should mean adding it in both places, visibly. This is
+// that, done visibly.
 //
 // THE BROWSER CANNOT DO THIS ITSELF, which is why the write is server-side rather
 // than a fetch from a client component. Reaching the BFF needs BOTH tokens below;

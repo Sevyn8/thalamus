@@ -1,4 +1,4 @@
-// Direct browser upload to a GCS V4 signed PUT URL (Slice 4). Uses
+// Direct browser upload to a GCS V4 signed PUT URL. Uses
 // XMLHttpRequest (not fetch) because we need upload progress events, and
 // AbortSignal support so the caller can cancel. This does NOT go through
 // apiFetch: the signed URL is a full GCS URL and must NOT carry our

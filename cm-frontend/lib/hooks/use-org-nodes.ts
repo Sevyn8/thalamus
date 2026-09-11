@@ -24,12 +24,11 @@ import type {
 // the cap for the dev seed.
 const DEFAULT_DEPTH = 2;
 
-// Phase 5h.1.1 (2026-05-21): userId in queryKey to prevent cross-
-// persona cache bleed. For org-tree the response shape for a given
-// tenantId is materially the same across viewers (RLS gates access
-// at the endpoint, but the tree data itself is tenant-property),
-// so this is hygiene rather than a leak; keeping the pattern uniform
-// is what matters. See Finding #50.
+// userId in queryKey prevents cross-persona cache bleed. For org-tree
+// the response shape for a given tenantId is materially the same
+// across viewers (RLS gates access at the endpoint, but the tree data
+// itself is tenant-property), so this is hygiene rather than a leak;
+// keeping the pattern uniform is what matters.
 
 export function useOrgTree(tenantId: string, depth: number = DEFAULT_DEPTH) {
   const userId = useAuthSnapshot()?.user?.userId ?? null;
@@ -48,7 +47,7 @@ export function useOrgTree(tenantId: string, depth: number = DEFAULT_DEPTH) {
 // (loaded_children !== "all"). Otherwise it stays disabled and TQ
 // doesn't fetch.
 //
-// Lifecycle policy (per Phase 4e plan):
+// Lifecycle policy:
 //   - Collapse: `enabled` flips false; cached pages stay in TQ
 //     cache. Re-expand reads from cache, no re-fetch.
 //   - Tenant switch: tenantId is in the queryKey, so cross-tenant
@@ -103,8 +102,8 @@ export function flattenChildPages(
   return data.pages.flatMap((p) => p.items);
 }
 
-// Phase 5n.7 write hooks. Server-wait per the post-MSW canonical
-// pattern (Finding #32). `invalidateQueries` covers both the initial
+// Write hooks. Server-wait pattern — no optimistic state.
+// `invalidateQueries` targets both the initial
 // tree fetch and any lazy-loaded child page caches for the affected
 // tenant. On reparent (PATCH with parent_id), the old-parent's child
 // listing also needs to drop the moved node, but a tenant-wide

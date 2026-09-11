@@ -1,4 +1,4 @@
-"""Stores router: list / detail endpoints (Step 6.17.2).
+"""Stores router: list / detail endpoints.
 
 Two GET handlers under the ``/stores`` sub-prefix; the parent
 ``/api/v1`` prefix comes from ``settings.api_prefix`` at
@@ -12,7 +12,7 @@ surface as 404 ``STORE_NOT_FOUND`` (RLS-as-404 per D-17).
 
 Gate: ``ADMIN.STORES.VIEW.TENANT`` on both endpoints. SUPER_ADMIN +
 PLATFORM_ADMIN pass via the GLOBAL→TENANT scope cascade; TENANT OWNER
-passes via the direct ``.TENANT`` grant (Step 6.17.1 seed update).
+passes via the direct ``.TENANT`` grant.
 Store Manager has only ``.STORE`` scope and is denied by the cascade
 direction (a STORE grant doesn't satisfy a TENANT-scoped check).
 """

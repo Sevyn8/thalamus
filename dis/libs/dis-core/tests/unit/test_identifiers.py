@@ -16,7 +16,7 @@ def test_internal_identifiers_are_uuid_and_int() -> None:
 
 
 def test_external_identity_aliases_are_retired() -> None:
-    # D37 RESOLVED (Slice 9a): the identity contract carries the internal UUID;
+    # D37 RESOLVED: the identity contract carries the internal UUID;
     # the invented external t_*/s_* string aliases and their patterns are gone.
     # The historical name collision (identifiers.TenantId UUID vs identity
     # models' Annotated[str]) is dissolved — the contract module no longer
@@ -28,8 +28,8 @@ def test_external_identity_aliases_are_retired() -> None:
 
 
 def test_identity_contract_fields_are_uuid_typed() -> None:
-    # The contract Identity model carries the load-bearing UUIDs (D37/D52)
-    # plus the optional authoritative external codes (D55).
+    # The contract Identity model carries the load-bearing UUIDs
+    # plus the optional authoritative external codes.
     fields = identity_models.Identity.model_fields
     assert fields["tenant_id"].annotation is UUID
     assert fields["store_id"].annotation is UUID

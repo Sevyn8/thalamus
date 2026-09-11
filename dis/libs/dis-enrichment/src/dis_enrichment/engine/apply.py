@@ -1,9 +1,9 @@
-"""``apply_enrichment`` — the pure lookup-enrichment step (slice-5b; D94, D95).
+"""``apply_enrichment`` — the pure lookup-enrichment step.
 
 A pure function over ``(contribution, facts, table)``: no Postgres, GCS, Pub/Sub,
 network, or file I/O. It overwrites each registered field for ``table`` with the
 handed-in internal-source value (broadcast across every row), so the lib's value
-WINS over any mapping-produced value of the same name (D95). Column-wise mutation
+WINS over any mapping-produced value of the same name. Column-wise mutation
 only: row count and row order are preserved (the D94 row-alignment contract — the
 consumer reuses its ``MappingResult.source_row_indices`` unchanged).
 
@@ -68,7 +68,7 @@ def apply_enrichment(
         # upstream of the branch, but enrichment is a no-op here. Output unchanged.
         return EnrichmentResult(contribution=contribution, enriched_columns=())
 
-    # Output-wins (D95): ``with_columns`` REPLACES a same-named column, so a
+    # Output-wins: ``with_columns`` REPLACES a same-named column, so a
     # mapping-produced value of a registered field cannot survive — the lib's value
     # wins by construction; a not-yet-present field (e.g. tax_treatment) is created.
     enriched = contribution.with_columns([pl.lit(facts[name]).alias(name) for name in fields])

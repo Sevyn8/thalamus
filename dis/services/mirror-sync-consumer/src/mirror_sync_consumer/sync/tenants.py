@@ -50,7 +50,7 @@ def tenant_params(tenant: CmTenant) -> dict[str, Any]:
     return {
         "tenant_id": tenant.tenant_id,
         "name": tenant.name,
-        "display_code": tenant.display_code,  # copied as-is; nullable at source (D55)
+        "display_code": tenant.display_code,  # copied as-is; nullable at source
         "status": tenant.status,
         "pc_created_at": tenant.pc_created_at,
         "pc_updated_at": tenant.pc_updated_at,

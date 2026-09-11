@@ -6,8 +6,8 @@ tenant_users Pattern 2 split (D-12, D-34).
 
 The audience invariant (``role.audience='PLATFORM'`` only) is enforced
 at the DB layer by the BEFORE INSERT/UPDATE OF role_id trigger
-``enforce_platform_role_audience()`` (Step 6.8.1's migration
-``3e05299cb533``). Application code does not need to re-enforce.
+``enforce_platform_role_audience()`` (migration ``3e05299cb533``).
+Application code does not need to re-enforce.
 
 Notes on shape (mirrors ``models/tenant_user.py`` / ``models/role.py``):
 

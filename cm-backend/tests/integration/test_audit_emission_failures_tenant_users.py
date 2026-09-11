@@ -1,4 +1,4 @@
-"""Step 6.16.4 : failure-path audit emission for the 4 tenant-users endpoints.
+"""Failure-path audit emission for the 4 tenant-users endpoints.
 
 Per-endpoint coverage of the FAILURE audit row that 403 / 409 / 422
 responses produce on tenant-users routes. Each test triggers a known

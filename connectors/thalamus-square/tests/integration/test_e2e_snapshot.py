@@ -2,7 +2,7 @@
 streaming-consumer pipeline -> canonical.store_sku_current_position for W-001.
 
 Proves the manually-demonstrated spine as a durable test:
-- provisioning.py registers the api source + an ACTIVE snapshot template (D88);
+- provisioning.py registers the api source + an ACTIVE snapshot template;
 - the transport mints a producer-owned connector_run_id (no wall-clock) and runs one offline
   pull via a fake SquareApi (canned PLN catalog+inventory);
 - the inherited ConsumerPipeline (unchanged) fetches the connector's bronze CSV, maps,
@@ -12,13 +12,13 @@ Proves the manually-demonstrated spine as a durable test:
 - dedup: same run-key => duplicate_noop, no new bronze, canonical unchanged; a new run-key =>
   a new bronze row and a canonical upsert (still 2 rows, refreshed).
 
-D100: the test sweeps everything it could create - keyed by (tenant_id, source_id), not by a
+The test sweeps everything it could create - keyed by (tenant_id, source_id), not by a
 captured id, so a re-run over provisioning's idempotent path is also cleaned - in a finally,
 returning the shared DB to baseline. FK-safe order matters: every table that references
 config.source_mappings via mapping_version_id (canonical/staging snapshot + sale + change
 events, quarantined_rows) is cleared before the source_mappings row, else its DELETE FK-fails
 and the whole cleanup rolls back. The receiver reads connector_run_id off the trigger and mints
-none (D54); only the transport derives it.
+none; only the transport derives it.
 """
 
 from __future__ import annotations
@@ -89,15 +89,19 @@ def _bronze_meta(admin: Engine, bronze_id: UUID) -> tuple[str, datetime]:
 
 def _canonical_rows(admin: Engine) -> list[dict[str, Any]]:
     with admin.begin() as conn:
-        rows = conn.execute(
-            sa.text(
-                "SELECT sku_id, current_retail_price, currency, tax_treatment, stock_qty, "
-                "       dis_channel, trace_id "
-                "FROM canonical.store_sku_current_position "
-                "WHERE tenant_id = CAST(:t AS uuid) AND store_id = CAST(:s AS uuid) ORDER BY sku_id"
-            ),
-            {"t": str(_TENANT), "s": str(_STORE)},
-        ).mappings().all()
+        rows = (
+            conn.execute(
+                sa.text(
+                    "SELECT sku_id, current_retail_price, currency, tax_treatment, stock_qty, "
+                    "       dis_channel, trace_id "
+                    "FROM canonical.store_sku_current_position "
+                    "WHERE tenant_id = CAST(:t AS uuid) AND store_id = CAST(:s AS uuid) ORDER BY sku_id"
+                ),
+                {"t": str(_TENANT), "s": str(_STORE)},
+            )
+            .mappings()
+            .all()
+        )
     return [dict(r) for r in rows]
 
 
@@ -178,8 +182,8 @@ async def _drive_consumer(
 
 # Tables that reference config.source_mappings via mapping_version_id (FK). EVERY one must be
 # cleared before the source_mappings row, or its DELETE raises a FK violation, the single
-# cleanup transaction rolls back, and the source_mappings row is left as residue (the D100
-# failure). canonical.store_sku_current_position is the only one the happy path writes, but an
+# cleanup transaction rolls back, and the source_mappings row is left as residue. canonical.
+# store_sku_current_position is the only one the happy path writes, but an
 # intermittently quarantined / staged row also holds a reference, so all seven are swept.
 _MAPPING_VERSION_CHILDREN: tuple[str, ...] = (
     "canonical.store_sku_current_position",
@@ -193,7 +197,7 @@ _MAPPING_VERSION_CHILDREN: tuple[str, ...] = (
 
 
 def _cleanup(admin: Engine) -> None:
-    """Return the shared DB to baseline (D100), keyed by (tenant_id, source_id) - NOT by any
+    """Return the shared DB to baseline, keyed by (tenant_id, source_id) - NOT by any
     id this run captured. Provisioning is idempotent (ON CONFLICT / the ACTIVE-exists guard),
     so on a re-run it can hit a PRE-EXISTING row it never created; deleting by a captured
     template_id/trace would miss it. Keying by (tenant, source) sweeps the row whether or not
@@ -241,15 +245,13 @@ def _cleanup(admin: Engine) -> None:
         conn.execute(sa.text("DELETE FROM bronze.data_ingress_events WHERE source_id = :s"), params)
         conn.execute(
             sa.text(
-                "DELETE FROM telemetry.connector_health "
-                "WHERE tenant_id = CAST(:t AS uuid) AND source_id = :s"
+                "DELETE FROM telemetry.connector_health WHERE tenant_id = CAST(:t AS uuid) AND source_id = :s"
             ),
             params,
         )
         conn.execute(
             sa.text(
-                "DELETE FROM config.source_mappings "
-                "WHERE tenant_id = CAST(:t AS uuid) AND source_id = :s"
+                "DELETE FROM config.source_mappings WHERE tenant_id = CAST(:t AS uuid) AND source_id = :s"
             ),
             params,
         )
@@ -302,7 +304,7 @@ async def test_spine_offline_pull_lands_canonical_for_w001_and_dedups() -> None:
         assert len(rows) == 2
         assert {r["sku_id"] for r in rows} == _SKUS
         for r in rows:
-            assert r["currency"] == "PLN"  # enrichment-supplied, store-owned (D95)
+            assert r["currency"] == "PLN"  # enrichment-supplied, store-owned
             assert r["tax_treatment"] == "INCLUSIVE"  # enrichment-supplied
             assert r["dis_channel"] == "api"
         assert _bronze_count(admin) == 1

@@ -1,7 +1,7 @@
-"""Integration tests for the Module Access read endpoints (Step 6.7).
+"""Integration tests for the Module Access read endpoints.
 
 Real Postgres, real schema, real RLS, real router via FastAPI's
-TestClient. JWTs minted via Step 2.1's ``make_test_jwt``. Mirrors the
+TestClient. JWTs minted via ``make_test_jwt``. Mirrors the
 shape used by ``test_dashboard_router.py`` and ``test_rbac_router.py``.
 
 Test ID convention:
@@ -25,7 +25,7 @@ Five LOAD-BEARING tests:
       ENABLED rows in tenant_module_access, ``cells[]`` always has 6
       entries, with the absent modules rendering as DISABLED.
 
-The DB may be in a partially-seeded state when these run (Step 3.5's
+The DB may be in a partially-seeded state when these run (a seed
 loader or partial state from prior runs). Tests that count rows across
 the catalogue use fixture-created entities and ``>=``-style assertions
 where absolute counts would be brittle.
@@ -644,7 +644,7 @@ def test_a1_no_jwt_returns_401(app_client):
 
 
 # =============================================================================
-# E4 (Slice 8): GET /module-access/me — caller-state tenant module read
+# E4: GET /module-access/me — caller-state tenant module read
 # =============================================================================
 
 
@@ -655,7 +655,7 @@ async def test_me1_tenant_gets_exactly_own_enabled_set(
     make_platform_user,
     make_tenant_module_access,
 ):
-    """LOAD-BEARING (Slice 8) — a plain TENANT JWT (no admin grant) gets
+    """LOAD-BEARING — a plain TENANT JWT (no admin grant) gets
     exactly its own tenant's module rows, and no other tenant's rows.
 
     Proves the launcher can be powered without ADMIN.TENANTS.VIEW.TENANT

@@ -16,12 +16,12 @@ import { distinctTenants, matchesTenant, SYSTEM_TENANT, tenantFull, tenantName }
 
 // Connector Health (connector-health.html): a card grid (g3), one card per connector — status
 // dot + name + method chip, a status badge, and a 5-field kv (Last seen, Heartbeat, Missed
-// intervals, Auth expiry, Rate limit). Wired to GET /api/v1/connector-health (Phase A, D116) via
+// intervals, Auth expiry, Rate limit). Wired to GET /api/v1/connector-health via
 // the connector-health.ts client. Toolbar: Status + Method filters (client-side over the list) and
 // KPI badges (stale / attention / healthy).
 //
 // HONEST RENDERING (the core discipline — the mockup's numbers are ILLUSTRATIVE): every field
-// shows ONLY what the wire carries. In Phase A the sole producer is csv-ingest-worker (CSV), so
+// shows ONLY what the wire carries. Today the sole producer is csv-ingest-worker (CSV), so
 // CSV connectors have a real last_seen_at + status but null auth/rate/missed → "—"; the deferred
 // receivers come back status='pending' with every field null. We NEVER render the mockup's
 // "in 42 days" / "698/700" / "1 missed" — those are null until a producer emits them.
@@ -110,7 +110,7 @@ function ConnectorCard({ c, showTenant }: { c: ConnectorHealthRow; showTenant: b
           <dd className="mono">{ago(c.last_seen_at)}</dd>
           <dt>Heartbeat</dt>
           <dd>{c.heartbeat_label ?? DASH}</dd>
-          {/* Phase A: null for every connector (no machine cadence) → "—", never fabricated. */}
+          {/* Currently null for every connector (no machine cadence) → "—", never fabricated. */}
           <dt>Missed intervals</dt>
           <dd>{c.missed_intervals ?? DASH}</dd>
           {/* null for CSV (no auth) → "—"; a relative "in N days" only when the wire carries it. */}
@@ -133,10 +133,10 @@ export function ConnectorHealth() {
   const q = useConnectorHealth(snapshot)
   const all: ConnectorHealthRow[] = q.data?.items ?? []
   const tenantOptions = ops ? distinctTenants(all.map((c) => c.tenant_id)) : []
-  // Chunk 9-FE: tenant_id → name map for labelling the filter options by name (value stays tenant_id).
+  // tenant_id → name map for labelling the filter options by name (value stays tenant_id).
   const tenantNames = new Map<string | null, string | null>(all.map((c) => [c.tenant_id, c.tenant_name ?? null]))
 
-  // KPI rollup (DECIDED, D116): stale / attention (auth_expiring|rate_limited) / healthy. PENDING
+  // KPI rollup: stale / attention (auth_expiring|rate_limited) / healthy. PENDING
   // is EXCLUDED from all three — a no-producer connector is not "healthy"; don't inflate the count.
   const staleCount = all.filter((c) => c.status === 'stale').length
   const attentionCount = all.filter(

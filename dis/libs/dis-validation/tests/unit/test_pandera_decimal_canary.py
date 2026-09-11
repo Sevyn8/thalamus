@@ -1,4 +1,4 @@
-"""CANARY for the D50 upstream bug — the removal trigger for the workaround.
+"""CANARY for the upstream pandera Decimal bug — the removal trigger for the workaround.
 
 pandera 0.31.1's polars engine raises a raw ``AssertionError`` ("The return is
 expected to be of Decimal class", ``pandera/engines/polars_engine.py``) when a
@@ -10,7 +10,7 @@ This test feeds pandera the broken case DIRECTLY (no dis-validation machinery)
 and asserts the BUG STILL EXISTS. The moment any upstream behaviour change —
 within or beyond the version pin — makes pandera stop raising this exact raw
 AssertionError, this test goes RED, forcing the workaround's removal review. Do
-NOT "fix" this test by loosening it; delete the workaround instead (D50).
+NOT "fix" this test by loosening it; delete the workaround instead.
 """
 
 from __future__ import annotations

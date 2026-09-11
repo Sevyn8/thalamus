@@ -1,4 +1,4 @@
-"""Step 6.20.3 : DB-direct tests for the three RBAC structural triggers.
+"""DB-direct tests for the three RBAC structural triggers.
 
 17 tests covering three triggers added by migration
 ``5e22b2ca13cc_step_6_20_3_rbac_structural_triggers.py``:
@@ -313,8 +313,8 @@ async def test_t8_delete_super_admin_override_global_rejected(
     """LOAD-BEARING : DELETE of (SUPER_ADMIN x OVERRIDE.GLOBAL) raises.
 
     Platform-bootstrap protection: this grant is the OVERRIDE.GLOBAL
-    last-holder when no other role holds the permission. Step 6.18.3
-    LD6/LD8 enforces this app-side; the trigger backstops direct-SQL.
+    last-holder when no other role holds the permission. The app
+    layer enforces this; the trigger backstops direct-SQL.
     """
     schema = settings.db_schema
     with pytest.raises(ProgrammingError) as exc_info:

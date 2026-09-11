@@ -15,12 +15,12 @@ dependencies = [
   "psycopg[binary]>=3.2",
   "alembic>=1.14",
 
-  # Validation engine (decisions.md D4a)
+  # Validation engine
   "pandera[polars]>=0.20",
   "polars>=1.0",
   "pyarrow>=17",
 
-  # CSV / SQL preview (decisions.md D16)
+  # CSV / SQL preview
   "duckdb>=1.0",
 
   # GCP clients
@@ -38,7 +38,7 @@ dependencies = [
   "pydantic[email]>=2.9",
   "pydantic-settings>=2.6",
 
-  # BigQuery models (decisions.md D23)
+  # BigQuery models
   "dbt-bigquery>=1.8,<1.10",
 
   # IDs (UUIDv7)
@@ -69,7 +69,7 @@ dev = [
   "faker>=30",
   "pyyaml>=6.0",
   "types-pyyaml",
-  "types-jsonschema",  # jsonschema stubs for the mypy gate (slice-9d)
+  "types-jsonschema",  # jsonschema stubs for the mypy gate
   "jsonschema>=4.23",
 
   # Workspace members. The root is a virtual project (package = false), so members
@@ -94,11 +94,12 @@ dev = [
   # lifecycle), joined to this workspace so it resolves dis-canonical + dis-rls as
   # workspace members rather than vendoring either.
   "thalamus-synapse",
-  # Synapse's read-only BFF (slice 8a). Installed editable here so the offline
+  # Synapse's read-only BFF. Installed editable here so the offline
   # suite, mypy and import-linter see it; it is deployed as its own image.
   "synapse-ui-server",
-  # Axon (slice 1). Installed editable so the offline suite and mypy see it; it has no image
-  # of its own yet, because slice 1's only producer is the BFF and the send is in-process.
+  # Axon, imported as a library (the BFF depends on it). Installed editable so the
+  # offline suite and mypy see it; it has no image of its own — axon-sender below
+  # is the deployed service.
   "thalamus-axon",
   # Axon's sender: the poll loop over axon-send-requested. A SERVICE, installed editable here so
   # the offline suite, mypy and ruff see it; it is deployed as its own image and nothing imports
@@ -117,7 +118,7 @@ dev = [
   # C2: the Clover connector itself (adapter + puller + mapping).
   "thalamus-clover",
 
-  # Import-graph contracts (slice-05): forbidden imports between the pure
+  # Import-graph contracts: forbidden imports between the pure
   # pipeline libs and the I/O-bearing libs. Run via `make lint` (lint-imports).
   "import-linter>=2.0",
 ]
@@ -134,8 +135,7 @@ target-version = "py312"
 select = ["E", "F", "I", "B", "UP", "N", "TID"]
 
 [tool.ruff.lint.isort]
-# First-party DIS packages so imports group as stdlib / third-party / first-party
-# (root CLAUDE.md import convention).
+# First-party DIS packages so imports group as stdlib / third-party / first-party.
 known-first-party = [
   "dis_core",
   "dis_testing",
@@ -161,7 +161,7 @@ known-first-party = [
 ]
 
 [tool.mypy]
-# mypy --strict gate (slice-9d): ENFORCING from day one over the Makefile's
+# mypy --strict gate: ENFORCING over the Makefile's
 # MYPY_PACKAGES list, which only ever grows — a package is added in the same
 # commit that clears it. Invocation is per-package (`make mypy`) because
 # identically-named test modules across libs (test dirs have no __init__.py,
@@ -198,7 +198,7 @@ markers = [
   "integration: requires the local docker-compose stack (Postgres + fakes + emulators)",
 ]
 
-# Import-graph contracts (slice-05): the two pure pipeline libs must not import
+# Import-graph contracts: the two pure pipeline libs must not import
 # each other, the I/O-bearing DIS libs, or any DB/GCP client. The import graph
 # alone cannot prove the absence of runtime I/O — that is additionally held by
 # the no-I/O contract test (tests/contract/) plus review.
@@ -289,15 +289,11 @@ type = "forbidden"
 source_modules = ["thalamus_square"]
 forbidden_modules = ["dis_mapping", "dis_validation", "dis_enrichment"]
 
-# --- Synapse (D6): resolvers are the ONLY layer that may reach canonical ---
+# --- Synapse: resolvers are the ONLY layer that may reach canonical ---
 #
 # WHAT THESE CONTRACTS ACTUALLY ENFORCE, stated precisely because the obvious reading is
-# wrong. The first two constrain synapse.core ONLY. They were previously DESCRIBED, in
-# three module docstrings, as forbidding the database trio to "every synapse.* module
-# except synapse.resolvers" — which was never what they said, and stopped being harmless
-# the moment a third package (synapse.registry) arrived: it would have sat outside the
-# enforced set entirely. The docstrings now match the contracts, and the layers contract
-# below is what generalises the rule.
+# wrong. The first two constrain synapse.core ONLY; the layers contract below is what
+# generalises the rule to every synapse package.
 #
 # They do NOT and CANNOT enforce "only resolvers know a table name": a table name is a
 # STRING LITERAL, and an import graph cannot see a string. There is no importable
@@ -369,9 +365,8 @@ layers = [
 package = false
 
 [tool.uv.workspace]
-# Workspace members are declared here as they are built (root CLAUDE.md: "workspace
-# members declared in root pyproject.toml once they exist"). Slice 3 adds dis-canonical;
-# Slice 4 adds the three data-plane safety libs.
+# Every workspace member must be declared here: uv resolves members from this
+# list, so an unregistered member cannot be built.
 members = [
   "libs/dis-core",
   "libs/dis-testing",
@@ -396,17 +391,13 @@ members = [
   "../connectors/square-oauth",
   "../connectors/clover-oauth",
   "../connectors/thalamus-clover",
-  # Synapse lives at the repo root, a sibling of dis/ and connectors/ (D1: a peer,
+  # Synapse lives at the repo root, a sibling of dis/ and connectors/ (a peer,
   # not a member of dis/). Same ../-relative form the connectors use.
   "../synapse",
-  # Synapse's BFF (slice 8a). A SEPARATE MEMBER rather than a subpackage of
+  # Synapse's BFF. A SEPARATE MEMBER rather than a subpackage of
   # thalamus-synapse, so FastAPI and uvicorn stay out of the ORCHESTRATOR's
   # dependency closure — that image's COPY set was derived from the closure and
   # would otherwise grow by a web framework it never imports.
-  #
-  # This is the one dis/ edit slice 8a makes, and it is the same unavoidable
-  # workspace registration that adding synapse itself required: uv resolves
-  # members from this list, so an unregistered member cannot be built at all.
   "../synapse/services/synapse-ui-server",
   # Axon - the communications and delivery plane. A PEER of dis/ and of synapse/ (its own
   # deploy, its own alembic chain, its own version table), joined here so it resolves dis-rls
@@ -414,18 +405,15 @@ members = [
   # The library/service line is the one that matters: synapse-ui-server importing axon is fine;
   # importing a deployable service would not be.
   "../axon",
-  # Axon's SENDER, the poll loop over axon-send-requested (slice 2). Registered for the same
-  # unavoidable reason every other member is: uv resolves members from this list, so an
-  # unregistered member cannot be built, cannot be type-checked and cannot be imported by its
-  # own tests. It is a SERVICE and nothing imports it; the library above is what
-  # synapse-ui-server depends on.
+  # Axon's SENDER, the poll loop over axon-send-requested. It is a SERVICE and
+  # nothing imports it; the library above is what synapse-ui-server depends on.
   "../axon/services/axon-sender",
 ]
 
 [tool.uv.sources]
 # Workspace libs resolve from the workspace. dis-testing and dis-canonical both
-# depend on dis-core; dis-canonical uses its identifier aliases. The Slice 4 data-plane
-# libs each depend on dis-core (dis-pii on dis-core only — no dis-rls, no DB).
+# depend on dis-core; dis-canonical uses its identifier aliases. The data-plane
+# safety libs each depend on dis-core (dis-pii on dis-core only — no dis-rls, no DB).
 dis-core = { workspace = true }
 dis-testing = { workspace = true }
 dis-canonical = { workspace = true }
@@ -447,11 +435,11 @@ thalamus-square-oauth = { workspace = true }
 thalamus-clover-oauth = { workspace = true }
 thalamus-clover = { workspace = true }
 thalamus-synapse = { workspace = true }
-# Synapse's BFF (slice 8a). Registered as a member above; mapped here so its
+# Synapse's BFF. Registered as a member above; mapped here so its
 # thalamus-synapse / dis-rls / dis-core dependencies resolve from the workspace
 # rather than being sought on PyPI.
 synapse-ui-server = { workspace = true }
-# Axon (slice 1). Registered as a member above; mapped here so its dis-rls / dis-core
+# Axon. Registered as a member above; mapped here so its dis-rls / dis-core
 # dependencies resolve from the workspace rather than being sought on PyPI.
 thalamus-axon = { workspace = true }
 axon-sender = { workspace = true }

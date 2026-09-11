@@ -2,7 +2,8 @@
 
 Reuses the csv-ingest-worker runtime seams (the GCS client, the ingress.ready publisher)
 and the RLS engine, exactly as the CSV worker's main does, so a Square connector deploys
-with the same data-plane wiring. ``pii_backend=None`` keeps the gate fail-loud (v1, D40).
+with the same data-plane wiring. ``pii_backend=None`` keeps the gate fail-loud
+(v1: no real PII backend exists yet).
 """
 
 from __future__ import annotations
@@ -85,5 +86,5 @@ def build_square_pipeline(
         bronze_bucket=sdk_config.bronze_bucket,
         adapter=adapter,
         connector_name="square",
-        pii_backend=None,  # v1.0: NO real backend exists; the gate fails loud (D40)
+        pii_backend=None,  # v1.0: NO real backend exists; the gate fails loud
     )

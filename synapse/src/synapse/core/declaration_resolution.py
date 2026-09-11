@@ -2,11 +2,10 @@
 
 One level up from ``synapse.core.resolution``, and the same lesson applies at both levels: a
 declaration with two requirements has a PRODUCT of per-capability outcomes, and collapsing that
-product to a single reason repeats slice 1's original mistake one layer higher. Slice 1's was
-"unavailable" meaning both "no such capability" and "this tenant is 48 days short". The
-declaration-level version would be "dead_stock is unavailable" meaning either "last_sale_at does
-not exist" or "current_state exists and this tenant has no rows" — states an operator fixes
-differently.
+product to a single reason repeats the same mistake one layer higher — an "unavailable" meaning
+both "no such capability" and "this tenant is 48 days short". The declaration-level version would
+be "dead_stock is unavailable" meaning either "last_sale_at does not exist" or "current_state
+exists and this tenant has no rows" — states an operator fixes differently.
 
 So ``DeclarationBlocked`` carries a MAPPING of capability id to the underlying ``Resolution``,
 not a reason. Every requirement is evaluated, so someone fixing one is told about the other.
@@ -59,10 +58,10 @@ class DeclarationSatisfied:
     of relying on requirement order. Order would be a second thing to keep in agreement with the
     declaration.
 
-    IT CARRIES THE RESOLUTIONS, NOT JUST THE FETCHES, and provenance is what forced the change.
-    Slice 3 kept only the bound fetches and discarded the per-capability ``Satisfied`` objects —
-    which hold the DESCRIPTORS, and therefore the capability VERSIONS. So "which capability
-    resolutions produced this action" was unrecordable, and a provenance record missing capability
+    IT CARRIES THE RESOLUTIONS, NOT JUST THE FETCHES, because provenance requires it. Carrying
+    only the bound fetches would discard the per-capability ``Satisfied`` objects — which hold
+    the DESCRIPTORS, and therefore the capability VERSIONS. Then "which capability resolutions
+    produced this action" would be unrecordable, and a provenance record missing capability
     versions is exactly the silent omission the provenance rule forbids.
 
     ``fetches`` is now DERIVED rather than stored, so there is no second source of truth to drift:

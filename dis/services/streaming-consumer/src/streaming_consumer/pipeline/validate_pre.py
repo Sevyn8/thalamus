@@ -1,10 +1,11 @@
-"""Pre-mapping (source-shape) validation — D13: semantic validation lives HERE.
+"""Pre-mapping (source-shape) validation: semantic validation lives here.
 
 The suite is the default derived from the mapping's rename keys
 (``SourceShapeSuiteDef.from_rename`` — the rename map is the single statement of
 what the engine will read; the live ``pre_validation_suite_ref`` is NULL = use
-default). Structural drift fails here, into the minimal failure disposition
-(audit-and-nack); quarantine routing is Slice 11.
+default). Structural drift fails here; the failure is audited and, when it
+falls on the quarantine allowlist, held in quarantine — otherwise the message
+nacks.
 """
 
 from __future__ import annotations

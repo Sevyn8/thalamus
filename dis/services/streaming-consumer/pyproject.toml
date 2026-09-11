@@ -1,12 +1,12 @@
 [project]
 name = "streaming-consumer"
 version = "0.0.0"
-description = "DIS streaming consumer happy path (Slice 10, D30/D33/D38/D63/D64): consumes ingress.ready, fetches the bronze chunk via dis-storage, loads the active per-(tenant, source) mapping from config.source_mappings as a per-lookup side-input (D6), runs the pre-mapping source-shape suite, applies the dis-mapping four sub-stages, runs the post-mapping canonical-shape suite, stamps mapping_version_id (D22), and atomically dual-writes the hot upsert plus the matching event insert in one Cloud SQL transaction under the event's tenant. No quarantine publish (Slice 11), no replay (Slice 12), no Identity Service (Slice 13), no circuit breaker (D27)."
+description = "DIS streaming consumer: consumes ingress.ready, fetches the bronze chunk via dis-storage, loads the active per-(tenant, source) mapping from config.source_mappings as a per-lookup side-input, runs the pre-mapping source-shape suite, applies the dis-mapping four sub-stages, runs the post-mapping canonical-shape suite, stamps mapping_version_id, and atomically dual-writes the hot upsert plus the matching event insert in one Cloud SQL transaction under the event's tenant. Allowlisted structural failures route to quarantine; there is no replay consumption, no Identity Service client, and no circuit breaker yet."
 requires-python = ">=3.12"
 dependencies = [
   # DisError root, UUIDv7 ids, trace_id read, timestamps, structured logging.
   "dis-core",
-  # Canonical models: the dual-write targets and mapping_version_id NOT NULL (D22).
+  # Canonical models: the dual-write targets and mapping_version_id NOT NULL.
   "dis-canonical",
   # The canonical writes go through the RLS-aware session (hard rules 1 & 12).
   "dis-rls",
@@ -14,17 +14,17 @@ dependencies = [
   "dis-storage",
   # The pure four-sub-stage mapping engine (rename, normalize, cast, derive).
   "dis-mapping",
-  # Store-enrichment registry + apply on the current-position path (slice-5b, D94/D95/D98).
+  # Store-enrichment registry + apply on the current-position path.
   "dis-enrichment",
   # Pre-mapping source-shape + post-mapping canonical-shape suites + drift guard.
   "dis-validation",
   # Fire-and-forget audit to Cloud SQL audit.events (hard rule 11, D43/D44).
   "dis-audit",
-  # Fail-loud quarantine writes to quarantine.* (the Slice 11a storm stopper).
+  # Fail-loud quarantine writes to quarantine.* (the storm-stopper for repeat structural failures).
   "dis-quarantine",
-  # ingress.ready subscriber (emulator-or-ambient, slice 40a).
+  # ingress.ready subscriber (emulator-or-ambient).
   "google-cloud-pubsub>=2.23",
-  # The toggled readiness-healthz server (slice 40a): RUN_HEALTH_SERVER=true ->
+  # The toggled readiness-healthz server: RUN_HEALTH_SERVER=true ->
   # /healthz alongside the pull loop (Cloud Run Service mode); off -> pure loop.
   "uvicorn>=0.32",
   # Async engine + connection for the dual-write (psycopg v3 async).
@@ -32,7 +32,7 @@ dependencies = [
   "psycopg[binary]>=3.2",
   # Typed envelope model (ingress.ready in; this service publishes nothing).
   "pydantic>=2.9",
-  # Chunk frame + the engine/suite interchange dtype layer (slice-05 stack).
+  # Chunk frame + the engine/suite interchange dtype layer.
   "polars>=1.41,<2.0",
   # JSONB payload serialisation (house JSON backend).
   "orjson>=3.10",

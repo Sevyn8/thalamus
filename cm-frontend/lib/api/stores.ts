@@ -18,9 +18,7 @@ export type StoreListParams = {
   limit?: number;
 };
 
-// Phase 5-stores (2026-05-18): first new resource in the post-MSW
-// world. All endpoints hit Sanjeev's deployed backend via apiFetch
-// per lib/api/client.ts; no MSW handlers, no MOCK_CONFIG.
+// All endpoints hit the backend via apiFetch per lib/api/client.ts.
 // Permission tuple ADMIN.STORES.CONFIGURE.TENANT gates every write.
 export const storesApi = {
   list: (params?: StoreListParams) =>

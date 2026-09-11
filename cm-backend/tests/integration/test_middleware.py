@@ -1,4 +1,4 @@
-"""Step 2.3 integration tests for middleware + dependencies + error handler.
+"""Integration tests for middleware + dependencies + error handler.
 
 10 tests:
     T1: public path (/api/v1/health) reachable without Authorization;
@@ -17,7 +17,7 @@
 
 Shared fixtures (settings, app_with_test_routes, client,
 valid_tenant_jwt, json_log_buffer, error_log_buffer) live in
-tests/integration/conftest.py since Step 2.4.
+tests/integration/conftest.py.
 """
 import json
 import re

@@ -16,11 +16,12 @@ visibility is the session/auth's job, not the Repo's. The
 tables.
 
 The user_count correlated subquery is the load-bearing piece of E1.
-Post Step 6.8.2 it sums two independent correlated scalar subqueries
+It sums two independent correlated scalar subqueries
 (one per physical assignment table) at the column-expression layer.
-``.correlate(Role)`` is applied to EACH inner subquery (Step 3.3 L9
-/ Step 5.3 L11 / Step 6.1 R4 lesson — third occurrence; this time
-on TWO subqueries instead of one). For TENANT JWTs, the
+``.correlate(Role)`` is applied to EACH inner subquery — a
+repeatedly-relearned lesson; without it on every subquery the count
+executes once per query (a global total) instead of once per row.
+For TENANT JWTs, the
 ``tenant_user_role_assignments`` branch inherits the request's
 session GUCs and RLS scopes the count to the calling tenant
 (D-29 unconditional OR-branch). The
@@ -387,7 +388,7 @@ class RolesRepo:
             return None
         role, _user_count = role_or_none
 
-        # Step 6.16.4 LD8 / LD9: snapshot the role's pre-write
+        # LD8 / LD9: snapshot the role's pre-write
         # ``name`` and ``description`` for the audit row's ``before``
         # field-level diff. These attributes will not survive the
         # later ``session.expire_all()``; capture them now while the
@@ -595,7 +596,7 @@ class RolesRepo:
                 session, exclude_role_id=None
             )
             if layer_2_count == 0:
-                # Step 6.16.4 LD12: name the specific invariant so the
+                # LD12: name the specific invariant so the
                 # failure-path audit row carries the ``invariant``
                 # sub-key inside its INTERNAL_ERROR ``details`` payload.
                 raise InternalInvariantViolationError(
@@ -611,7 +612,7 @@ class RolesRepo:
             session, captured_role_id, audience_filter=None
         )
 
-        # Step 6.16.4 audit emission. Roles are platform-scope
+        # Audit emission. Roles are platform-scope
         # catalogue rows; ``tenant_id`` is NULL and the row routes to
         # ``platform_activity_audit_logs`` per LD7 (route_to_platform
         # =True). Same-transaction success row.
@@ -791,7 +792,7 @@ async def _resolve_override_global_permission_id(
     """Look up the permission id for ``ADMIN.ROLES.OVERRIDE.GLOBAL``.
 
     Used by both Layer 1 pre-check and Layer 2 tripwire. The catalogue
-    row landed in Step 6.18.1 (seed delta); pre-flight Check #3
+    row is expected to exist from the seed migration; pre-flight Check #3
     asserts it exists. If it ever doesn't, the invariant cannot be
     evaluated and the edit cannot proceed safely.
 
@@ -808,8 +809,8 @@ async def _resolve_override_global_permission_id(
     row = result.first()
     if row is None:
         # Catalogue is missing the OVERRIDE.GLOBAL row entirely. This
-        # is a deployment-state defect (Step 6.18.1 seed delta did not
-        # land); raise as ServerError so the wire returns 500
+        # is a deployment-state defect (the seed migration's row is
+        # missing); raise as ServerError so the wire returns 500
         # INTERNAL_ERROR. Class reuse: InternalInvariantViolationError
         # is the closest match (the invariant cannot be evaluated).
         raise InternalInvariantViolationError(
@@ -826,8 +827,7 @@ async def _count_override_global_active_holders(
     *,
     exclude_role_id: UUID | None,
 ) -> int:
-    """Layer 1 + Layer 2 OVERRIDE.GLOBAL invariant query (Step 6.18.3
-    LD6, LD7, LD8).
+    """Layer 1 + Layer 2 OVERRIDE.GLOBAL invariant query (LD6, LD7, LD8).
 
     Counts distinct ACTIVE users who hold
     ``ADMIN.ROLES.OVERRIDE.GLOBAL`` through any role. Filters BOTH

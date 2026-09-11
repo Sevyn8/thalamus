@@ -5,10 +5,9 @@ import { useQuery } from "@tanstack/react-query";
 import { notificationsApi, type NotificationListParams } from "@/lib/api/notifications";
 import { useAuthSnapshot } from "@/lib/auth/auth-cache";
 
-// Phase 5h.1.1 (2026-05-21): userId in queryKey to prevent cross-
-// persona cache bleed. See Finding #50.
-// Slice 7 item 6: there is no /api/v1/notifications backend route, so the
-// poll 404'd on every page. Disabled until a notifications backend ships
+// userId in queryKey prevents cross-persona cache bleed.
+// There is no /api/v1/notifications backend route, so an enabled
+// poll would 404 on every page. Disabled until a notifications backend ships
 // (do not build one here). The bell still renders its empty state; flip
 // `enabled` back to `!!userId` when the endpoint exists.
 const NOTIFICATIONS_BACKEND_AVAILABLE = false;

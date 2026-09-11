@@ -1,8 +1,7 @@
-"""Sinks: the canonical dual-write and the fire-and-forget audit emitter.
+"""Sinks: the canonical dual-write, the fire-and-forget audit emitter, and quarantine.
 
-``quarantine.py`` and ``dlq.py`` deliberately do not exist in Slice 10: the
-quarantine publish is Slice 11; the ``pipeline.dlq`` backpressure pattern is D27,
-carried forward.
+``dlq.py`` deliberately does not exist: no backpressure/DLQ path exists on this
+consumer yet.
 """
 
 from __future__ import annotations

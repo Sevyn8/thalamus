@@ -234,7 +234,7 @@ test('a TENANT caller sees no tenant picker at all', () => {
 })
 
 test('a store with no store_code is not selectable', () => {
-  // store_code IS the source's store_id; a NULL code (D55) cannot be a source key.
+  // store_code IS the source's store_id; a NULL code cannot be a source key.
   vi.mocked(useStoresOnboarded).mockReturnValue({
     data: [{ store_id: 's1', name: 'Codeless', store_code: null, status: 'active' }],
     isPending: false,

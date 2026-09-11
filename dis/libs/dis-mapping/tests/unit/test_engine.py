@@ -1,18 +1,18 @@
-"""Engine tests — slice-05 acceptance criteria 2 and 3 plus the engine contract.
+"""Engine tests — the engine contract.
 
-Criterion 2: the rename -> normalize -> cast -> derive ordering with
+Ordering: the rename -> normalize -> cast -> derive ordering with
 normalize-before-cast proven LOAD-BEARING (a cast-first path fails the exact input
 the full path passes); ordered multi-transform lists applied in declared order;
 consumer-injected columns absent from the output.
 
-Criterion 3: per-cell failure grain carrying column/value/expected format and the
+Failure grain: per-cell failures carrying column/value/expected format and the
 failing transform's op + transform_index; a row with any failed cell yields NO
 contribution (whole-row drop, no nulled-cell pass-through).
 
 Review-only (stated, not asserted green): that the engine applies no
-pass-threshold and routes nothing is the ABSENCE of behaviour (B2, Slice 10's);
-a test cannot prove absence — held by review and the import-linter/no-I/O
-contracts (root tests/contract/).
+pass-threshold and routes nothing (that is the streaming consumer's behaviour) is
+the ABSENCE of behaviour; a test cannot prove absence — held by review and the
+import-linter/no-I/O contracts (root tests/contract/).
 """
 
 from __future__ import annotations
@@ -42,11 +42,11 @@ def _mapping(**overrides: Any) -> SourceMapping:
     return SourceMapping.model_validate(base)
 
 
-# -- Criterion 2: ordering ---------------------------------------------------------
+# -- Ordering ------------------------------------------------------------------------
 
 
 def test_cast_first_fails_the_comma_decimal_that_normalize_then_cast_passes() -> None:
-    """The normalize-before-cast ordering is load-bearing, not stylistic (D20).
+    """The normalize-before-cast ordering is load-bearing, not stylistic.
 
     Premise enforced first: a cast-first path on the raw comma-decimal MUST fail —
     if polars ever started tolerating ',' decimals, this assertion (not the
@@ -131,7 +131,7 @@ def test_empty_transform_list_passes_column_through_unchanged() -> None:
 
 
 def test_contribution_carries_mapping_targets_only_and_never_injected_columns() -> None:
-    """The partial-contribution invariant (criterion 2, D8, hard rule 5)."""
+    """The partial-contribution invariant: consumer-injected columns never appear."""
     mapping = _mapping(derive={"currency": [{"op": "constant", "args": {"value": "INR"}}]})
     chunk = pl.DataFrame({"itemcd": ["a"], "price": ["1"], "unmapped_extra": ["ignored"]})
     result = apply_mapping(mapping, chunk)
@@ -144,7 +144,7 @@ def test_contribution_carries_mapping_targets_only_and_never_injected_columns() 
     assert injected & set(result.contribution.columns) == set()
 
 
-# -- Criterion 3: per-cell failure, whole-row drop ----------------------------------
+# -- Per-cell failure, whole-row drop ------------------------------------------------
 
 
 def test_per_cell_failure_carries_context_and_partial_row_yields_nothing() -> None:
@@ -302,7 +302,7 @@ def test_already_typed_column_with_matching_cast_passes_through() -> None:
     assert result.contribution["unit_cost"].to_list() == [12]
 
 
-# -- Logging discipline (criterion 7) -------------------------------------------------
+# -- Logging discipline ---------------------------------------------------------------
 
 
 def test_failure_logging_binds_context_and_never_carries_cell_values(
@@ -323,7 +323,7 @@ def test_failure_logging_binds_context_and_never_carries_cell_values(
     with caplog.at_level(logging.DEBUG, logger="dis-mapping"):
         result = apply_mapping(mapping, chunk, log_context=LogContext(tenant_id="ten-1", trace_id="tr-1"))
 
-    # The failure OBJECT carries the value (the D20 quarantine payload)...
+    # The failure OBJECT carries the value (the quarantine payload)...
     assert result.failures[0].value == secret_value
     # ...but no log line ever does (never log PII / raw payloads).
     assert caplog.records, "expected a failure log line"

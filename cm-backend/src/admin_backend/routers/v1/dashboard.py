@@ -11,7 +11,7 @@ dashboard is a UI-shaped query bundle, not a paginatable collection).
 The ``description`` strings on each route call out the exception so
 the OpenAPI spec is self-documenting.
 
-Auth posture (multi-user-type — see CLAUDE.md "v0 auth model" note).
+Auth posture (multi-user-type .
 Both PLATFORM and TENANT JWTs accepted; visibility scoping is the
 DB layer's job via RLS:
 

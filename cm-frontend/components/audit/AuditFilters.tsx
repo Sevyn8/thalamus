@@ -27,7 +27,7 @@ const STATUS_OPTIONS: { value: "" | AuditResultType; label: string }[] = [
   { value: "INTERNAL_ERROR", label: "Internal error" },
 ];
 
-// Phase 5i.1: resource_type dropdown options. Backend treats the
+// resource_type dropdown options. Backend treats the
 // parameter as an open string vocabulary; this list covers the 6
 // emitters present today. New values would still 200 + filter
 // correctly, they just wouldn't surface in the dropdown.

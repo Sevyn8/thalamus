@@ -7,10 +7,8 @@ import type {
 } from "@/types/api";
 import type { components } from "@/types/openapi-generated";
 
-// Phase 5n.1: routes through lib/api/client.ts, whose base URL is
-// resolved at runtime via runtime-config (/api/config). Reads + writes
-// shipped backend-side (Steps 6.15 + module-access GETs). Frontend
-// write rebuild (matrix cell toggle) deferred to a later chunk.
+// Routes through lib/api/client.ts, whose base URL is resolved at
+// runtime via runtime-config (/api/config).
 
 export type ModuleMatrixParams = {
   sort?:
@@ -45,7 +43,7 @@ export const modulesApi = {
       `/api/v1/module-access/matrix${qs(params as Record<string, unknown> | undefined)}`,
     ),
 
-  // Slice 8: caller-state read of the caller's OWN tenant's enabled
+  // Caller-state read of the caller's OWN tenant's enabled
   // modules. GATE_EXEMPT backend endpoint — a TENANT persona can power
   // the launcher without an admin governance grant (the matrix endpoint
   // is gated on ADMIN.TENANTS.VIEW.TENANT).
@@ -75,7 +73,7 @@ export const modulesApi = {
 
 // Sentinel thrown when the tenant's module row cannot be resolved from the
 // fleet matrix (never falls back to an empty section; the caller renders an
-// explicit error + retry, per Slice 5 refinement 2).
+// explicit error + retry).
 export class TenantModuleRowNotFoundError extends Error {
   constructor(tenantId: string) {
     super(`Module row not found for tenant ${tenantId}`);

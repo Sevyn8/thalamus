@@ -1,11 +1,11 @@
 """The quarantine record models — the WRITE shape of the two live tables.
 
 Hand-aligned to the **live** ``ithina_dis_db`` ``quarantine.quarantined_chunks`` /
-``quarantined_rows`` columns, deliberately restricted to the columns Slice 11a
-WRITES: the lifecycle columns (``status``, ``resolution_note``, ``resolved_at``,
-``resolved_by_user_id``) are NOT model fields — the slice writes ``status=NEW``
-only, and the DB default stamps it, so a lifecycle transition cannot be expressed
-through this model at all (transitions are a later, frontend-coordinated slice).
+``quarantined_rows`` columns, deliberately restricted to the columns this model
+writes: the lifecycle columns (``status``, ``resolution_note``, ``resolved_at``,
+``resolved_by_user_id``) are NOT model fields — writes always land ``status=NEW``,
+and the DB default stamps it, so a lifecycle transition cannot be expressed
+through this model at all (transitions are handled elsewhere, frontend-coordinated).
 ``id`` and ``last_updated_at`` are server-defaulted (``uuidv7()`` / ``now()``)
 and likewise omitted from the INSERT.
 
@@ -16,11 +16,11 @@ Invariants baked in so a CHECK-violating row never reaches the INSERT:
 - ``failure_stage`` on a ROW record mirrors the live 6-member
   ``ck_qr_failure_stage_vocab`` subset (:data:`~dis_quarantine.failure_stages.ROW_FAILURE_STAGES`).
 - ``failure_reason`` carries the stable :class:`~dis_audit.FailureCode` member —
-  never an exception class name (the D79 vocabulary discipline); variable detail
-  rides ``failure_context`` JSONB. ``failure_context`` never carries cell values
-  (the dis-validation contract: column/check/reason grain only).
-- ``trace_id`` / identity are caller-supplied off the envelope, never minted here
-  (hard rule 4).
+  never an exception class name; variable detail rides ``failure_context``
+  JSONB. ``failure_context`` never carries cell values (column/check/reason
+  grain only).
+- ``trace_id`` / identity are caller-supplied off the envelope, never minted
+  here.
 """
 
 from __future__ import annotations

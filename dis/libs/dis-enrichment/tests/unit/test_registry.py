@@ -1,4 +1,4 @@
-"""The enrichment registry shape + the table-scope seam (slice-5b; D95).
+"""The enrichment registry shape + the table-scope seam.
 
 Expected values are hand-derived from the slice contract (currency + tax_treatment
 on the current-position table, both resolving from identity_mirror.stores), not

@@ -53,7 +53,7 @@ export type CreateOrgNodeModalProps = {
   onOpenChange: (open: boolean) => void;
   tenantId: string;
   defaultParent: OrgNodeTreeItem | null;
-  // Slice 8: parentless (first-node) mode. Hides the parent picker,
+  // Parentless (first-node) mode. Hides the parent picker,
   // preselects HQ, and omits parent_id from the POST so the backend
   // resolves the parent to the tenant root. Used by the org page's
   // root-only empty-state CTA.
@@ -136,7 +136,7 @@ export function CreateOrgNodeModal({
 
     const payload: OrgNodeCreatePayload = {
       // Parentless: omit parent_id so the backend resolves it to the
-      // tenant root (Slice 8). Otherwise send the picked parent.
+      // tenant root. Otherwise send the picked parent.
       ...(parentless ? {} : { parent_id: parent!.id }),
       node_type: nodeType,
       code: code.trim(),

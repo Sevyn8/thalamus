@@ -24,7 +24,7 @@ export type MappingSuggestionRequest = {
   columns: ColumnProfile[]
   source_id?: string | null
   template_name?: string | null
-  // Type-aware suggestions (D90): the server scores against THIS type's per-type catalog
+  // Type-aware suggestions: the server scores against THIS type's per-type catalog
   // (snapshot included). REQUIRED now that the legacy /upload flow (the only caller that omitted
   // it) is retired: every caller is type-aware (connectors-api.analyzeCsvSample). The fixture
   // mechanicalSuggest ignores it. NOTE: the dis-ui-server handler still keeps a no-template_type

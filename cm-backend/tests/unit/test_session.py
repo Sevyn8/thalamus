@@ -1,4 +1,4 @@
-"""Step 2.2a unit tests for get_tenant_session bootstrap.
+"""Unit tests for get_tenant_session bootstrap.
 
 7 tests:
     T9:  TENANT auth.tenant_id flows to app.tenant_id.
@@ -148,18 +148,14 @@ async def test_t11_platform_no_impersonation_can_query_without_raising(
     set_config('app.tenant_id', NULL, true) leaves the GUC at empty
     string (Postgres 15: placeholder GUCs cannot be unset once
     registered). The NULLIF wrapper in the RLS policy is what makes
-    ``''::uuid`` not crash. Pre-Step-3.0 the query returned zero rows
-    because the policy was a single-clause ``tenant_id = NULL``;
-    Step 3.0 (D-29) added an unconditional PLATFORM OR-branch on the
-    multi-tenant policies (NOT NULL ``tenant_id`` / ``id`` form), so
-    a PLATFORM session now sees every row regardless of
+    ``''::uuid`` not crash. The multi-tenant policies carry an
+    unconditional PLATFORM OR-branch (NOT NULL ``tenant_id`` / ``id``
+    form), so a PLATFORM session sees every row regardless of
     ``app.tenant_id``.
 
-    The assertion below was originally ``== 0`` (true under the
-    pre-3.0 policy with an empty DB), updated to a non-negative int
-    after Step 3.5 populated the DB. The test's intent is unchanged:
-    PROVE the query does not raise. The exact returned count is not
-    the assertion's load-bearing concern.
+    The assertion below accepts any non-negative int (the DB may be
+    seeded). The test's intent: PROVE the query does not raise. The
+    exact returned count is not the assertion's load-bearing concern.
     """
     auth = _platform_auth(tenant_id=None)
     gen = get_tenant_session(auth, session_factory)

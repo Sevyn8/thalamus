@@ -1,4 +1,4 @@
-"""Step 6.16.4 : success-path audit emission for the 4 tenant-users endpoints.
+"""Success-path audit emission for the 4 tenant-users endpoints.
 
 Per-endpoint coverage of the SUCCESS audit row produced by
 ``POST / PATCH / suspend / activate`` on ``/api/v1/tenant-users``.
@@ -14,7 +14,7 @@ success path + role-diff payload + frozen labels).
 
 Cleanup. Local ``cleanup_tu_audit_users`` fixture tracks tenant_user
 IDs and DELETEs audit rows + assignments + users at teardown. The
-``make_tenant`` fixture extension (Step 6.16.4 conftest update) cleans
+``make_tenant`` fixture extension cleans
 audit rows referencing the tenant_id; this local fixture cleans rows
 referencing the user_id (Pattern (b) actor / resource columns have no
 FK back to user tables but the rows are still test-noise).

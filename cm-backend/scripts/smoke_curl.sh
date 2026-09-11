@@ -29,12 +29,9 @@
 #     ./scripts/jwt/generate_7d.sh marcus.t@bucees.com       # tenant (local)
 #
 #   For cloud TENANT JWTs (tenant_id differs between local + cloud), the
-#   workflow is intentionally manual today. See the "Cloud-tenant JWT
-#   minting" section in docs/build-step-workflow.md for the inline pattern
-#   referenced from prompts/step-4_4-cloud-run-deploy-dev.md section 5.
+#   workflow is intentionally manual today.
 #
-#   This is captured as a tooling improvement to land later — see
-#   build-step-workflow.md "Future improvements".
+#   This is captured as a tooling improvement to land later.
 #
 # DEFAULT JWT FILES:
 #   scripts/jwt/tokens/anjali-7d.jwt        (PLATFORM, required)
@@ -50,7 +47,7 @@
 #   3.  GET /api/v1/tenants (no auth)                           → 401
 #   4.  GET /api/v1/tenants (PLATFORM)                          → 200
 #   5.  GET /api/v1/tenants?sort=num_users_active_desc&limit=5 (PLATFORM)  → 200
-#       (Step 6.5 dashboard's Top Tenants panel — Step 6.4 sort key)
+#       (dashboard's Top Tenants panel — sort key)
 #   6.  GET /api/v1/tenants/stats (PLATFORM)                    → 200
 #   7.  GET /api/v1/platform-users (PLATFORM)                   → 200
 #   8.  GET /api/v1/tenant-users (PLATFORM)                     → 200
@@ -58,36 +55,36 @@
 #   10. GET /api/v1/roles (PLATFORM)                            → 200
 #   11. GET /api/v1/permissions (PLATFORM)                      → 200
 #   12. GET /api/v1/permission-matrix (PLATFORM)                → 200
-#   12a. GET /api/v1/roles/{super_admin_id} (PLATFORM)          → 200 (Step 6.18.2)
+#   12a. GET /api/v1/roles/{super_admin_id} (PLATFORM)          → 200
 #        Resolves SUPER_ADMIN id from /roles output at runtime.
 #   13. GET /api/v1/dashboard/fleet-stats (PLATFORM)            → 200
 #   14. GET /api/v1/dashboard/governance-stats (PLATFORM)       → 200
 #   15. GET /api/v1/module-access/modules (PLATFORM)            → 200
 #   16. GET /api/v1/module-access/matrix (PLATFORM)             → 200
-#   17. GET /api/v1/me/permissions (PLATFORM)                   → 200  (Step 6.9.2)
-#   18. GET /api/v1/me/can-do?module=ADMIN&... (PLATFORM)       → 200  (Step 6.9.2)
+#   17. GET /api/v1/me/permissions (PLATFORM)                   → 200
+#   18. GET /api/v1/me/can-do?module=ADMIN&... (PLATFORM)       → 200
 #   18a. GET /api/v1/me/can-do?...&target_anchor=<UUID-with-hyphens> → 422
 #        Pydantic pattern rejects non-ltree input before the gate runs
-#        (Step 6.20.2; cloud-reported failure shape v0.1.17).
+#        (cloud-reported failure shape v0.1.17).
 #   19. GET /api/v1/platform-users (TENANT)                     → 403  (only if TJWT)
 #   20. GET /api/v1/roles (TENANT)                              → 200  (only if TJWT)
 #   21. GET /api/v1/permission-matrix (TENANT)                  → 200  (only if TJWT)
-#   21a. GET /api/v1/roles/{owner_id} (TENANT)                  → 200  (Step 6.18.2; only if TJWT)
+#   21a. GET /api/v1/roles/{owner_id} (TENANT)                  → 200  (only if TJWT)
 #   21b. GET /api/v1/roles/{super_admin_id} (TENANT)            → 404  ROLE_NOT_FOUND
-#        (audience filter at app layer; D-17; Step 6.18.2; only if TJWT)
-#   22. POST /api/v1/tenants (PLATFORM, ts-suffixed name)       → 201  (Step 6.11.2)
-#   22b. GET /api/v1/tenants/{captured_id} (PLATFORM, roundtrip) → 200  (Step 6.20.1)
-#        POST→GET regression lock: pre-6.20.1, POST succeeded but
+#        (audience filter at app layer; D-17; only if TJWT)
+#   22. POST /api/v1/tenants (PLATFORM, ts-suffixed name)       → 201
+#   22b. GET /api/v1/tenants/{captured_id} (PLATFORM, roundtrip) → 200
+#        POST→GET regression lock: previously, POST succeeded but
 #        GET 404'd because no tenant-root org_node existed for the
-#        new tenant. Captures the bug that motivated this step.
-#   23. PATCH /api/v1/tenants/{captured_id} (PLATFORM)          → 200  (Step 6.11.2)
-#   23b. POST /api/v1/tenants/{captured_id}/complete-onboarding (PLATFORM) → 200  (Slice 1: ONBOARDING→TRIAL)
-#   24. POST /api/v1/tenants/{captured_id}/suspend (PLATFORM)   → 200  (Step 6.11.2)
-#   25. POST /api/v1/tenants/{captured_id}/activate (PLATFORM)  → 200  (Step 6.11.2)
+#        new tenant. This check catches that regression.
+#   23. PATCH /api/v1/tenants/{captured_id} (PLATFORM)          → 200
+#   23b. POST /api/v1/tenants/{captured_id}/complete-onboarding (PLATFORM) → 200
+#   24. POST /api/v1/tenants/{captured_id}/suspend (PLATFORM)   → 200
+#   25. POST /api/v1/tenants/{captured_id}/activate (PLATFORM)  → 200
 #   26. POST /api/v1/tenants (TENANT)                           → 403  PLATFORM_AUDIENCE_REQUIRED
 #                                                                       (only if TJWT)
-#   27. POST /api/v1/tenant-users (PLATFORM)                    → 201  INVITED (Step 6.10.1)
-#   28. PATCH /api/v1/tenant-users/{captured_id} (PLATFORM)     → 200  (Step 6.10.1)
+#   27. POST /api/v1/tenant-users (PLATFORM)                    → 201  INVITED
+#   28. PATCH /api/v1/tenant-users/{captured_id} (PLATFORM)     → 200
 #   29. POST .../suspend on INVITED (PLATFORM)                  → 409  INVALID_STATE_TRANSITION
 #                                                                       (INVITED -> SUSPENDED structurally rejected
 #                                                                        by ck_tenant_users_auth0_sub_consistency;
@@ -104,39 +101,39 @@
 #                                                                        integration tests A1/A2.)
 #   31. PATCH /api/v1/tenant-users/{self_id} (TENANT)           → 403  SELF_EDIT_FORBIDDEN
 #                                                                       (only if TJWT)
-#   32. POST .../module-access/{tid}/{module}/enable (PLATFORM, missing) → 200 (Step 6.15)
-#   33. POST .../module-access/{tid}/{module}/enable (PLATFORM, noop)    → 200 (Step 6.15)
-#   34. POST .../module-access/{tid}/{module}/disable (PLATFORM, flip)   → 200 (Step 6.15)
-#   35. POST .../module-access/{tid}/{module}/disable (PLATFORM, noop)   → 200 (Step 6.15)
+#   32. POST .../module-access/{tid}/{module}/enable (PLATFORM, missing) → 200
+#   33. POST .../module-access/{tid}/{module}/enable (PLATFORM, noop)    → 200
+#   34. POST .../module-access/{tid}/{module}/disable (PLATFORM, flip)   → 200
+#   35. POST .../module-access/{tid}/{module}/disable (PLATFORM, noop)   → 200
 #   36. POST .../module-access/{tid}/{other}/disable (PLATFORM, missing) → 404
-#       MODULE_ACCESS_NOT_FOUND (Step 6.15)
+#       MODULE_ACCESS_NOT_FOUND
 #   37. POST .../module-access/{tid}/{module}/enable (TENANT)            → 403
-#       PLATFORM_AUDIENCE_REQUIRED (Step 6.15) — only if TJWT
-#   38. POST /api/v1/tenant-users multi-anchor (PLATFORM)        → 201  (Step 6.14)
-#   39. PATCH /api/v1/tenant-users diff-replace (PLATFORM)       → 200  (Step 6.14)
-#   40. PATCH /api/v1/tenant-users no-op (PLATFORM)              → 200  (Step 6.14)
-#   41. POST /api/v1/tenant-users invalid org_node_id (PLATFORM) → 422  INVALID_ORG_NODE (Step 6.14)
-#   42. POST /api/v1/tenants/{tid}/org-tree add STORE (PLATFORM)         → 201 (Step 6.13)
-#   43. PATCH /api/v1/tenants/{tid}/org-tree/{node_id} rename (PLATFORM) → 200 (Step 6.13)
-#   44. PATCH /org-tree reparent (PLATFORM)                              → 200 (Step 6.13)
-#   45. POST /org-tree cascade-order reject (REGION under STORE)         → 422 INVALID_PARENT_NODE_TYPE (Step 6.13)
-#   46. POST /org-tree duplicate-code reject                             → 409 DUPLICATE_ORG_NODE_CODE (Step 6.13)
-#   47. GET /api/v1/stores (PLATFORM)                           → 200 (Step 6.17.2)
-#   48. GET /api/v1/stores/{first_id} (PLATFORM)                → 200 (Step 6.17.2)
+#       PLATFORM_AUDIENCE_REQUIRED — only if TJWT
+#   38. POST /api/v1/tenant-users multi-anchor (PLATFORM)        → 201
+#   39. PATCH /api/v1/tenant-users diff-replace (PLATFORM)       → 200
+#   40. PATCH /api/v1/tenant-users no-op (PLATFORM)              → 200
+#   41. POST /api/v1/tenant-users invalid org_node_id (PLATFORM) → 422  INVALID_ORG_NODE
+#   42. POST /api/v1/tenants/{tid}/org-tree add STORE (PLATFORM)         → 201
+#   43. PATCH /api/v1/tenants/{tid}/org-tree/{node_id} rename (PLATFORM) → 200
+#   44. PATCH /org-tree reparent (PLATFORM)                              → 200
+#   45. POST /org-tree cascade-order reject (REGION under STORE)         → 422 INVALID_PARENT_NODE_TYPE
+#   46. POST /org-tree duplicate-code reject                             → 409 DUPLICATE_ORG_NODE_CODE
+#   47. GET /api/v1/stores (PLATFORM)                           → 200
+#   48. GET /api/v1/stores/{first_id} (PLATFORM)                → 200
 #                                                                       (skipped if list returns no rows)
-#   49. POST /api/v1/stores (PLATFORM, parent_org_node_id=tenant_root) → 201 (Step 6.21.2)
-#   49a. POST /stores response carries org_node_id (UUID-shaped)        → 201 ok (Step 6.21.2)
-#   50. PATCH /api/v1/stores/{captured_id} rename (PLATFORM)             → 200 (Step 6.17.3)
-#   51. POST /api/v1/stores (TENANT OWNER for own tenant)                → 201 (Step 6.17.3)
+#   49. POST /api/v1/stores (PLATFORM, parent_org_node_id=tenant_root) → 201
+#   49a. POST /stores response carries org_node_id (UUID-shaped)        → 201 ok
+#   50. PATCH /api/v1/stores/{captured_id} rename (PLATFORM)             → 200
+#   51. POST /api/v1/stores (TENANT OWNER for own tenant)                → 201
 #       (multi-audience happy path — TENANT OWNER holds
-#        ADMIN.STORES.CONFIGURE.TENANT via the Step 6.17.1 seed; the
+#        ADMIN.STORES.CONFIGURE.TENANT via the seed data; the
 #        deny path for TENANT-no-grants is exercised by integration
 #        test RC7. only if TJWT)
-#   52. POST /api/v1/stores/{captured_id}/set-status ACTIVE→OPENING     → 409 INVALID_STATE_TRANSITION (Step 6.17.4)
-#   53. POST /api/v1/stores/{captured_id}/set-status ACTIVE→INACTIVE     → 200 + status=INACTIVE (Step 6.17.4)
+#   52. POST /api/v1/stores/{captured_id}/set-status ACTIVE→OPENING     → 409 INVALID_STATE_TRANSITION
+#   53. POST /api/v1/stores/{captured_id}/set-status ACTIVE→INACTIVE     → 200 + status=INACTIVE
 #       Order: rejected first (ACTIVE state preserved from POST), happy second (flips to INACTIVE).
 #       Single store reused across both calls; UUID-suffixed identifiers from #49 keep re-runs clean.
-#   53a. PATCH /api/v1/roles/{platform_admin_id} description (PJWT SUPER_ADMIN)  → 200 (Step 6.18.3)
+#   53a. PATCH /api/v1/roles/{platform_admin_id} description (PJWT SUPER_ADMIN)  → 200
 #   53b. PATCH /api/v1/roles/{owner_id}          name (TJWT OWNER)               → 403 PLATFORM_AUDIENCE_REQUIRED
 #                                                                                  (only if TJWT)
 #   53c. PATCH /api/v1/roles/{unknown_uuid}      name (PJWT)                     → 404 ROLE_NOT_FOUND
@@ -144,11 +141,11 @@
 #   53e. PATCH /api/v1/roles/{platform_admin_id} body forbidden status (PJWT)    → 422
 #   53f. GET /api/v1/tenants/{tid}/org-tree response carries     → tenant_root_id /
 #        tenant_root_id, tenant_root_code, tenant_root_path         _code / _path
-#        on the same fetch already used by the 6.14 anchor              all present (Step 6.21.1)
+#        on the same fetch already used by the anchor                    all present
 #        resolution above.
-#   54. GET /api/v1/audit/activities?limit=5 (PLATFORM)         → 200 (Step 6.16.3)
-#   55. GET /api/v1/audit/activities?cursor=<bad> (PLATFORM)    → 422 INVALID_CURSOR (Step 6.16.3)
-#   56. GET /api/v1/audit/activities?limit=5 (TENANT)           → 200 (Step 6.16.3, only if TJWT)
+#   54. GET /api/v1/audit/activities?limit=5 (PLATFORM)         → 200
+#   55. GET /api/v1/audit/activities?cursor=<bad> (PLATFORM)    → 422 INVALID_CURSOR
+#   56. GET /api/v1/audit/activities?limit=5 (TENANT)           → 200 (only if TJWT)
 #   57. Health-version match check                              → version field in body
 #
 # NOTE on write-endpoint state: each run creates one tenant and leaves it in
@@ -263,14 +260,14 @@ req "tenants_no_auth" 401 ""       GET /tenants
 
 # PLATFORM-as-caller, every list endpoint.
 req "tenants_list"           200 "$PJWT" GET /tenants
-# Step 6.5 dashboard's Top Tenants panel: top 5 by active-user count.
-# Validates the Step 6.4 num_users_active_desc sort key end-to-end —
+# Dashboard's Top Tenants panel: top 5 by active-user count.
+# Validates the num_users_active_desc sort key end-to-end —
 # without it, the dashboard would receive 400 INVALID_SORT_KEY.
 req "tenants_top_by_users"   200 "$PJWT" GET "/tenants?sort=num_users_active_desc&limit=5"
 req "tenants_stats"          200 "$PJWT" GET /tenants/stats
 req "platform_users_list"    200 "$PJWT" GET /platform-users
 req "tenant_users_list"      200 "$PJWT" GET /tenant-users
-# Stores (Step 6.17.2). GET list, then GET detail via the first
+# Stores. GET list, then GET detail via the first
 # returned id. Detail is conditionally skipped if list returns no
 # rows (target DB has no stores) — same defensive pattern as the
 # TENANT JWT conditional below.
@@ -287,12 +284,12 @@ else
 fi
 req "lookups_batch"          200 "$PJWT" GET "/lookups?lists=tenant_tier,tenant_industry"
 
-# RBAC endpoints (Step 6.1).
+# RBAC endpoints.
 req "roles_list_platform"          200 "$PJWT" GET /roles
 req "permissions_list"             200 "$PJWT" GET /permissions
 req "permission_matrix_platform"   200 "$PJWT" GET /permission-matrix
 
-# Step 6.18.2 — GET /api/v1/roles/{role_id} (E7 detail endpoint).
+# GET /api/v1/roles/{role_id} (E7 detail endpoint).
 # Resolve the seeded SUPER_ADMIN id at runtime (UUIDv7 generated at
 # seed time, differs per environment). Resolve OWNER similarly for
 # the TENANT-side happy path. Both calls 404 cleanly if the lookup
@@ -307,7 +304,7 @@ else
     echo "  ${Y}[!] role_detail_platform skipped — SUPER_ADMIN not found${N}"
 fi
 
-# Step 6.18.3 — PATCH /api/v1/roles/{role_id} (E8 role-edit endpoint).
+# PATCH /api/v1/roles/{role_id} (E8 role-edit endpoint).
 # Resolve a non-SUPER_ADMIN PLATFORM-audience role id for the happy
 # path (PLATFORM_ADMIN). SUPER_ADMIN is locked from PATCH per LD12.
 PLATFORM_ADMIN_ID="$(curl -s -H "Authorization: Bearer ${PJWT}" \
@@ -381,34 +378,34 @@ if [[ -n "$SUPER_ADMIN_ID" && "$SUPER_ADMIN_ID" != "null" ]]; then
     fi
 fi
 
-# Dashboard endpoints (Step 6.5). Card-shaped responses (D-30 exception).
+# Dashboard endpoints. Card-shaped responses (D-30 exception).
 # fleet-stats returns 4 cards (active_tenants, platform_users, stores,
 # mrr_aggregated); governance-stats returns 4 cards, 3 of which are
 # stubbed (available: false) in v0.
 req "dashboard_fleet_stats"        200 "$PJWT" GET /dashboard/fleet-stats
 req "dashboard_governance_stats"   200 "$PJWT" GET /dashboard/governance-stats
 
-# Module Access endpoints (Step 6.7). /modules returns 6 cards in locked
+# Module Access endpoints. /modules returns 6 cards in locked
 # order; /matrix returns the tenant × module grid (paginated).
 req "module_access_modules"        200 "$PJWT" GET /module-access/modules
 req "module_access_matrix"         200 "$PJWT" GET "/module-access/matrix?limit=10"
 
-# /me/* endpoints (Step 6.9.2). /permissions returns the caller's full grant
+# /me/* endpoints. /permissions returns the caller's full grant
 # set (always an array); /can-do is a server-authoritative single-permission
 # check. Anjali (SUPER_ADMIN PLATFORM JWT) holds ADMIN.USERS.VIEW.GLOBAL so
 # the can-do probe returns allowed=true; smoke just asserts 200.
 req "me_permissions_platform"      200 "$PJWT" GET /me/permissions
 req "me_can_do_platform"           200 "$PJWT" GET "/me/can-do?module=ADMIN&resource=USERS&action=VIEW&scope=GLOBAL"
 
-# Step 6.20.2: malformed target_anchor (UUID with hyphens; cloud-reported
-# failure shape per v0.1.17 / admin-backend-00018-46f). Pre-fix this 500'd
-# because psycopg.errors.SyntaxError bubbled to the generic 500 envelope.
-# Post-fix the Pydantic pattern validator rejects at 422 BEFORE the gate
-# dependency runs. The check is JWT-type-agnostic (Pydantic Query validation
-# fires before auth dispatch); PJWT runs unconditionally so no TJWT gate.
+# Malformed target_anchor (UUID with hyphens; cloud-reported failure shape
+# per v0.1.17 / admin-backend-00018-46f). Without the fix this 500'd because
+# psycopg.errors.SyntaxError bubbled to the generic 500 envelope; now the
+# Pydantic pattern validator rejects at 422 BEFORE the gate dependency runs.
+# The check is JWT-type-agnostic (Pydantic Query validation fires before
+# auth dispatch); PJWT runs unconditionally so no TJWT gate.
 req "me_can_do_ltree_validation_422" 422 "$PJWT" GET "/me/can-do?module=ADMIN&resource=USERS&action=VIEW&scope=GLOBAL&target_anchor=019df261-b87c-7d3e-ab9e-dcf26259cec6"
 
-# Audit endpoints (Step 6.16.3). /audit/activities is the cursor-paginated
+# Audit endpoints. /audit/activities is the cursor-paginated
 # list of audit rows; PLATFORM callers see merged UNION across both audit
 # tables, TENANT callers see RLS-scoped tenant-table rows only. List + bad
 # cursor + tenant-side list cover the wire surface.
@@ -425,7 +422,7 @@ if [[ "$TENANT_TESTS_ENABLED" -eq 1 ]]; then
     # but smoke just asserts 200).
     req "permission_matrix_tenant"  200 "$TJWT" GET /permission-matrix
 
-    # Step 6.18.2 — GET /api/v1/roles/{role_id} TENANT-side coverage.
+    # GET /api/v1/roles/{role_id} TENANT-side coverage.
     # Happy: TENANT JWT reads OWNER (TENANT-audience role) -> 200.
     # Deny:  TENANT JWT reads SUPER_ADMIN (PLATFORM-audience) -> 404
     # ROLE_NOT_FOUND (audience filter applied at app layer; D-17).
@@ -445,12 +442,12 @@ if [[ "$TENANT_TESTS_ENABLED" -eq 1 ]]; then
         echo "  ${Y}[!] role_detail_cross_audience_404 skipped — SUPER_ADMIN id not resolved${N}"
     fi
 
-    # Step 6.16.3: TENANT audit list (RLS narrows to own-tenant rows;
+    # TENANT audit list (RLS narrows to own-tenant rows;
     # 200 with empty or non-empty items array). Cursor pattern + limit
     # parameters work identically across audiences.
     req "audit_list_tenant"          200 "$TJWT" GET "/audit/activities?limit=5"
 
-    # Step 6.18.3 — PATCH refused on TENANT JWT (Layer 1 audience deny).
+    # PATCH refused on TENANT JWT (Layer 1 audience deny).
     if [[ -n "$OWNER_ID" && "$OWNER_ID" != "null" ]]; then
         PATCH_TENANT_STATUS="$(curl -s -o /dev/null -w "%{http_code}" -X PATCH \
             -H "Authorization: Bearer ${TJWT}" \
@@ -468,7 +465,7 @@ if [[ "$TENANT_TESTS_ENABLED" -eq 1 ]]; then
     fi
 fi
 
-# === Step 6.11.2 — tenants write flow (PLATFORM) ============================
+# === Tenants write flow (PLATFORM) ===========================================
 # Chain: POST create -> PATCH name change -> POST /suspend -> POST /activate.
 # Each call uses the id returned by the create. Names UUID-suffixed so the
 # same script can run repeatedly without 409 DUPLICATE_TENANT_NAME.
@@ -519,8 +516,8 @@ else
 fi
 
 if [[ -n "$SMOKE_TENANT_ID" && "$SMOKE_TENANT_ID" != "null" ]]; then
-    # Step 6.20.1 — POST then GET roundtrip. Pre-fix the next call
-    # returned 404 because POST did not provision a tenant-root
+    # POST then GET roundtrip. Without this, the next call would
+    # return 404 because POST did not provision a tenant-root
     # org_node and the GET handler depends on get_tenant_anchor.
     ROUNDTRIP_RESP="$(curl -s -w '\n%{http_code}' \
         -H "Authorization: Bearer ${PJWT}" \
@@ -554,7 +551,7 @@ if [[ -n "$SMOKE_TENANT_ID" && "$SMOKE_TENANT_ID" != "null" ]]; then
         FAILURES+=("write_flow__patch (got $PATCH_STATUS, expected 200)")
     fi
 
-    # Slice 1: tenants land ONBOARDING at create; complete onboarding
+    # Tenants land ONBOARDING at create; complete onboarding
     # (ONBOARDING -> TRIAL) before suspend/activate, which require a
     # TRIAL/ACTIVE source.
     req "write_flow__complete_onboarding" 200 "$PJWT" POST "/tenants/${SMOKE_TENANT_ID}/complete-onboarding"
@@ -579,7 +576,7 @@ if [[ "$TENANT_TESTS_ENABLED" -eq 1 ]]; then
     fi
 fi
 
-# === Step 6.10.1 — tenant-users write flow ===================================
+# === Tenant-users write flow =================================================
 # Chain: POST create -> PATCH name change -> POST /suspend -> POST /activate
 # -> TENANT self-edit deny. Suspend / activate against an INVITED user are
 # expected to return 409 INVALID_STATE_TRANSITION (the 200 happy paths
@@ -617,7 +614,7 @@ TU_ROLE_ID="$(curl -s \
     | jq -r '.tenant_roles.items[] | select(.code == "OWNER") | .id' \
     | head -n1)"
 
-# Step 6.14: resolve two distinct anchor org_nodes from the tenant's
+# Resolve two distinct anchor org_nodes from the tenant's
 # org-tree. The TENANT root is never in /tenants/{id}/org-tree (per
 # the doc); ``tree[0].id`` and ``tree[0].children[0].id`` give two
 # valid descendant anchors for the multi-anchor smoke test below.
@@ -627,7 +624,7 @@ TU_TREE_RESP="$(curl -s \
 TU_ANCHOR_A="$(printf '%s' "$TU_TREE_RESP" | jq -r '.tree[0].id // empty')"
 TU_ANCHOR_B="$(printf '%s' "$TU_TREE_RESP" | jq -r '.tree[0].children[0].id // .tree[0].id // empty')"
 
-# Step 6.21.1: verify the new top-level fields land in the GET /org-tree
+# Verify the new top-level fields land in the GET /org-tree
 # response. ``tenant_root_id`` is the org_nodes.id of the tenant-root
 # (distinct from ``tenant_id``); frontend uses it as ``parent_id`` on
 # POST /org-tree. Looser assertion (local): non-empty UUID-shaped
@@ -755,8 +752,8 @@ except Exception:
     fi
 fi
 
-# === Step 6.14 — tenant-users role-assignment writes (per-anchor + diff) =====
-# Four additional checks on top of the Step 6.10.1 flow above:
+# === Tenant-users role-assignment writes (per-anchor + diff) ================
+# Four additional checks on top of the tenant-users write flow above:
 #   1. POST multi-anchor: two {role_id, org_node_id} items at distinct
 #      anchors create 2 ACTIVE rows.
 #   2. PATCH diff-replace with overlap: 1 unchanged + 1 revoke + 1 grant.
@@ -875,7 +872,7 @@ else
     fi
 fi
 
-# === Step 6.15 — module-access write flow (PLATFORM) =========================
+# === Module-access write flow (PLATFORM) =====================================
 # Chain: enable upsert -> enable no-op -> disable flip -> disable no-op ->
 # disable on a different missing module (404 MODULE_ACCESS_NOT_FOUND) ->
 # TENANT audience-deny (only if TJWT).
@@ -994,7 +991,7 @@ except Exception:
     fi
 fi
 
-# === Step 6.13 — org-tree write flow (PLATFORM) =============================
+# === Org-tree write flow (PLATFORM) ==========================================
 # Five smoke entries exercising: Add Node, Edit (rename), Edit (reparent),
 # cascade-order reject, duplicate-code reject.
 #
@@ -1037,7 +1034,7 @@ if [[ -z "$OT_TENANT_ID" || -z "$OT_PARENT_A" ]]; then
 else
     OT_SUFFIX="$(uuidgen 2>/dev/null \
         || python3 -c 'import uuid;print(uuid.uuid4().hex[:8])')"
-    # Step 6.21.2: POST /org-tree rejects node_type='STORE'. The
+    # POST /org-tree rejects node_type='STORE'. The
     # smoke flow now adds a DEPARTMENT (ord=6) under the existing
     # tree[0] parent (typically HQ-level ord<6). Rename and reparent
     # still work on DEPARTMENT.
@@ -1104,8 +1101,8 @@ else
             echo "  ${Y}[skip]${N} ot_flow__reparent — no sibling parent visible"
         fi
 
-        # Step 6.21.2: POST /org-tree with node_type=STORE returns 422
-        # (V8 equivalent at the smoke layer). Replaces the pre-6.21.2
+        # POST /org-tree with node_type=STORE returns 422
+        # (V8 equivalent at the smoke layer). Replaces the earlier
         # cascade-order reject which exercised STORE-parent (now
         # unreachable via /org-tree).
         OT_STORE_REJECT_STATUS="$(curl -s -o /dev/null -w "%{http_code}" -X POST \
@@ -1144,13 +1141,13 @@ else
     fi
 fi
 
-# === Step 6.17.3 — stores write flow (PLATFORM) =============================
+# === Stores write flow (PLATFORM) ============================================
 # Chain: POST create (UUID-suffixed name + store_code) -> PATCH name change ->
 # TENANT no-grants audience-deny (only if TJWT present, expects 403
 # PERMISSION_DENIED — TENANT JWT has no seeded ADMIN.STORES.CONFIGURE.TENANT).
 #
 # Re-uses OT_TENANT_ID (Buc-ee's by name; first tenant otherwise) resolved
-# in the Step 6.13 block above. UUID-suffixed name + store_code so re-runs
+# in the org-tree write flow block above. UUID-suffixed name + store_code so re-runs
 # don't 409 DUPLICATE_STORE_CODE. Manual cleanup is the operator's
 # responsibility per the same posture as the tenants / org-tree flows.
 
@@ -1166,8 +1163,8 @@ else
     SMOKE_STORE_NAME="smoke-store-${ST_SUFFIX}"
     SMOKE_STORE_CODE="ST-${ST_SUFFIX}"
 
-    # Step 6.21.2: POST /stores requires parent_org_node_id. Use the
-    # tenant root id surfaced by Step 6.21.1 in /org-tree.
+    # POST /stores requires parent_org_node_id. Use the
+    # tenant root id surfaced earlier in /org-tree.
     ST_CREATE_RESP="$(curl -s -w "\n%{http_code}" -X POST \
         -H "Authorization: Bearer ${PJWT}" \
         -H "Accept: application/json" \
@@ -1194,7 +1191,7 @@ EOF
             "$ST_CREATE_STATUS" "$SMOKE_STORE_CODE"
         PASS=$((PASS + 1))
         SMOKE_STORE_ID="$(printf '%s' "$ST_CREATE_BODY" | jq -r '.id' 2>/dev/null || echo "")"
-        # Step 6.21.2: response carries server-allocated org_node_id.
+        # response carries server-allocated org_node_id.
         SMOKE_STORE_ORG_NODE_ID="$(printf '%s' "$ST_CREATE_BODY" | jq -r '.org_node_id' 2>/dev/null || echo "")"
         if [[ -n "$SMOKE_STORE_ORG_NODE_ID" \
               && "$SMOKE_STORE_ORG_NODE_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
@@ -1234,7 +1231,7 @@ EOF
 
     # TENANT OWNER happy path (multi-audience). TJWT carries Marcus
     # (Buc-ee's OWNER); OWNER holds ADMIN.STORES.CONFIGURE.TENANT per
-    # the Step 6.17.1 seed update, so the gate admits. Targets the
+    # the seed update, so the gate admits. Targets the
     # TJWT's own tenant_id; verifies the multi-audience contract end
     # to end. The TENANT-no-grants deny path is covered by integration
     # test RC7 (not exercised in smoke because the seed has no
@@ -1257,9 +1254,9 @@ except Exception:
             STORES_OWNER_SUFFIX="$(uuidgen 2>/dev/null \
                 || python3 -c 'import uuid;print(uuid.uuid4().hex[:8])')"
             STORES_OWNER_SUFFIX="${STORES_OWNER_SUFFIX:0:8}"
-            # Step 6.21.2: TJWT POST /stores needs parent_org_node_id;
+            # TJWT POST /stores needs parent_org_node_id;
             # fetch the TJWT tenant's root via /org-tree's
-            # tenant_root_id (Step 6.21.1 surface).
+            # tenant_root_id.
             TJWT_TENANT_ROOT_ID="$(curl -s \
                 -H "Authorization: Bearer ${TJWT}" \
                 "${API}/tenants/${TJWT_TENANT_ID_STORES}/org-tree" 2>/dev/null \
@@ -1285,14 +1282,14 @@ except Exception:
     fi
 fi
 
-# === Step 6.17.4 - stores set-status state-transition flow (PLATFORM) =======
+# === Stores set-status state-transition flow (PLATFORM) =====================
 # Two assertions exercising the 9-cell liberal matrix end-to-end via
 # the wire:
 #   1. ACTIVE -> OPENING rejected (LD1; *->OPENING not in matrix) -> 409
 #   2. ACTIVE -> INACTIVE happy (Class 3) -> 200 + status=INACTIVE
 #
 # Order is "rejected first, happy second" deliberately: the new store
-# from the 6.17.3 block lands in ACTIVE (DDL default; see Step 6.17.3
+# from the stores write flow block lands in ACTIVE (DDL default; see
 # FN-AB-51). Running the rejected check first keeps the row in ACTIVE
 # so the second check has a valid source state. After both checks the
 # row sits in INACTIVE; smoke does not reset.

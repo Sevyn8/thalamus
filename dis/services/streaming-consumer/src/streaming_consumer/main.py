@@ -1,14 +1,14 @@
 """Entrypoint: wire the dependencies, require the wiring, run the pull loop.
 
-Exit codes (the 9b/mirror-sync pattern): 0 clean shutdown, 2 configuration error
+Exit codes: 0 clean shutdown, 2 configuration error
 (missing required env, absent subscription, wrong DB target — loud, never
 defaulted).
 
-Target safety, asserted positively at startup (the Slice 7 pattern, on top of
-dis-rls's own first-use verification): the resolved connection must answer
+Target safety, asserted positively at startup (on top of dis-rls's own
+first-use verification): the resolved connection must answer
 ``current_database() == 'ithina_dis_db'`` — DIS on 5433, never Customer Master.
 
-Slice 40a (the toggled readiness-healthz wrapper): with ``RUN_HEALTH_SERVER`` on
+The toggled readiness-healthz wrapper: with ``RUN_HEALTH_SERVER`` on
 (Cloud Run Service mode), the /healthz server and the pull loop run as sibling
 async tasks under the one event loop; off/unset (local dev; future Worker Pools),
 the pure loop runs via the verbatim ``await subscriber.run_forever()`` — the SAME

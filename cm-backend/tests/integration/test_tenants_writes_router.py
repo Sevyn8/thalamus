@@ -1,4 +1,4 @@
-"""Integration tests for the tenants write endpoints (Step 6.11.2).
+"""Integration tests for the tenants write endpoints.
 
 Coverage shape:
 
@@ -96,7 +96,7 @@ async def cleanup_tenants_router(
         async for session in get_tenant_session(
             platform_auth, session_factory
         ):
-            # Step 6.16.2: audit rows pin tenants via FK ON DELETE RESTRICT.
+            # Audit rows pin tenants via FK ON DELETE RESTRICT.
             # Clear both audit tables before the tenants DELETE so the
             # cascade-by-explicit-DELETE pattern remains valid.
             await session.execute(
@@ -120,7 +120,7 @@ async def cleanup_tenants_router(
                 ),
                 {"ids": created},
             )
-            # Step 6.20.1: POST /tenants now provisions a tenant-root
+            # POST /tenants provisions a tenant-root
             # org_node in the same transaction. Both FKs back to tenants
             # are ON DELETE RESTRICT; clear org_nodes before the tenants
             # DELETE.
@@ -131,10 +131,10 @@ async def cleanup_tenants_router(
                 ),
                 {"ids": created},
             )
-            # Slice 1: POST /tenants now provisions a 1:1 tenant_onboarding
+            # POST /tenants provisions a 1:1 tenant_onboarding
             # row (flag 5b); its FK back to tenants is ON DELETE RESTRICT.
-            # Slice 2/6: complete-onboarding setup seeds legal / billing /
-            # contact section rows plus (Slice 6) a verified document and an
+            # complete-onboarding setup seeds legal / billing /
+            # contact section rows plus a verified document and an
             # invited admin user; all FK ON DELETE RESTRICT.
             for _t in (
                 "tenant_legal_profile",
@@ -221,14 +221,14 @@ _CONTACT_BODY = {"items": [{"contact_type": "PRIMARY", "name": "Dana Ops"}]}
 async def _seed_required_sections(
     app_client: Any, jwt: str, tenant_id: UUID
 ) -> None:
-    """Make a tenant fully completable under the Slice-6 gate: the section
+    """Make a tenant fully completable under the completion gate: the section
     rows (legal + billing + contact) via the API, plus the three DB-only
     facts (Auth0 org, invited admin, verified document).
 
-    Slice 6 extends the gate from legal + billing + contact to also require
-    the Auth0 organization provisioned, >=1 invited admin, and documents
-    all-verified. Those three are not reachable via the API locally, so
-    seed_completion_facts writes them directly (test_ob1b pattern).
+    The gate requires legal + billing + contact plus the Auth0 organization
+    provisioned, >=1 invited admin, and documents all-verified. The latter
+    three are not reachable via the API locally, so seed_completion_facts
+    writes them directly (test_ob1b pattern).
     """
     for path, body in (
         ("legal-profile", _LEGAL_BODY),
@@ -251,7 +251,7 @@ async def _complete_onboarding(
 
     Tenants land in ONBOARDING at create, so transition tests that need a
     TRIAL / ACTIVE source first drive the tenant through complete-onboarding.
-    Seeds all six gate facts (Slice 6) first, then asserts the transition
+    Seeds all six gate facts first, then asserts the transition
     succeeds.
     """
     await _seed_required_sections(app_client, jwt, tenant_id)
@@ -346,7 +346,7 @@ async def cleanup_assignments(
 async def test_c1_super_admin_create_returns_201_with_onboarding_and_admin_module(
     app_client, super_admin_jwt, cleanup_tenants_router,
 ) -> None:
-    """SUPER_ADMIN happy path: 201, status ONBOARDING (Slice 1: tenants
+    """SUPER_ADMIN happy path: 201, status ONBOARDING (tenants
     land ONBOARDING at create, not TRIAL), modules include ADMIN."""
     body = _valid_create_body("C1-Acme")
     resp = app_client.post(
@@ -779,14 +779,14 @@ async def test_p10_rename_to_same_name_is_noop_success(
 
 
 # ============================================================================
-# P11-P14: revenue constraint mapping + bounds (Slice 7 item 1)
+# P11-P14: revenue constraint mapping + bounds
 # ============================================================================
 
 
 async def test_p11_patch_revenue_without_date_returns_422_field(
     app_client, super_admin_jwt, cleanup_tenants_router,
 ) -> None:
-    """LOAD-BEARING (Slice 7): the staging 500 repro. Setting
+    """LOAD-BEARING: the staging 500 repro. Setting
     monthly_revenue_usd (in range) without its as-of date violates the
     both-or-neither CHECK; the repo maps it to 422 INVALID_TENANT_FIELD
     naming monthly_revenue_as_of_date, not an unhandled 500."""
@@ -1167,7 +1167,7 @@ async def test_aud2_tenant_jwt_on_post_raises_audience_not_permission(
 
 
 # ============================================================================
-# RT: POST then GET roundtrip (Step 6.20.1)
+# RT: POST then GET roundtrip
 # ============================================================================
 
 
@@ -1177,7 +1177,7 @@ async def test_post_then_get_roundtrip(
     """LOAD-BEARING — POST /api/v1/tenants then GET /api/v1/tenants/{id}
     with the same SUPER_ADMIN JWT must return 200, not 404.
 
-    This is the end-to-end seal on the Step 6.20.1 bug fix. Pre-fix,
+    This is the end-to-end seal on the bug fix. Pre-fix,
     POST succeeded but GET 404'd because the GET handler depends on
     ``get_tenant_anchor`` which looks up a tenant-root ``org_nodes`` row
     that POST did not create. Post-fix, POST inserts the org_node in
@@ -1206,7 +1206,7 @@ async def test_post_then_get_roundtrip(
 
 
 # ============================================================================
-# POST /tenants/{id}/complete-onboarding (CO1-CO5) -- Slice 1
+# POST /tenants/{id}/complete-onboarding (CO1-CO5)
 # ============================================================================
 
 
@@ -1223,7 +1223,7 @@ async def test_co1_complete_onboarding_moves_onboarding_to_trial(
     cleanup_tenants_router.append(tenant_id)
     assert create.json()["status"] == "ONBOARDING"
 
-    # Slice 2: complete-onboarding requires legal + billing + >=1 contact.
+    # Complete-onboarding requires legal + billing + >=1 contact.
     await _seed_required_sections(app_client, super_admin_jwt, tenant_id)
     resp = app_client.post(
         f"/api/v1/tenants/{tenant_id}/complete-onboarding",
@@ -1310,7 +1310,7 @@ async def test_co5_platform_admin_can_complete_onboarding(
     cleanup_assignments.append(pa.id)
     pa_jwt = _platform_jwt_for_user(settings, pa.id)
 
-    # Slice 2: complete-onboarding requires legal + billing + >=1 contact.
+    # Complete-onboarding requires legal + billing + >=1 contact.
     await _seed_required_sections(app_client, super_admin_jwt, tenant_id)
     resp = app_client.post(
         f"/api/v1/tenants/{tenant_id}/complete-onboarding",

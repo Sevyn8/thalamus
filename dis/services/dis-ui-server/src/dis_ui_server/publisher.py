@@ -1,16 +1,16 @@
-"""The ``csv.received`` envelope (frozen contract, hard rule 10) and the publisher seam.
+"""The ``csv.received`` envelope (frozen contract) and the publisher seam.
 
 The envelope model is field-for-field the committed
 ``contracts/pubsub/csv.received.schema.json``; the unit drift guard reconciles both
 directions. This service POPULATES the contract, never changes its shape: identity
-is the resolved internal UUIDs (D37/D52), the external codes ride as the optional
-fields (producer-required when present, D52), ``template_id`` is the validated
-ACTIVE template (Slice 8 / D71 carry), and ``upload_session_id`` is the
-deterministic per-upload lineage id (the worker's D58 idempotency component —
+is the resolved internal UUIDs, the external codes ride as the optional
+fields (producer-required when present), ``template_id`` is the validated
+ACTIVE template, and ``upload_session_id`` is the deterministic per-upload
+lineage id (a component of the worker's idempotency key —
 see ``handlers/csv_uploads.py`` ``derive_upload_session_id``).
 
 ``Publisher`` is the seam tests inject against; ``PubsubPublisher`` is the runtime
-implementation, emulator-or-ambient exactly like ``dis-storage`` (slice 40a): the
+implementation, emulator-or-ambient exactly like ``dis-storage``: the
 emulator when ``PUBSUB_EMULATOR_HOST`` is set (the ``pubsub_v1`` client honours the
 env var natively), real Pub/Sub via ambient service-account credentials when it is
 not.
@@ -55,7 +55,7 @@ class CsvReceivedEnvelope(BaseModel):
     tenant_display_code: str | None = None
     store_code: str | None = None
     delimiter: str = Field(default=",", min_length=1, max_length=1)
-    # The uploaded file's original name (Slice 51a / D120). Additive/optional: populated when the
+    # The uploaded file's original name. Additive/optional: populated when the
     # multipart part carried a filename (truncated to 512), OMITTED when absent (never null-filled).
     file_name: str | None = Field(default=None, max_length=512)
 
@@ -85,7 +85,7 @@ def build_csv_received(
     Every identity value arrives RESOLVED (tenant from the verified token, store
     from the mirror, source from the template lineage) — this builder only
     assembles; it resolves nothing and mints nothing. ``file_name`` is the parsed
-    original upload name (Slice 51a / D120), carried for the runs surface.
+    original upload name, carried for the runs surface.
     """
     return CsvReceivedEnvelope(
         trace_id=trace_id,
@@ -103,7 +103,7 @@ def build_csv_received(
 
 
 class PubsubPublisher:
-    """Runtime publisher, emulator-or-ambient (the dis-storage pattern, slice 40a).
+    """Runtime publisher, emulator-or-ambient (the dis-storage pattern).
 
     ``pubsub_v1.PublisherClient`` honours ``PUBSUB_EMULATOR_HOST`` natively: set →
     the emulator (local, unchanged); unset → real Pub/Sub via ambient

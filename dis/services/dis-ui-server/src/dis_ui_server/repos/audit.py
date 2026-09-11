@@ -1,16 +1,16 @@
 """``audit.events`` reads - the audit event log's data access (GET /audit).
 
-``audit.events`` is RLS ON + FORCE with the two-GUC OUTLIER policy (Slice 17b / D91):
+``audit.events`` is RLS ON + FORCE with the two-GUC OUTLIER policy:
 ``rls_audit_events_tenant`` is USING-only - ``tenant_id = app.tenant_id OR tenant_id IS
 NULL OR app.user_type='PLATFORM'`` - with no WITH CHECK (the UI never writes). The per-tenant
 scope is the DATABASE's guarantee, applied by ``read_session``. The explicit ``WHERE
-tenant_id`` predicate here is defense-in-depth (the 14b D41 pattern) AND, because the USING
+tenant_id`` predicate here is defense-in-depth AND, because the USING
 branch admits ``tenant_id IS NULL`` system rows to EVERY tenant, it is what keeps a TENANT
 read from surfacing those system/other-tenant rows - the equality predicate excludes NULL.
 Do NOT relax it (the audit-specific isolation guard; criterion pinned in the integration test).
 
-Reads execute CORE-STYLE on the ``read_session`` connection (service CLAUDE.md durable
-invariant); never an ``AsyncSession``. This module speaks DB vocabulary only - wire<->DB
+Reads execute CORE-STYLE on the ``read_session`` connection; never an
+``AsyncSession``. This module speaks DB vocabulary only - wire<->DB
 translation (the outcome crosswalk, window->cutoff, trace_id parse, ISO rendering) lives in
 the handler. The list is BOUNDED newest-first (audit is high-volume; no pagination this
 slice) and rides the ``ix_audit_events_tenant_time`` index. ``scope`` MUST come from the
@@ -56,7 +56,7 @@ _LIST_COLUMNS = (
 
 
 def _tenant_term(scope: ReadScope) -> list[ColumnElement[bool]]:
-    """The in-query tenant predicate (Slice 17b): applied for a pinned (TENANT) scope,
+    """The in-query tenant predicate: applied for a pinned (TENANT) scope,
     OMITTED for PLATFORM see-all (the RLS USING branch is the see-all isolation).
 
     Conditioned on ``scope.is_platform``, NEVER on ``tenant_id`` being absent - so a TENANT
@@ -113,7 +113,7 @@ async def list_events(
     statement = (
         # LEFT JOIN identity_mirror.tenants for tenant_name (Chunk 9). audit.events.tenant_id is
         # NULLABLE (system rows) — the LEFT JOIN yields NULL tenant_name for those (correct), and
-        # never drops a row. Keyed on the tenant PK (≤1 match); RLS-OFF table (D41).
+        # never drops a row. Keyed on the tenant PK (≤1 match); RLS-OFF table.
         select(*columns, TenantRow.name.label("tenant_name"))
         .select_from(AuditEvent)
         .outerjoin(TenantRow, TenantRow.tenant_id == AuditEvent.tenant_id)

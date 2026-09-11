@@ -1,4 +1,4 @@
-"""Integration tests for PATCH /api/v1/roles/{role_id} (Step 6.18.3).
+"""Integration tests for PATCH /api/v1/roles/{role_id}.
 
 Security-critical surface: role-edit endpoint gated by
 ``ADMIN.ROLES.OVERRIDE.GLOBAL`` plus ``audience="PLATFORM"``. Tests
@@ -123,8 +123,8 @@ async def override_permission_id(
     session_factory: async_sessionmaker[AsyncSession],
     platform_auth: AuthContext,
 ) -> UUID:
-    """Resolve the ADMIN.ROLES.OVERRIDE.GLOBAL permission id (seeded
-    at Step 6.18.1).
+    """Resolve the ADMIN.ROLES.OVERRIDE.GLOBAL permission id (from the
+    seed data).
 
     Cached per-test via fixture scoping; no DB writes.
     """

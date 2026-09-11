@@ -8,7 +8,7 @@ import { isRealMode } from './mode'
 // (services/dis-ui-server/.../schemas/canonical.py: StoreSkuPositionListResponse /
 // StoreSkuPositionRow): GET /api/v1/canonical/store-sku-positions, a bounded newest-first sample
 // of canonical.store_sku_current_position (READ-ONLY; canonical already in the BFF read-set),
-// tenant-scoped (RLS two-GUC, D91). Mode-aware: real mode calls the live endpoint; fixture mode
+// tenant-scoped (RLS two-GUC). Mode-aware: real mode calls the live endpoint; fixture mode
 // (default + tests) returns plausible inlined rows so local dev needs no backend.
 //
 // The list row IS the full record — there is NO separate detail endpoint; the drawer renders from

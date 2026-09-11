@@ -84,7 +84,7 @@ def main() -> int:
     check(
         "daily_series declares the min_history_days gate KIND and no value",
         daily_series["gates"] == ["min_history_days"],
-        "the threshold moved to the demand side; a value here would be the slice-1 shape",
+        "the threshold lives on the demand side; a value here would be an unowned default",
     )
 
     last_sale_at = load(HERE / "fixtures" / "capability" / "last_sale_at.json")
@@ -137,11 +137,11 @@ def main() -> int:
         "the point, and the reason lives in synapse/registry.py's _DECLINED",
     )
 
-    print("Analysis fixtures (the DEMAND side, new in slice 2):")
-    # EVERY fixture in the directory, discovered rather than listed. Until slice 7 this file
-    # named dead_stock and nothing else, so a second fixture would have sat in the tree
-    # unvalidated — a contract example nobody checks is decoration. The specific assertions
-    # below stay; this is the floor under them.
+    print("Analysis fixtures (the DEMAND side):")
+    # EVERY fixture in the directory, discovered rather than listed — a fixture added to the
+    # tree without a matching entry here would otherwise sit unvalidated, and a contract
+    # example nobody checks is decoration. The specific assertions below stay; this is the
+    # floor under them.
     for path in sorted((HERE / "fixtures" / "analysis").glob("*.json")):
         check(f"{path.stem} validates against the analysis schema", validates(ana, load(path)))
 
@@ -276,8 +276,7 @@ def main() -> int:
     )
 
     # THE MONEY CHECK AGAIN, one layer up. Same rule as daily_series's returns, same reason: the
-    # tax basis of unit_cost is UNDETERMINED by canonical's own comment. Second time it has
-    # blocked money in this plane.
+    # tax basis of unit_cost is UNDETERMINED by canonical's own comment.
     money_named = sorted(k for k in review if any(w in k for w in ("cost", "price", "value", "revenue")))
     check(
         "the action's value at stake is UNITS, no money field",
@@ -351,14 +350,12 @@ def main() -> int:
         "an empty list is a claim; a missing key is a silence, and they must not be the same",
     )
 
-    # THE SLICE-1 PRECONDITION NEGATIVES ARE GONE, and their absence is the finding rather
-    # than a gap. They asserted things about a precondition carrying a VALUE here — an invented
-    # kind, days=0, a negative, a stringly-typed number, an extra field inside the object, a
-    # duplicate. None of those are expressible against `gates` because `gates` holds no values:
-    # the schema now admits only an enum of kind names, so "days=0 is rejected" has no shape to
-    # test. Six negative cases collapsed into three (a gate carrying a value at all, an
-    # invented kind, an omitted key), and the day-range negatives MOVED to the analysis
-    # contract, where the days actually live.
+    # WHY THERE ARE ONLY THREE GATE NEGATIVES. `gates` holds no values — the schema admits
+    # only an enum of kind names — so value-shaped negatives (days=0, a negative, a
+    # stringly-typed number, an extra field inside a gate object) have no shape to test here.
+    # The three below (a gate carrying a value at all, an invented kind, an omitted key) are
+    # the full set the shape admits; the day-range negatives live in the analysis contract,
+    # where the days actually live.
     empty_grain = clone(current_state)
     empty_grain["grain"] = []
     check("capability: an empty grain is rejected", not validates(cap, empty_grain))
@@ -368,7 +365,7 @@ def main() -> int:
     check(
         "capability: a gate carrying a VALUE is rejected",
         not validates(cap, gate_with_a_value),
-        "this is the slice-1 shape; the threshold belongs to the caller now",
+        "the threshold belongs to the caller (the analysis declaration), never the capability",
     )
 
     invented_gate_kind = clone(daily_series)
@@ -435,8 +432,8 @@ def main() -> int:
     check(
         "analysis: a gate with a threshold but NO policy is rejected",
         not validates(ana, no_policy),
-        "THE LOAD-BEARING NEGATIVE: a threshold with no policy is slice 1's unowned default "
-        "coming back — the number without what 'enough' means across a population",
+        "THE LOAD-BEARING NEGATIVE: a threshold with no policy is an unowned default — "
+        "the number without what 'enough' means across a population",
     )
 
     invented_policy = clone(dead_stock)
@@ -586,13 +583,10 @@ def main() -> int:
         "consumes an analysis's output yet",
     )
 
-    print("Scope guard (the other three contracts are NOT in this slice):")
-    # model, action, tool and content are later and would be guesses. If a file for one
-    # appears, this fails rather than letting it arrive unnoticed.
-    #
-    # `analysis` MOVED FROM THIS LIST TO THE ONE ABOVE in slice 2. Slice 1 asserted "no
-    # analysis schema has appeared"; that guard did its job by making the arrival deliberate
-    # rather than incidental, and flipping it is the visible edit it existed to force.
+    print("Scope guard (contracts that must NOT exist yet):")
+    # model, tool and content are later and would be guesses. If a file for one appears,
+    # this fails rather than letting it arrive unnoticed: adding a contract means flipping
+    # its guard here, which makes the arrival deliberate rather than incidental.
     # NB: Path("capability.schema.json").stem is "capability.schema", not
     # "capability" — a double extension. Strip the suffix explicitly rather than
     # relying on .stem, which silently matched nothing and made this guard pass

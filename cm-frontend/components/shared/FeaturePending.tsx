@@ -1,9 +1,7 @@
-// Phase 5n.4 (2026-05-18): minimal honest empty state for surfaces
-// whose backend hasn't shipped yet. Internal users only; short
-// half-life (Admin APIs ~2 days, DIS APIs ~15 days). When the
-// corresponding backend ships, replace the FeaturePending stub with
-// the real hook + render path; do NOT keep mock data structures
-// around for design refinement.
+// Minimal honest empty state for surfaces whose backend hasn't shipped
+// yet. Internal users only. When the corresponding backend ships,
+// replace the FeaturePending stub with the real hook + render path; do
+// NOT keep mock data structures around for design refinement.
 
 interface FeaturePendingProps {
   surface: string;

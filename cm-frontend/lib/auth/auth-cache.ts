@@ -4,11 +4,10 @@ import type { Persona } from "./personas";
 import type { components } from "@/types/openapi-generated";
 import { subscribeAuthChange } from "./getAuthToken";
 
-// Phase 5f.W.1: AuthSnapshot extended with permissions cache from
-// /me/permissions. Populated by AuthBoundary at boot; consumed by
-// useAuthSnapshot() across the app. Server-side enforcement is still
-// the security boundary (per docs/endpoints/me.md) — these
-// permissions are UI hints only.
+// AuthSnapshot carries the permissions cache from /me/permissions.
+// Populated by AuthBoundary at boot; consumed by useAuthSnapshot()
+// across the app. Server-side enforcement is the security boundary —
+// these permissions are UI hints only.
 
 export type PermissionGrantRead =
   components["schemas"]["PermissionGrantRead"];

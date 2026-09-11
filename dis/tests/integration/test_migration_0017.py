@@ -1,7 +1,7 @@
-"""Migration 0017 (bronze.data_ingress_events.original_filename capture column — Slice 51a).
+"""Migration 0017 (bronze.data_ingress_events.original_filename capture column).
 
 Proves, against the resident DB (5433, read-only reference), a fresh scratch DB, and via the
-pure target guard (Slice 51c, D122 isolates every alembic run to an ephemeral scratch DB):
+pure target guard:
 
   * **Target-safety guard** (pure, always-run, never skips): refuses Customer Master and any
     non-DIS database; passes the DIS database.

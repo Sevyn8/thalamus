@@ -1,14 +1,14 @@
-"""Integration tests for RBAC read endpoints (Step 6.1).
+"""Integration tests for RBAC read endpoints.
 
 Real Postgres, real schema, real router via FastAPI's TestClient.
-JWTs minted via Step 2.1's ``make_test_jwt``. Mirrors the shape used
+JWTs minted via ``make_test_jwt``. Mirrors the shape used
 by ``test_tenant_users_router.py`` and ``test_platform_users_router.py``.
 
 Test ID convention:
   R*  E1 ``GET /api/v1/roles``                       (8 tests)
   P*  E2 ``GET /api/v1/permissions``                  (4 tests)
   RP* E3 ``GET /api/v1/roles/{id}/permissions``       (3 tests)
-  D*  E7 ``GET /api/v1/roles/{id}`` (Step 6.18.2)     (8 tests)
+  D*  E7 ``GET /api/v1/roles/{id}``                   (8 tests)
   M*  E6 ``GET /api/v1/permission-matrix``            (6 tests)
   A*  Auth                                            (1 test)
   H*  Hidden-fields                                   (2 tests)
@@ -28,7 +28,7 @@ Eleven LOAD-BEARING tests:
   M2  E6 cells/roles position alignment invariant (M1, M2)
   M3  E6 TENANT JWT filters role columns (M5)
 
-The DB is in a partially-seeded state when these run (Step 3.5's loader
+The DB is in a partially-seeded state when these run (the seed loader
 or partial state from prior runs). Tests that count rows across the
 catalogue use ``>=`` on fixture-created entities rather than absolute
 totals so they're robust to that.
@@ -55,11 +55,11 @@ from admin_backend.models.permission import (
 )
 
 
-# Step 6.6 / 6.7 amendment: module sort basis is ``lookups.display_order``
-# (see PermissionsRepo / PermissionMatrixRepo for the SQL change at 6.6).
-# The seed data for ``list_name='module_code'`` defines this order;
-# mirroring it here keeps the test contract aligned with the live SQL.
-# Step 6.7's migration (`2fdc4bc9f4cb`) re-ordered to match the locked
+# Module sort basis is ``lookups.display_order`` (see PermissionsRepo /
+# PermissionMatrixRepo for the SQL). The seed data for
+# ``list_name='module_code'`` defines this order; mirroring it here
+# keeps the test contract aligned with the live SQL.
+# Migration `2fdc4bc9f4cb` re-ordered to match the locked
 # screenshot sequence: ROOS, GOAL_CONSOLE, PRICING_OS, PERISHABLES,
 # PROMOTIONS, ADMIN. ROOS retired from Python vocabulary 2026-05-12;
 # the seed loader's --reset deletes the ROOS lookups row so local DB
@@ -79,8 +79,7 @@ def _enum_ordinal(enum_cls: Any, value: str) -> int:
     """Return the position of ``value`` in ``enum_cls``'s declaration
     order. Mirrors how Postgres orders enum columns natively (enum
     ordinal, not string-alphabetic). Used in default-sort assertions
-    for resource/action/scope (which still sort by enum ordinal in
-    the post-Step-6.6 SQL).
+    for resource/action/scope (which sort by enum ordinal in the SQL).
     """
     return list(enum_cls).index(enum_cls(value))
 
@@ -88,9 +87,9 @@ def _enum_ordinal(enum_cls: Any, value: str) -> int:
 def _permission_sort_tuple(row: dict[str, Any]) -> tuple[Any, ...]:
     """Compute the sort key Postgres uses on permissions rows.
 
-    Module: ``lookups.display_order`` (post-Step-6.6 contract — see
-    PermissionsRepo / PermissionMatrixRepo). Resource/action/scope:
-    enum ordinal (unchanged from Step 6.1). Tiebreaker: code, then id
+    Module: ``lookups.display_order`` (see PermissionsRepo /
+    PermissionMatrixRepo). Resource/action/scope:
+    enum ordinal. Tiebreaker: code, then id
     (matches the SQL's stable secondary sort).
     """
     return (
@@ -146,7 +145,7 @@ def _auth(jwt: str) -> dict[str, str]:
 
 
 # Note: the local helpers ``_insert_active_platform_assignment`` and
-# ``_delete_assignments_by_id`` were retired at Step 6.8.3 in favour of
+# ``_delete_assignments_by_id`` have been replaced by
 # the conftest fixture ``make_platform_user_role_assignment``, which
 # tracks IDs and DELETEs at teardown automatically. R4 below is the
 # only test that needed them; it now uses the fixture directly.
@@ -261,13 +260,13 @@ async def test_r4_user_count_aggregate_correlates_per_role(
 
     Without ``.correlate(Role)``, the count collapses to a platform-
     wide aggregate and EVERY role would show the same user_count.
-    The same trap as Step 3.3 L9 / Step 5.3 L11.
+    The same trap recurs in analogous correlated-subquery tests
+    elsewhere in the suite.
 
     Setup: 2 PLATFORM-audience roles, 3 platform users. Role-A gets
     2 ACTIVE assignments; Role-B gets 1. Assert distinct user_counts.
 
-    Step 6.8.3 update: switched from the now-retired local helper
-    ``_insert_active_platform_assignment`` to the conftest factory
+    Uses the conftest factory
     ``make_platform_user_role_assignment`` (which tracks IDs and
     DELETEs at teardown automatically — no manual cleanup loop needed).
     """
@@ -443,8 +442,7 @@ async def test_p2_module_filter(
 
     Uses tuples not present in the seeded catalogue so the unique
     (module,resource,action,scope) and unique code constraints don't
-    fire. STORES and MARKDOWNS.AUDIT.TENANT are unseeded slots
-    post Step 6.1.
+    fire. STORES and MARKDOWNS.AUDIT.TENANT are unseeded slots.
     """
     perm_admin = await make_permission(
         module="ADMIN", resource="STORES", action="VIEW", scope="STORE",
@@ -472,7 +470,7 @@ async def test_p2_module_filter(
 async def test_p3_scope_filter(app_client, settings, make_permission):
     """Filter by scope returns only permissions at that scope.
 
-    Post Step 6.1 the locked vocabulary is GLOBAL/TENANT/STORE only.
+    The locked vocabulary is GLOBAL/TENANT/STORE only.
     Uses unseeded (module,resource,action,scope) tuples so the unique
     constraints don't fire — STORES.OVERRIDE.GLOBAL and
     STORES.EXECUTE.STORE are unseeded slots post-cleanup.
@@ -630,7 +628,7 @@ async def test_rp3_tenant_jwt_platform_role_returns_404(
 
 
 # =============================================================================
-# E7: GET /api/v1/roles/{role_id}  (D1-D8)  Step 6.18.2
+# E7: GET /api/v1/roles/{role_id}  (D1-D8)
 #
 # Self-contained role detail for the edit screen. Returns RoleDetail:
 # role metadata + held permissions (with display labels) + available
@@ -1063,7 +1061,7 @@ async def test_m3_tenant_jwt_filters_role_columns(
 # ---- M4: display labels resolved from lookups ----------------------------
 def test_m4_display_labels_join_from_lookups(app_client, settings):
     """The four ``*_label`` fields per row come from JOIN against
-    ``lookups``. The 25 rows seeded by Step 6.1's lookups migration
+    ``lookups``. The 25 rows seeded by the lookups migration
     cover the locked vocabulary; every row has all four labels
     populated and non-NULL.
     """
@@ -1122,14 +1120,14 @@ def test_m5_row_order_module_resource_action_scope(app_client, settings):
     assert ordinals == sorted(ordinals)
 
 
-# ---- M6: raw SQL schema qualification (LOAD-BEARING regression for Step 6.5.1) -------
+# ---- M6: raw SQL schema qualification (LOAD-BEARING regression) -------
 async def test_m6_raw_sql_works_with_clobbered_search_path(
     session_factory, platform_auth
 ):
     """LOAD-BEARING regression guard: PermissionMatrixRepo's ``text()``
     SQL must schema-qualify every table reference. The Repo is
-    already correct (Step 6.1 originally wrote it that way); this
-    test prevents a future regression from undoing the qualification.
+    already correct; this test prevents a future regression from
+    undoing the qualification.
 
     Same shape as ``test_dashboard_router.py::test_x2_*`` — clobber
     search_path to ``public``, call ``get_matrix``, assert success.

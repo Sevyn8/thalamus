@@ -19,16 +19,16 @@ signing becomes load-bearing (see `registry/registry-v0-deferred.md`, D3/D4).
 
 | Code | Contract | Path | Status |
 | --- | --- | --- | --- |
-| C1 | Machine-auth token (claims, scopes, validation) | `machine-auth/` | placeholder |
-| C2 | Spine event schemas (versioned per event type) | `spine-events/` | placeholder |
-| C3 | Action ledger API (propose, query state) | `action-ledger/` | placeholder |
-| C4 | Merge semantics API (resolution proposes, CM adjudicates) | `merge/` | placeholder |
-| C5 | Consent query API | `consent/` | placeholder |
+| C1 | Machine-auth token (claims, scopes, validation) | — | not yet authored |
+| C2 | Spine event schemas (versioned per event type) | — | not yet authored |
+| C3 | Action ledger API (propose, query state) | — | not yet authored |
+| C4 | Merge semantics API (resolution proposes, CM adjudicates) | — | not yet authored |
+| C5 | Consent query API | — | not yet authored |
 | C6 | Pack contract (structure, SemVer, engine-compat, signing) | `pack/` | authored |
 
-Only C6 is authored now. The others are future siblings: a README placeholder
-each, not yet authored. The layout is intentionally flat so each contract is an
-independent top-level directory that can version on its own cadence.
+Only C6 is authored. Each unauthored contract gets its own top-level directory
+when it is authored; the layout is intentionally flat so each contract can
+version on its own cadence.
 
 ## C6 pack contract (this repo's first content)
 

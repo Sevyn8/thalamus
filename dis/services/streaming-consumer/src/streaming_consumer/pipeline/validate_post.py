@@ -39,10 +39,10 @@ def run_post_validation(
     trace_id: str,
 ) -> CanonicalShapeResult:
     """Judge the mapped contribution against the routed model's owned columns."""
-    assert_no_drift(loaded.target_model)  # ERRORS, never skips (slice-05 criterion 6)
+    assert_no_drift(loaded.target_model)  # ERRORS, never skips
     owned = loaded.source.target_columns
     if loaded.target_model is StoreSkuCurrentPosition:
-        # slice-5b (D94/D98): enrichment writes its registered fields into the
+        # Enrichment writes its registered fields into the
         # contribution before this gate, so they must be in the owned set or strict
         # validation rejects them as off-universe. The provenance enrichment_produced
         # partition is what lets the suite drift guard admit them as source-owned.

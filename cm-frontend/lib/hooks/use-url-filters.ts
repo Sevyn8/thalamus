@@ -3,9 +3,9 @@
 import { useCallback, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-// Phase 5d.4: canonical filter-state ↔ URL contract for DIS fleet
-// surfaces. Replaces per-surface `useState<XFiltersState>` with a
-// shared hook that round-trips state through the URL.
+// Canonical filter-state ↔ URL contract for list surfaces: a shared
+// hook that round-trips filter state through the URL instead of
+// per-surface `useState<XFiltersState>`.
 //
 // Behavior:
 //   - Reads URL params during render (no useEffect → no flicker on
@@ -21,14 +21,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 //     entries. Browser back/forward + reload still preserve state
 //     because URL is the source of truth.
 //
-// Persona-aware tenant_id behavior lives at useFleetPersona /
-// API-call layer, NOT here. The hook is persona-agnostic; it
-// round-trips whatever the URL says.
+// Persona-aware tenant_id behavior lives at the API-call layer, NOT
+// here. The hook is persona-agnostic; it round-trips whatever the URL
+// says.
 //
-// Typed as Record<string, string> — all current DIS filter states
-// are string-based ("all" sentinels, tenant_id strings, search
-// strings). If a future surface needs number / boolean filters,
-// extend the hook (serialize / parse via JSON or per-key codecs).
+// Typed as Record<string, string> — all current filter states are
+// string-based ("all" sentinels, tenant_id strings, search strings).
+// If a future surface needs number / boolean filters, extend the hook
+// (serialize / parse via JSON or per-key codecs).
 
 export function useUrlFilters<T extends Record<string, string>>(
   defaults: T,

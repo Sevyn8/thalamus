@@ -365,8 +365,8 @@ export async function getTemplateMappingFields(): Promise<TemplateMappingField[]
   return [...CATALOG_FIXTURE]
 }
 
-// `enabled` gates the fetch: the bare (no-param) endpoint is rejected by the type-required
-// backend (slice-14d), so callers that have no template_type must NOT fire it. Defaults to true
+// `enabled` gates the fetch: the backend requires template_type and rejects the bare (no-param)
+// call, so callers that have no template_type must NOT fire it. Defaults to true
 // so existing callers are unchanged; the unified connector route passes the POS-branch predicate.
 export function useTemplateMappingFields(enabled = true) {
   return useQuery({
@@ -392,9 +392,9 @@ export function canonicalTargetKeys(catalog: TemplateMappingField[]): string[] {
 }
 
 // ============================================================================================
-// Type-aware catalog (Chunk 2, WIRED): GET /api/v1/template-mapping-fields?template_type=X.
+// Type-aware catalog: GET /api/v1/template-mapping-fields?template_type=X.
 //
-// Slice 14d made the catalog TYPE-AWARE: `template_type` is REQUIRED (missing/invalid -> 400
+// The catalog is TYPE-AWARE: `template_type` is REQUIRED (missing/invalid -> 400
 // `invalid_template_type`) and the response is the new UNIFORM 10-key shape (CatalogField),
 // shaped EXACTLY to schemas/mapping_fields.py:TemplateMappingField. This is ADDITIVE: the
 // legacy no-param `getTemplateMappingFields()` / `TemplateMappingField` above are left intact

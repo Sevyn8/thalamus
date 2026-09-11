@@ -1,4 +1,4 @@
-"""``GET /api/v1/template-types`` (Slice 14d): the vocabulary, tenant-free, from memory.
+"""``GET /api/v1/template-types``: the vocabulary, tenant-free, from memory.
 
 Over the UNREACHABLE-DB client — serving 200 proves no rls_session / no DB read.
 """

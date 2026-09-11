@@ -1,7 +1,7 @@
 """Stockout risk: how many days of stock remain at the recent rate of sale.
 
-THE SECOND ANALYSIS, AND THE FIRST THAT BINDS A GATE. Every abstraction in slices 1-6 was
-extracted from ``dead_stock`` alone; this exists to find what breaks under a second example.
+THE SECOND ANALYSIS, AND THE FIRST THAT BINDS A GATE. Every abstraction up to this point was
+extracted from ``dead_stock`` alone; this is where a second example exercises them.
 
 WHY THIS AND NOT OVERSTOCK. Overstock is dead_stock's claim at a different severity — both say
 "stock that is not moving" — so both would propose REVIEW on overlapping targets, and nothing in
@@ -31,8 +31,7 @@ them without knowing the reasons.
      ``current_state`` is LAST_WRITE. Dividing today's stock by a rate that stops seventeen days
      ago is arithmetic across two instants separated by most of a replenishment cycle, and
      "3.2 days of cover" computed that way is confidently wrong rather than approximately right.
-     The freshness enum has named this mismatch since slice 1; this is the first analysis where
-     it bites.
+     The freshness enum names this mismatch; this is the first analysis where it bites.
 
      PER SERIES, NOT PER TENANT, AND THAT IS WHY IT IS NOT A GATE. A gate answers "can this
      analysis run for this tenant" before any fetch, and one stale SKU must not block the other

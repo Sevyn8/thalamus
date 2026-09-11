@@ -5,8 +5,7 @@ import type { MeResponse } from './types'
 // MIRRORS services/dis-ui EXACTLY (dis-ui is authoritative for dev personas + fixtures),
 // including its known inconsistency: the ops persona's token sub is 'anjali'
 // (auth/dev/personas.ts) but the ops fixture here is keyed 'u_opsdev0001', so getMe() for the
-// ops persona throws "no fixture" in fixture mode. This is deliberately NOT reconciled here;
-// the shared fix is tracked as D37 (docs/backend-audit-reconciled.md).
+// ops persona throws "no fixture" in fixture mode. This is deliberately NOT reconciled here.
 //
 // These are a standalone map (NOT derived from the /dev/login personas): the profile call is a
 // separate dis-ui-server -> Customer Master concern, and the personas model only token claims.

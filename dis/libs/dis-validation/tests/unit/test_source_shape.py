@@ -1,4 +1,4 @@
-"""Source-shape suite tests — slice-05 criterion 4.
+"""Source-shape suite tests.
 
 A passing chunk passes; a failing chunk fails with a typed, tenant-readable
 reason — including the canonical example: "expected column `item_code`, got
@@ -28,7 +28,7 @@ def test_missing_expected_column_yields_tenant_readable_reason() -> None:
     result = run_source_shape(definition, chunk)
     assert not result.passed
     reasons = [failure.reason for failure in result.failures]
-    # The slice's canonical example, verbatim shape: both names in one reason.
+    # The canonical example, verbatim shape: both names in one reason.
     assert "expected column 'item_code', got 'itemcd'" in reasons
     assert result.failures[0].check == "column_in_dataframe"
 

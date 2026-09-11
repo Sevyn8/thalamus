@@ -16,13 +16,12 @@ const TONE_CLASSES: Record<KpiTone, string> = {
   red: "bg-[var(--danger-bg)] text-danger dark:bg-danger/15",
 };
 
-// Phase 5e.4: extended with `available` + `unavailableText` props.
-// When `available: false`, the metric is replaced with the muted
-// friendly text ("Coming soon" or unavailable_reason-mapped).
-// Backend ships type-stable sentinels (e.g. value: 0) on stub cards
-// per D-31 append-only — frontend MUST gate render on `available`,
-// not on `value > 0`. When the stub flips to real, only the prop
-// changes; render structure stays identical.
+// `available` + `unavailableText` props: when `available: false`, the
+// metric is replaced with the muted friendly text ("Coming soon" or
+// unavailable_reason-mapped). Backend ships type-stable sentinels
+// (e.g. value: 0) on stub cards, so the frontend MUST gate render on
+// `available`, not on `value > 0`. When the stub flips to real, only
+// the prop changes; render structure stays identical.
 export type KpiCardProps = {
   icon: ReactNode;
   iconTone: KpiTone;
@@ -30,8 +29,8 @@ export type KpiCardProps = {
   label: string;
   subtext?: string;
   delta?: string;
-  // Defaults true for backwards-compat with any non-Phase-5e4
-  // consumer; Phase 5e4 dashboard passes explicitly.
+  // Defaults true for backwards-compat with any consumer that doesn't
+  // pass it; the dashboard passes it explicitly.
   available?: boolean;
   // Friendly-text shown in place of the metric when available=false.
   // Per ambiguity vi: hardcoded 3-key map at the call site, falls

@@ -2,7 +2,7 @@
 
 ``infra/modules/monitoring-alerts/verify-aggregations.sh`` calls timeSeries.list with each
 policy's aligner, reducer and alignment period to confirm the API accepts them BEFORE an apply —
-the check that would have caught eight rejections in slice 9.
+the check that catches these rejections before they reach an apply.
 
 IT RESTATES THOSE VALUES, so it can drift from the module it is checking. A drifted checker is
 worse than none: it passes, and it passed against a combination nothing deploys. That is the same

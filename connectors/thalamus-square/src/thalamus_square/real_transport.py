@@ -8,7 +8,7 @@ httpx ``SquarePuller`` (against ``SQUARE_API_BASE_URL``) and the Secret Manager-
 ``tests/unit/test_transport.py`` asserts the call site by AST: a future edit that
 re-injects a fake here fails loudly instead of silently shipping an offline image.
 
-The producer/receiver split is unchanged (D54): this module STAMPS the producer-owned
+The producer/receiver split is unchanged: this module STAMPS the producer-owned
 identifiers (a deterministic connector_run_id and a fresh trace_id) and hands them on the
 trigger; the receiver (ConnectorPipeline) reads them and mints nothing.
 
@@ -51,7 +51,7 @@ async def _run(args: argparse.Namespace) -> int:
     connector_run_id = mint_connector_run_id(
         args.tenant_id, args.store_id, args.source_id, args.template_id, args.run_key
     )
-    trace_id = new_trace_id()  # producer mints the trace; the receiver reads it (D54)
+    trace_id = new_trace_id()  # producer mints the trace; the receiver reads it
 
     trigger = ConnectorTrigger(
         schema_version=1,

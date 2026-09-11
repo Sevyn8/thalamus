@@ -1,13 +1,13 @@
-"""Canonical-shape suite tests — slice-05 criteria 5 and 6 (suite side).
+"""Canonical-shape suite tests (suite side).
 
-Criterion 5: field set / dtype / nullability derived from ONE named dis-canonical
+Derivation: field set / dtype / nullability derived from ONE named dis-canonical
 model restricted to the source-owned columns; authored business invariants fail
 per-row; consumer-injected columns are excluded by construction. No
 ``identity_mirror`` existence check exists anywhere in this lib (a DB read a pure
 lib cannot do) — held structurally by the import-linter contracts plus review,
 not by a unit assertion.
 
-Criterion 6 (suite direction): the materialized suite's column set equals the
+Drift (suite direction): the materialized suite's column set equals the
 declared owned set; an owned set reaching outside the model's mapping-produced
 universe errors; ``strict=True`` rejects off-universe columns in the data.
 """
@@ -145,12 +145,12 @@ def test_wrong_dtype_fails() -> None:
 
 
 def test_decimal_dtype_mismatch_failure_is_indistinguishable_from_native() -> None:
-    """D50 condition: the synthesized Decimal dtype failure must match a NATIVE
-    pandera dtype failure downstream — same type, same wording shape, same grain.
-    Slice 10 and the quarantine console must never see two shapes for one logical
+    """The synthesized Decimal dtype failure must match a NATIVE pandera dtype
+    failure downstream — same type, same wording shape, same grain. The streaming
+    consumer and the quarantine console must never see two shapes for one logical
     error.
     """
-    # Synthesized path: Decimal schema column vs String data (the D50 pre-check).
+    # Synthesized path: Decimal schema column vs String data (the Decimal-workaround pre-check).
     decimal_mismatch = pl.DataFrame(
         {
             "sku_id": ["SKU-1"],
@@ -259,7 +259,7 @@ def test_column_checks_must_name_owned_columns() -> None:
 
 
 def test_owned_optional_decimal_materializes_its_numeric_dtype() -> None:
-    # Regression (Slice 14d): an OWNED optional Decimal column (e.g. the hot
+    # Regression: an OWNED optional Decimal column (e.g. the hot
     # table's stock_qty: Numeric14_3 | None) must derive its numeric dtype. The
     # constraint lives in a FieldInfo nested in the Optional Annotated (pydantic
     # only decomposes it for REQUIRED fields); _resolve_annotation must flatten it.

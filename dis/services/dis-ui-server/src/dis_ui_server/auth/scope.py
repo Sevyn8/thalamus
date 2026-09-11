@@ -6,7 +6,7 @@ The foundation rule, made structural: ``tenant_id`` (and the derived TENANT /
 PLATFORM posture) comes from the verified token ONLY — these dependencies never
 read a request body, query parameter, or unverified header, so no handler can
 be handed a tenant scope that did not survive verification. A test proves the
-token is the only path (slice Task 7).
+token is the only path.
 
 Errors raise the dis-core auth-seam classes; the service's exception handlers
 map them to 401/403 + the §2.3 envelope (never ``HTTPException`` here —
@@ -69,7 +69,7 @@ async def require_ops(
 def tenant_uuid_of(identity: Identity) -> UUID:
     """The verified tenant claim as a UUID — the form every DB predicate needs.
 
-    Real tenant ids are internal UUIDs (D37/D52); a claim that does not parse is
+    Real tenant ids are internal UUIDs; a claim that does not parse is
     a malformed token scope, refused as 403 (never a 500 from a cast deep in a
     query, and never a predicate built from an unparsed string).
     """
@@ -87,12 +87,12 @@ def tenant_uuid_of(identity: Identity) -> UUID:
         ) from exc
 
 
-# ---- Slice 17b: two-GUC read/write scope resolution ----
+# ---- Two-GUC read/write scope resolution ----
 
 
 @dataclass(frozen=True)
 class ReadScope:
-    """Resolved read visibility for a request (Slice 17b).
+    """Resolved read visibility for a request.
 
     ``is_platform`` True is PLATFORM see-all: the repo opens ``rls_platform_session(None)``
     and reads every tenant. Otherwise the read is pinned to ``tenant_id`` and the repo
@@ -105,7 +105,7 @@ class ReadScope:
 
 @dataclass(frozen=True)
 class WriteScope:
-    """Resolved write posture for a request (Slice 17b). Carries only what the VERIFIED
+    """Resolved write posture for a request. Carries only what the VERIFIED
     token asserts — so the impersonation discriminator is ``user_type``, never a
     client-chosen field. The acted-for tenant is applied by :func:`resolve_acted_for`
     together with the request body.
@@ -119,7 +119,7 @@ class WriteScope:
 async def require_read_scope(
     identity: Annotated[Identity, Depends(get_current_identity)],
 ) -> ReadScope:
-    """Resolve read visibility from the verified token (Slice 17b, decision 3).
+    """Resolve read visibility from the verified token.
 
     PLATFORM see-all requires BOTH ``user_type=PLATFORM`` AND the ``dis:ops`` role
     (defense in depth: ``user_type`` is the discriminator, ``dis:ops`` the second
@@ -136,7 +136,7 @@ async def require_read_scope(
 async def require_write_scope(
     identity: Annotated[Identity, Depends(get_current_identity)],
 ) -> WriteScope:
-    """Resolve the write posture from the verified token (Slice 17b).
+    """Resolve the write posture from the verified token.
 
     A bad/absent token raises here (via ``get_current_identity``) BEFORE the handler
     runs. The acted-for tenant is applied by :func:`resolve_acted_for` together with the
@@ -152,7 +152,7 @@ async def require_write_scope(
 
 def resolve_acted_for(scope: WriteScope, body_tenant_id: UUID | None) -> UUID:
     """The tenant a write acts on, discriminated by the VERIFIED ``user_type`` — never by
-    a client-chosen field (Slice 17b, register decision 2 / revised 2e).
+    a client-chosen field.
 
     - TENANT + body names a tenant -> reject (a tenant request may not name an acted-for
       tenant; rejected as 403, never silently ignored).

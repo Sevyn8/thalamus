@@ -62,9 +62,7 @@ def test_authorize_url_sandbox_omits_session() -> None:
 
 def test_authorize_url_production_sets_session_false() -> None:
     # Production keeps session=false per Square's guidance (correct-account selection).
-    client = _client(
-        httpx.MockTransport(lambda req: httpx.Response(200)), environment="production"
-    )
+    client = _client(httpx.MockTransport(lambda req: httpx.Response(200)), environment="production")
     params = parse_qs(urlparse(client.authorize_url(state="s")).query)
     assert params["session"] == ["false"]
 

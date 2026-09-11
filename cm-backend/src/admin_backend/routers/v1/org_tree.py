@@ -1,4 +1,4 @@
-"""Org-tree router (Step 5.3).
+"""Org-tree router.
 
 Two GET endpoints backing the Organization Tree page (Frontend spec
 7.3):
@@ -15,9 +15,9 @@ Two GET endpoints backing the Organization Tree page (Frontend spec
     — paginated lazy expansion of a specific node's children. Used
     by the frontend when the user expands a depth-cut subtree.
 
-Auth posture (multi-user-type — see CLAUDE.md "v0 auth model" note).
-Both endpoints gate on ``ADMIN.ORG_NODES.VIEW.TENANT`` (Step 6.9.3.2
-retrofit) with the appropriate anchor dep (``get_tenant_anchor`` for
+Auth posture (multi-user-type .
+Both endpoints gate on ``ADMIN.ORG_NODES.VIEW.TENANT`` with the
+appropriate anchor dep (``get_tenant_anchor`` for
 E2, ``get_org_node_anchor`` for E3). RLS scopes visibility below the
 gate:
 
@@ -32,7 +32,7 @@ this end-to-end through middleware -> session -> Repo -> router.
 
 Response shapes:
   - E2: ``{tenant_id, tenant_name, stats, tree}`` (deliberate D-30
-    exception — singleton resource per tenant; see CLAUDE.md note).
+    exception — singleton resource per tenant.
   - E3: ``{node_id, items, pagination}`` (D-30 standard).
 
 Smart-default behavior (E2):
@@ -113,10 +113,10 @@ PAYLOAD_CAP = 1000
 MAX_REDUCTIONS = 2
 
 
-# OrgNodeNotFoundError moved to admin_backend.errors at Step 6.9.3.2 so
-# anchor deps in auth/anchor_deps.py can raise it without backward layering
-# violation (auth/ -> routers/v1/). Per-router import kept above for raise
-# sites; behavior identical to pre-move (RLS-as-404 per D-17).
+# OrgNodeNotFoundError lives in admin_backend.errors so anchor deps in
+# auth/anchor_deps.py can raise it without a backward layering violation
+# (auth/ -> routers/v1/). Per-router import kept above for raise sites;
+# behavior is RLS-as-404 per D-17.
 
 
 # ---- E2: org-tree ----------------------------------------------------------
@@ -206,16 +206,16 @@ async def get_org_tree(
                 session, tenant_id, max_depth=max_depth
             )
 
-    # 6. Extract tenant-root row from the existing result set (Step 6.21.1).
+    # 6. Extract tenant-root row from the existing result set.
     #    list_active_with_child_counts returns ALL ACTIVE rows including
     #    the TENANT-typed root (its WHERE filter is status=ACTIVE only,
     #    and the optional depth filter always admits nlevel(path)=1).
-    #    The tenant-root row is guaranteed by Step 6.20.1's atomic
-    #    TenantsRepo.create. A None here means a tenant row exists
-    #    without its mandatory tenant-root, which is structurally
-    #    impossible post-Step-6.20.1; surface as 500 via the
-    #    InternalInvariantViolationError tripwire so the failure is
-    #    loud rather than serving a partial shape.
+    #    The tenant-root row is guaranteed by TenantsRepo.create's atomic
+    #    creation of the tenant together with its tenant-root org_node.
+    #    A None here means a tenant row exists without its mandatory
+    #    tenant-root, which is structurally impossible; surface as 500
+    #    via the InternalInvariantViolationError tripwire so the failure
+    #    is loud rather than serving a partial shape.
     tenant_root_node = next(
         (n for n, _ in rows if n.node_type == OrgNodeType.TENANT),
         None,
@@ -312,7 +312,7 @@ async def get_node_children(
     )
 
 
-# ---- Step 6.13 writes -------------------------------------------------------
+# ---- Writes -----------------------------------------------------------------
 
 
 @router.post(
@@ -390,12 +390,12 @@ async def edit_org_node(
     auth: AuthContext = Depends(get_auth_context),
     session: AsyncSession = Depends(get_tenant_session_dep),
 ) -> Any:
-    # Step 6.13: tenant-root reparent guard (existing).
-    # Step 6.21.2 (LD8): on STORE-type targets, reject shared fields
-    #   ``name`` and ``code`` (owned by /stores per architecture.md
-    #   A.4 / A.5); reparent stays allowed. ``status`` is structurally
-    #   unreachable on this path because OrgNodePatchRequest's
-    #   ``extra="forbid"`` already 422s any ``status`` field.
+    # Tenant-root reparent guard (below).
+    # On STORE-type targets (LD8), reject shared fields ``name`` and
+    #   ``code`` (owned by /stores per architecture.md A.4 / A.5);
+    #   reparent stays allowed. ``status`` is structurally unreachable
+    #   on this path because OrgNodePatchRequest's ``extra="forbid"``
+    #   already 422s any ``status`` field.
     #
     # Both checks need the target's node_type, so fetch it once when
     # the body contains any field that would trigger one of the
@@ -452,8 +452,8 @@ async def edit_org_node(
                         node_type="STORE",
                     )
         # If row is None we fall through to the repo, which raises
-        # the appropriate 404. Same posture as Step 6.11.2's
-        # transitions.
+        # the appropriate 404. Same posture as other transition
+        # endpoints.
 
     node = await _org_repo.edit_node(
         session,

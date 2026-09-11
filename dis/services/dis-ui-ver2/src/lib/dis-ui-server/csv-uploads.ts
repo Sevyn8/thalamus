@@ -2,19 +2,18 @@ import { readToken } from '../../auth/storage'
 import { postMultipart } from './client'
 
 // ===========================================================================================
-// REAL caller - the FIRST real-mode HTTP call in the UI (Slice 8, D72).
+// REAL caller - always live, in both modes.
 //
-// THE SEAM: every other module in this folder is fixture-backed - its getters call
-// `ensureFixtureMode` and THROW in real mode (slice 13 deferred). This module is the
-// exception: `uploadCsv` ALWAYS performs a live multipart POST to dis-ui-server's
-// `POST /api/v1/csv-uploads`, in both modes, because the file genuinely must reach GCS.
-// Nothing else in the UI is flipped to real; the fixture seam is unchanged everywhere else.
+// THE SEAM: the other modules in this folder are mode-aware (fixtures by default, live
+// endpoints in real mode) or fixture-only. This module is the exception: `uploadCsv`
+// ALWAYS performs a live multipart POST to dis-ui-server's `POST /api/v1/csv-uploads`,
+// in both modes, because the file genuinely must reach GCS.
 //
 // It requires a configured backend: `getBaseUrl()` (VITE_DIS_UI_SERVER_BASE_URL) and a
 // session token (auth/storage.readToken()). A missing base URL throws the existing config
 // error - we fail loud rather than silently fake an upload.
 //
-// HONESTY (D71 resolved by slice-8a): the upload validates the template is ACTIVE and carries
+// HONESTY: the upload validates the template is ACTIVE and carries
 // `template_id` end to end, and the streaming consumer is now template-keyed, so it maps the
 // batch through the template's ACTIVE mapping version. Callers may say a batch is "ingested
 // through the template's active mapping version", with two caveats: the version applied is the
@@ -27,7 +26,7 @@ import { postMultipart } from './client'
 // Identity values are the RESOLVED internal UUIDs (served as lowercase strings to the UI).
 export type CsvUploadResult = {
   trace_id: string
-  upload_id: string // ^us_[a-z0-9]{12}$ - deterministic per logical upload (D58 dedup)
+  upload_id: string // ^us_[a-z0-9]{12}$ - deterministic per logical upload (dedup key)
   tenant_id: string
   store_id: string
   store_code: string

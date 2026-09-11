@@ -1,13 +1,13 @@
-"""Fixtures for the Slice 9b worker integration tests.
+"""Fixtures for the worker integration tests.
 
-These tests WRITE the DIS database and use the Pub/Sub + GCS emulators, so — the
-Slice 4/7 lesson — they must NOT skip silently when the stack is absent: a missing
+These tests WRITE the DIS database and use the Pub/Sub + GCS emulators, so
+they must NOT skip silently when the stack is absent: a missing
 env or unreachable emulator is a loud ERROR (``StackRequiredError``), never a skip.
 Everything runs against ``ithina_dis_db`` on 5433; Customer Master (5432) is never
 touched.
 
 Each test mints a UNIQUE ``upload_session_id``/``trace_id`` pair (the test plays
-dis-ui-server, the Phase-1 producer — the WORKER under test still only reads them)
+dis-ui-server, the upstream producer — the WORKER under test still only reads them)
 so the 24h dedup window cannot couple test runs; created bronze/audit rows are
 deleted in teardown via the admin engine.
 """
@@ -46,7 +46,7 @@ def _require_env(name: str) -> str:
     value = os.environ.get(name)
     if not value:
         raise StackRequiredError(
-            f"{name} is not set — the Slice 9b worker integration tests refuse to skip "
+            f"{name} is not set — the worker integration tests refuse to skip "
             "silently. Bring up the stack (make run-local) and load .env."
         )
     return value
@@ -75,7 +75,7 @@ def seeded(stack_env: dict[str, str]) -> None:
 
 @pytest.fixture
 async def engine(stack_env: dict[str, str], seeded: None) -> AsyncIterator[AsyncEngine]:
-    """The worker's RLS engine (loop-scoped per test, the Slice 6 pattern)."""
+    """The worker's RLS engine (loop-scoped per test)."""
     from dis_rls import create_rls_engine
 
     eng = create_rls_engine(stack_env["POSTGRES_URL"])
@@ -102,12 +102,11 @@ def dis_admin(stack_env: dict[str, str]) -> Iterator[Engine]:
 def cleanup_traces(dis_admin: Engine) -> Iterator[list[UUID]]:
     """Collects trace_ids; teardown deletes their bronze + audit rows (admin).
 
-    Also removes the ``telemetry.connector_health`` row the D116 emit writes as an ADDITIVE
+    Also removes the ``telemetry.connector_health`` row the health emit writes as an ADDITIVE
     side effect of the pipeline (last_seen/last_error per successful/failed run). That table is
     keyed ``(tenant_id, source_id)`` — it carries no trace_id — so it is scoped to the seeded
     source these tests emit for (``DEFAULT_SOURCE_ID``), NOT blanket-truncated. Our emit owns this
-    cleanup (the write is ours). NOTE (Connector Health Phase A sign-off): this touches Sanjeev's
-    worker test conftest.
+    cleanup (the write is ours).
     """
     from dis_testing.fixtures import DEFAULT_SOURCE_ID
 
@@ -123,7 +122,7 @@ def cleanup_traces(dis_admin: Engine) -> Iterator[list[UUID]]:
                 text("DELETE FROM audit.events WHERE trace_id = ANY(:tids)"),
                 {"tids": traces},
             )
-            # D116 additive-emit cleanup: the per-run connector_health upsert for the seeded
+            # Additive-emit cleanup: the per-run connector_health upsert for the seeded
             # source (keyed by (tenant_id, source_id), no trace_id). Scoped to the seeded source.
             conn.execute(
                 text("DELETE FROM telemetry.connector_health WHERE source_id = :src"),

@@ -26,7 +26,7 @@ const COLLAPSED_KEY = "ithina_sidebar_collapsed";
 // lib/dis/sidebar-nav-items.ts) import these types and the layout
 // passes the right constant per active product.
 //
-// Phase 5g.1: optional `requires` tuple per item. Sidebar filters items
+// Optional `requires` tuple per item. Sidebar filters items
 // against the cached /me/permissions grant list via `hasPermission`.
 // Items without `requires` are always visible (e.g. Dashboard).
 // Fail-closed during boot: items with `requires` stay hidden until
@@ -40,7 +40,7 @@ export type NavRequires = {
 export type NavItem = {
   href: string;
   label: string;
-  // Phase 5g.1.6: optional label override for TENANT personas.
+  // Optional label override for TENANT personas.
   // When the cosmetic framing of a label is PLATFORM-leaky (e.g.
   // "Platform Dashboard"), provide the tenant-side framing here
   // ("Dashboard"); Sidebar resolves the right one per snapshot.
@@ -133,7 +133,7 @@ export function Sidebar({ navGroups }: SidebarProps) {
         !hydrated && "invisible",
       )}
     >
-      {/* Phase 5d.1: logo + brand block routes to My Sevyn8 launcher.
+      {/* Logo + brand block routes to My Sevyn8 launcher.
           Same Sidebar primitive used by both Ithina + DIS layouts, so
           this single Link gives both products the back-to-launcher
           affordance via the logo. */}
@@ -142,10 +142,9 @@ export function Sidebar({ navGroups }: SidebarProps) {
         aria-label="Go to My Sevyn8 launcher"
         className="flex items-center gap-2 px-4 py-4 transition-colors duration-150 ease-out hover:bg-sidebar-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
-        {/* Phase 5d.7: real Ithina brandmark replaces the prior
-            "I"-letterform placeholder. Logo on transparent
-            background; the SVG's hardcoded brand blue renders
-            cleanly on both light + dark sidebar backgrounds. */}
+        {/* Logo on transparent background; the SVG's hardcoded brand
+            blue renders cleanly on both light + dark sidebar
+            backgrounds. */}
         <IthinaLogo size={32} />
 
         {!collapsed ? (

@@ -6,7 +6,7 @@ questions:
 - ``has_permission(session, auth, M, R, A, S, target_anchor)`` answers
   "can this user perform this one tuple at this anchor?" via a single
   ``SELECT 1 ... LIMIT 1`` query. Used by the FastAPI gate and by
-  ``/me/can-do``. Step 6.9.3.1: the per-tuple ``scope`` filter accepts
+  ``/me/can-do``. The per-tuple ``scope`` filter accepts
   any scope in the downward-cascade satisfaction set for the requested
   scope, so a GLOBAL grant satisfies TENANT/STORE checks and a TENANT
   grant satisfies STORE checks. See ``satisfying_scopes()``.
@@ -20,13 +20,12 @@ questions:
   NOT applied here (the gate / ``/me/can-do`` is the cascade-aware
   surface; ``/me/permissions`` returns raw grants).
 
-- ``require(M, R, A, S)`` is a FastAPI dependency factory (Step 6.9.2,
-  introduces the dependency-factory pattern). Returns an async callable
-  that FastAPI injects via ``Depends(require(...))``. The callable runs
-  ``has_permission`` against the request's session + auth and raises
-  ``PermissionDeniedError`` on denial. ``target_anchor`` is hardcoded to
-  ``None`` for 6.9.2; per-resource anchor dependencies and threading
-  land in Step 6.9.3.2.
+- ``require(M, R, A, S)`` is a FastAPI dependency factory. Returns an async
+  callable that FastAPI injects via ``Depends(require(...))``. The callable
+  runs ``has_permission`` against the request's session + auth and raises
+  ``PermissionDeniedError`` on denial. ``target_anchor`` defaults to
+  ``None`` and is threaded in via an ``anchor_dep`` Depends parameter for
+  per-resource anchor checks.
 
 Audience dispatch via ``auth.user_type``:
 
@@ -42,13 +41,13 @@ Audience dispatch via ``auth.user_type``:
   cascade uses Postgres ``ltree <@`` so a grant anchored at any
   ancestor of ``target_anchor`` matches.
 
-The audience-check triggers (Step 6.8.1, migration ``3e05299cb533``)
+The audience-check triggers (migration ``3e05299cb533``)
 guarantee that ``platform_user_role_assignments`` rows reference only
 ``role.audience='PLATFORM'`` and that ``tenant_user_role_assignments``
 rows reference only ``role.audience='TENANT'``. The dispatch trusts
 these triggers; no app-layer audience filter is needed.
 
-Schema qualification follows the raw-SQL convention (D-15 / Step 6.5.1):
+Schema qualification follows the raw-SQL convention (D-15):
 ``schema = get_settings().db_schema`` resolved per-call and
 f-string-interpolated into table references. ``db_schema`` is
 identifier-validated at Settings construction; safe to interpolate.
@@ -90,7 +89,7 @@ AnchorDep = Callable[..., Awaitable[str]]
 
 
 # ---------------------------------------------------------------------------
-# Scope cascade (Step 6.9.3.1)
+# Scope cascade
 # ---------------------------------------------------------------------------
 #
 # Downward cascade: a grant at a higher scope level satisfies checks at any
@@ -99,7 +98,7 @@ AnchorDep = Callable[..., Awaitable[str]]
 #
 # IMPORTANT — coupling to org hierarchy:
 # This tuple mirrors the org-tree hierarchy. Two in-repo sync points must
-# stay aligned (see CLAUDE.md "Org hierarchy coupling"):
+# stay aligned:
 #   1. DDL ``org_node_type_enum`` in ``db/raw_ddl/...`` (7 values).
 #   2. ``_SCOPE_CASCADE_ORDER`` here (8 entries: ``GLOBAL`` at position 0
 #      representing the implicit Platform cascade root, plus the 7
@@ -388,7 +387,7 @@ async def get_permissions_for_user(
     filter). ``anchor_path`` carries ``on_.path`` cast to text so the
     caller can reason about cascade anchors.
 
-    Used by ``/me/permissions`` (Step 6.9.2). Not on the gate hot path
+    Used by ``/me/permissions``. Not on the gate hot path
     (the gate uses ``has_permission`` targeted query). Same JOIN
     structure as ``has_permission`` per audience, with the per-tuple
     ``WHERE`` clauses dropped and the projection widened.
@@ -507,7 +506,7 @@ def require(
             session: AsyncSession = Depends(get_tenant_session_dep),
         ) -> ...: ...
 
-        # Platform-only write endpoint (Step 6.11):
+        # Platform-only write endpoint:
         @router.post("/tenants")
         async def create_tenant(
             body: TenantCreateRequest,
@@ -525,7 +524,7 @@ def require(
     ``target_anchor`` via ``Depends(anchor_dep)`` — FastAPI resolves
     the anchor dep BEFORE running the gate body.
 
-    Order of checks inside the gate body (Step 6.11.1):
+    Order of checks inside the gate body:
 
       1. audience (Layer 1, if set) -> 403 PLATFORM_AUDIENCE_REQUIRED
       2. has_permission (Layer 2)   -> 403 PERMISSION_DENIED
@@ -535,12 +534,11 @@ def require(
     missing-anchor lookup raises 404 from the anchor_dep itself, ahead
     of either Layer 1 or Layer 2.
 
-    The ``audience`` kwarg (Step 6.11.1) is defense-in-depth against
-    catalogue drift. A future seed change that leaks a ``.GLOBAL`` grant
-    to a TENANT-audience role would still be refused at Layer 1 on
-    platform-only routes. ``audience=None`` (default) preserves every
-    existing pre-6.11 call site unchanged. Convention codification
-    deferred to Step 6.12's second-example confirmation.
+    The ``audience`` kwarg is defense-in-depth against catalogue drift. A
+    future seed change that leaks a ``.GLOBAL`` grant to a TENANT-audience
+    role would still be refused at Layer 1 on platform-only routes.
+    ``audience=None`` (default) preserves every existing call site
+    unchanged.
 
     Two inner-function shapes (picked at factory-call time by
     ``anchor_dep`` presence) are required because FastAPI introspects
@@ -549,7 +547,7 @@ def require(
 
     Every returned gate carries a ``PermissionGateInfo`` instance as
     ``gate.__permission_gate__`` for the mandatory-gate-discipline
-    test to introspect (Step 6.9.3.2).
+    test to introspect.
     """
     info = PermissionGateInfo(
         module=module,

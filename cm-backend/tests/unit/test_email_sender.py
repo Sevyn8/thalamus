@@ -1,4 +1,4 @@
-"""Slice 2d-send offline unit tests for SendGridEmailSender.
+"""Offline unit tests for SendGridEmailSender.
 
 No network: an httpx.MockTransport backs the injected AsyncClient, so the real
 request-building runs while SendGrid is never contacted. Covers the request

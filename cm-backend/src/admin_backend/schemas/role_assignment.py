@@ -1,4 +1,4 @@
-"""Pydantic schemas for /role-assignments endpoint (Step 6.8.3).
+"""Pydantic schemas for /role-assignments endpoint.
 
 Two grouped blocks per the API contract: ``platform_assignments`` and
 ``tenant_assignments``. Each block is its own ``{items, pagination}``
@@ -10,9 +10,9 @@ Per-row item shapes reflect their physical table — platform has no
 tenant/org_node fields, tenant does. No row-level discriminator: the
 block name carries the audience.
 
-Hidden fields (per the Step 6.1 H1 hidden-fields convention, D-13
-Pattern (b)): ``granted_by_user_id``, ``granted_by_user_type``,
-``revoked_by_user_id``, ``revoked_by_user_type``.
+Hidden fields (per the H1 hidden-fields convention, D-13 Pattern (b)):
+``granted_by_user_id``, ``granted_by_user_type``, ``revoked_by_user_id``,
+``revoked_by_user_type``.
 
 Distinct from ``schemas/tenant_user.py``'s ``UserRoleAssignmentItem``
 (the inline-augmentation shape on /tenant-users and /platform-users):

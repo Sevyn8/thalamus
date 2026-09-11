@@ -22,7 +22,7 @@
 -- defaults to the version recorded on the row being replayed.
 --
 -- ----------------------------------------------------------------------------
--- Phase 0 migration order (required for this DDL to succeed)
+-- Migration order (required for this DDL to succeed)
 -- ----------------------------------------------------------------------------
 --
 -- 1. Create schemas in the DIS database:

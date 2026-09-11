@@ -13,7 +13,7 @@ split: the repo speaks DB vocabulary, the wire translation lives here.
 
 Cadence is a DISPLAY label only (``heartbeat_label`` from ``config.sources.schedule``); Phase A
 does not machine-compute it, so ``missed_intervals`` is worker-emitted-or-null and there is no
-precise missed-interval math (D116).
+precise missed-interval math.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ def derive_status(
     rate_limit_state: str | None,
     now: datetime,
 ) -> StatusWire:
-    """Classify the displayed connector status from the effective signals (D116).
+    """Classify the displayed connector status from the effective signals.
 
     Precedence (most-actionable first): auth expiring soon > rate-limited > no activity
     (pending) > stale (seen, but not recently) > healthy. ``effective_last_seen`` is the

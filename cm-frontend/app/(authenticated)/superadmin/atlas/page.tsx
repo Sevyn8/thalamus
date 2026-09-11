@@ -3,17 +3,17 @@ import { Column, SectionHead } from "@/components/synapse/primitives";
 
 // Atlas - URL-ONLY, AND DEFERRED INDEFINITELY.
 //
-// THIS PAGE IS NOT IN THE NAVIGATION. Its sidebar entry was removed in Axon slice
-// 3 and the header here is the record of why. The page is reachable by typing
+// THIS PAGE IS NOT IN THE NAVIGATION. Its sidebar entry was removed, and the
+// header here is the record of why. The page is reachable by typing
 // /superadmin/atlas and by nothing else.
 //
-// WHY THE ORIGINAL ARGUMENT NO LONGER HOLDS. D3/N4 kept Atlas present and
-// disabled so the navigation shape was settled and nobody wondered whether it had
-// been forgotten. That was correct WHILE ATLAS WAS NEXT IN LINE. It is now
-// deferred indefinitely: zero code, no module behind it, and nothing scheduled.
-// A permanent entry stops reading as "coming" and starts reading as "in progress"
-// about something nobody is building, which misinforms every operator who sees
-// it. The reason to show it and the reason to remove it are the same reason.
+// WHY THE ORIGINAL ARGUMENT NO LONGER HOLDS. Keeping Atlas present-and-disabled
+// in the nav made sense while the navigation shape was still settling and the
+// entry read as "next in line." It is now deferred indefinitely: zero code, no
+// module behind it, and nothing scheduled. A permanent entry stops reading as
+// "coming" and starts reading as "in progress" about something nobody is
+// building, which misinforms every operator who sees it. The reason to show it
+// and the reason to remove it are the same reason.
 //
 // THE PAGE IS KEPT RATHER THAN DELETED, and the two are different changes.
 // Removing the route as well would discard the only written record of what Atlas
@@ -42,12 +42,12 @@ export default function AtlasPage() {
       />
 
       <Column>
-        {/* THE PAGE IS BOUNDED; THE PLACEHOLDER STAYS CENTRED INSIDE IT. PATTERNS.md
-            specifies the FeaturePending shape as "a minimal centered text + ETA", so
-            left-aligning this to match the other five screens would break a
-            documented convention to satisfy an undocumented one. Bounding the column
-            gives the table below the same proximity as everywhere else without
-            touching the empty state's own alignment. */}
+        {/* THE PAGE IS BOUNDED; THE PLACEHOLDER STAYS CENTRED INSIDE IT. The
+            FeaturePending shape is a minimal centered text + ETA, so
+            left-aligning this to match the other five screens would break
+            that convention to satisfy an undocumented one. Bounding the
+            column gives the table below the same proximity as everywhere
+            else without touching the empty state's own alignment. */}
         <div className="rounded-md border border-dashed border-border p-8 text-center">
           <p className="text-heading">Atlas is not being built</p>
           <p className="text-body mx-auto mt-2 text-measure text-foreground-muted">

@@ -7,9 +7,9 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { useAuthSnapshot } from "@/lib/auth/auth-cache";
 
 export default function ApprovalsPage() {
-  // Phase 5g.1.6: persona-aware subtitle. PLATFORM sees fleet-wide
-  // framing; TENANT sees own-organization framing. Cosmetic — backend
-  // scopes the data the same way regardless.
+  // Persona-aware subtitle. PLATFORM sees fleet-wide framing; TENANT
+  // sees own-organization framing. Cosmetic — backend scopes the data
+  // the same way regardless.
   const snapshot = useAuthSnapshot();
   const subtitle =
     snapshot?.user?.userType === "TENANT"

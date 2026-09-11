@@ -1,5 +1,5 @@
-"""apply_enrichment behaviour (slice-5b; D94, D95): output-wins, row alignment,
-the missing-vs-blank boundary (D97), and table-scope gating.
+"""apply_enrichment behaviour: output-wins, row alignment,
+the missing-vs-blank boundary, and table-scope gating.
 
 Expected values are hand-derived from the rule, never copied from the engine.
 """

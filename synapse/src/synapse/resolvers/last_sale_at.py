@@ -1,10 +1,8 @@
 """The ``last_sale_at`` resolver: the most recent SALE per (tenant, store, sku).
 
-The FOURTH capability, and it was cheap for exactly the reason slice 1 existed: no new
-canonical table, no new collapse logic, no new grain rule, no probe. It reuses
+No new canonical table, no new collapse logic, no new grain rule, no probe: it reuses
 ``_collapse.collapse_latest_wins`` unchanged and obeys the same predicate-placement rule as
-``daily_series``. If a fourth capability had been expensive, that would have been a finding
-about the registry; it was not.
+``daily_series``.
 
 DO NOT "OPTIMISE" THIS AWAY INTO current_state. THE TRAP, NAMED.
 ================================================================
@@ -98,8 +96,8 @@ _AGGREGATE_COLUMNS: Final[tuple[str, ...]] = (
 # partial — it reads as a catalogue full of dead stock. That is a wrong answer, not a short one.
 #
 # One row per position, so the same order as current_state: fine at beta (66 positions), and
-# 125,000 at the beta TARGET of 5,000 SKUs x 25 stores, which exceeds this. Pagination (DIS's
-# D124 keyset pattern) is the answer then, not a bigger number.
+# 125,000 at the beta TARGET of 5,000 SKUs x 25 stores, which exceeds this. Keyset
+# pagination is the answer then, not a bigger number.
 _MAX_ROWS = 20_000
 
 
@@ -164,7 +162,7 @@ async def resolve_last_sale_at(
     sku_id: str | None = None,
     limit: int = _MAX_ROWS,
 ) -> Sequence[LastSaleAtRow]:
-    """The most recent SALE date per (tenant, store, sku), corrections collapsed per D33.
+    """The most recent SALE date per (tenant, store, sku), corrections collapsed at read time.
 
     ``scope`` carries the tenant and is the ONLY source of tenancy — never a caller field,
     never defaulted. ``store_id`` and ``sku_id`` narrow within it and cannot widen it.

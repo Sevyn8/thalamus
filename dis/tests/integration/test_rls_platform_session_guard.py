@@ -1,6 +1,5 @@
-"""Slice 17b: the PLATFORM session entry point routes through the SAME first-use posture
-guard as ``rls_session`` (closes the completion-inventory gap-4: previously the guard on
-the PLATFORM path was proven only by-construction).
+"""The PLATFORM session entry point routes through the SAME first-use posture
+guard as ``rls_session``.
 
 ``_check_posture`` (pure) and the ``rls_session`` posture are already unit-tested in
 libs/dis-rls/tests/unit/test_session_guards.py. This proves the PLATFORM entry point

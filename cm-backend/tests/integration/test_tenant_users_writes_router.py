@@ -1,4 +1,4 @@
-"""Integration tests for the tenant-users write endpoints (Step 6.10.1).
+"""Integration tests for the tenant-users write endpoints.
 
 Coverage shape:
 
@@ -27,8 +27,7 @@ the composite FK ON DELETE RESTRICT, then the tenant_users row). The
 TestClient session is request-scoped (FastAPI commits per request)
 so cleanup sees committed rows immediately at teardown. Fixture-order
 discipline: list this AFTER make_* row-creating fixtures, BEFORE the
-session-yielding fixture per CLAUDE.md's cleanup-fixture-ordering
-note.
+session-yielding fixture.
 
 JWT decoding helper: ``_user_id_from_jwt`` extracts the user_id claim
 without signature verification. The synthetic-user factory
@@ -97,7 +96,7 @@ async def cleanup_tenant_users_router(
     fixtures so their teardown (which clears FK references) fires
     AFTER this cleanup (LIFO).
 
-    Step 6.16.4 LD18 extension : audit-row DELETE precedes the
+    The audit-row DELETE precedes the
     assignments+users DELETE. The Pattern (b) ``resource_id`` /
     ``actor_user_id`` columns carry no FK to tenant_users so the
     tenant_users DELETE itself isn't blocked by audit rows; this
@@ -224,7 +223,7 @@ async def _lookup_permission_id(
 def _roles_payload(
     items: list[tuple[UUID, UUID]],
 ) -> list[dict[str, str]]:
-    """Serialise (role_id, org_node_id) tuples to the Step 6.14 wire
+    """Serialise (role_id, org_node_id) tuples to the wire
     shape ``[{"role_id": "...", "org_node_id": "..."}]``."""
     return [
         {"role_id": str(rid), "org_node_id": str(oid)}
@@ -240,7 +239,7 @@ def _valid_create_body(
 ) -> dict[str, Any]:
     """Minimal valid POST /tenant-users body for happy-path tests.
 
-    Step 6.14 (vs 6.10.1): the body's ``roles`` field carries the new
+    The body's ``roles`` field carries the
     ``[{role_id, org_node_id}]`` shape. Tests pass the
     ``(role_id, org_node_id)`` tuples; this helper handles
     serialisation.
@@ -418,9 +417,8 @@ async def test_c5_same_email_different_tenants_rejected(
     make_role,
     cleanup_tenant_users_router,
 ) -> None:
-    """Slice 9 OVERTURNS the prior "same email across tenants = two rows"
-    behavior. The same email in a second tenant is now rejected with 409
-    EMAIL_ALREADY_EXISTS (side=tenant)."""
+    """One email = one identity: the same email in a second tenant is
+    rejected with 409 EMAIL_ALREADY_EXISTS (side=tenant)."""
     tenant_a_id, ra_id, _ra_path = await _seed_tenant_with_root(
         make_tenant, make_org_node, name="C5-TenantA"
     )
@@ -812,10 +810,10 @@ async def test_p6_role_full_replacement(
     """PATCH replacing the whole desired set: role_a revoked + role_b
     granted.
 
-    Step 6.14 (vs 6.10.1): when the desired set has NO overlap with
+    When the desired set has NO overlap with
     the current set, the diff-replace path reduces to one revoke + one
-    insert (same wire shape as the retired whole-set replace). This
-    test guards that 'no overlap' corner of LD3; the overlap case
+    insert (same wire shape as a whole-set replace). This
+    test guards that 'no overlap' corner; the overlap case
     that's the actual diff-replace win is R3.
     """
     tenant_id, root_id, _root_path = await _seed_tenant_with_root(
@@ -1548,10 +1546,10 @@ async def test_a5_activate_already_active_returns_409(
 
 
 # ============================================================================
-# Step 6.14 router tests: R1-R6 (diff-replace shape), V1-V7 (validation),
-# P1 (LD8 self-edit guard regression with new body shape).
+# Router tests: R1-R6 (diff-replace shape), V1-V7 (validation),
+# P1 (self-edit guard regression with the roles-array body shape).
 #
-# R3 / R4 / R6 are LOAD-BEARING — they enforce the core LD3 diff-replace
+# R3 / R4 / R6 are LOAD-BEARING — they enforce the core diff-replace
 # invariant (unchanged tuples retain granted_at; concurrent UNIQUE race
 # returns 409 not 500).
 # ============================================================================
@@ -2186,7 +2184,7 @@ async def test_p1_self_edit_with_new_roles_shape_returns_403(
 
 
 # ============================================================================
-# Slice 9 : one email = one identity (global cross-entity uniqueness)
+# One email = one identity (global cross-entity uniqueness)
 # ============================================================================
 
 
@@ -2229,7 +2227,7 @@ async def test_s9_create_rejects_email_in_platform_users(
     make_platform_user: Any,
     cleanup_tenant_users_router: list[UUID],
 ) -> None:
-    """Slice 9: creating a tenant_user with an email already held by a
+    """Creating a tenant_user with an email already held by a
     platform user -> 409 EMAIL_ALREADY_EXISTS, message names the platform
     side (never the other tenant)."""
     tenant_id, root_id, _ = await _seed_tenant_with_root(
@@ -2261,7 +2259,7 @@ async def test_s9_create_rejects_email_in_another_tenant(
     make_tenant_user: Any,
     cleanup_tenant_users_router: list[UUID],
 ) -> None:
-    """Slice 9: creating a tenant_user with an email already held by a
+    """Creating a tenant_user with an email already held by a
     user in a DIFFERENT tenant -> 409 EMAIL_ALREADY_EXISTS, message names
     the tenant side and does NOT leak the other tenant's identity."""
     tenant_a = await make_tenant(name="S9-Other-A")
@@ -2335,7 +2333,7 @@ async def test_s9_patch_email_rejects_platform_email(
     make_platform_user: Any,
     cleanup_tenant_users_router: list[UUID],
 ) -> None:
-    """Slice 9: PATCH email to a value already held by a platform user ->
+    """PATCH email to a value already held by a platform user ->
     409 EMAIL_ALREADY_EXISTS (platform side)."""
     tenant_id, root_id, _ = await _seed_tenant_with_root(
         make_tenant, make_org_node, name="S9-Patch"

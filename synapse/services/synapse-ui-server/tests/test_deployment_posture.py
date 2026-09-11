@@ -141,7 +141,7 @@ def test_the_terraform_precondition_still_exists() -> None:
 
 
 def test_every_secret_iam_member_is_listed_in_the_services_depends_on() -> None:
-    """PAIR #14, AND SLICE 5d PAID FOR IT IN TWO DAYS OF A DEAD WRITE PATH.
+    """PAIR #14, WHICH ONCE COST TWO DAYS OF A DEAD WRITE PATH IN PRODUCTION.
 
     THE FAILURE THIS CATCHES. The env blocks reference
     ``data.google_secret_manager_secret.*.secret_id``, which is the DATA SOURCE. Terraform sees an

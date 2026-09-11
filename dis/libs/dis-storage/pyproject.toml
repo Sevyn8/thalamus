@@ -1,10 +1,10 @@
 [project]
 name = "dis-storage"
 version = "0.0.0"
-description = "DIS GCS access: the frozen canonical object-path scheme, V4 signed-URL issuance, and an emulator-honouring client wrapper. The only sanctioned GCS access path (root CLAUDE.md hard rule 9)."
+description = "DIS GCS access: the frozen canonical object-path scheme, V4 signed-URL issuance, and an emulator-honouring client wrapper. The only sanctioned GCS access path."
 requires-python = ">=3.12"
 dependencies = [
-  # DisError root + structured logging. The lib never mints trace_id (hard rule 4):
+  # DisError root + structured logging. The lib never mints trace_id:
   # the caller supplies it, so no dis-core trace_id import on the path builder.
   "dis-core",
   # GCS client + V4 signed-URL generation; honours STORAGE_EMULATOR_HOST.

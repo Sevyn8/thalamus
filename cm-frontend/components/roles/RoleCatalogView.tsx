@@ -22,12 +22,11 @@ import { useCanDo } from "@/lib/auth/use-me-can-do";
 import { cn } from "@/lib/utils";
 import type { RoleListItem } from "@/types/api";
 
-// Phase 5e.2: rewritten to consume backend's pre-grouped
-// RoleListResponse {platform_roles, tenant_roles}. TENANT personas
-// see platform_roles always empty per backend's audience filter; the
-// Platform section is hidden entirely (not rendered as empty-state)
-// per the backend docs' "suppress empty platform_roles for TENANT"
-// guidance.
+// Consumes backend's pre-grouped RoleListResponse
+// {platform_roles, tenant_roles}. TENANT personas see platform_roles
+// always empty per backend's audience filter; the Platform section is
+// hidden entirely (not rendered as empty-state) to suppress an
+// always-empty platform_roles block for TENANT.
 
 type RoleCatalogProps = {
   selectedId: string | null;
@@ -99,10 +98,8 @@ export function RoleCatalogView({ selectedId, onSelect }: RoleCatalogProps) {
   const lookupsQuery = useLookups();
   const [editOpen, setEditOpen] = useState(false);
 
-  // Phase 5n.10: role edit gates on ADMIN.ROLES.OVERRIDE.GLOBAL per
-  // backend Step 6.18.1. PLATFORM-only by construction (LD17 audience-
-  // scope coherence). 4-arg useCanDo per 5n.9 discipline — no anchor
-  // for GLOBAL scope.
+  // Role edit gates on ADMIN.ROLES.OVERRIDE.GLOBAL, PLATFORM-only by
+  // construction. 4-arg useCanDo — no anchor for GLOBAL scope.
   const canEditRole = useCanDo("ADMIN", "ROLES", "OVERRIDE", "GLOBAL");
   const canEdit = canEditRole.data?.allowed !== false;
 

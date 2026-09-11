@@ -1,12 +1,11 @@
 """Run-to-completion entrypoint for DB-pull mode.
 
-One invocation = one sync pass = exit. No resident loop, no subscription (DB-pull is the
-finite counterpart to the deferred Pub/Sub listener). The exit status is meaningful so a
+One invocation = one sync pass = exit. No resident loop, no subscription. The exit status is meaningful so a
 scheduler/trigger detects failure: a clean pass (including a legitimately empty Customer
 Master) exits 0; a config error, a CM target/context failure, a CM-unreachable error, a DIS
 target-guard trip, or a write failure each exit with a distinct non-zero code.
 
-Audit is **log-only** this slice (no ``audit.events`` rows): run start, run end, and the
+Audit is **log-only** (no ``audit.events`` rows): run start, run end, and the
 per-tenant counts are structured log lines bound with ``service`` / ``stage`` / ``trace_id``
 (and ``tenant_id`` per tenant).
 """
@@ -53,7 +52,7 @@ def _log_per_tenant(log: DisLoggerAdapter, result: SyncResult) -> None:
 
 
 async def _run() -> int:
-    trace_id: UUID = new_trace_id()  # the sync is a pipeline origin (hard rule 4): mint here
+    trace_id: UUID = new_trace_id()  # the sync is a pipeline origin: mint the trace id here
     bind_trace_id(trace_id)
     log = get_logger(_SERVICE, stage=_STAGE, trace_id=str(trace_id))
 

@@ -1,4 +1,4 @@
-"""The Phase-1 Cloud SQL audit writer — fire-and-forget.
+"""The Cloud SQL audit writer — fire-and-forget.
 
 Lands one ``audit.events`` row through the RLS-aware session (``dis-rls``), so the
 target-safety guard (``current_database()`` must be ``ithina_dis_db``; the role must not
@@ -9,11 +9,10 @@ Fire-and-forget (hard rule 11, the one sanctioned exception to code-quality rule
 write failure is logged with ``tenant_id`` / ``trace_id`` / ``stage`` and reported as
 ``False`` — never raised to the caller, never blocking the data path. The swallow is
 explicit and scoped to this write path only. A missing partition, a missing grant, or a
-schema mismatch is logged as an **error worth alerting** (``decisions.md`` D45), not
-absorbed as routine.
+schema mismatch is logged as an **error worth alerting**, not absorbed as routine.
 
-Product rule (``decisions.md`` D43): every DIS audit event carries a known ``tenant_id``;
-there is no tenant-less audit path. A ``None`` tenant is refused loudly (logged
+Product rule: every DIS audit event carries a known ``tenant_id``; there is no
+tenant-less audit path. A ``None`` tenant is refused loudly (logged
 ``AuditWriteError``), never silently dropped.
 """
 
@@ -70,8 +69,8 @@ class PostgresAuditWriter:
             tenant_id=None if event.tenant_id is None else str(event.tenant_id),
             trace_id=str(event.trace_id),
         )
-        # Product rule D43 — a CALLER CONTRACT violation, not an infrastructure failure: every
-        # DIS audit event carries a known tenant_id. Logged distinctly (so it is not buried under
+        # A CALLER CONTRACT violation, not an infrastructure failure: every DIS audit
+        # event carries a known tenant_id. Logged distinctly (so it is not buried under
         # the infra-failure message below) and dropped — but NOT raised, because audit emission
         # must never block the data path even on a caller bug (hard rule 11). The schema's
         # nullable column is intentional headroom, not a supported path.
@@ -90,7 +89,7 @@ class PostgresAuditWriter:
         except Exception:  # noqa: BLE001 — sanctioned fire-and-forget swallow (hard rule 11)
             log.error(
                 "audit write failed; event dropped (fire-and-forget). A missing partition, "
-                "missing grant, or schema mismatch here is worth alerting (decisions.md D45)",
+                "missing grant, or schema mismatch here is worth alerting",
                 extra={"emitting_service": event.service_name, "failure_code": event.failure_code},
                 exc_info=True,
             )

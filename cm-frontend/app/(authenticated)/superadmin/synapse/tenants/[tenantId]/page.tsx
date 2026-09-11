@@ -62,7 +62,7 @@ type AnalysisState = {
   refusals: Refusals | undefined;
 };
 
-// THE THIRD STATE (slice 5e). A pair that WAS provisioned and is now switched off.
+// THE THIRD STATE. A pair that WAS provisioned and is now switched off.
 //
 // WITHOUT THIS THE ENABLE CONTROL IS A LIE. The BFF's active-monitor query filters
 // `disabled_at IS NULL`, so before 5e a disabled pair simply did not appear and that
@@ -272,7 +272,7 @@ export default async function TenantPage({
     if (!(error instanceof SynapseUnavailable)) throw error;
   }
 
-  // THE THREE ENABLEMENT STATES, PARTITIONED HERE ONCE (slice 5e).
+  // THE THREE ENABLEMENT STATES, PARTITIONED HERE ONCE.
   //
   //   active            detail.analyses            renders as today, no control
   //   disabled          detail.disabled_analyses   renders as disabled, NO control

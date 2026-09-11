@@ -4,13 +4,6 @@ Maps every column of ``db/raw_ddl/Ithina_postgres_SQL_DDL_tenant_users_v1.sql``
 in DDL order. The DDL is the source of truth for schema; this module
 is the application's typed view onto it.
 
-This step (5.2) replaces the lightweight ``TenantUser`` stub at
-``models/_lightweight_stubs.py`` (used since Step 3.3 by
-``TenantsRepo``'s correlated subqueries). The stub declared only ``id``,
-``tenant_id``, and ``status``; the full model declares all 17 columns.
-The Repo's existing subqueries reference exactly those three columns,
-so the swap is SQL-equivalent at the call sites.
-
 Notes on shape (mirrors ``models/tenant.py`` and ``models/platform_user.py``):
 
 - Schema qualification (``__table_args__["schema"]``) resolves from
@@ -42,8 +35,9 @@ Notes on shape (mirrors ``models/tenant.py`` and ``models/platform_user.py``):
 - The four enum columns reference Postgres enum types created by the
   DDL; ``create_type=False`` keeps SQLAlchemy from re-issuing
   ``CREATE TYPE``. Dialect-specific ``postgresql.ENUM`` (not generic
-  ``sqlalchemy.Enum``) per the "Note on PG enum columns" convention
-  in CLAUDE.md.
+  ``sqlalchemy.Enum``) — the generic type coerces enum values through
+  the Python member NAME rather than the DB value, so the dialect
+  type is the repo-wide convention for PG enum columns.
 """
 from datetime import datetime
 from enum import Enum
@@ -77,8 +71,8 @@ class ActorUserType(str, Enum):
     table the audit-actor UUID points at: PLATFORM -> ``platform_users``,
     TENANT -> ``tenant_users``. This enum is shared platform-wide; it's
     declared here because ``tenant_users`` is the first model to
-    consume it. Step 4.5 (Stores) and Step 5.3 (OrgNodes) will import
-    it from this module.
+    consume it. Other models (``Store``, ``OrgNode``, ``Role``, and
+    others) import it from this module rather than redeclaring it.
     """
 
     PLATFORM = "PLATFORM"

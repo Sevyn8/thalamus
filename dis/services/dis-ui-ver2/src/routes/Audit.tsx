@@ -10,13 +10,13 @@ import { distinctTenants, matchesTenant, SYSTEM_TENANT, tenantFull, tenantName }
 
 // Audit & Version History — mockup-faithful event-log table (audit.html): When · Who ·
 // Action · Object · Detail. REAL (mode-aware): GET /api/v1/audit (AuditEventListResponse),
-// tenant-scoped server-side (RLS two-GUC, D91), bounded newest-100. Filters window/outcome
-// are wired to the real query params. The old single-trace lookup (dis-ui donor shape, not the
-// mockup) is replaced; a per-trace drill-in (GET /audit/{trace_id}) is a later slice.
+// tenant-scoped server-side (RLS two-GUC), bounded newest-100. Filters window/outcome
+// are wired to the real query params. A per-trace drill-in (GET /audit/{trace_id}) does
+// not exist.
 //
 // "Who" = service_name (the non-PII actor). auth_principal is omitted by the backend by
 // design; a NAMED-actor display (real person names, as the mockup mocks) is pending the
-// auth_principal exposure decision (docs/decisions.md). We show the service, never invent names.
+// auth_principal exposure decision. We show the service, never invent names.
 
 const OUTCOME_BADGE: Record<OutcomeWire, string> = {
   success: 'b-ok',

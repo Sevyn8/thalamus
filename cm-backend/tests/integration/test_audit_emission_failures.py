@@ -1,4 +1,4 @@
-"""Step 6.16.2 : failure-path audit emission for the 4 tenant endpoints.
+"""Failure-path audit emission for the 4 tenant endpoints.
 
 Each test produces a failure via the real HTTP layer and asserts the
 audit row landed in the right table with the right `result_type` and
@@ -100,7 +100,7 @@ def _tenant_jwt(settings: Settings, tenant_id: UUID) -> str:
 
 
 async def _seed_required_sections(app_client: Any, jwt: str, tenant_id: UUID) -> None:
-    """Make a tenant fully completable under the Slice-6 gate: section rows
+    """Make a tenant fully completable under the completion gate: section rows
     via the API plus the three DB-only facts (Auth0 org, invited admin,
     verified document) via seed_completion_facts."""
     for path, body in (
@@ -548,9 +548,9 @@ async def test_af6_suspend_on_suspended_emits_conflict(
     tenant_id = UUID(create_resp.json()["id"])
     cleanup_tenants_for_audit.append(tenant_id)
 
-    # Slice 1: reach TRIAL (via complete-onboarding) before the first
+    # Reach TRIAL (via complete-onboarding) before the first
     # suspend so the TRIAL -> SUSPENDED premise holds.
-    # Slice 2: complete-onboarding requires legal + billing + >=1 contact.
+    # Complete-onboarding requires legal + billing + >=1 contact.
     await _seed_required_sections(app_client, super_admin_jwt, tenant_id)
     complete = app_client.post(
         f"/api/v1/tenants/{tenant_id}/complete-onboarding",
@@ -603,9 +603,9 @@ async def test_af7_activate_on_active_emits_conflict(
     tenant_id = UUID(create_resp.json()["id"])
     cleanup_tenants_for_audit.append(tenant_id)
 
-    # Slice 1: reach TRIAL (via complete-onboarding) before the first
+    # Reach TRIAL (via complete-onboarding) before the first
     # activate so the TRIAL -> ACTIVE premise holds.
-    # Slice 2: complete-onboarding requires legal + billing + >=1 contact.
+    # Complete-onboarding requires legal + billing + >=1 contact.
     await _seed_required_sections(app_client, super_admin_jwt, tenant_id)
     complete = app_client.post(
         f"/api/v1/tenants/{tenant_id}/complete-onboarding",
@@ -820,7 +820,7 @@ async def test_af11_failure_row_request_id_matches_response_header(
 
 
 # ---------------------------------------------------------------------------
-# AF_N1 : Step 6.16.7 LD9 + LD13 — CONFLICT qualifier composition +
+# AF_N1 : LD9 + LD13 — CONFLICT qualifier composition +
 # actor enrichment on the failure path (LOAD-BEARING : composed
 # result_label is the public wire-shape contract; the dispatch table
 # coverage in AE_N6 is unit-level. AF_N1 verifies end-to-end through
@@ -835,7 +835,7 @@ async def test_af_n1_conflict_failure_carries_composed_result_label_and_enrichme
     session_factory,
     platform_auth,
 ) -> None:
-    """LOAD-BEARING (Step 6.16.7): a 409 INVALID_STATE_TRANSITION emits
+    """LOAD-BEARING: a 409 INVALID_STATE_TRANSITION emits
     a CONFLICT failure row whose ``result_label`` is the LD9-composed
     "Blocked - status change not allowed" qualifier (not the static
     "Conflict" fallback), and whose actor enrichment columns reflect
@@ -848,9 +848,9 @@ async def test_af_n1_conflict_failure_carries_composed_result_label_and_enrichme
     tenant_id = UUID(create_resp.json()["id"])
     cleanup_tenants_for_audit.append(tenant_id)
 
-    # Slice 1: reach TRIAL (via complete-onboarding) before the first
+    # Reach TRIAL (via complete-onboarding) before the first
     # suspend so the double-suspend CONFLICT path is exercised.
-    # Slice 2: complete-onboarding requires legal + billing + >=1 contact.
+    # Complete-onboarding requires legal + billing + >=1 contact.
     await _seed_required_sections(app_client, super_admin_jwt, tenant_id)
     complete = app_client.post(
         f"/api/v1/tenants/{tenant_id}/complete-onboarding",

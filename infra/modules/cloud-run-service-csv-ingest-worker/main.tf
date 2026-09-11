@@ -8,7 +8,7 @@
 # subscription: no OIDC push-invoker, no allUsers.
 #
 # Shape adapted from infra/modules/cloud-run-service-dis-ui-server, with:
-#   1. D58 single-instance CORRECTNESS constraint: min=max=1, cpu_idle=false
+#   1. Single-instance CORRECTNESS constraint: min=max=1, cpu_idle=false
 #      (CPU always allocated so the pull loop runs when no request is in flight).
 #      The query-based dedup is single-instance only; do not scale.
 #   2. Pub/Sub grants: pubsub.subscriber on the csv.received subscription,
@@ -114,7 +114,7 @@ resource "google_cloud_run_v2_service" "csv_ingest_worker" {
   template {
     service_account = google_service_account.csv_ingest_worker.email
 
-    # D58: pinned to exactly one instance (query-based dedup is single-instance).
+    # Pinned to exactly one instance (query-based dedup is single-instance).
     scaling {
       min_instance_count = var.min_instances
       max_instance_count = var.max_instances
@@ -142,7 +142,7 @@ resource "google_cloud_run_v2_service" "csv_ingest_worker" {
         }
         # cpu_idle=false: CPU stays allocated so the background pull loop keeps
         # consuming when no HTTP request (only the /healthz probe) is in flight.
-        # A CPU-throttled idle instance would stop pulling. D58 / D83.
+        # A CPU-throttled idle instance would stop pulling.
         cpu_idle          = false
         startup_cpu_boost = true
       }

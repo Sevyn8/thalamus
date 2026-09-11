@@ -17,7 +17,7 @@ serves both via the ``PlatformUserListItem = PlatformUserRead`` alias —
 keeping the type names distinct in router signatures and OpenAPI while
 avoiding maintenance drift between two identical shapes.
 
-Step 6.8.3 — A1/A2 augmentation. ``PlatformUserRead`` gains a
+``PlatformUserRead`` gains a
 ``roles: list[UserRoleAssignmentItem]`` field; the
 ``UserRoleAssignmentItem`` type is canonically defined in
 ``schemas/tenant_user.py`` and re-exported here.

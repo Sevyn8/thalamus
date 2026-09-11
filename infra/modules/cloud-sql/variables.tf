@@ -80,7 +80,7 @@ variable "dis_mirror_reader_user_name" {
 
 variable "synapse_reader_user_name" {
   type        = string
-  description = "Synapse's read-only role. SELECT on exactly two canonical tables — store_sku_current_position (the current_state resolver) and store_sku_sale_events (daily_series) — plus USAGE on canonical and CONNECT on the database. Never a schema-wide grant, never any write. Grants are applied post-migration by infra/db-setup/sql/03_synapse_reader_grant.sql, not here. Since slice 6a the Synapse orchestrator runs as this role: it enumerates synapse.provision under PLATFORM scope and reads canonical for every analysis. Since slice 6b it also runs on a SCHEDULE (a daily Cloud Scheduler job firing the orchestrator's Cloud Run job), so this role is exercised unattended rather than only on demand."
+  description = "Synapse's read-only role. SELECT on exactly two canonical tables — store_sku_current_position (the current_state resolver) and store_sku_sale_events (daily_series) — plus USAGE on canonical and CONNECT on the database. Never a schema-wide grant, never any write. Grants are applied post-migration by infra/db-setup/sql/03_synapse_reader_grant.sql, not here. The Synapse orchestrator runs as this role: it enumerates synapse.provision under PLATFORM scope and reads canonical for every analysis. It also runs on a SCHEDULE (a daily Cloud Scheduler job firing the orchestrator's Cloud Run job), so this role is exercised unattended rather than only on demand."
   default     = "synapse_reader"
 }
 

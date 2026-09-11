@@ -1,8 +1,9 @@
-"""V4 signed-URL issuance (AC6 part a): deterministic, offline, well-formed.
+"""V4 signed-URL issuance: deterministic, offline, well-formed.
 
 A well-formed URL with the correct expiry — NOT proof that real GCS accepts the
-signature (that is unverified until a real-GCS slice; first use Slice 8). Signing uses
-a throwaway test service-account credential generated in-process; never a real SA.
+signature; that remains unverified until a real caller exercises it against
+real GCS. Signing uses a throwaway test service-account credential generated
+in-process; never a real SA.
 """
 
 from __future__ import annotations

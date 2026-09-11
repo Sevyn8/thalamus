@@ -49,7 +49,7 @@ def _unique_session_id() -> str:
 
 
 def _make_event(storage: StorageClient, bucket: str, data: bytes, cleanup: list[UUID]) -> CsvReceivedEvent:
-    """Play Phase 1 (dis-ui-server): mint trace, build the canonical path, upload,
+    """Play the producer (dis-ui-server): mint trace, build the canonical path, upload,
     and assemble the csv.received envelope the WORKER will trust."""
     trace_id = new_uuid7()
     cleanup.append(trace_id)
@@ -68,7 +68,7 @@ def _make_event(storage: StorageClient, bucket: str, data: bytes, cleanup: list[
         tenant_id=PRIMARY_TENANT.uuid,
         store_id=PRIMARY_STORE.uuid,
         source_id=DEFAULT_SOURCE_ID,
-        template_id=new_uuid7(),  # Slice 8 carry: required on the contract (D71)
+        template_id=new_uuid7(),  # required on the contract
         upload_session_id=_unique_session_id(),
         gcs_uri=f"gs://{bucket}/{key}",
         received_ts=received,
@@ -134,7 +134,7 @@ async def test_wrong_role_posture_raises_before_any_write(
 ) -> None:
     # A superuser/BYPASSRLS connection (the admin role) must be REFUSED by the
     # session helper before a single statement runs — the wrong target/posture
-    # exits before writing (Slice 7 pattern).
+    # exits before writing.
     from dis_rls import create_rls_engine, rls_session
 
     with dis_admin.connect() as conn:
@@ -290,7 +290,7 @@ async def test_pii_header_raises_and_nothing_persists(
 
 
 # ---------------------------------------------------------------------------
-# AC7/D59: idempotency both ways against the live schema.
+# Idempotency both ways against the live schema.
 # ---------------------------------------------------------------------------
 
 
@@ -336,7 +336,7 @@ async def test_published_prior_redelivery_is_full_noop(
             {"tid": event.trace_id},
         ).scalar()
     assert count == 1  # no second bronze row
-    # Slice 30c (the D42 revision): the dedup no-op's outcome IS the kind.
+    # The dedup no-op's outcome IS the kind.
     assert ("RECEIVED", "DUPLICATE_NOOP") in _audit_stages(dis_admin, event.trace_id)
 
 
@@ -361,7 +361,7 @@ async def test_unpublished_prior_redelivery_resumes_and_marks(
     assert row.processing_status == "RECEIVED"
     assert row.published_at is None  # bronze-first held; the publish was lost
 
-    # Redelivery: resume-and-mark (D59) — complete the publish under the PRIOR
+    # Redelivery: resume-and-mark — complete the publish under the PRIOR
     # trace, stamp it, no second row.
     outcome = await pipeline.process(event)
     assert outcome.disposition == "duplicate_resumed"
@@ -383,10 +383,10 @@ async def test_unpublished_prior_redelivery_resumes_and_marks(
 
 
 # ---------------------------------------------------------------------------
-# Slice 16f: the detected delimiter is carried on the published ingress.ready,
+# The detected delimiter is carried on the published ingress.ready,
 # on BOTH publish paths. Pins the PIPELINE WIRING (build_ingress_ready is unit-
 # tested in isolation; these prove the pipeline passes preflight.delimiter, not a
-# hardcoded comma) — fresh path AND the D59 resume re-derive.
+# hardcoded comma) — fresh path AND the resume re-derive.
 # ---------------------------------------------------------------------------
 
 
@@ -414,7 +414,7 @@ async def test_unpublished_prior_resume_republishes_the_detected_delimiter(
     stack_env: dict[str, str],
     cleanup_traces: list[UUID],
 ) -> None:
-    # The D59 resume path runs no fresh preflight in process(); it re-derives the
+    # The resume path runs no fresh preflight in process(); it re-derives the
     # delimiter from the same bytes. A ';' file must republish ';', never default
     # to comma on the rare crash-between-write-and-publish window.
     bucket = stack_env["GCS_BUCKET_BRONZE"]

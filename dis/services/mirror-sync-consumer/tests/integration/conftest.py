@@ -1,11 +1,10 @@
-"""Fixtures for the Slice 7 DB-pull integration tests.
+"""Fixtures for the DB-pull integration tests.
 
-These tests WRITE Postgres, so — like the Slice 4 RLS isolation test — they must not skip
-silently when the stack is absent: a missing env is a loud ERROR, not a skip (the slice's
-"errors, never skips" rule for the load-bearing proofs). They read the **test** Customer
-Master (the in-cluster ``ithina_platform_db`` on 5433, provisioned by
-``dis_testing.customer_master_db``) and write the DIS database (``ithina_dis_db`` on 5433);
-the real CM (5432) is never touched (criterion 8).
+These tests WRITE Postgres, so they must not skip silently when the stack is absent: a
+missing env is a loud ERROR, not a skip ("errors, never skips" for load-bearing proofs).
+They read the **test** Customer Master (the in-cluster ``ithina_platform_db`` on 5433,
+provisioned by ``dis_testing.customer_master_db``) and write the DIS database
+(``ithina_dis_db`` on 5433); the real CM (5432) is never touched.
 """
 
 from __future__ import annotations
@@ -57,7 +56,7 @@ def cm_reader_url(admin_url: str, user_url: str) -> str:
     provision_test_cm(admin_url)
     url = reader_url_from(user_url)
     parsed = make_url(url)
-    # Criterion 8: the test CM is the in-cluster stand-in (5433), never the real CM (5432).
+    # The test CM is the in-cluster stand-in (5433), never the real CM (5432).
     assert parsed.database == CM_TEST_DB_NAME
     assert parsed.port == 5433
     return url

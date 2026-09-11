@@ -1,4 +1,4 @@
-"""Auth0Verifier: real Auth0 RS256/JWKS token verifier (D25 / slice 13b).
+"""Auth0Verifier: real Auth0 RS256/JWKS token verifier.
 
 The AUTH0-mode counterpart to the HS256 dev stub in ``verifier.py``. Verifies
 real Auth0-issued RS256 tokens by resolving the signing key from Auth0's JWKS by
@@ -12,7 +12,7 @@ Mirrors ``cm-backend/src/admin_backend/auth/auth0.py``: PyJWKClient with
 ``cache_keys=True`` built ONCE (in this object, constructed in the lifespan), so
 a warm-path verify does NO network call; a ``kid`` miss (Auth0 key rotation)
 refetches. A JWKS fetch / network failure maps to an ``AuthTokenError``, never a
-raw 500. Per D-37 DIS is NOT a per-request introspection gate: it verifies Auth0
+raw 500. DIS is NOT a per-request introspection gate: it verifies Auth0
 tokens locally and resolves tenant/store from the verified claims.
 
 Custom claim namespace is the live Auth0 tenant's (``https://sevyn8.com``),
@@ -71,7 +71,7 @@ def _roles_claim(claims: dict[str, Any]) -> tuple[str, ...]:
 
 
 def _user_type_claim(claims: dict[str, Any]) -> UserType:
-    """The REQUIRED explicit ``user_type`` claim (namespaced, Slice 17b).
+    """The REQUIRED explicit ``user_type`` claim (namespaced).
 
     Mirrors ``verifier.py._user_type_claim``: absent / empty / unrecognized is a
     hard rejection, never defaulted or downgraded (reject-on-ambiguous).
@@ -154,7 +154,7 @@ class Auth0Verifier:
         if not isinstance(sub, str) or not sub:
             raise AuthTokenError("claim 'sub' is not a non-empty string", reason="bad_claims")
 
-        # user_type is REQUIRED and EXPLICIT (Slice 17b); the user_type<->tenant_id
+        # user_type is REQUIRED and EXPLICIT; the user_type<->tenant_id
         # coherence is enforced HERE, byte-for-byte as the stub's verify_token does,
         # so no incoherent scope ever reaches a handler. Reject-on-ambiguous.
         user_type = _user_type_claim(claims)

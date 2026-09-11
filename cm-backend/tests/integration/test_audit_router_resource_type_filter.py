@@ -1,4 +1,4 @@
-"""Step 6.16.5 LD17: GET /api/v1/audit/activities resource_type filter.
+"""GET /api/v1/audit/activities resource_type filter.
 
 The list endpoint accepts an optional ``resource_type: str | None``
 query parameter. AND-composed with existing filters. Applied to both

@@ -37,13 +37,13 @@ async def test_jwt_resolve_then_read_seeded_tenant(
     cm_jwt: str, identity_client: HttpIdentityClient, seeded_identity: Engine
 ) -> None:
     # 1. Resolve the CM-issued JWT through the Identity Service fake. The answer
-    #    carries the internal UUIDs directly (D37) plus the authoritative codes.
+    #    carries the internal UUIDs directly plus the authoritative codes.
     identity = await identity_client.resolve_from_token(cm_jwt)
     assert identity.tenant_id == fx.PRIMARY_TENANT.uuid
     assert identity.store_id == fx.PRIMARY_STORE.uuid
     assert identity.display_code == fx.PRIMARY_TENANT.display_code
 
-    # 2. No external→internal bridge needed: the resolved UUID IS the DB key (D37).
+    # 2. No external→internal bridge needed: the resolved UUID IS the DB key.
     tenant_uuid = identity.tenant_id
 
     # 3. Read the corresponding seeded tenant from identity_mirror.
@@ -78,8 +78,8 @@ def test_identity_changed_published_to_emulator(customer_master_url: str) -> Non
 
     # The CM fake (a docker container) publishes identity.changed on the STACK
     # project (local-dis), not the in-process test project — so subscribe there.
-    # Safe: no resident subscribes to identity.changed (D100 isolation is about
-    # csv.received / ingress.ready, which residents do consume).
+    # Safe: no resident subscribes to identity.changed — residents only consume
+    # csv.received / ingress.ready, so this test subscription is isolated from them.
     project = pubsub_stack_project()
     subscriber = pubsub_v1.SubscriberClient()
     topic_path = subscriber.topic_path(project, "identity.changed")
@@ -127,9 +127,9 @@ def test_identity_changed_published_to_emulator(customer_master_url: str) -> Non
 
 
 def test_smoke_uses_only_the_client_interface() -> None:
-    # Drop-in evidence (criterion 8): consumers depend on the Protocol, and the
-    # concrete HttpIdentityClient is configured purely by URL — the real Slice 13
-    # service swaps in behind the same IDENTITY_SERVICE_URL with no test change.
+    # Drop-in evidence: consumers depend on the Protocol, and the concrete
+    # HttpIdentityClient is configured purely by URL — a real service swaps in
+    # behind the same IDENTITY_SERVICE_URL with no test change.
     from dis_core.identity import IdentityClient
 
     assert isinstance(HttpIdentityClient("http://identity-service-fake"), IdentityClient)

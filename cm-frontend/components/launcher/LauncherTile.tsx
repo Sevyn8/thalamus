@@ -6,21 +6,21 @@ import type { LucideIcon } from "lucide-react";
 import { comingInV1 } from "@/components/shared/ComingInV1Toast";
 import { cn } from "@/lib/utils";
 
-// Phase 5d.1: My Sevyn8 launcher tile primitive. Two visual states:
+// My Sevyn8 launcher tile primitive. Two visual states:
 //
 //   "available": full-color icon, hoverable card, navigates via
 //                 next/link to the tile's href when clicked.
 //   "coming-soon": muted icon + label, "Coming Soon" chip, click
 //                   fires comingInV1 toast (consistent with the
 //                   PageHeader primaryAction pattern).
-//   "unmapped": Axon slice 4. A module the server says is enabled and
-//                this build has no tile for. Visibly broken on purpose
-//                and NOT interactive: there is nowhere to send the user
-//                and a "Coming Soon" chip would be a lie, because the
+//   "unmapped": a module the server says is enabled and this build
+//                has no tile for. Visibly broken on purpose and NOT
+//                interactive: there is nowhere to send the user and a
+//                "Coming Soon" chip would be a lie, because the
 //                module is not coming, it is missing from this image.
 //
 // Tiles render at a consistent aspect (square-ish ~1:1.1) so a 3-col
-// grid reads cleanly across the 2- to 9-tile range Phase 5d.1
+// grid reads cleanly across the 2- to 9-tile range this launcher
 // surfaces.
 
 export type LauncherTileState = "available" | "coming-soon" | "unmapped";

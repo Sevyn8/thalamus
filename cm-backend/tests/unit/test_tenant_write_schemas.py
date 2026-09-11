@@ -1,4 +1,4 @@
-"""Step 6.11.1 unit tests for TenantCreateRequest + TenantPatchRequest.
+"""Unit tests for TenantCreateRequest + TenantPatchRequest.
 
 12 tests in two groups: 8 cover the create-request validation rules
 (minimal valid, ADMIN force-add, dedupe, status rejection, missing
@@ -69,7 +69,7 @@ def test_create_modules_enabled_dedupes_preserving_order() -> None:
 
 def test_create_rejects_status_field() -> None:
     """``status`` is not accepted in the body (the tenant lands
-    ONBOARDING via the DDL default in Slice 1); extra=forbid rejects."""
+    ONBOARDING via the DDL default); extra=forbid rejects."""
     with pytest.raises(ValidationError) as exc_info:
         TenantCreateRequest(**_MIN_VALID_CREATE, status="ACTIVE")
     # Pydantic v2's extra='forbid' surfaces as type "extra_forbidden".

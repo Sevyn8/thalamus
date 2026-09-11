@@ -7,30 +7,27 @@ The standard fix without CASCADE is to list all the dependent
 tables in a single ``TRUNCATE`` statement; Postgres resolves the FK
 dependency graph across the set internally.
 
-Step 6.16.1 added `tenant_activity_audit_logs` and
-`platform_activity_audit_logs`. Both FK to `tenants(id)`, so they
-have to be co-listed for the TRUNCATE-without-CASCADE resolution
-to succeed (Postgres validates the FK graph across the listed
-tables as one operation, regardless of row counts). They ship
-empty at 6.16.1; the TRUNCATE is a no-op for now, and remains
-correct once emission starts at 6.16.2.
+`tenant_activity_audit_logs` and `platform_activity_audit_logs` both
+FK to `tenants(id)`, so they have to be co-listed for the
+TRUNCATE-without-CASCADE resolution to succeed (Postgres validates
+the FK graph across the listed tables as one operation, regardless
+of row counts).
 `lookups` is not in the list, it carries the migration-seeded
 `module_code` rows that the seed loader expects to be present.
 
-The "NO CASCADE" discipline mirrors Step 1.6 / 3.0's migration
-pattern. A TRUNCATE that needs CASCADE is a sign of either wrong
-ordering or wrong scope; a single multi-table TRUNCATE without
-CASCADE is the project-shaped solution.
+A TRUNCATE that needs CASCADE is a sign of either wrong ordering or
+wrong scope; a single multi-table TRUNCATE without CASCADE is the
+project-shaped solution.
 
-ROOS lookup cleanup (2026-05-12). The migration chain seeds ROOS at
-``lookups(list_name='module_code', code='ROOS', display_order=1)``.
-ROOS was retired from the Python ``ModuleCode`` vocabulary on
-2026-05-12; with the narrowed ``ModuleCodeLiteral`` (5 values), a
+ROOS lookup cleanup. The migration chain seeds ROOS at
+``lookups(list_name='module_code', code='ROOS', display_order=1)``,
+but ROOS is retired from the Python ``ModuleCode`` vocabulary; with
+the narrowed ``ModuleCodeLiteral`` (5 values), a
 ``module_code='ROOS'`` row surfacing through ``/module-access/modules``
 would crash Pydantic validation at the response boundary. The local
 DELETE here mirrors the operator-run cloud cleanup SQL so local and
 cloud stay aligned at 5 module_code rows (display_order 2-6). The
-DB enum ``core.module_code_enum`` still carries ROOS; the future
+DB enum ``core.module_code_enum`` still carries ROOS; a future
 rename migration handles that. Idempotent — DELETE matches zero
 rows on subsequent runs.
 """
@@ -41,9 +38,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # All seed-loader tables in one TRUNCATE statement. Postgres resolves
 # the FK constraints across this set as a single operation.
 #
-# Step 6.8.1 split user_role_assignments into platform_user_role_assignments
-# (no RLS) and tenant_user_role_assignments (RLS+FORCE, composite FKs).
-# Both are leaf tables (no inbound FKs from other seed tables).
+# platform_user_role_assignments (no RLS) and
+# tenant_user_role_assignments (RLS+FORCE, composite FKs) are both
+# leaf tables (no inbound FKs from other seed tables).
 SEED_TABLES = [
     "tenant_activity_audit_logs",
     "platform_activity_audit_logs",
@@ -55,7 +52,7 @@ SEED_TABLES = [
     "roles",
     "stores",
     "org_nodes",
-    # Slice 1 onboarding tables: all FK to tenants(id), so they must be
+    # Onboarding tables: all FK to tenants(id), so they must be
     # co-listed with tenants for the TRUNCATE-without-CASCADE resolution.
     # The seed loader does not populate them; they ship empty and the
     # TRUNCATE is a no-op, but co-listing is required so TRUNCATE tenants

@@ -1,5 +1,5 @@
-"""slice-5b guard-integrity (§8b): the canonical-shape drift guard was widened to
-admit enrichment-produced columns (``owned ⊆ mapping_produced ∪ enrichment_produced``).
+"""Guard-integrity for the canonical-shape drift guard's enrichment widening
+(``owned ⊆ mapping_produced ∪ enrichment_produced``).
 Relaxing a deliberately-strict guard fails SILENTLY when wrong, so these prove the
 widening admits ENRICHMENT — not anything — and is SCOPED to the hot model.
 
@@ -64,7 +64,7 @@ def test_guard_still_rejects_an_unauthorized_column(intruder: str) -> None:
 def test_relaxation_is_scoped_to_the_hot_model_event_path_still_rejects() -> None:
     # G2: tax_treatment is enrichment_produced for the hot model ONLY; on the SALE model
     # it stays consumer_injected, so owning it must STILL raise — the relaxation did not
-    # leak to the event path (the D98 asymmetry, enforced at the validation layer).
+    # leak to the event path (a deliberate asymmetry, enforced at the validation layer).
     sale_owned = ("sku_id", "event_subtype", "source_sale_timestamp", "tax_treatment")
     with pytest.raises(SuiteDriftError):
         materialize_canonical_shape(

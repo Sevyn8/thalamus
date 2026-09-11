@@ -1,4 +1,4 @@
-"""Logging discipline (criterion 7): bound context, never a cell value.
+"""Logging discipline: bound context, never a cell value.
 
 The failure OBJECTS may carry offending values (the quarantine payload); log
 lines carry check/column names and counts only.

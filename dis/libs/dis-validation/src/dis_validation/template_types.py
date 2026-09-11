@@ -1,11 +1,11 @@
-"""The ``template_type`` vocabulary — the ONE shared definition (Slice 14d).
+"""The ``template_type`` vocabulary — the ONE shared definition.
 
 ``template_type`` is the packet axis: it parameterises which canonical model a
 mapping template targets, and therefore which write path its rows take. It is
 defined ONCE here and read by every consumer of the vocabulary — the type
 endpoint and the field catalog (dis-ui-server), the rule-target validator
 (dis-ui-server), and the streaming consumer's routing — with NO second copy
-(slice principle: one vocabulary, one definition; the move to a lookup table is
+(one vocabulary, one definition; the move to a lookup table is
 deferred to when the set stabilises).
 
 Why this lib and not the BFF: the streaming consumer cannot import a service,
@@ -21,8 +21,8 @@ The mapping is the legality rule, by construction:
 - ``snapshot`` → ``StoreSkuCurrentPosition`` (the hot table; a direct catalogue
   write on the COMPLETE hot path, parallel to the event projections).
 - ``sales`` → ``StoreSkuSaleEvent`` and ``inventory_change`` →
-  ``StoreSkuChangeEvent`` formalise the implicit sale-vs-change discriminator
-  (previously column-subset inference) into the stored type.
+  ``StoreSkuChangeEvent`` make the sale-vs-change discriminator an explicit
+  stored type rather than column-subset inference.
 """
 
 from __future__ import annotations

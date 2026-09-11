@@ -1,7 +1,7 @@
-"""The completeness partition, anchored to the LIVE schema (REVISED D63; Slice 16h).
+"""The completeness partition, anchored to the LIVE schema.
 
 The code constants in ``pipeline/mapping.py`` (``HOT_REQUIRED_FROM_PROJECTION``,
-``HOT_CHECK_IMPLICATIONS``) are MODEL-DERIVED — the required set since Slice 16h is
+``HOT_CHECK_IMPLICATIONS``) are MODEL-DERIVED — the required set is
 ``mandatory_mapping_produced(StoreSkuCurrentPosition)``. This test re-derives them
 from the live ``information_schema`` / ``pg_constraint`` at RUN time and asserts exact
 agreement, so a hot-schema change (a new NOT NULL column, a dropped pairing CHECK)
@@ -34,7 +34,7 @@ pytestmark = pytest.mark.integration
 
 
 def test_required_from_projection_matches_live_not_null_set(dis_admin: Engine) -> None:
-    # Slice 16h/16i: HOT_REQUIRED_FROM_PROJECTION is MODEL-DERIVED
+    # HOT_REQUIRED_FROM_PROJECTION is MODEL-DERIVED
     # (mandatory_mapping_produced(StoreSkuCurrentPosition) = required-in-model ∩
     # mapping_produced, minus the enrichment value-guaranteed fields). Re-derive the
     # SAME set straight from the live schema and assert exact agreement, so a hot-schema
@@ -44,7 +44,7 @@ def test_required_from_projection_matches_live_not_null_set(dis_admin: Engine) -
     # partition) — drops consumer-injected columns (tenant_id, store_id,
     # mapping_version_id, trace_id, dis_channel) AND enrichment-PRODUCED tax_treatment —
     # then subtract enrichment_fields(CURRENT_POSITION), which removes the enrichment
-    # value-guaranteed currency (Slice 16i: mapping-produced by origin, but the lib
+    # value-guaranteed currency (mapping-produced by origin, but the lib
     # supplies its value, so it is not required FROM the mapping). That is exactly the
     # 5-member required set the gate uses — no hand-curated subtraction list to drift. A
     # future 16j nullability change flips a column out of both live NOT-NULL-no-default

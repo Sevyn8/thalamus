@@ -1,24 +1,24 @@
-"""Single source of fixture truth (Slice 2, identity-corrected in Slice 9a).
+"""Single source of fixture truth.
 
 This module owns the test identity set used by *all* the fakes and seeders:
 
   * the **seeder** writes these rows (by their internal UUID) into
     ``identity_mirror`` and ``config.source_mappings``;
   * the **Identity Service fake** resolves the external codes and answers with the
-    internal UUIDs plus the codes (decisions.md D37/D55);
+    internal UUIDs plus the codes;
   * the **Customer Master fake** issues JWTs and ``identity.changed`` events
-    carrying the codes / UUIDs per the corrected contracts (D52);
-  * the **test Customer Master database** (D48 harness) is seeded from these rows;
+    carrying the codes / UUIDs per the corrected contracts;
+  * the **test Customer Master database** is seeded from these rows;
   * **tests** bridge code -> internal UUID via :func:`tenant_uuid_for` /
     :func:`store_uuid_for` to read the seeded rows.
 
-Identity model (D37 RESOLVED, D52/D55): the **internal UUID** is the load-bearing
+Identity model: the **internal UUID** is the load-bearing
 identity end to end. Customer Master's authoritative external codes —
 ``display_code`` (tenants, e.g. ``buc-ees``) and ``store_code`` (stores, e.g.
 ``TX-101``) — are readability-only and ride alongside. Both code columns are
-nullable at source (D55 as corrected). The fixture set below mirrors the REAL
+nullable at source. The fixture set below mirrors the REAL
 Customer Master identity set — every tenant and store is coded and ACTIVE; the
-nullable-``store_code`` (D55) edge and the INACTIVE-store edge are NOT in this
+nullable-``store_code`` edge and the INACTIVE-store edge are NOT in this
 baseline. They live as scoped, reverted edge fixtures in the tests that need them
 (the test-CM stand-in code-less store in ``test_db_pull``; the transient inactive
 store in ``test_csv_uploads_live``). The invented ``t_*``/``s_*`` form is retired.
@@ -35,9 +35,8 @@ PROVISIONAL JWT/JWKS config (R2): the Customer Master contract is not yet signed
 off. The signing algorithm, claim set, issuer, and audience below are built to the
 *example* values in ``contracts/identity-service/attribute-needs.md`` and must be
 revisited when the CM contract lands. The claim identifier values carry the
-display_code/store_code form (not internal UUIDs, not the retired t_*/s_*); the
-divergence from attribute-needs.md's stale patterns is registered in
-``decisions.md`` for the CM sign-off.
+display_code/store_code form (not internal UUIDs, not the retired t_*/s_*),
+which diverges from attribute-needs.md's stale patterns; resolve at CM sign-off.
 """
 
 from __future__ import annotations
@@ -129,7 +128,7 @@ class TenantFixture:
 class StoreFixture:
     """A test store: internal UUID + authoritative code + identity_mirror columns."""
 
-    store_code: str | None  # Customer Master core.stores.store_code — nullable at source (D55)
+    store_code: str | None  # Customer Master core.stores.store_code — nullable at source
     uuid: UUID  # identity_mirror.stores.store_id — the load-bearing DB key
     tenant_display_code: str  # parent tenant's authoritative code
     name: str
@@ -154,7 +153,7 @@ _UPDATED = datetime(2026, 5, 1, 0, 0, 0, tzinfo=UTC)
 # The default fixture set: the REAL Customer Master identity set — 2 tenants
 # (buc-ees, zabka-group) and their 6 stores, ALL coded and ACTIVE. The UUIDs are
 # the actual Customer Master internal UUIDs (load-bearing). The nullable-store_code
-# (D55) and inactive-store edges are NOT in this baseline — they are preserved as
+# and inactive-store edges are NOT in this baseline — they are preserved as
 # scoped, reverted edge fixtures in their respective tests (see module docstring).
 # Codes follow the live Customer Master style (tenant display_code a kebab slug
 # like 'buc-ees'; store_code a short code like 'TX-101').
@@ -270,7 +269,7 @@ PRIMARY_STORE = STORES[0]
 # Default config.source_mappings row (so mapping_version_id FKs resolve in later
 # slices' tests). One ACTIVE mapping for the primary tenant.
 #
-# template_id/template_name (Slice 14a grain): pinned, deterministic — the
+# template_id/template_name: pinned, deterministic — the
 # seeder's idempotency and the rekeyed uq_csm_seq_per_source conflict target
 # both key on template_id, so a per-run mint would strand duplicates. The
 # pinned value follows the fixture convention (UUIDv7-shaped, load-bearing).
@@ -283,7 +282,7 @@ DEFAULT_SOURCE_MAPPING: dict[str, object] = {
     "source_id": DEFAULT_SOURCE_ID,
     "template_id": DEFAULT_TEMPLATE_ID,
     "template_name": DEFAULT_TEMPLATE_NAME,
-    # Packet axis (Slice 14d, NOT NULL): this empty default mapping produces no
+    # Packet axis: this empty default mapping produces no
     # contribution, so the type label is inert; 'sales' matches the migration's
     # backfill of legacy/empty mappings (the default-upload family).
     "template_type": "sales",
@@ -374,8 +373,7 @@ def build_claims(
     the authoritative external codes (display_code/store_code) — the JWT is an
     external-facing artifact and never carries internal UUIDs. A store with no
     store_code yields a null store claim (same as a tenant-wide user). The real
-    CM claim shape is the unsigned CM contract's to define (registered in
-    decisions.md).
+    CM claim shape is the unsigned CM contract's to define.
     """
     claims: dict[str, object] = {
         "iss": TEST_JWT_ISSUER,

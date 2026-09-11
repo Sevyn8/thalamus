@@ -1,4 +1,4 @@
-"""Unit tests for the Ingestion Runs endpoint (GET /runs), audit-derived run state (Slice 51a).
+"""Unit tests for the Ingestion Runs endpoint (GET /runs), audit-derived run state.
 
 Three halves. PURE: the single verdict crosswalk (fail-loud on an unmapped terminal-marking
 pair; precedence order) and the ISO rendering and the tenant predicate discipline. STRUCTURAL:
@@ -176,7 +176,7 @@ def test_to_row_succeeded_event_path() -> None:
     for pii in ("auth_principal", "client_ip", "user_agent", "gcs_uri"):
         assert pii not in dumped
     assert "dis_channel" not in dumped and "mapping_version_id" not in dumped
-    assert "last_updated_at" not in dumped  # AC6: dropped in Slice 51b (D125)
+    assert "last_updated_at" not in dumped  # deliberately not served
 
 
 def test_to_row_succeeded_catalogue_path_reads_event_data() -> None:
@@ -316,7 +316,7 @@ def test_no_filters_pass_none(
     assert captured["after"] is None  # no cursor -> no keyset boundary
 
 
-# -- Slice 51b: pagination — page size, next-cursor, opaque cursor, cross-filter (AC1/3/4/5) --
+# -- pagination: page size, next-cursor, opaque cursor, cross-filter ------------------------
 
 _B = Boundary(
     received_at=datetime(2026, 6, 9, 9, 12, 0, tzinfo=UTC),
@@ -422,7 +422,7 @@ def test_cursor_filter_mismatch_via_endpoint_is_422(
     assert resp.json()["error"]["code"] == "invalid_cursor"
 
 
-# -- Slice 51b regression guard: the keyset predicate MUST stay the row-value form (D124) -----
+# -- regression guard: the keyset predicate MUST stay the row-value form ---------------------
 
 
 def _passes_keyset_guard(sql: str) -> bool:

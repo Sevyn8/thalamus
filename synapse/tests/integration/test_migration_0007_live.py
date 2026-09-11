@@ -14,8 +14,8 @@ parameters rather than doubled quotes, which removes the class instead of the in
 
 WHAT THIS CANNOT PROVE, stated so nobody reads it as more than it is: that the SEEDED id matches
 the thirteen rows in staging. A disposable database has no probe rows, so the seed's correctness
-is only observable against staging — see the migration header, and the post-apply Studio check in
-the slice report. This file proves the MECHANISM; the seed is verified by counting.
+is only observable against staging — see the migration header for the seed, and count rows there
+after applying it. This file proves the MECHANISM; the seed is verified by counting.
 """
 
 from __future__ import annotations

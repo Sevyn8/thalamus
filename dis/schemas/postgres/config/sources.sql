@@ -1,5 +1,5 @@
 -- ============================================================================
--- DIS config schema: sources  (Phase A source registry, D112)
+-- DIS config schema: sources  (Phase A source registry)
 --
 -- The first real per-source ENTITY. Before this, "a source" existed only as an
 -- implicit source_id string on config.source_mappings rows; there was no source
@@ -47,7 +47,7 @@ CREATE TABLE config.sources (
         -- source). Drives the Upload guard's ingestion_mode + Data Pipelines Method.
     store_id                    VARCHAR(128) COLLATE "C"            NULL,
         -- Optional store scope (a store code or handle). NULLABLE + no FK in Phase A
-        -- (many sources are all-stores; store identity is receiver-resolved, D86).
+        -- (many sources are all-stores; store identity is receiver-resolved).
     schedule                    VARCHAR(128) COLLATE "C"            NULL,
         -- Human cadence label (e.g. 'every 15 min', 'daily 02:00'). Informational.
 
@@ -91,7 +91,7 @@ CREATE INDEX ix_config_sources_tenant
 
 
 -- ----------------------------------------------------------------------------
--- Row-Level Security — two-GUC (D91), matching the other tenant-scoped tables
+-- Row-Level Security — two-GUC, matching the other tenant-scoped tables
 -- ----------------------------------------------------------------------------
 -- TENANT sees/writes its own tenant; PLATFORM (app.user_type='PLATFORM') reads
 -- all tenants (USING) but the WITH CHECK stays tenant-pinned, so a write can only

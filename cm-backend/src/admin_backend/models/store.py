@@ -1,15 +1,13 @@
-"""SQLAlchemy ORM model for the ``stores`` table (Step 6.17.2).
+"""SQLAlchemy ORM model for the ``stores`` table.
 
 Maps every column of
 ``db/raw_ddl/Ithina_postgres_SQL_DDL_stores_v5.sql`` in DDL order. The
 DDL is the source of truth for schema; this module is the application's
 typed view onto it.
 
-Replaces the 2-column lightweight stub at
-``models/_lightweight_stubs.py::Store`` carried since Step 3.3. The
-stub's two consumers in ``repositories/tenants.py`` (the
-``num_stores`` correlated subquery and ``count_for_stats``) work
-unchanged because the full model retains both ``id`` and ``tenant_id``.
+``repositories/tenants.py``'s ``num_stores`` correlated subquery and
+``count_for_stats`` depend only on this model's ``id`` and
+``tenant_id`` columns.
 
 Notes on shape (mirroring ``models/tenant.py``):
 
@@ -23,8 +21,9 @@ Notes on shape (mirroring ``models/tenant.py``):
 
 - ``status`` and ``tax_treatment`` columns bind to their respective
   named PG enums via the dialect-specific ``postgresql.ENUM`` with
-  ``create_type=False, native_enum=True, values_callable=...`` per the
-  CLAUDE.md "Note on PG enum columns" convention.
+  ``create_type=False, native_enum=True, values_callable=...`` — the
+  repo-wide convention for PG enum columns (see other models in this
+  package for the same pattern).
 
 - Three audit-actor pairs (``created_*``, ``updated_*``, ``closed_*``)
   follow D-13 Pattern (b): bare ``UUID`` columns paired with a typed

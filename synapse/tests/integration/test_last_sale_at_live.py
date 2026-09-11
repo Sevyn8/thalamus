@@ -1,8 +1,8 @@
 """last_sale_at against a live canonical. TWO TESTS, TWO DIFFERENT ENVIRONMENTS.
 
-Written because slice 2 shipped this capability with no live coverage at all: its SQL existed
-only as compiled-string assertions, and dead_stock rests on it. See conftest.py's header for
-the full invocation.
+Exists because this capability otherwise has no live coverage at all: its SQL is exercised
+only by compiled-string assertions elsewhere, and dead_stock rests on it. See conftest.py's
+header for the full invocation.
 
   test_it_executes_and_every_row_projects        NO DATA REQUIRED -> THE LOCAL STACK
   test_selling_positions_are_a_subset_of_the_universe   DATA REQUIRED -> staging

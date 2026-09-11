@@ -1,4 +1,4 @@
-"""Slice 14d: the catalogue (snapshot) bootstrap-CREATE write path.
+"""The catalogue (snapshot) bootstrap-CREATE write path.
 
 Proofs (ERROR-not-skip; the conftest raises StackRequiredError when the stack is
 absent):
@@ -6,12 +6,12 @@ absent):
 - a catalogue chunk on a ``template_type='snapshot'`` mapping CREATEs a hot row
   with NO pre-seeded row (the complete-path INSERT; the event paths cannot create
   one), writing NOTHING to either event table;
-- ``currency`` and ``tax_treatment`` are STORE-supplied via dis-enrichment (slice-5b,
-  D95/D98): the lib's values WIN over the mapping (currency's file ``constant`` is
+- ``currency`` and ``tax_treatment`` are STORE-supplied via dis-enrichment: the
+  lib's values WIN over the mapping (currency's file ``constant`` is
   overridden), both resolved from identity_mirror.stores;
 - ``attribute_staleness_map`` is stamped for exactly the TRACKED columns the row
-  set (Slice 50d explicit set), with the snapshot's event-time (envelope ``received_ts``);
-- the hot row carries the loaded mapping's ``mapping_version_id`` (D22) and the
+  set, with the snapshot's event-time (envelope ``received_ts``);
+- the hot row carries the loaded mapping's ``mapping_version_id`` and the
   event's ``trace_id`` (read, never minted).
 """
 
@@ -106,14 +106,14 @@ async def test_catalogue_chunk_creates_hot_row_no_events(
     assert sale_rows == 0
     assert change_rows == 0
 
-    # The bootstrap CREATE landed, version + trace stamped (D22 / hard rule 4).
+    # The bootstrap CREATE landed, version + trace stamped.
     assert hot.mapping_version_id == consumer_mappings[CATALOGUE_SOURCE_ID]
     assert str(hot.trace_id) == str(chunk.trace_id)
     assert hot.current_retail_price == Decimal("9.9900")
     assert hot.unit_cost == Decimal("4.0000")
     assert hot.stock_qty == Decimal("42.000")
 
-    # slice-5b (D95/D98): currency AND tax_treatment are STORE-supplied via enrichment
+    # Currency AND tax_treatment are STORE-supplied via enrichment
     # — the lib's values win over the file. Both equal identity_mirror.stores, and the
     # file's `constant 'EUR'` currency is overridden.
     with dis_admin.begin() as conn:
@@ -129,7 +129,7 @@ async def test_catalogue_chunk_creates_hot_row_no_events(
     assert store.currency != "EUR", "seed store currency must differ from the file constant to prove override"
 
     # Event-time = the envelope received_ts; staleness stamped for exactly the TRACKED
-    # columns the row set (Slice 50d: current_retail_price, unit_cost, stock_qty,
+    # columns the row set (current_retail_price, unit_cost, stock_qty,
     # expiry_date), each with the event-time value. The row set price, cost, stock_qty
     # (tracked) plus product_name/currency (written as values, NOT tracked) and
     # product_category (not tracked); expiry_date is not carried by this mapping → no key.
@@ -152,7 +152,7 @@ async def test_catalogue_snapshot_omitting_category_and_cost_lands_nulls(
     stack_env: dict[str, str],
     consumer_mappings: dict[str, int],
 ) -> None:
-    """Slice 16j headline: a snapshot mapping that omits BOTH unit_cost and
+    """A snapshot mapping that omits BOTH unit_cost and
     product_category still classifies COMPLETE (they are nullable now, so they left the
     write-gate required set), upserts exactly one hot row, and that row carries both
     columns as NULL — read back from the DB, not merely classified."""
@@ -204,7 +204,7 @@ async def test_catalogue_currency_is_store_supplied_overriding_the_file(
     stack_env: dict[str, str],
     consumer_mappings: dict[str, int],
 ) -> None:
-    """slice-5b (D95, criterion 2): currency is STORE-supplied via enrichment — the
+    """Currency is STORE-supplied via enrichment — the
     lib's value WINS over the file's ``constant 'EUR'`` derive. Output-wins proven for
     a mapping-produced column at the integration grain."""
     sku = _unique_sku("CUR")

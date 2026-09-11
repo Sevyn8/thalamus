@@ -23,15 +23,10 @@ WHAT BUILDING ONE RESOLVER ACTUALLY FORCED:
   the note on it below.
 - ``gates``: forced by the SECOND resolver, and INVERTED by the first analysis. See below.
 
-WHAT COMPOSITION DID TO THIS CONTRACT, and it is the interesting result of slice 2.
-
-The contract was extracted from ONE resolver (``current_state``) and survived two more.
-Slice 2 put it under a pressure it was never designed for — an analysis composing TWO
-capabilities — and the outcome is worth stating as evidence rather than as a change log:
-
-SEVEN OF EIGHT FIELDS SURVIVED UNCHANGED. ``id``, ``version``, ``grain``, ``tenancy``,
-``freshness``, ``returns`` and ``produces_signals`` needed no edit to express a
-two-capability analysis.
+WHAT COMPOSITION DID TO THIS CONTRACT: the contract was extracted from ONE resolver
+(``current_state``) and survived an analysis composing TWO capabilities with seven of
+eight fields unchanged — ``id``, ``version``, ``grain``, ``tenancy``, ``freshness``,
+``returns`` and ``produces_signals`` needed no edit to express a two-capability analysis.
 
 ``grain`` WAS VINDICATED. It is what makes the join between two capabilities CHECKABLE:
 ``dead_stock`` declares grain ``(tenant_id, store_id, sku_id)`` and requires two
@@ -95,10 +90,9 @@ class Freshness(StrEnum):
 class GateKind(StrEnum):
     """A KIND of precondition a capability can be measured on. No value, on purpose.
 
-    THE INVERSION. Slice 1 had ``MinHistoryDays(days=60)`` here — a bound threshold on the
-    supply side. That is wrong the moment two callers want different numbers, which is
-    exactly what the first analysis produced. So the capability now declares only what it
-    CAN be gated on, and the caller supplies the number (``synapse.core.analysis``).
+    A bound threshold on the supply side is wrong the moment two callers want different
+    numbers, so the capability declares only what it CAN be gated on, and the caller
+    supplies the number (``synapse.core.analysis``).
 
     A capability may declare a gate ONLY if a probe exists for it at the right grain: the
     registry enforces ``set(gates) == set(probes)`` and the grain rule per probe, both at
@@ -106,7 +100,7 @@ class GateKind(StrEnum):
 
     A StrEnum rather than plain strings so the probe mapping is keyed by something typed,
     and so ``match`` over it with ``assert_never`` forces a visible edit when a second kind
-    arrives — the same discipline the ``Precondition`` union alias carried in slice 1.
+    arrives.
     """
 
     MIN_HISTORY_DAYS = "min_history_days"
@@ -141,7 +135,7 @@ class CapabilityDescriptor:
     tenancy: Tenancy
     freshness: Freshness
     returns: tuple[str, ...]
-    # DISCOVERED, and it is the reason signals are a separate contract (D5).
+    # DISCOVERED, and it is the reason signals are a separate contract.
     #
     # `current_state` reads the canonical hot table, which HAS the three signal
     # columns — velocity_7day, stock_age_days, unit_cost_trend_30day. It produces
@@ -149,11 +143,9 @@ class CapabilityDescriptor:
     # connectors and migrations: no writer of any kind exists for these three columns. The
     # columns are real and always NULL.
     #
-    # THE SUPPORTING EVIDENCE USED TO BE "there is no daily-compute job, no Cloud Run job, and
-    # Cloud Scheduler has never been enabled on the project", and slice 6b retired all three:
-    # Synapse's orchestrator IS a scheduled Cloud Run job. The substantive claim is unchanged —
-    # that job writes synapse.actions and synapse.run, and touches no canonical column — but it
-    # now rests on the absence of a writer rather than on the absence of a scheduler.
+    # Synapse's orchestrator IS a scheduled Cloud Run job, but it writes synapse.actions and
+    # synapse.run and touches no canonical column, so the claim rests on the absence of a
+    # writer rather than on the absence of a scheduler.
     #
     # So a capability that reads a signal column is not a producer of that signal,
     # and the descriptor has to be able to say so. An empty tuple here is a
@@ -169,7 +161,7 @@ class CapabilityDescriptor:
     # resolver body to find out.
     #
     # The MEASUREMENT is a per-tenant database read (COUNT(DISTINCT event_date)), which
-    # names a table, so it belongs to synapse.resolvers — the only layer allowed to (D6).
+    # names a table, so it belongs to synapse.resolvers — the only layer allowed to.
     # That is not a preference: import-linter forbids dis_rls/sqlalchemy to synapse.core,
     # so a probe placed here would fail lint.
     #
@@ -252,14 +244,11 @@ DAILY_SERIES = CapabilityDescriptor(
     # Same verified-empty state as current_state, same reason: nothing writes the
     # signal-history table, so no capability produces a signal today.
     produces_signals=(),
-    # NO NUMBER HERE ANY MORE, and its removal is the point of slice 2. This says only that
-    # daily_series CAN be gated on history coverage — a probe exists for it, at the grain the
-    # registry checks. What "enough" is, and how a per-series measurement reduces to a
-    # verdict, are the CALLER's to state: see synapse.core.analysis.MinHistoryDays, which
-    # carries both the threshold and the SeriesPolicy.
-    #
-    # Slice 1 carried `MinHistoryDays(days=60)` here, commented as standing in for a caller.
-    # The caller has arrived, so the placeholder is gone rather than retuned.
+    # DELIBERATELY NO NUMBER HERE. This says only that daily_series CAN be gated on history
+    # coverage — a probe exists for it, at the grain the registry checks. What "enough" is,
+    # and how a per-series measurement reduces to a verdict, are the CALLER's to state: see
+    # synapse.core.analysis.MinHistoryDays, which carries both the threshold and the
+    # SeriesPolicy.
     gates=(GateKind.MIN_HISTORY_DAYS,),
 )
 

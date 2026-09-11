@@ -20,10 +20,7 @@ import type {
   PermissionMatrixRow,
 } from "@/types/api";
 
-// Phase 5e.2: rewritten to consume Sanjeev's render-ready
-// /permission-matrix response. Drops the pre-5e2 15-parallel-detail-
-// fetch hack (which built the matrix client-side from 15 parallel
-// useQueries on /api/v1/roles/{id}). Backend now ships
+// Consumes the render-ready /permission-matrix response. Backend ships
 // PermissionMatrixResponse with position-aligned cells[i] under
 // roles[i] — no client-side construction.
 //
@@ -80,8 +77,8 @@ function indicesForAudience(
     .map(({ index }) => index);
 }
 
-// Phase 5g.1.6: module-tab filter constant. "ALL" sentinel renders
-// the full matrix (current behavior); a specific module string
+// Module-tab filter constant. "ALL" sentinel renders
+// the full matrix; a specific module string
 // filters resource groups to that module only.
 const MODULE_ALL = "ALL";
 
@@ -153,7 +150,7 @@ export function PermissionMatrixView() {
   const audienceIndices = audience === "TENANT" ? tenantIndices : platformIndices;
   const audienceRoles = audienceIndices.map((i) => data.roles[i]!);
 
-  // Phase 5g.1.6: hide the "Platform roles" tab for TENANT personas
+  // Hide the "Platform roles" tab for TENANT personas
   // (audience-filter is meaningless when only one audience exists in
   // their grant). PLATFORM keeps both tabs.
   const showAudienceTabs = !isTenantPersona;
@@ -186,8 +183,8 @@ export function PermissionMatrixView() {
         </Tabs>
       ) : null}
 
-      {/* Phase 5g.1.6: module-filter tabs. "All" renders every module
-          group (current behavior); per-module tabs constrain visible
+      {/* Module-filter tabs. "All" renders every module
+          group; per-module tabs constrain visible
           groups to one module — useful when the matrix gets dense
           (ADMIN alone is 23 perms × N roles). */}
       <Tabs

@@ -78,11 +78,10 @@ export function TemplateDetail() {
   const active = d !== undefined ? activeTemplateVersion(d) : null
   const rules = buildRules(active, fields.data ?? [])
 
-  // Upload guard (Phase B, D112): look up this template's source channel from GET /sources and
+  // Upload guard: look up this template's source channel from GET /sources and
   // hide Upload ONLY for explicitly push/pull automated sources (api/reverse_api) — you don't
   // manually upload to those. A NULL/un-inferred channel, or a source not found in /sources,
   // is treated as NOT push/pull (allow upload), so file/csv/erp/unknown sources never regress.
-  // Replaces the old reliance on the wire-defaulted `ingestion_mode ?? 'file'`.
   const sources = useSources(snapshot)
   const sourceChannel =
     d !== undefined

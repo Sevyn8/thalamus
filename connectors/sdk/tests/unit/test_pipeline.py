@@ -349,7 +349,7 @@ async def test_auth_failure_is_terminal_no_bronze() -> None:
     assert "health_error" in names
 
 
-# -- rate-limit posture -> connector-health (D116) ----------------------------------
+# -- rate-limit posture -> connector-health ----------------------------------
 #
 # Which call site stamps the posture, and which preserves it. The duplicate-path
 # preserve case lives in test_dedup_window.py (that file owns the prior-row branches).

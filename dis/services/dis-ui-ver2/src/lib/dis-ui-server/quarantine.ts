@@ -4,8 +4,8 @@ import type { AuthSnapshot } from '../../auth/AuthSnapshot'
 import { SERVER_MODE } from './mode'
 
 // Quarantine endpoints (demand list 4.1/4.2), tenant slice. Fixture mode (default)
-// returns the inlined fixtures; real mode is OPEN (slice 13) and throws, mirroring
-// sources.ts / me.ts. Shapes are PROVISIONAL pending Sanjeev's slices 15-17.
+// returns the inlined fixtures; real mode is not implemented and throws. Shapes are
+// PROVISIONAL pending the real backend contract.
 
 // PROVISIONAL enum (demand list 4.1).
 export type FailureStage = 'source-shape' | 'canonical-shape' | 'fk' | 'normalization'
@@ -47,7 +47,7 @@ export type QuarantineDetail = {
 
 // Resubmit action (demand list 4.3). The request body is PINNED by 4.3:
 // { resubmit_type, parent_trace_id }. Everything else here is PROVISIONAL and lives
-// only in this fixture layer (slice 22 containment), so reconciliation against the
+// only in this fixture layer, so reconciliation against the
 // real contract is a single edit, not a screen rewrite.
 export type ResubmitType = 'replay' | 'fixed_file'
 
@@ -229,14 +229,14 @@ function resubmitsFor(traceId: string): ResubmitRecord[] {
 
 export async function getQuarantine(snapshot: AuthSnapshot): Promise<QuarantineRow[]> {
   if (SERVER_MODE === 'real') {
-    throw new Error('real-mode getQuarantine() is not implemented (slice 13)')
+    throw new Error('real-mode getQuarantine() is not implemented')
   }
   return QUARANTINE_FIXTURES[snapshot.tenantId ?? ''] ?? []
 }
 
 export async function getQuarantineRow(traceId: string): Promise<QuarantineDetail> {
   if (SERVER_MODE === 'real') {
-    throw new Error('real-mode getQuarantineRow() is not implemented (slice 13)')
+    throw new Error('real-mode getQuarantineRow() is not implemented')
   }
   const base = QUARANTINE_DETAIL_FIXTURES[traceId]
   if (base === undefined) {
@@ -254,7 +254,7 @@ export async function getQuarantineRow(traceId: string): Promise<QuarantineDetai
 // defensively - the UI disables the action at the cap, this guards the data path.
 export async function postResubmit(req: ResubmitRequest): Promise<ResubmitResponse> {
   if (SERVER_MODE === 'real') {
-    throw new Error('real-mode postResubmit() is not implemented (slice 13)')
+    throw new Error('real-mode postResubmit() is not implemented')
   }
   const base = QUARANTINE_DETAIL_FIXTURES[req.parent_trace_id]
   if (base === undefined) {

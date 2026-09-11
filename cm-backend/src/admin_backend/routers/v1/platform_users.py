@@ -1,4 +1,4 @@
-"""Platform users router (Step 5.1; augmented at Step 6.8.3; retrofitted at Step 6.9.3.2).
+"""Platform users router.
 
 Two GET endpoints under ``/platform-users``:
 
@@ -6,21 +6,16 @@ Two GET endpoints under ``/platform-users``:
                                               sort / pagination)
   - ``GET /api/v1/platform-users/{user_id}`` — detail
 
-Auth posture (post Step 6.9.3.2): both endpoints gate on
-``ADMIN.USERS.VIEW.GLOBAL`` via ``Depends(require(...))``. The
-prior ``_require_platform_auth(auth)`` user-type-only check (Step
-5.1) was retired at 6.9.3.2 — replaced by the RBAC gate factory
-introduced at Step 6.9.2. Behavioral envelope is equivalent: TENANT
-JWTs and PLATFORM users without ``ADMIN.USERS.VIEW.GLOBAL`` are denied
-with 403 ``PERMISSION_DENIED``. ``platform_users`` has no RLS (per
-the DDL's "No Row-Level Security" section), so the gate is the sole
-access boundary.
+Auth posture: both endpoints gate on ``ADMIN.USERS.VIEW.GLOBAL`` via
+``Depends(require(...))``. TENANT JWTs and PLATFORM users without
+``ADMIN.USERS.VIEW.GLOBAL`` are denied with 403 ``PERMISSION_DENIED``.
+``platform_users`` has no RLS (per the DDL's "No Row-Level Security"
+section), so the gate is the sole access boundary.
 
-Per D-30: list returns ``{items, pagination}``; detail returns the
-resource directly. Per D-31: response field semantics frozen
-append-only.
+List returns ``{items, pagination}``; detail returns the resource
+directly. Response field semantics are frozen append-only.
 
-Per D-17: missing-or-not-visible rows surface as 404 from
+Missing-or-not-visible rows surface as 404 from
 ``PlatformUserNotFoundError``. ``platform_users`` has no RLS so
 "not visible" reduces to "doesn't exist," but the same shape applies.
 
@@ -29,12 +24,12 @@ in the Repo (a ValueError subclass). The handler catches it and
 re-raises as ``InvalidSortKeyClientError`` (a ClientError) so it
 surfaces as 400 instead of 500.
 
-Step 6.8.3 — A2 augmentation: each response item now carries an
-inline ``roles: list[UserRoleAssignmentItem]`` field. For platform
-users every item's ``org_node_id`` and ``org_node_name`` are null
-(the underlying ``platform_user_role_assignments`` table has no
-org-node anchoring); the keys are still present so the wire shape
-stays uniform with tenant-side.
+Each response item carries an inline
+``roles: list[UserRoleAssignmentItem]`` field. For platform users
+every item's ``org_node_id`` and ``org_node_name`` are null (the
+underlying ``platform_user_role_assignments`` table has no org-node
+anchoring); the keys are still present so the wire shape stays
+uniform with tenant-side.
 """
 from typing import Any
 from uuid import UUID
@@ -105,13 +100,8 @@ class PlatformUserNotFoundError(ClientError):
     code = "PLATFORM_USER_NOT_FOUND"
 
 
-# InvalidSortKeyClientError lives in admin_backend.errors at Step 5.2;
-# imported above. The router still owns the catch-and-rewrap site.
-#
-# _require_platform_auth retired at Step 6.9.3.2. Both call sites
-# replaced with Depends(require(ADMIN, USERS, VIEW, GLOBAL)). The
-# gate's PermissionDeniedError carries code='PERMISSION_DENIED'
-# instead of the prior 'PLATFORM_ACCESS_REQUIRED'.
+# InvalidSortKeyClientError lives in admin_backend.errors (imported
+# above); the router owns the catch-and-rewrap site.
 
 
 # ---- Mappers ---------------------------------------------------------------

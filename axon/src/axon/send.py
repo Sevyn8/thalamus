@@ -16,17 +16,15 @@ that left no row would be the same as no delivery plane at all: nobody would kno
 not go, and the absence would be indistinguishable from nobody having tried.
 
 =================================================================================================
-THE QUEUE IS IN FRONT OF THIS NOW, AND WHAT IT DID AND DID NOT CLOSE
+THE QUEUE IS IN FRONT OF THIS, AND WHAT IT DOES AND DOES NOT CLOSE
 =================================================================================================
-Slice 1 called this in-process from the enable route and named one outcome it could not record:
-THE LEDGER WRITE ITSELF FAILING, leaving no row, possibly an email, and a successful enable.
-
-Slice 2 put a durable queue in front. The intent is now persisted at publish time, so a consumer
-that dies mid-send leaves a message that is REDELIVERED rather than an intent that evaporated,
-and a failed ledger write nacks and is retried instead of vanishing. That is the hole closing.
+A durable queue sits in front of this path. The intent is persisted at publish time, so a
+consumer that dies mid-send leaves a message that is REDELIVERED rather than an intent that
+evaporated, and a failed ledger write nacks and is retried instead of vanishing. Without the
+queue, a failed ledger write would leave no row, possibly an email, and a successful enable.
 
 =================================================================================================
-AT-LEAST-ONCE, AND THE ASYMMETRY THAT IS THE RESIDUAL OF THE WHOLE SLICE
+AT-LEAST-ONCE, AND THE RESIDUAL ASYMMETRY
 =================================================================================================
 THE LEDGER WRITE IS IDEMPOTENT. THE SEND IS NOT.
 
@@ -101,11 +99,10 @@ async def send_platform(
 ) -> SendOutcome:
     """Send one platform message and record it. Raises nothing.
 
-    ``delivery_id`` IS SUPPLIED BY THE CALLER AND IS THE IDEMPOTENCY KEY. Slice 1 minted it here,
-    which was right while this was called once per producer event in-process. Under a queue that
-    would mint a new id per redelivery and the primary key would refuse nothing, so the mint moved
-    to the producer and rides in the envelope. It is still a UUIDv7, and it is still what lets the
-    row be written without RETURNING, which is what lets the sender's grant hold no SELECT.
+    ``delivery_id`` IS SUPPLIED BY THE CALLER AND IS THE IDEMPOTENCY KEY. Minting it here would
+    mint a new id per redelivery and the primary key would refuse nothing, so the mint lives with
+    the PRODUCER and rides in the envelope. It is a UUIDv7, and it is what lets the row be
+    written without RETURNING, which is what lets the sender's grant hold no SELECT.
 
     THE ORDER IS SEND, THEN RECORD, and it is forced rather than chosen. The row states an
     OUTCOME, and the outcome is not known until the provider has answered. Writing first would

@@ -1,4 +1,5 @@
-"""Synapse's read-only BFF. Serves the SUPERADMIN console; writes nothing, anywhere.
+"""Synapse's BFF for the SUPERADMIN console. Read-mostly: exactly two narrow,
+named write paths exist (documented below); everything else is a read.
 
 WHY A PYTHON SERVICE RATHER THAN NEXT.JS ROUTE HANDLERS. Two of the five screens read the
 REGISTRY, not the database: the capability list, the analysis list, every threshold and every
@@ -18,21 +19,18 @@ THIS SERVICE HAS NO WRITER CREDENTIAL, AND THAT IS A DESIGN DECISION
 It is given ``SYNAPSE_READER_URL`` and nothing else. There is no writer DSN in its config, no
 writer engine in ``db``, and no code path that could open one.
 
-Slice 8a is read-only, so a service that merely *chose* not to write would be equivalent in
-behaviour. It is not equivalent in property: the same argument that made two roles worth having
-in slice 5 — ``synapse_writer`` holding INSERT and no SELECT, so "resolvers never write" is a
-runtime fact rather than a grep — applies one layer up. A service that CANNOT write cannot be
-made to write by a bug, a merge, or a future contributor in a hurry.
+A service that merely *chose* not to write would be equivalent in behaviour but not in
+property: the same argument that makes two roles worth having — ``synapse_writer`` holding
+INSERT and no SELECT, so "resolvers never write" is a runtime fact rather than a grep —
+applies one layer up. A service that CANNOT write cannot be made to write by a bug, a merge,
+or a future contributor in a hurry.
 
-**THE HEADING ABOVE IS NOW HISTORY, AND THE MECHANISM IT DEMANDED WORKED TWICE.** This paragraph
-read "Slice 8b must add the writer deliberately. It will need one for provisioning (R3/R4/R5),
-and adding it should be a visible act with its own review, not the discovery that it was already
-wired and unused." Two write paths have since arrived and each was that visible act: adding one
-meant editing this file, ``config.py``, ``test_no_write_path.py`` and the terraform module, in
-the open, with the reasoning attached.
+Adding a write path is a visible act: it means editing this file, ``config.py``,
+``test_no_write_path.py`` and the terraform module, in the open, with the reasoning attached.
+The write credentials that exist:
 
-  slice 5d  ``synapse_lifecycle``   INSERT on ``synapse.action_events``. Alert decisions.
-  slice 5e  ``synapse_provisioner`` INSERT on ``synapse.provision``, plus the two SELECTs its
+  ``synapse_lifecycle``   INSERT on ``synapse.action_events``. Alert decisions.
+  ``synapse_provisioner`` INSERT on ``synapse.provision``, plus the two SELECTs its
             enablement pre-flight cannot run without. NO UPDATE, so the console can enable a
             monitor and cannot disable one or edit a timezone.
 
@@ -72,18 +70,16 @@ identity, which dis-ui-ver2 also runs as. The precise consequence is stated ther
 SCOPE, AND WHAT IS DELIBERATELY ABSENT
 ==============================================================================
 IN  : fleet, one tenant, runs, alerts, capabilities, analyses, all PLATFORM reads; alert
-      decisions (5d); and enabling an analysis for a tenant (5e).
+      decisions; and enabling an analysis for a tenant.
 OUT : DISABLING or re-enabling an analysis, and the TENANT-facing view.
 
-      "provisioning (needs a grant nothing holds)" was the entry here until 5e, and the grant
-      now exists: ``synapse_provisioner``. What replaced it on this line is narrower and is not
-      a backlog item. ``synapse.provision`` holds ONE enablement window per (tenant, analysis),
-      so re-enabling overwrites the first window and the attribution denominator for the gap
-      silently becomes wrong. The fix is an append-only enablement history, and
+      ``synapse.provision`` holds ONE enablement window per (tenant, analysis), so re-enabling
+      overwrites the first window and the attribution denominator for the gap silently becomes
+      wrong. The fix is an append-only enablement history, and
       ``schemas/postgres/provision.sql`` names ITS trigger: the first disable. Building either
-      half early would describe behaviour the system has not had.
+      half early would describe behaviour the system does not have.
 
-THE TENANT VIEW IS 8b's, AND ITS CONSTRAINT IS RECORDED IN ``tenant_view_contract`` IN THIS
-PACKAGE rather than left to be rediscovered. It is the thing most likely to be got wrong under
-time pressure, and getting it wrong destroys a holdout silently.
+THE TENANT VIEW DOES NOT EXIST YET, AND ITS CONSTRAINT IS RECORDED IN ``tenant_view_contract`` IN
+THIS PACKAGE rather than left to be rediscovered. It is the thing most likely to be got wrong
+under time pressure, and getting it wrong destroys a holdout silently.
 """

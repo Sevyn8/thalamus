@@ -23,7 +23,7 @@ caller's bearer to Customer Master and re-reads it from the request header to do
 threading it through here. A credential that cannot be reached from the object every handler
 holds cannot end up in a log line or a response by accident.
 
-AND THE ONE-DISCRIMINATOR RULE ABOVE IS ABOUT *WHO MAY REACH THESE ROUTES*. Slice 5e added a
+AND THE ONE-DISCRIMINATOR RULE ABOVE IS ABOUT *WHO MAY REACH THESE ROUTES*. There is a
 permission check on the single route that changes a customer's configuration, delegated to CM's
 ``/me/can-do``. That is not a second answer to the same question: ``require_platform`` answers
 "is this an operator" and the permission answers "may this operator configure a tenant". It

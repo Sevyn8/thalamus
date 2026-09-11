@@ -1,4 +1,4 @@
-"""Criterion 6 (softened): run boundaries are LOGGED; no audit.events emission this slice."""
+"""Run boundaries are LOGGED; the service emits no audit.events rows."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ _DIS = "postgresql+psycopg://u:p@localhost:5433/ithina_dis_db"
 
 
 def test_service_emits_no_audit_table_rows() -> None:
-    # Audit is log-only this slice: the service must not import dis-audit nor write audit.events.
+    # Audit is log-only: the service must not import dis-audit nor write audit.events.
     # (Docstrings may *mention* them to explain why they're absent — so we match real usage.)
     src = Path(mirror_sync_consumer.__file__).parent
     for path in src.rglob("*.py"):
@@ -59,7 +59,7 @@ async def test_run_start_is_logged(monkeypatch: pytest.MonkeyPatch, caplog: pyte
 async def test_run_end_and_per_tenant_counts_are_logged(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    # Criterion 6: run END and per-tenant counts are logged on a populated run (the empty
+    # Run END and per-tenant counts are logged on a populated run (the empty
     # path returns before the complete line, so this is the populated-path assertion).
     monkeypatch.setenv("CM_DB_URL", _CM)
     monkeypatch.setenv("POSTGRES_URL", _DIS)

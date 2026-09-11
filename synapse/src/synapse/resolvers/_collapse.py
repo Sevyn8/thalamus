@@ -1,19 +1,17 @@
-"""The D33 read-time latest-wins collapse, in ONE place.
+"""The read-time latest-wins collapse over canonical event tables, in ONE place.
 
 READ THIS BEFORE AGGREGATING ANYTHING OVER A CANONICAL EVENT TABLE.
 
-The event tables are append-only (CLAUDE.md hard rule 7, D33): a source correction
-arrives as a SECOND ROW and the current truth is resolved at READ time by taking the
-latest row per dedup key. Migration 0019 added the only uniqueness those tables carry —
+The event tables are append-only: a source correction arrives as a SECOND ROW and the
+current truth is resolved at READ time by taking the latest row per dedup key. The only
+uniqueness those tables carry —
 ``uq_ssse_redelivery (tenant_id, store_id, source_id, source_event_id, row_hash)`` —
-which suppresses a byte-identical REDELIVERY and deliberately leaves a CORRECTION as two
-rows, because that is what D33 asks for.
+suppresses a byte-identical REDELIVERY and deliberately leaves a CORRECTION as two
+rows, to be collapsed at read time.
 
 **So the collapse is not optional for an aggregate.** ``SUM(quantity) GROUP BY date``
-over the raw table counts both halves of every correction. Before this module the
-collapse existed nowhere outside test files and one private function inside the
-streaming consumer's sink; the streaming-consumer CLAUDE.md states the rule plainly:
-consumers must not read the event tables raw.
+over the raw table counts both halves of every correction. Consumers must not read the
+event tables raw.
 
 WHY A SHARED HELPER AND NOT INLINE SQL IN THE RESOLVER. The ordering is the entire
 correctness of the thing and it is easy to get subtly wrong in a way that returns
@@ -29,7 +27,7 @@ still names its own table) and makes this reusable for change events unchanged.
 TWO LIMITS OF THE KEY, NOT OF THIS QUERY. Both are properties of what
 ``source_event_id`` can distinguish, and neither is fixable here:
 
-1. **D65.** When a source supplies no ``transaction_id``/``line_item_seq``, the consumer
+1. When a source supplies no ``transaction_id``/``line_item_seq``, the consumer
    derives ``source_event_id`` as ``bronze_ref || ':' || chunk_row_index``. A correction
    delivered as a NEW bronze object therefore gets a DIFFERENT dedup key, so the original
    and the correction are two keys and BOTH survive this collapse. The consumer's own
@@ -40,7 +38,7 @@ TWO LIMITS OF THE KEY, NOT OF THIS QUERY. Both are properties of what
 
 THE REAL FIX IS A PLATFORM-OWNED COLLAPSE VIEW in canonical, which every plane would
 share instead of each holding an expression. That is a DIS migration, not Synapse's to
-write, and this module is now the SECOND copy of the expression (the sink's
+write, and this module is the SECOND copy of the expression (the sink's
 ``_detect_duplicates`` is the first). Recorded rather than quietly accepted.
 """
 
@@ -50,7 +48,7 @@ from typing import Final
 
 from sqlalchemy import ColumnElement, Subquery, TableClause, select
 
-# The D33 dedup key, D38's live column mapping. Verified against the applied schema:
+# The dedup key, in the live column mapping. Verified against the applied schema:
 # all four exist on canonical.store_sku_sale_events and canonical.store_sku_change_events
 # (migration 0003), and ix_ssse_dedup_key / ix_ssce_dedup_key lead with exactly this
 # prefix followed by the event-time column DESC.
@@ -78,7 +76,7 @@ def collapse_latest_wins(
     event_time_column: str,
     where: ColumnElement[bool],
 ) -> Subquery:
-    """One surviving row per D33 dedup key, as a subquery over ``events``.
+    """One surviving row per dedup key, as a subquery over ``events``.
 
     ``where`` is pushed INSIDE the collapse rather than applied to the result. That is not
     an optimisation detail: applied outside, the DISTINCT ON would order and de-duplicate
@@ -100,7 +98,7 @@ def collapse_latest_wins(
     missing = [name for name in needed if name not in available]
     if missing:
         raise ValueError(
-            f"cannot build the D33 collapse over {events.name!r}: missing column(s) "
+            f"cannot build the latest-wins collapse over {events.name!r}: missing column(s) "
             f"{missing}. The dedup key is {list(DEDUP_KEY)} plus the "
             f"{event_time_column}/last_updated_at/id tie-break; if canonical moved, this "
             "must fail rather than collapse on a partial key"

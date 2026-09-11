@@ -1,6 +1,6 @@
 """Pydantic v2 schemas for the Store resource.
 
-Read schemas (Step 6.17.2):
+Read schemas:
 
 - ``StoreListItem`` — slim per-row shape for the list endpoint. Wire
   size is roughly half ``StoreDetail``; deliberately omits address,
@@ -14,7 +14,7 @@ Read schemas (Step 6.17.2):
   (b) audit-actor columns (``*_by_user_id``, ``*_by_user_type``), plus
   the joined ``tenant_name`` label.
 
-Write schemas (Step 6.17.3):
+Write schemas:
 
 - ``StoreCreateRequest`` — POST body. 7 required fields + 4 optional.
   ``extra="forbid"`` rejects ``status``, ``id``, audit columns,
@@ -106,7 +106,7 @@ class StoreDetail(BaseModel):
 
 
 # =============================================================================
-# Step 6.17.3 write schemas: StoreCreateRequest, StorePatchRequest.
+# Write schemas: StoreCreateRequest, StorePatchRequest.
 #
 # Both ``extra="forbid"``. Server-managed fields (``id``, ``status``,
 # ``created_at``, ``updated_at``, ``closed_*``, all audit-actor
@@ -223,16 +223,15 @@ class StorePatchRequest(BaseModel):
 
 
 # =============================================================================
-# Step 6.17.4 write schema: StoreSetStatusRequest.
+# Write schema: StoreSetStatusRequest.
 #
 # Body for ``POST /api/v1/stores/{store_id}/set-status``. State-transition
-# endpoint with 9-cell liberal matrix (per the locked decision in Step
-# 6.17.4): all transitions allowed except ``*->OPENING`` (3 rejected
-# cells). Same-state returns 409 ``INVALID_STATE_TRANSITION``
-# (mirrors tenants' ``allowed_sources`` convention: target NOT in own
-# allowed-sources set).
+# endpoint with 9-cell liberal matrix (per the locked decision): all
+# transitions allowed except ``*->OPENING`` (3 rejected cells).
+# Same-state returns 409 ``INVALID_STATE_TRANSITION`` (mirrors tenants'
+# ``allowed_sources`` convention: target NOT in own allowed-sources set).
 #
-# ``reason`` is forward-compatible with Step 6.2's ``audit_log`` write
+# ``reason`` is forward-compatible with the ``audit_log`` write
 # integration: accepted at the schema layer here and silently dropped
 # at the repo layer until audit_log ships, at which point the handler
 # gains an ``audit_log_repo.write(...reason=...)`` call. No API change

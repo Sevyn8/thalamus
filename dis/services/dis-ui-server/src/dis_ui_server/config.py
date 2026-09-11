@@ -1,17 +1,16 @@
 """Environment-resolved configuration for the UI server.
 
-Required env (no silent default for a required value, code-quality rule 4 — a
-missing one raises ``DisError``; this service deliberately defines no new
-config-error class because the Slice-13a dis-core edit is pinned to exactly the
-three auth-seam errors; the streaming-consumer precedent applies):
+Required env (no silent default for a required value — a missing one raises
+``DisError``; this service deliberately defines no service-specific
+config-error class):
 
 - ``POSTGRES_URL`` — the DIS connection (``ithina_dis_user``). Reused by
   ``dis-rls`` ``create_rls_engine``, which positively asserts
   ``current_database()=='ithina_dis_db'`` and a NOSUPERUSER/NOBYPASSRLS role
   (DIS on 5433, never Customer Master).
-- ``GCS_BUCKET_BRONZE`` — the bronze bucket the CSV upload writes to (Slice 8;
-  the same env name the csv-ingest-worker cross-checks the published
-  ``gcs_uri`` against, so producer and consumer cannot drift).
+- ``GCS_BUCKET_BRONZE`` — the bronze bucket the CSV upload writes to (the same
+  env name the csv-ingest-worker cross-checks the published ``gcs_uri``
+  against, so producer and consumer cannot drift).
 - ``PUBSUB_PROJECT_ID`` — the Pub/Sub project for the ``csv.received`` publish.
 
 OPTIONAL env (NOT in the required-or-crashloop set):
@@ -26,7 +25,7 @@ OPTIONAL env (NOT in the required-or-crashloop set):
   suggester impersonates this SA via short-lived credentials; the service still
   runs as its own SA for everything else. Unset -> the ambient ADC (the Cloud Run
   service account) is used directly. Read with no raise.
-- ``GEMINI_MODEL`` / ``GEMINI_TIMEOUT_S`` / ``GEMINI_THINKING_BUDGET`` (Slice 34a): the
+- ``GEMINI_MODEL`` / ``GEMINI_TIMEOUT_S`` / ``GEMINI_THINKING_BUDGET``: the
   operational knobs for the suggester. UNSET means the suggester's built-in default
   (``gemini-2.5-flash``; ``20.0`` seconds; thinking budget ``0`` = disabled). Unlike the
   three ``GEMINI_VERTEX_*``/``_IMPERSONATE_SA`` reads above (which are silently None on
@@ -42,8 +41,8 @@ Resolution happens inside the app lifespan, NOT at import time: a missing
 required value aborts startup loudly (crashloop is the correct signal for
 misconfiguration), while a present-but-unreachable database must NOT block
 startup — the engine is lazy and the first connect happens in ``/readyz``,
-which degrades to 503. That split is the liveness/readiness foundation this
-slice is built on and is test-pinned.
+which degrades to 503. That split is the liveness/readiness foundation and is
+test-pinned.
 
 The dev-stub verifier parameters are NOT config: they are contract-pinned
 constants in ``auth/verifier.py`` (byte-identical to the UI's ``/dev/login``
@@ -65,7 +64,7 @@ _POSTGRES_URL = "POSTGRES_URL"
 _CORS_ALLOWED_ORIGINS = "CORS_ALLOWED_ORIGINS"
 _GCS_BUCKET_BRONZE = "GCS_BUCKET_BRONZE"
 _PUBSUB_PROJECT_ID = "PUBSUB_PROJECT_ID"
-# Auth mode + real-Auth0 verify config (13b / D25). DIS_AUTH_MODE selects the
+# Auth mode + real-Auth0 verify config. DIS_AUTH_MODE selects the
 # token verifier: AUTH0 (the DEFAULT; the RS256/JWKS verifier) or STUB (the HS256
 # dev stub, which additionally requires a loopback database, see
 # _refuse_stub_against_a_remote_database). JWT_ISSUER / JWT_AUDIENCE are REQUIRED
@@ -80,12 +79,12 @@ _GEMINI_VERTEX_PROJECT = "GEMINI_VERTEX_PROJECT"
 _GEMINI_VERTEX_LOCATION = "GEMINI_VERTEX_LOCATION"
 # OPTIONAL: SA to impersonate for Vertex calls only (unset -> ambient ADC).
 _GEMINI_IMPERSONATE_SA = "GEMINI_IMPERSONATE_SA"
-# OPTIONAL operational knobs (Slice 34a): unset -> the suggester's built-in default;
+# OPTIONAL operational knobs: unset -> the suggester's built-in default;
 # set-but-empty or unparseable -> raise DisError naming the var (fail loud, not silent).
 _GEMINI_MODEL = "GEMINI_MODEL"
 _GEMINI_TIMEOUT_S = "GEMINI_TIMEOUT_S"
 _GEMINI_THINKING_BUDGET = "GEMINI_THINKING_BUDGET"
-# OPTIONAL (Square OAuth, S2): the connect endpoints. ALL optional at boot (like the
+# OPTIONAL (Square OAuth): the connect endpoints. ALL optional at boot (like the
 # GEMINI_* knobs) — unset leaves the OAuth endpoints returning a fail-loud 503 while the
 # rest of the BFF runs unchanged. SQUARE_APP_SECRET + STATE_SIGNING_KEY are secret-backed
 # env (Cloud Run secret_key_ref); the rest are plain. The per-tenant token secrets are
@@ -98,7 +97,7 @@ _SQUARE_OAUTH_REDIRECT_URI = "SQUARE_OAUTH_REDIRECT_URI"
 # `state` token. One key, one secret, every vendor. Read once into `oauth_state_key`.
 _OAUTH_STATE_KEY = "STATE_SIGNING_KEY"
 _SQUARE_SECRETS_PROJECT_ID = "SQUARE_SECRETS_PROJECT_ID"
-# OPTIONAL (Clover OAuth, C3), same posture as Square's: unset leaves the Clover connect
+# OPTIONAL (Clover OAuth), same posture as Square's: unset leaves the Clover connect
 # endpoints on a fail-loud 503 while the rest of the BFF runs unchanged. CLOVER_APP_SECRET
 # is secret-backed env; the rest are plain. The state key is SHARED (see _OAUTH_STATE_KEY).
 _CLOVER_CLIENT_ID = "CLOVER_CLIENT_ID"
@@ -117,15 +116,14 @@ SQUARE_SANDBOX_OAUTH_BASE_URL = "https://connect.squareupsandbox.com"
 # as well as per-environment, so a production deploy always sets this explicitly.
 CLOVER_SANDBOX_OAUTH_BASE_URL = "https://sandbox.dev.clover.com"
 
-# The CSV-upload Phase 1 publish target. The contract name (hard rule 10) is
+# The CSV-upload publish target. The contract name is
 # "csv.received" and remains the default, so local dev (provisioned by
 # tools/local/create_topics.py, no env set) is unchanged. Deployment overrides via
 # CSV_RECEIVED_TOPIC with the actually-provisioned short name (terraform sources it
 # from the pubsub module output, so app and infra cannot drift).
 CSV_RECEIVED_TOPIC = resolve_pubsub_name("CSV_RECEIVED_TOPIC", "csv.received")
 
-# The Slice 8 upload ceiling (a decision value, not deployment config): the
-# synchronous-streaming-upload register entry's rationale is that 10 MB removes
+# The upload ceiling (a design value, not deployment config): 10 MB removes
 # the large-file case for direct-to-GCS. Enforced MID-STREAM in upload_stream.py
 # (the spoofable Content-Length early-reject is only the cheap first check).
 CSV_UPLOAD_MAX_FILE_BYTES = 10 * 1024 * 1024
@@ -135,23 +133,21 @@ CSV_UPLOAD_MAX_FILE_BYTES = 10 * 1024 * 1024
 # past this is rejected mid-stream regardless of how the parts are arranged.
 CSV_UPLOAD_BODY_CEILING_BYTES = CSV_UPLOAD_MAX_FILE_BYTES + 64 * 1024
 
-# The browser-served dis-ui SPA's dev origin (Slice 14c, confirmed live: dis-ui
-# runs Vite with NO server.port override and its README pins
-# "pnpm dev - dev server on http://localhost:5173"). NEVER a wildcard: a
+# The browser-served dis-ui SPA's dev origin (Vite's default dev-server port,
+# http://localhost:5173). NEVER a wildcard: a
 # permissive dev posture must not be expressible by default; deployed origins
 # are set per environment via CORS_ALLOWED_ORIGINS.
 _DEFAULT_CORS_ORIGINS: tuple[str, ...] = ("http://localhost:5173",)
 
-# Every UI data endpoint mounts under this prefix (durable invariant, recorded
-# in this service's CLAUDE.md); health probes stay at the root. The contract's
-# relative /v1/<group>/<resource> paths are unchanged — only the deployed base
-# shifts, and dis-ui's client.ts fetch base must agree when real mode wires up
-# (13b/19, contract Appendix B).
+# Every UI data endpoint mounts under this prefix (durable invariant); health
+# probes stay at the root. The contract's relative /v1/<group>/<resource>
+# paths are unchanged — only the deployed base shifts, and the frontend's
+# fetch base must agree.
 API_PREFIX = "/api/v1"
 
 
 def _optional_str_env(name: str) -> str | None:
-    """An optional string env var (Slice 34a semantics): unset -> None (use the default);
+    """An optional string env var: unset -> None (use the default);
     set-but-empty -> raise ``DisError`` naming the var. Distinct from the silent ``or None``
     used for the ``GEMINI_VERTEX_*`` reads, whose migration to this policy is deferred."""
     raw = os.environ.get(name)
@@ -164,8 +160,7 @@ def _optional_str_env(name: str) -> str | None:
 
 def _optional_float_env(name: str) -> float | None:
     """An optional positive-float env var: unset -> None; set-but-empty/unparseable/<=0 ->
-    raise ``DisError`` naming the var. The numeric-env precedent for this module (there was
-    none before Slice 34a)."""
+    raise ``DisError`` naming the var. The numeric-env precedent for this module."""
     raw = os.environ.get(name)
     if raw is None:
         return None
@@ -265,8 +260,7 @@ class UiServerConfig:
     postgres_url: str
     gcs_bucket_bronze: str
     pubsub_project_id: str
-    # Auth mode + real-Auth0 verify config (13b / D25). AUTH0 IS THE DEFAULT AND USED
-    # TO BE STUB; see from_env for why the inversion matters. jwt_issuer /
+    # Auth mode + real-Auth0 verify config. AUTH0 IS THE DEFAULT. jwt_issuer /
     # jwt_audience are None in STUB mode (unused), REQUIRED in AUTH0 mode (from_env
     # raises). auth0_jwks_url is derived from jwt_issuer when unset.
     #
@@ -283,12 +277,12 @@ class UiServerConfig:
     gemini_vertex_location: str | None = None
     # OPTIONAL: SA to impersonate for Vertex calls only; unset -> ambient ADC.
     gemini_impersonate_sa: str | None = None
-    # OPTIONAL operational knobs (Slice 34a); None -> the suggester applies its own default.
+    # OPTIONAL operational knobs; None -> the suggester applies its own default.
     # Set-but-empty/unparseable does NOT reach here — from_env raises first (see helpers).
     gemini_model: str | None = None
     gemini_timeout_s: float | None = None
     gemini_thinking_budget: int | None = None
-    # OPTIONAL Square OAuth (S2); all unset -> the OAuth endpoints 503, rest of the BFF
+    # OPTIONAL Square OAuth; all unset -> the OAuth endpoints 503, rest of the BFF
     # unaffected. secrets project defaults to the pubsub project (same GCP project).
     square_client_id: str | None = None
     square_app_secret: str | None = None
@@ -388,9 +382,7 @@ class UiServerConfig:
         # misconfiguration crashloops instead of accepting forged tokens.
         auth_mode = os.environ.get(_DIS_AUTH_MODE) or "AUTH0"
         if auth_mode not in ("STUB", "AUTH0"):
-            raise DisError(
-                f"{_DIS_AUTH_MODE}={auth_mode!r} is not a recognized mode; expected STUB or AUTH0"
-            )
+            raise DisError(f"{_DIS_AUTH_MODE}={auth_mode!r} is not a recognized mode; expected STUB or AUTH0")
         if auth_mode == "STUB":
             _refuse_stub_against_a_remote_database(postgres_url)
         jwt_issuer = os.environ.get(_JWT_ISSUER) or None
@@ -410,11 +402,11 @@ class UiServerConfig:
         gemini_vertex_project = os.environ.get(_GEMINI_VERTEX_PROJECT) or None
         gemini_vertex_location = os.environ.get(_GEMINI_VERTEX_LOCATION) or None
         gemini_impersonate_sa = os.environ.get(_GEMINI_IMPERSONATE_SA) or None
-        # Slice 34a operational knobs: raise on set-but-empty/unparseable (fail loud), unset -> None.
+        # Gemini operational knobs: raise on set-but-empty/unparseable (fail loud), unset -> None.
         gemini_model = _optional_str_env(_GEMINI_MODEL)
         gemini_timeout_s = _optional_float_env(_GEMINI_TIMEOUT_S)
         gemini_thinking_budget = _optional_int_env(_GEMINI_THINKING_BUDGET)
-        # OPTIONAL Square OAuth (S2): read with no raise; unset -> the endpoints 503.
+        # OPTIONAL Square OAuth: read with no raise; unset -> the endpoints 503.
         square_client_id = os.environ.get(_SQUARE_CLIENT_ID) or None
         square_app_secret = os.environ.get(_SQUARE_APP_SECRET) or None
         square_oauth_base_url = os.environ.get(_SQUARE_OAUTH_BASE_URL) or SQUARE_SANDBOX_OAUTH_BASE_URL

@@ -1,8 +1,7 @@
 """The DIS error hierarchy — single ``DisError`` root.
 
-Every error raised by DIS code descends from :class:`DisError`. Root CLAUDE.md:
-"Define error types in ``libs/dis-core/errors.py``. Don't reach for raw
-``RuntimeError`` or ``ValueError``."
+Every error raised by DIS code descends from :class:`DisError`. Define error
+types here; don't reach for raw ``RuntimeError`` or ``ValueError``.
 
 This module is **leaf-level** within ``dis-core``: it imports nothing first-party
 (no ``dis_core.identity``, no other ``dis_core`` module). Submodules that need
@@ -10,16 +9,14 @@ these errors import *from* here, never the other way round, so the import graph
 stays acyclic and ``dis-testing`` (which depends on ``dis-core``) can reparent its
 test-only errors onto :class:`DisError` without inversion.
 
-The Identity Service client errors live here (moved from
-``dis_core.identity.client`` in Slice 3) and are re-exported by
+The Identity Service client errors live here and are re-exported by
 ``dis_core.identity`` for backward compatibility, so existing imports
 (``from dis_core.identity import IdentityNotFoundError``) are unchanged.
 
 Per-domain errors for the data-plane libs (RLS, PII, storage, mapping,
-validation, audit) are added by their own slices as they gain a real raiser;
-this module ships the root, the consolidated Slice 2 interim identity errors, and
-(Slice 4) the data-plane errors for ``dis-rls``, ``dis-pii``, and ``dis-storage``
-(build to current need).
+validation, audit) are added as each lib gains a real raiser; this module
+ships the root, the identity errors, and the data-plane errors for
+``dis-rls``, ``dis-pii``, and ``dis-storage`` (build to current need).
 """
 
 from __future__ import annotations
@@ -30,7 +27,7 @@ class DisError(Exception):
 
 
 # -- Identity Service client errors --------------------------------------------
-# Moved verbatim from dis_core.identity.client (Slice 3 consolidation). Signatures
+# Moved verbatim from dis_core.identity.client. Signatures
 # are preserved so the identity client and its tests are unaffected.
 
 
@@ -88,10 +85,10 @@ class IdentityServiceUnavailableError(IdentityClientError):
         self.retry_after = retry_after
 
 
-# -- Data-plane safety errors (Slice 4) ----------------------------------------
+# -- Data-plane safety errors ----------------------------------------
 # Raised by dis-rls / dis-pii / dis-storage. Each carries the load-bearing context
-# (root CLAUDE.md code-quality rule 5: errors carry tenant_id, trace_id, and the
-# load-bearing identifier). NONE of these ever carry a raw PII value (hard rule 2).
+# — tenant_id, trace_id, and the load-bearing identifier. NONE of these ever
+# carry a raw PII value.
 
 
 class RlsContextError(DisError):
@@ -163,7 +160,7 @@ class StorageError(DisError):
         self.trace_id = trace_id
 
 
-# -- Audit error (Slice 6) -----------------------------------------------------
+# -- Audit error -----------------------------------------------------
 # Raised by dis-audit. Audit emission is fire-and-forget (hard rule 11): the writer
 # logs this with context and reports failure rather than propagating it, so the data
 # path is never blocked. Carries the load-bearing identifiers (code-quality rule 5);
@@ -198,7 +195,7 @@ class AuditWriteError(DisError):
         self.failure_code = failure_code
 
 
-# -- Quarantine error (Slice 11a) ------------------------------------------------
+# -- Quarantine error ------------------------------------------------
 # Raised by dis-quarantine. The OPPOSITE posture to AuditWriteError's path: the
 # quarantine write is the data path (the held thing itself, not a record of it), so
 # a failed write RAISES loudly — the consumer must NACK the message rather than
@@ -231,11 +228,11 @@ class QuarantineWriteError(DisError):
         self.failure_code = failure_code
 
 
-# -- Pipeline-mechanics errors (Slice 5) ----------------------------------------
+# -- Pipeline-mechanics errors ----------------------------------------
 # Raised by dis-mapping and dis-validation. Both libs are pure (no I/O); these are
 # *config / contract* errors raised loudly at construction or materialization time
 # (code-quality rule 4) — they are NOT the per-cell / per-row data failures, which
-# are returned as typed result objects, never raised (slice-05, D18/D20). Each
+# are returned as typed result objects, never raised. Each
 # carries the load-bearing identifiers (code-quality rule 5); NEVER a cell value.
 
 
@@ -243,8 +240,8 @@ class MappingError(DisError):
     """Base for dis-mapping failures.
 
     Carries optional ``tenant_id`` / ``trace_id`` (when the caller supplied a log
-    context) and the load-bearing ``column`` where one applies. Never a cell value
-    (root CLAUDE.md: never log PII or raw payloads).
+    context) and the load-bearing ``column`` where one applies. Never a cell
+    value — DIS errors never carry PII or raw payloads.
     """
 
     def __init__(
@@ -275,7 +272,7 @@ class MappingConfigError(MappingError):
 
 
 class InvalidTemplateTypeError(MappingError):
-    """A ``template_type`` outside the in-code vocabulary (Slice 14d).
+    """A ``template_type`` outside the in-code vocabulary.
 
     Raised when a request (the type-aware field catalog, or create/edit) names a
     ``template_type`` that is not a member of ``dis_validation.TEMPLATE_TYPES``,
@@ -346,24 +343,24 @@ class SuiteDriftError(ValidationSuiteError):
     classification does not partition the model's field set exactly (both
     directions), when a suite's column set differs from its declared source-owned
     set, or when a mapping-time suite is requested for a model that is not
-    mapping-produced (``store_sku_signal_history``, D22/D31/D32). This error is the
-    *proof mechanism* of slice-05 criterion 6: it errors rather than skips.
+    mapping-produced (``store_sku_signal_history``). This guard errors rather
+    than skips.
     """
 
 
-# -- Enrichment error (Slice 5b) -------------------------------------------------
+# -- Enrichment error -------------------------------------------------
 # Raised by dis-enrichment (pure lib): a CONFIG/CONTRACT error raised loudly at the
 # call boundary (code-quality rule 4), NOT a per-row data failure. Carries the
 # load-bearing identifiers (rule 5); never a resolved value.
 
 
 class EnrichmentError(DisError):
-    """The enrichment caller-contract was violated — fail loud (slice-5b).
+    """The enrichment caller-contract was violated — fail loud.
 
     Raised by ``apply_enrichment`` when the handed-in ``facts`` omit a registered
     field for the target table: the consumer must resolve every registered field
     from the authoritative internal source before calling the pure engine. NOT the
-    present-but-blank case (D97, deferred — written through this slice). Carries
+    present-but-blank case. Carries
     ``table`` plus optional ``tenant_id`` / ``trace_id``; never a resolved value.
     """
 
@@ -382,7 +379,7 @@ class EnrichmentError(DisError):
         self.trace_id = trace_id
 
 
-# -- Streaming-consumer canonical-sink errors (Slice 30b) ------------------------
+# -- Streaming-consumer canonical-sink errors ------------------------
 # Raised by the consumer's dual-write sink. Distinct classes exist where the audit
 # trail needs a stable failure_code (dis-audit FailureCode maps exception type ->
 # code); a bare DisError would fall through to the INFRA_FAILURE catch-all bucket.
@@ -393,7 +390,7 @@ class HotPositionMissingError(DisError):
 
     No ``store_sku_current_position`` row exists and the completeness-gated
     projection cannot create one; the event history is RETAINED (the batch already
-    committed) and the chunk nacks toward quarantine (Slice 11). Carries the
+    committed) and the chunk nacks toward quarantine. Carries the
     load-bearing identifiers (code-quality rule 5) so the FAILURE audit can join
     back to the chunk and the mapping.
     """
@@ -415,7 +412,7 @@ class HotPositionMissingError(DisError):
         self.miss_count = miss_count
 
 
-# -- Mirror Sync errors (Slice 7) ----------------------------------------------
+# -- Mirror Sync errors ----------------------------------------------
 # Raised by the mirror-sync-consumer service (DB-pull mode), which reads Customer
 # Master's Postgres under a platform read context and upserts into identity_mirror.
 # Each carries trace_id and the load-bearing identifier (code-quality rule 5); never
@@ -469,11 +466,11 @@ class CustomerMasterReadError(MirrorSyncError):
         self.user_type = user_type
 
 
-# -- CSV ingest worker errors (Slice 9b) -----------------------------------------
+# -- CSV ingest worker errors -----------------------------------------
 # Raised by services/csv-ingest-worker (the Phase-2 CSV worker, D36/D54). Each carries
 # tenant_id / trace_id where known and the load-bearing detail (code-quality rule 5);
 # never a payload, a cell value, or a PII value. The worker reads identity and
-# trace_id off the csv.received event (D54) — none of these errors is ever raised
+# trace_id off the csv.received event — none of these errors is ever raised
 # with a worker-minted trace_id.
 
 
@@ -523,8 +520,8 @@ class EventContractError(CsvIngestError):
 class EventPathMismatchError(CsvIngestError):
     """The event's identity and its GCS path's parsed components disagree.
 
-    The event is the trust boundary (D54) — the worker never re-resolves identity —
-    but the canonical object path embeds tenant/source/trace (D53), so a mismatch
+    The event is the trust boundary — the worker never re-resolves identity —
+    but the canonical object path embeds tenant/source/trace, so a mismatch
     means a malformed producer, not a resolution question. Raised loudly before any
     read of the object. Carries which ``field`` diverged and both observed values
     (identifiers only, never payload).
@@ -547,10 +544,10 @@ class EventPathMismatchError(CsvIngestError):
 
 
 class PreflightFailedError(CsvIngestError):
-    """The DuckDB structural preflight rejected the object (D13/D16).
+    """The DuckDB structural preflight rejected the object.
 
     Structural only: does-not-parse-as-CSV, no header, implausible structure.
-    Column- and mapping-aware failures are the source-shape suite's (Slice 10) and
+    Column- and mapping-aware failures are the source-shape suite's and
     are never raised here. ``reason`` is a short machine-stable code; ``detail`` is
     human context (column counts, row counts — never cell values or payload).
     """
@@ -569,7 +566,7 @@ class PreflightFailedError(CsvIngestError):
         self.detail = detail
 
 
-# -- dis-ui-server auth-seam errors (Slice 13a) ---------------------------------
+# -- dis-ui-server auth-seam errors ---------------------------------
 # Raised by the dis-ui-server auth dependency chain (API_CONTRACT.md §2.1/§2.3) and
 # mapped by its FastAPI exception handlers to 401/403 + the §2.3 error envelope.
 # The seam is the SOLE source of tenant_id (never a body / query / unverified
@@ -624,7 +621,7 @@ class OpsRoleRequiredError(DisError):
         self.message = message
 
 
-# -- dis-ui-server data-endpoint errors (Slice 14b) -----------------------------
+# -- dis-ui-server data-endpoint errors -----------------------------
 # Raised by the dis-ui-server mapping-template handlers/repos (API_CONTRACT.md
 # §2.3) and mapped by its FastAPI exception handlers to the §2.3 envelope. Each
 # carries the load-bearing identifiers (code-quality rule 5); none ever carries a
@@ -728,9 +725,9 @@ class InvalidCursorError(DisError):
 class MappingStateConflictError(DisError):
     """The template's lifecycle state refuses the requested operation. Maps to HTTP 409.
 
-    Raised when an edit targets a template whose every version is DEPRECATED
-    (D17: the lineage is closed; create a new template), or when a concurrent
-    edit lost the per-template version-sequence race (``uq_csm_seq_per_source``).
+    Raised when an edit targets a template whose every version is DEPRECATED,
+    or when a concurrent edit lost the per-template version-sequence race
+    (``uq_csm_seq_per_source``).
     ``expected``/``actual`` name the state mismatch in lifecycle vocabulary.
     """
 
@@ -775,7 +772,7 @@ class FieldCatalogDriftError(DisError):
         self.stale = stale
 
 
-# -- dis-ui-server CSV-upload errors (Slice 8) -----------------------------------
+# -- dis-ui-server CSV-upload errors -----------------------------------
 # Raised by the synchronous csv-uploads endpoint (the CSV-upload Phase 1 receiver;
 # supersedes the D36 signed-URL mechanic) and mapped by the dis-ui-server exception
 # handlers to the §2.3 envelope. Each carries the load-bearing identifiers
@@ -835,7 +832,7 @@ class UploadRequestError(DisError):
 
 
 class UploadStructureError(DisError):
-    """The uploaded file failed the tier-0 structural gate (D51). Maps to HTTP 422.
+    """The uploaded file failed the tier-0 structural gate. Maps to HTTP 422.
 
     Structural only: empty file, does not decode as UTF-8, does not parse as CSV,
     below the minimum-rows floor. Column- and mapping-aware checks are tier 1

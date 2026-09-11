@@ -1,5 +1,5 @@
 """Migration 0005 (source_mappings template grain + RLS ON): target safety,
-backfill, reversibility, and fresh-bootstrap convergence (Slice 14a).
+backfill, reversibility, and fresh-bootstrap convergence.
 
 Four layers:
 
@@ -7,12 +7,12 @@ Four layers:
     ``check_migration_target`` refusal logic is unit-testable without a live
     bind (the 0002/0003/0004 precedent): refuses Customer Master outright,
     refuses any non-expected database, passes only the DIS database.
-  * **Reversible cycle against an ephemeral scratch DB (Slice 51c, D122).**
+  * **Reversible cycle against an ephemeral scratch DB.**
     ``downgrade 0004`` removes the template columns, restores the (tenant,
     source) keys and the pre-0005 trigger body, and turns RLS off; ``upgrade
     head`` re-adds, BACKFILLS the rows (one template_id per (tenant, source)
     group, name 'default'), rekeys, and turns RLS on.
-  * **D22/D49 invariance.** The PK, the canonical FKs onto
+  * **PK/FK invariance.** The PK, the canonical FKs onto
     ``mapping_version_id``, and the ``mapping_rules`` column are byte-equal
     before and after the cycle (the pin stands; the rules shape is untouched).
   * **Fresh-bootstrap convergence on a scratch DB (the 9a lesson).** The
@@ -25,8 +25,6 @@ Four layers:
 The migration runs against ``ithina_dis_db`` (and the scratch DB) on 5433
 only; the in-migration guard refuses Customer Master (``ithina_platform_db``)
 before any DDL.
-
-See: docs/slices/slice-14a-source-mappings-migration.md.
 """
 
 from __future__ import annotations
@@ -138,7 +136,7 @@ def _rls_posture(engine: Engine) -> tuple[bool, bool, int]:
 
 
 def _pin_shape(engine: Engine) -> dict[str, str | None]:
-    """The D22/D49 invariants: PK def, canonical FKs onto mapping_version_id,
+    """The PK/FK invariants: PK def, canonical FKs onto mapping_version_id,
     and the mapping_rules column type — must be identical across the cycle."""
     with engine.connect() as conn:
         pk = conn.execute(
@@ -313,7 +311,7 @@ def test_migration_cycle_backfills_and_flips_rls(scratch_db: ScratchDB) -> None:
         assert r.template_name == "default"
     assert per_group == 1
 
-    # D22/D49 invariance: the pin and the rules shape survived the cycle.
+    # PK/FK invariance: the pin and the rules shape survived the cycle.
     assert _pin_shape(scratch_db.engine) == pins_before
 
 

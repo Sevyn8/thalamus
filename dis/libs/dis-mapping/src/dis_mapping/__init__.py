@@ -1,11 +1,11 @@
-"""dis-mapping — the pure four-sub-stage mapping engine (slice-05).
+"""dis-mapping — the pure four-sub-stage mapping engine.
 
 ``apply_mapping(mapping, chunk)`` applies one source's mapping in the mandatory
-``rename -> normalize -> cast -> derive`` order (D20) and returns a PARTIAL
+``rename -> normalize -> cast -> derive`` order and returns a PARTIAL
 canonical contribution: the source-owned, mapping-produced columns only. Identity
 (``tenant_id``/``store_id``), ``trace_id``, and ``mapping_version_id`` are
-consumer-injected after the engine runs (D8, hard rule 5); the engine never
-populates them. Pure: no DB, GCS, Pub/Sub, network, or file I/O (D4).
+consumer-injected after the engine runs; the engine never
+populates them. Pure: no DB, GCS, Pub/Sub, network, or file I/O.
 """
 
 from __future__ import annotations

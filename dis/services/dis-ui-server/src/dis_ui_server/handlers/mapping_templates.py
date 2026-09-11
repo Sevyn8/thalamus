@@ -1,13 +1,13 @@
-"""The ``/mapping-templates`` resource (slice 14b c/d/e) — template-grain CRUD.
+"""The ``/mapping-templates`` resource — template-grain CRUD.
 
-The resource is the TEMPLATE (a lineage of versions, D68); ``{template_id}`` is
+The resource is the TEMPLATE (a lineage of versions); ``{template_id}`` is
 the only URL key. Reads and writes run through ``repos/mapping_templates.py``
 (``rls_session``, tenant from token). Detail/PATCH lookups are throw-style 404
 (``ResourceNotFoundError``) — under RLS, absent and other-tenant are the same
-404, no existence oracle. Create writes a single ACTIVE row (Slice 16c, D88:
-translate -> validate -> ACTIVE write, no DRAFT/staging); PATCH edits a DRAFT in
-place or chains a new DRAFT. The promote/deprecate transitions and the
-``mapping.changed`` publish are a later slice.
+404, no existence oracle. Create writes a single ACTIVE row (translate -> validate
+-> ACTIVE write, no DRAFT/staging); PATCH edits a DRAFT in place or chains a new
+DRAFT. The promote/deprecate transitions and the ``mapping.changed`` publish are
+not built yet.
 """
 
 from __future__ import annotations
@@ -166,7 +166,7 @@ async def create_mapping_template(
     write_scope: Annotated[WriteScope, Depends(require_write_scope)],
     body: MappingTemplateCreate,
 ) -> MappingTemplateDetail:
-    """Create a template (Slice 16c: translate -> validate -> ACTIVE write).
+    """Create a template.
 
     The request carries semantic intent per column (``src_key`` -> ``dest_key`` +
     source-format declarations), not engine ops. This endpoint, in order:
@@ -184,7 +184,7 @@ async def create_mapping_template(
     with nothing persisted. Returns the real ``MappingTemplateDetail`` off the row.
     """
     engine: AsyncEngine = request.app.state.engine
-    # Acted-for tenant discriminated by the VERIFIED user_type (Slice 17b): TENANT pins to
+    # Acted-for tenant discriminated by the VERIFIED user_type: TENANT pins to
     # its token tenant (a body acting_for is REJECTED 403); PLATFORM+dis:ops writes the
     # body's acted-for tenant; PLATFORM without dis:ops or without an acted-for tenant -> 403.
     acted_for = resolve_acted_for(write_scope, body.acting_for_tenant_id)

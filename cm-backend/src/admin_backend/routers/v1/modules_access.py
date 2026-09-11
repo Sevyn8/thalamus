@@ -1,4 +1,4 @@
-"""Module Access read endpoints (Step 6.7).
+"""Module Access read endpoints.
 
 Two GET endpoints under ``/module-access``:
 
@@ -18,11 +18,11 @@ Same response shape for both user types — RLS does the persona
 projection at the data layer; the application layer adds no
 ``user_type``-based string formatting (unlike ``/dashboard/*``).
 
-Label-handling convention (locked at this step). Every enum-coded
-field carries a sibling ``<field>_label`` resolved server-side via
-LEFT JOIN against ``lookups`` with COALESCE fallback. Applied here for
-``module_code`` (E1 + E2), ``tier``, and ``status`` (E2). Codified in
-CLAUDE.md as the rule for new endpoints from Step 6.7 forward.
+Label-handling convention (locked). Every enum-coded field carries a
+sibling ``<field>_label`` resolved server-side via LEFT JOIN against
+``lookups`` with COALESCE fallback. Applied here for ``module_code``
+(E1 + E2), ``tier``, and ``status`` (E2). This is the standard
+convention for new endpoints in this package.
 """
 from __future__ import annotations
 
@@ -256,7 +256,7 @@ async def list_matrix(
 
 
 # =============================================================================
-# E4 (Slice 8): GET /module-access/me — caller-state tenant module read
+# E4: GET /module-access/me — caller-state tenant module read
 # =============================================================================
 
 
@@ -323,7 +323,7 @@ def _cells_for(
 
 
 # =============================================================================
-# Step 6.15: write surface (PLATFORM-only transitions)
+# Write surface (PLATFORM-only transitions)
 # =============================================================================
 #
 # Two named transition endpoints under the reads' URL prefix:

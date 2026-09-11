@@ -1,4 +1,4 @@
-"""Streaming multipart reader with a mid-stream byte ceiling (the Slice 8 pattern-setter).
+"""Streaming multipart reader with a mid-stream byte ceiling.
 
 The 10 MB cap is a security/integrity boundary the SERVER enforces by rejecting
 as bytes cross the ceiling — never by reading the whole body and then checking

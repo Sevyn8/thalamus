@@ -52,9 +52,7 @@ def _require_oauth(request: Request) -> tuple[SquareOAuthClient, SquareTokenVaul
     vault: SquareTokenVault | None = request.app.state.square_token_vault
     key: str | None = request.app.state.square_oauth_state_key
     if client is None or vault is None or key is None:
-        raise OauthNotConfiguredError(
-            "Square OAuth is not configured on this server", connector="square"
-        )
+        raise OauthNotConfiguredError("Square OAuth is not configured on this server", connector="square")
     return client, vault, key
 
 

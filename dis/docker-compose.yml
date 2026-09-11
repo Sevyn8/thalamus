@@ -35,7 +35,7 @@ services:
     ports:
       - "6379:6379"
 
-  # ---- Slice 2 fakes (test infrastructure; no real auth / resolution) ----
+  # ---- Local fakes (test infrastructure; no real auth / resolution) ----
   customer-master:
     build:
       context: .

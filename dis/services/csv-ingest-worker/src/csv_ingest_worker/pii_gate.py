@@ -1,4 +1,4 @@
-"""The dis-pii fail-loud gate, wired over the sniffed CSV header (hard rule 2, D40).
+"""The dis-pii fail-loud gate, wired over the sniffed CSV header.
 
 WIRED, NOT EXTENDED: dis-pii's public surface takes a source-mapping-shaped dict
 (``detectors._iter_mapping_columns`` reads ``rename``/``normalize``/``cast``/
@@ -7,10 +7,10 @@ WIRED, NOT EXTENDED: dis-pii's public surface takes a source-mapping-shaped dict
 real mapping's rename would expose (the unit test proves the equivalence), and
 dis-pii itself stays untouched.
 
-Under the live schema no authoritative per-column PII flag exists (D40 limitation 2),
+Under the live schema no authoritative per-column PII flag exists,
 so the CSV-flag path is inert and only heuristic NAME detection can fire, with
-bounded coverage / false negatives (D40 limitation 1). No tokenizer, key vault, or
-flag mechanism is built here; in v1.0 no backend exists, so a detected PII column
+bounded coverage / false negatives. No tokenizer, key vault, or
+flag mechanism is built here; no backend exists, so a detected PII column
 ALWAYS raises before any persistence. The not-raise branch is reachable only via an
 explicitly injected backend (tests); there is no config default that disables the
 gate (dis-pii owns that invariant).
@@ -39,8 +39,8 @@ def gate_csv_headers(
     """Pass the sniffed header through the fail-loud gate, BEFORE any persistence.
 
     Raises ``PiiBackendNotConfiguredError`` (carrying column NAMES only, never
-    values) when the heuristic detects PII and no backend is configured — which in
-    v1.0 is always, since no real backend exists (D40). Returns the detected column
+    values) when the heuristic detects PII and no backend is configured — which
+    today is always, since no real backend exists. Returns the detected column
     names (empty when none) for the audit event's metadata on the pass path.
     """
     mapping = synthetic_mapping(columns)

@@ -8,8 +8,7 @@ import type {
   AuditResultType,
 } from "@/lib/api/audit";
 
-// Phase 5h.1 + 5i.1: result tone now drives from the `result_type`
-// enum (added to the list shape in Step 6.16.7), not the localized
+// Result tone drives from the `result_type` enum, not the localized
 // label string. Map covers the 6 known enum values; unknown values
 // (e.g. a future addition) fall back to grey.
 const RESULT_TONE_BY_TYPE: Record<AuditResultType, Tone> = {
@@ -26,8 +25,8 @@ export function resultTone(resultType: AuditResultType | null | undefined): Tone
   return RESULT_TONE_BY_TYPE[resultType] ?? "grey";
 }
 
-// Phase 5i.1: resource_type is an open string vocabulary (per the
-// backend schema doc); these 6 values are the current emitters. Tones
+// resource_type is an open string vocabulary; these 6 values are the
+// current emitters. Tones
 // chosen to disambiguate visually in a multi-row table without
 // implying severity. Unknown values fall back to grey.
 const RESOURCE_TYPE_TONE: Record<string, Tone> = {

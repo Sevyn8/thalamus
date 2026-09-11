@@ -33,7 +33,7 @@ type Cursor = str
 DROPPED_SAMPLE_MAX = 20
 
 # The coarse rate-limit posture vocabulary for telemetry.connector_health.rate_limit_state
-# (D116). Deliberately two values and NULL - no counts, no wait durations, no vendor text:
+# . Deliberately two values and NULL - no counts, no wait durations, no vendor text:
 # the read side (dis-ui-server derive_status) treats ANY non-null as 'rate_limited', so the
 # column is a posture, not a metric.
 #
@@ -96,7 +96,7 @@ class Discovery:
 class ExtractRow:
     """One template-mappable row: template-field-keyed string cells, plus the
     per-row ``source_event_id`` hint (``transaction_id:line_item_seq`` for ORDERS,
-    else None; D33/D65). The hint is informational (the streaming consumer derives
+    else None). The hint is informational (the streaming consumer derives
     ``source_event_id`` itself from the mapped columns)."""
 
     values: dict[str, str]
@@ -120,7 +120,7 @@ class ExtractResult:
     # rows are already out of ``rows``; this is the visibility signal, not a second path.
     dropped_count: int = 0
     dropped_sample: tuple[str, ...] = ()
-    # The coarse rate-limit posture OBSERVED WHILE PRODUCING THIS RESULT (D116): the
+    # The coarse rate-limit posture OBSERVED WHILE PRODUCING THIS RESULT: the
     # RATE_LIMIT_THROTTLED constant when the adapter absorbed a vendor rate-limit response
     # and still completed, else None. Rides this object for the same reason dropped_count
     # does - it is a per-extract diagnostic the vendor-agnostic pipeline forwards to the

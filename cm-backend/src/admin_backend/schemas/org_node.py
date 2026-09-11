@@ -254,7 +254,7 @@ class OrgNodeChildrenResponse(BaseModel):
 OrgNodeTreeItem.model_rebuild()
 
 
-# ---- Step 6.13 write schemas ----------------------------------------------
+# ---- Write schemas ----------------------------------------------
 
 
 class OrgNodeCreateRequest(BaseModel):
@@ -328,9 +328,9 @@ class OrgNodeCreateRequest(BaseModel):
                 "roots are provisioned at tenant creation."
             )
         if self.node_type == OrgNodeType.STORE:
-            # Step 6.21.2: stores own the paired STORE-type org_node;
-            # POST /org-tree refuses to create one bare. The caller
-            # is directed to POST /api/v1/stores, which creates both
+            # Stores own the paired STORE-type org_node; POST
+            # /org-tree refuses to create one bare. The caller is
+            # directed to POST /api/v1/stores, which creates both
             # rows atomically.
             raise ValueError(
                 "node_type 'STORE' is not allowed on POST; STORE-type "

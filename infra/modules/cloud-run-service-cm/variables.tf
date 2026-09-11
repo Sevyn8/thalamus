@@ -145,7 +145,7 @@ variable "cors_allowed_origins" {
 
 variable "auth0_mgmt_client_id" {
   type        = string
-  description = "AUTH0_MGMT_CLIENT_ID. The 'Cortex CM Backend M2M' app client id. Lazy; supply before Slice-2 provisioning is exercised."
+  description = "AUTH0_MGMT_CLIENT_ID. The 'Cortex CM Backend M2M' app client id. Lazy; supply before tenant provisioning is exercised."
   default     = ""
 }
 

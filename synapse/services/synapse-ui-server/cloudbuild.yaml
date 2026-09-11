@@ -33,10 +33,10 @@
 # promotable across environments unchanged, and no credential is ever baked in.
 #
 # EVERY ONE OF THOSE IS REQUIRED AND THE SERVICE REFUSES TO START WITHOUT IT, which is
-# a deploy hazard rather than a degradation: SYNAPSE_LIFECYCLE_URL arrived in slice 5d
-# against a terraform module that did not set it, and v6 and v7 both failed readiness
-# while staging kept serving v5 behind a passing apply. Slice 5e adds two more, so the
-# module change and the image bump are one commit or they are an outage.
+# a deploy hazard rather than a degradation: a required env var added here against a
+# terraform module that does not set it fails readiness while the previous revision
+# keeps serving behind a passing apply. A newly required variable and the terraform
+# module change that sets it must land in the same commit, or they are an outage.
 #
 # NO DOCKER_BUILDKIT=1: this Dockerfile uses neither a `# syntax=` directive nor
 # heredoc COPYs, so enabling it would imply a requirement that does not exist.

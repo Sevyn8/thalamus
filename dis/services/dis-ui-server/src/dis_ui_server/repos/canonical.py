@@ -1,23 +1,23 @@
 """``canonical.store_sku_current_position`` reads — the Canonical Explorer data access.
 
-READ-ONLY: canonical is already in the service read-set (CLAUDE.md); the streaming consumer /
+READ-ONLY: canonical is in the service read-set; the streaming consumer /
 daily-compute remain its SOLE writers. This module builds SELECT-only statements — never an
 INSERT/UPDATE/DELETE.
 
-The table is RLS ON + FORCE with the standard two-GUC ``tenant_isolation`` policy (D91): ``USING
+The table is RLS ON + FORCE with the standard two-GUC ``tenant_isolation`` policy: ``USING
 (tenant_id = app.tenant_id OR app.user_type='PLATFORM')`` — identical READ behaviour to
 ``quarantine.*`` / bronze, so the per-tenant scope is the DATABASE's guarantee, applied by
 ``read_session``. The explicit ``WHERE tenant_id`` predicate here is defense-in-depth. tenant_id
 is NOT NULL — no system/null rows.
 
-Reads execute CORE-STYLE on the ``read_session`` connection (service CLAUDE.md durable
-invariant); never an ``AsyncSession``, never a ``.commit()``. This module speaks DB vocabulary
+Reads execute CORE-STYLE on the ``read_session`` connection; never an
+``AsyncSession``, never a ``.commit()``. This module speaks DB vocabulary
 only — Decimal->str / ISO rendering lives in the handler. The list is a BOUNDED newest-first
 sample by ``last_updated_at`` (the mockup's "sample rows"; canonical is high-volume). The
 ``store_id`` filter rides ``ix_sscp_tenant_store``. ``scope`` MUST come from the verified token
 (``require_read_scope``); this module trusts its caller on that.
 
-Slice 52a: a human-readable ``store_name`` is LEFT-joined from ``identity_mirror.stores`` on the
+A human-readable ``store_name`` is LEFT-joined from ``identity_mirror.stores`` on the
 composite ``(tenant_id, store_id)`` — null when the store is unmirrored. That store-side tenant
 predicate is MANDATORY (``identity_mirror`` is RLS-OFF, D41; it is the store table's only tenant
 isolation). The pattern is copied inline from ``repos/runs.py`` — no shared helper is extracted
@@ -39,7 +39,7 @@ from dis_ui_server.auth.scope import ReadScope
 from dis_ui_server.db import read_session
 from dis_ui_server.models import StoreRow, StoreSkuCurrentPosition
 
-# The list projection (Slice 52a): the FULL live column set of store_sku_current_position EXCEPT
+# The list projection: the FULL live column set of store_sku_current_position EXCEPT
 # tenant_id (scope, never on the wire) and ingest_metadata (operator-excluded) — 43 columns, in
 # live-schema ordinal order. store_name is NOT here; it is projected from the identity_mirror.stores
 # join below. mapping_version_id is selected as the SOURCE of the wire's mapping_version alias
@@ -94,7 +94,7 @@ _LIST_COLUMNS = (
 
 
 def _tenant_term(scope: ReadScope) -> list[ColumnElement[bool]]:
-    """The in-query tenant predicate (Slice 17b): applied for a pinned (TENANT) scope, OMITTED
+    """The in-query tenant predicate: applied for a pinned (TENANT) scope, OMITTED
     for PLATFORM see-all (the RLS USING branch is the see-all isolation).
 
     Conditioned on ``scope.is_platform``, NEVER on ``tenant_id`` being absent — so a TENANT scope
@@ -148,11 +148,11 @@ def _build_statement(
         .outerjoin(
             StoreRow,
             and_(
-                # MANDATORY store-side tenant predicate: identity_mirror is RLS-OFF (D41), so this
+                # MANDATORY store-side tenant predicate: identity_mirror is RLS-OFF, so this
                 # composite (tenant_id, store_id) match is the ONLY tenant isolation on the store
                 # table. Defense-in-depth here (store_id is globally unique via uq_ims_store_id and
                 # the base rows are already RLS-forced) but it CANNOT be omitted — copied inline from
-                # the runs pattern; no shared helper is extracted (D70 re-opened as D126).
+                # the runs pattern; no shared helper is extracted.
                 StoreRow.tenant_id == StoreSkuCurrentPosition.tenant_id,
                 StoreRow.store_id == StoreSkuCurrentPosition.store_id,
             ),

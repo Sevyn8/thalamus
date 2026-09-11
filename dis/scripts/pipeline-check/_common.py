@@ -57,9 +57,9 @@ _load_dotenv()
 
 # --- Dev-stub JWT parameters --------------------------------------------------
 # MUST stay byte-identical to the verifier's constants
-# (services/dis-ui-server/src/dis_ui_server/auth/verifier.py:32-35). This is the
-# dev-stub seam; when auth moves to real Customer Master Auth0/JWKS (D25), this
-# mint helper is the single thing that must change.
+# (services/dis-ui-server/src/dis_ui_server/auth/verifier.py). This is the
+# dev-stub seam: it matches the STUB auth mode only, and this mint helper is the
+# single thing that must change if those constants ever move.
 DEV_STUB_SECRET = "dis-ui-dev-stub-secret-not-for-production"
 DEV_STUB_ISSUER = "https://customer-master.local"
 DEV_STUB_AUDIENCE = "dis"
@@ -160,7 +160,7 @@ def ensure_stack(*, skip: bool = False, base: str = DEFAULT_BASE_URL, verbose: b
 def _psycopg_dsn() -> str:
     url = os.environ.get("POSTGRES_URL")
     if not url:
-        raise SystemExit("POSTGRES_URL is not set (see .env / docs/local-setup.md)")
+        raise SystemExit("POSTGRES_URL is not set (see dis/.env)")
     # psycopg3 wants a plain libpq URL; strip the SQLAlchemy +psycopg driver tag.
     return url.replace("postgresql+psycopg://", "postgresql://")
 

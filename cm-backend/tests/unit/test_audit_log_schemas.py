@@ -1,7 +1,7 @@
-"""Schema unit tests for audit log read endpoints (Step 6.16.3).
+"""Schema unit tests for audit log read endpoints.
 
-Wire-shape contracts: every model uses ``extra="forbid"`` per LD11; the
-8-field list item and 16-field detail shapes are deliberately frozen
+Wire-shape contracts: every model uses ``extra="forbid"``; the
+list-item and detail shapes are deliberately frozen
 so a future addition surfaces as a test failure rather than silent
 schema drift.
 
@@ -57,10 +57,10 @@ def test_s1_cursor_pagination_serialises_correctly() -> None:
 
 
 def test_s2_audit_activity_list_item_has_exactly_14_fields() -> None:
-    """Step 6.16.7 LD10: list item shape grows from 8 to 14 fields.
+    """List item shape is exactly 14 fields.
 
-    Additive only; the existing 8 fields keep their shape, 6 new ones
-    join them (``actor_organization_name``, ``actor_roles``, ``what``,
+    The 8 core fields plus 6 enrichment fields
+    (``actor_organization_name``, ``actor_roles``, ``what``,
     ``resource_type``, ``resource_subtype``, ``result_type``).
     """
     fields = set(AuditActivityListItem.model_fields.keys())
@@ -125,11 +125,11 @@ def test_s2_audit_activity_list_item_has_exactly_14_fields() -> None:
 
 
 def test_s3_audit_activity_detail_has_exactly_19_fields() -> None:
-    """Step 6.16.7 LD10: detail shape grows from 16 to 19 fields.
+    """Detail shape is exactly 19 fields.
 
-    Additive only; the existing 16 fields keep their shape, 3 new
-    stored-column fields join them (``actor_organization_name``,
-    ``actor_roles``, ``resource_subtype``).
+    The 16 core fields plus 3 stored-column enrichment fields
+    (``actor_organization_name``, ``actor_roles``,
+    ``resource_subtype``).
     """
     fields = set(AuditActivityDetail.model_fields.keys())
     expected = {

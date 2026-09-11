@@ -1,6 +1,6 @@
 """Read Customer Master's tenants and stores under the platform read context.
 
-This is the only place in DIS that reads Customer Master's DB schema (service CLAUDE.md).
+This is the only place in DIS that reads Customer Master's DB schema.
 It does **not** use ``dis-rls`` ``rls_session`` — that helper refuses any database that is
 not ``ithina_dis_db`` (``dis_rls/session.py``), which is exactly the CM database we must
 read here. So the CM read carries its own connection and its own, symmetric, target guard.
@@ -9,7 +9,7 @@ Read contract (``docs/ithina_master_db_read_access.md`` §2, §5): ``core.tenant
 ``core.stores`` are FORCE-RLS; the read must run inside a transaction with
 ``app.user_type='PLATFORM'`` and ``app.tenant_id=NULL`` set transaction-locally via
 ``set_config(..., TRUE)``. If the context is unset/mis-set the read **silently returns zero
-rows** — so we positively assert the context took effect and fail loud (criterion 4) rather
+rows** — so we positively assert the context took effect and fail loud rather
 than mistake a mis-configured read for an empty source. Enum columns are cast to text on read
 so the values match the mirror's TEXT + CHECK columns without narrowing.
 """
@@ -35,7 +35,7 @@ class CmTenant(BaseModel):
 
     tenant_id: UUID
     name: str
-    display_code: str | None = None  # nullable at source; copied as-is (D55)
+    display_code: str | None = None  # nullable at source; copied as-is
     status: str
     pc_created_at: datetime
     pc_updated_at: datetime
@@ -64,7 +64,7 @@ class CmStore(BaseModel):
     store_id: UUID
     tenant_id: UUID
     name: str
-    store_code: str | None = None  # nullable at source; copied as-is (D55)
+    store_code: str | None = None  # nullable at source; copied as-is
     status: str
     country: str
     timezone: str
@@ -167,7 +167,7 @@ def assert_platform_context(
     """Assert the platform read context took effect in the read transaction.
 
     Pure guard. Under CM FORCE RLS a missing/wrong ``app.user_type`` silently returns
-    zero rows, so this raises loudly before any mirror write (criterion 4).
+    zero rows, so this raises loudly before any mirror write.
     """
     if user_type != "PLATFORM":
         raise CustomerMasterReadError(

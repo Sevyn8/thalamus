@@ -128,7 +128,7 @@ async def test_correction_still_appends(
     stack_env: dict[str, str],
     consumer_mappings: dict[str, int],
 ) -> None:
-    """A corrected line under the SAME dedup key appends a second row (D33).
+    """A corrected line under the SAME dedup key appends a second row.
 
     The guard against the fix over-reaching. Same ``transaction_id:line_item_seq``, so
     the same ``source_event_id``; a different price, so a different ``row_hash``. If

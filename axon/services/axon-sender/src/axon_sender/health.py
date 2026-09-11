@@ -8,8 +8,8 @@ stale if the last beat is older than the window.
 
 Copied in shape from streaming-consumer's health.py and csv-ingest-worker's, which are already
 two copies of this. A third is the point at which it should move to dis-core, and that is a
-separate change: promoting it means a new dependency edge from Axon to a DIS lib for one class,
-and this slice is not the place to argue it. Recorded so the next person has the count.
+separate change: promoting it means a new dependency edge from Axon to a DIS lib for one class.
+Recorded so the next person has the count.
 """
 
 from __future__ import annotations

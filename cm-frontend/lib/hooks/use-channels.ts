@@ -6,10 +6,10 @@ import { channelsApi, type ChannelUpsertRequest } from "@/lib/api/channels";
 import { useAuthSnapshot } from "@/lib/auth/auth-cache";
 
 // react-query hooks for tenant sending channels. Server-wait pattern (no
-// optimistic state), invalidateQueries on success: the post-MSW precedent in
+// optimistic state), invalidateQueries on success — same convention as
 // use-stores.ts.
 //
-// userId IS IN EVERY QUERY KEY (Finding #50, cross-persona cache bleed). It
+// userId IS IN EVERY QUERY KEY (prevents cross-persona cache bleed). It
 // matters more here than elsewhere: the tenant read and the operator read hit
 // two different endpoints whose rows describe different tenants, and a persona
 // switch that reused a cached entry would show one tenant's connection state

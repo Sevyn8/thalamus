@@ -12,8 +12,6 @@ Two endpoints, both multi-user-type (PLATFORM and TENANT accepted):
 These describe the caller's own state, so no ``require(...)`` gate
 applies. ``PUBLIC_PATHS`` in the auth middleware still excludes
 ``/me/*`` — JWT is mandatory.
-
-Step 6.9.2.
 """
 from __future__ import annotations
 

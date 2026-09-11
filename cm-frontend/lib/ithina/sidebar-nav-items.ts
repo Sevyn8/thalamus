@@ -13,17 +13,16 @@ import {
 
 import type { NavGroup } from "@/components/chrome/Sidebar";
 
-// Ithina Superadmin Console nav structure. Phase 5g.1 added the
-// optional `requires` field on each NavItem; the Sidebar component
-// filters items via `hasPermission` against the cached grant list
+// Ithina Superadmin Console nav structure. Each NavItem may carry an
+// optional `requires` tuple; the Sidebar component filters items via
+// `hasPermission` against the cached grant list
 // (lib/auth/permissions-check.ts). Items without `requires` are
 // always visible to authenticated users (currently: Dashboard only).
 //
-// Tuples sourced from the live /me/permissions grant set probed
-// during 5g.1 pre-flight: PLATFORM holds VIEW.GLOBAL on most ADMIN
-// resources; TENANT-OWNER holds VIEW.TENANT only. Sidebar items that
-// scope to GLOBAL (e.g. cross-tenant Tenants list, Module Access
-// toggle) naturally hide for TENANT-OWNER.
+// Tuples match the live /me/permissions grant set: PLATFORM holds
+// VIEW.GLOBAL on most ADMIN resources; TENANT-OWNER holds VIEW.TENANT
+// only. Sidebar items that scope to GLOBAL (e.g. cross-tenant Tenants
+// list, Module Access toggle) naturally hide for TENANT-OWNER.
 export const ithinaSidebarNavItems: NavGroup[] = [
   {
     heading: "Overview",
@@ -76,10 +75,10 @@ export const ithinaSidebarNavItems: NavGroup[] = [
       },
       {
         // Module Access toggle gates on ADMIN.TENANTS.OVERRIDE.GLOBAL
-        // (Step 6.15 aliased tuple per BUILD_PLAN Finding @ Phase 5j).
+        // (the backend aliases module-access writes onto this tuple).
         // TENANT-OWNER lacks OVERRIDE.GLOBAL so this hides naturally.
-        // Sanjeev queue: tuple split or RBAC explicit exclusion when
-        // Phase 5g grants TENANT users any OVERRIDE.GLOBAL surface.
+        // If TENANT users ever gain any OVERRIDE.GLOBAL surface, this
+        // needs a tuple split or an explicit RBAC exclusion.
         href: "/superadmin/modules",
         label: "Module Access",
         icon: Boxes,
@@ -100,16 +99,15 @@ export const ithinaSidebarNavItems: NavGroup[] = [
     ],
   },
   {
-    // MODULES — added in Synapse slice 8a. Placed between Access Control and
-    // Compliance because these are PRODUCTS rather than platform governance.
+    // MODULES — placed between Access Control and Compliance because
+    // these are PRODUCTS rather than platform governance.
     //
-    // DIS IS DELIBERATELY NOT IN THIS GROUP. The build spec assumed DIS would
-    // "move into MODULES from wherever it is linked today"; it is linked
-    // nowhere in this sidebar. DIS is a LAUNCHER TILE pointing at a separate
-    // Cloud Run app (lib/launcher/tiles.ts), because it is a large tenant-facing
-    // product with its own shell. Synapse 8a is nine read-only SUPERADMIN
-    // screens belonging beside Tenants and Stores, so it lives in-shell. Moving
-    // DIS in here would mean giving it in-shell routes it does not have.
+    // DIS IS DELIBERATELY NOT IN THIS GROUP. DIS is a LAUNCHER TILE pointing
+    // at a separate Cloud Run app (lib/launcher/tiles.ts), because it is a
+    // large tenant-facing product with its own shell. Synapse is a set of
+    // read-only SUPERADMIN screens belonging beside Tenants and Stores, so it
+    // lives in-shell. Moving DIS in here would mean giving it in-shell routes
+    // it does not have.
     heading: "Modules",
     items: [
       {
@@ -121,12 +119,9 @@ export const ithinaSidebarNavItems: NavGroup[] = [
         // should not see the tenant list should not see the fleet either.
         requires: { module: "ADMIN", resource: "TENANTS", action: "VIEW", scope: "GLOBAL" },
       },
-      // THE ATLAS ENTRY WAS HERE AND IS REMOVED (Axon slice 3). D3/N4 argued for
-      // keeping it present and disabled so the navigation shape was settled and
-      // nobody wondered whether Atlas had been forgotten. That argument was right
-      // WHILE ATLAS WAS NEXT IN LINE.
+      // THERE IS DELIBERATELY NO ATLAS ENTRY HERE.
       //
-      // Atlas is now DEFERRED INDEFINITELY. A permanent entry stops reading as
+      // Atlas is DEFERRED INDEFINITELY. A permanent entry stops reading as
       // "coming" and starts reading as "in progress" about something nobody is
       // building, which misinforms every operator who sees it. The reason to show
       // it and the reason to remove it are the same reason: the nav should say

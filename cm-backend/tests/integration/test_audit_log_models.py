@@ -1,4 +1,4 @@
-"""Step 6.16.1: ORM model round-trip tests for audit log tables.
+"""ORM model round-trip tests for audit log tables.
 
 Insert + retrieve smoke tests for `TenantActivityAuditLog` and
 `PlatformActivityAuditLog`. The ORM column shape mirrors the DDL
@@ -6,8 +6,8 @@ verbatim; these tests exercise the SQLAlchemy mapping end-to-end
 (persistence + read-back + enum coercion + JSONB round-trip).
 
 LOAD-BEARING: M4 (all 6 `AuditResultType` values round-trip). The
-enum vocabulary is the failure-classification surface that sub-steps
-6.16.2-5 rely on; a missing or misnamed value silently breaks
+enum vocabulary is the failure-classification surface that downstream
+audit emission relies on; a missing or misnamed value silently breaks
 emission downstream.
 
 Inserts go through PLATFORM session (admits both tenant-table and
@@ -42,9 +42,9 @@ pytestmark = pytest.mark.asyncio
 def _tenant_row(tenant: Tenant, **overrides: Any) -> TenantActivityAuditLog:
     """Construct a TenantActivityAuditLog ORM instance with sane defaults.
 
-    Step 6.16.7 LD13 : new audit-row columns
+    The audit-row columns
     (``actor_organization_name``, ``actor_roles``, ``resource_subtype``)
-    populated with defaults so existing assertions remain valid.
+    are populated with defaults so existing assertions remain valid.
     """
     base: dict[str, Any] = {
         "tenant_id": tenant.id,

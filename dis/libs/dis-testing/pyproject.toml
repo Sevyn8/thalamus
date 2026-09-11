@@ -7,7 +7,7 @@ dependencies = [
   # Consumes the identity client interface (Protocol + models + HttpIdentityClient).
   "dis-core",
 
-  # UUIDv7 for fixture IDs (used directly; no dis-core helper until Slice 3).
+  # UUIDv7 for fixture IDs, generated directly via uuid_utils.uuid7().
   "uuid-utils>=0.9",
 
   # Fakes are FastAPI apps; CM fake signs RS256 JWTs and publishes Pub/Sub.

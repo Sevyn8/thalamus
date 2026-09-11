@@ -1,18 +1,19 @@
 """dis-audit — audit-event model, Cloud SQL writer, and the owned vocabulary.
 
-Four responsibilities (build-guide Slice 6):
+Four responsibilities:
 
 - :class:`AuditEvent` — one ``audit.events`` row, hand-aligned to the live schema.
-- :class:`PostgresAuditWriter` — the Phase-1 Cloud SQL writer, fire-and-forget (hard
+- :class:`PostgresAuditWriter` — the Cloud SQL writer, fire-and-forget (hard
   rule 11): failures are logged with context and never raised to or block the caller.
 - The backend-selecting :class:`AuditWriter` interface + :func:`select_writer`, with the
-  inert Phase-3 :class:`BigQueryAuditWriter` seam behind ``BqClient`` (``decisions.md`` D34).
+  inert :class:`BigQueryAuditWriter` seam behind ``BqClient`` for the deferred BigQuery
+  archive path.
 - The :class:`Stage` / :class:`EventScope` / :class:`Outcome` vocabulary consumers import,
   plus the :class:`FailureCode` stable failure vocabulary and its
-  :func:`failure_code_for` exception registry (Slice 30b).
+  :func:`failure_code_for` exception registry.
 
-No service emits audit events here; emission is service-layer (Slice 7 onward). Every DIS
-audit event carries a known ``tenant_id`` (``decisions.md`` D43).
+No service emits audit events here; emission is service-layer. Every DIS
+audit event carries a known ``tenant_id``.
 """
 
 from __future__ import annotations

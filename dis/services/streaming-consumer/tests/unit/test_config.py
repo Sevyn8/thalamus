@@ -1,7 +1,7 @@
-"""ConsumerConfig slice-40a healthz toggle: PORT is conditional-required.
+"""ConsumerConfig healthz toggle: PORT is conditional-required.
 
-The required-env raise tests live in test_service_surface.py (AC11/AC12 home);
-this module covers ONLY the 40a additions plus the LOCAL-UNCHANGED guarantee.
+The required-env raise tests live in test_service_surface.py; this module covers
+ONLY the healthz toggle plus the LOCAL-UNCHANGED guarantee.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ def _set_all(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_resolves_from_env_without_new_required_vars(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The LOCAL-UNCHANGED guarantee (slice 40a): today's exact env profile resolves
+    # The LOCAL-UNCHANGED guarantee: the base env profile resolves
     # with NO new required vars — toggle defaults off, PORT never demanded.
     _set_all(monkeypatch)
     cfg = ConsumerConfig.from_env()

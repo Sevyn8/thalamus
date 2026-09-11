@@ -1,7 +1,7 @@
-"""Integration tests for the tenants router (Step 3.3).
+"""Integration tests for the tenants router.
 
 Real Postgres, real schema, real RLS, real router via FastAPI's
-TestClient. JWTs minted via Step 2.1's ``make_test_jwt``.
+TestClient. JWTs minted via ``make_test_jwt``.
 
 Coverage shape:
 
@@ -63,7 +63,7 @@ def app_client(
 
     Bypasses the lifespan (which would re-construct an engine in a
     different event loop than the test). Mirrors the
-    ``app_with_test_routes`` pattern from Step 2.3/2.4 but doesn't
+    ``app_with_test_routes`` pattern but doesn't
     register any test-only routes — just exercises the real tenants
     router.
     """
@@ -198,10 +198,10 @@ async def test_l5_pagination_with_search_filter(
     Five tenants share a unique prefix; expect the second page (offset=2,
     limit=2) to return rows 3 and 4 alphabetically, with total=5.
 
-    **Step 6.4 note:** the test pins ``sort=name_asc`` explicitly so the
-    alphabetical-page assertion holds independent of the default sort.
-    Pre-Step-6.4 the endpoint had no sort param and ordering was
-    hardcoded ``name ASC``; the new default is ``created_at_desc``.
+    The test pins ``sort=name_asc`` explicitly so the
+    alphabetical-page assertion holds independent of the default sort,
+    which is ``created_at_desc`` (not the alphabetical ``name ASC``
+    order the assertion expects).
     """
     for n in ("L5-Alpha", "L5-Bravo", "L5-Charlie", "L5-Delta", "L5-Echo"):
         await make_tenant(name=n)
@@ -224,7 +224,7 @@ async def test_l5_pagination_with_search_filter(
 
 
 # =============================================================================
-# Sort vocabulary (Step 6.4 — L4a-L4g column keys + L5a-L5e aggregate keys)
+# Sort vocabulary (L4a-L4g column keys + L5a-L5e aggregate keys)
 # =============================================================================
 
 
@@ -402,7 +402,7 @@ async def test_l5b_sort_num_users_active_desc(
 
 
 ):
-    """**LOAD-BEARING** — Step 6.5's Top Tenants dashboard panel calls
+    """**LOAD-BEARING** — the Top Tenants dashboard panel calls
     ``GET /tenants?sort=num_users_active_desc&limit=5`` exactly.
     Without this sort key working, the panel would receive a 400
     INVALID_SORT_KEY response and the dashboard would fail to render.
@@ -575,7 +575,7 @@ async def test_l9_per_row_aggregates_scope_per_tenant(
     # 4 ACTIVE + 1 INVITED tenant_users under A. The INVITED user
     # exercises the "non-ACTIVE row not counted" branch of
     # num_users_active without pulling in the SUSPENDED audit-actor
-    # tower (deferred to Step 5.2).
+    # tower (deferred).
     for _ in range(4):
         await make_tenant_user(tenant_id=tenant_a.id, status="ACTIVE")
     await make_tenant_user(tenant_id=tenant_a.id, status="INVITED")
@@ -598,8 +598,8 @@ async def test_l10_modules_from_table_with_display_name_resolution(
     make_tenant_module_access,
     super_admin_jwt,
 ):
-    """Modules come from the real tenant_module_access table (FN-AB-16
-    RESOLVED at Step 3.4.5). Verifies the JOIN to lookups, the
+    """Modules come from the real tenant_module_access table (FN-AB-16,
+    resolved). Verifies the JOIN to lookups, the
     DISABLED-status filter, the display_order ordering, and the
     cross-tenant isolation via .correlate(Tenant).
     """
@@ -904,7 +904,7 @@ async def test_d6_detail_modules_from_table(
 
 # =============================================================================
 # Auth (A1-A2). Cover all three endpoints, but one each is enough — middleware
-# behaviour was already verified at Step 2.3.
+# behaviour is already verified elsewhere.
 # =============================================================================
 
 

@@ -1,12 +1,10 @@
 """THE DEMAND SIDE. What a consumer NEEDS, as data.
 
-Slice 1 built the supply side and nothing else: every field on ``CapabilityDescriptor``
-describes what a capability OFFERS. There was no type anywhere for what a consumer REQUIRES —
-``resolve()`` took a capability id and keyword arguments, which is an imperative call, not a
-declaration. ``MinHistoryDays`` looked like the demand side and was not: it was declared BY a
-capability ABOUT ITSELF.
+Every field on ``CapabilityDescriptor`` describes what a capability OFFERS — the supply side.
+This module is the other half: the types for what a consumer REQUIRES, expressed as a
+declaration rather than an imperative call.
 
-This module is the other half. Nothing here touches a database, constructs SQL or names a
+Nothing here touches a database, constructs SQL or names a
 canonical table; import-linter forbids all three to ``synapse.core``.
 
 WHY A DECLARATION AND NOT A FUNCTION. An analysis expressed as code is an analysis whose
@@ -16,16 +14,15 @@ anything — the same reason ``preconditions`` lived on the descriptor rather th
 resolver. And adding a second analysis is adding a row, never editing an engine: the rule the
 capability registry already follows.
 
-THE THREE THINGS A REQUIREMENT HAS TO SAY, all of which slice 1 could not express:
+THE THREE THINGS A REQUIREMENT HAS TO SAY:
 
 1. WHICH capability, and which of its ``returns`` this analysis reads. A field the capability
    does not return is a requirement nothing can satisfy, and the registry checks it at import.
-2. WHAT THRESHOLD, for each gate the capability declares. This is the parameter that replaced
-   ``MinHistoryDays(days=60)`` on the supply side: dead stock wants 90 days of no-sales, a
-   forecast wants 60 for seasonality, and both read the same rows.
+2. WHAT THRESHOLD, for each gate the capability declares. The threshold belongs to the caller,
+   not the capability: dead stock wants 90 days of no-sales, a forecast wants 60 for
+   seasonality, and both read the same rows.
 3. WHAT "ENOUGH" MEANS across a population of series — ``SeriesPolicy``. Only a caller knows
-   whether it needs every series or any series, and slice 1's placeholder was standing in for
-   this answer.
+   whether it needs every series or any series.
 """
 
 from __future__ import annotations
@@ -43,8 +40,8 @@ from synapse.core.resolution import SeriesPolicy
 class MinHistoryDays:
     """A BOUND history requirement: this many distinct dates, reduced by this policy.
 
-    MOVED HERE FROM synapse.core.capability, and the move is the point of slice 2. It held a
-    value on the SUPPLY side, which works while there is one caller and breaks with two.
+    ON THE DEMAND SIDE, DELIBERATELY — not on ``synapse.core.capability``. A bound value on
+    the SUPPLY side works while there is one caller and breaks with two.
 
     COVERAGE, NOT SPAN. A forecaster needs observations, not calendar distance. A tenant
     onboarded ninety days ago that has sold on twelve of them has a span of 90 and a coverage
@@ -93,11 +90,10 @@ class Threshold:
     performs on rows it has already got — dead stock's ``stale_after_days`` is the second kind:
     no read depends on it, and it is the whole content of the rule.
 
-    ``fitted`` AND ``stands_in_for`` MAKE THE HONESTY A MECHANISM. The standing instruction is
-    that thresholds are FITTED from the tenant's own data where possible, and where they are
-    not, the constant must name what it stands in for — the ``MinHistoryDays(days=60)`` idiom
-    from slice 1, which worked because the comment was there to be read and acted on. A
-    comment cannot be enforced; ``__post_init__`` can. So an unfitted threshold that does not
+    ``fitted`` AND ``stands_in_for`` MAKE THE HONESTY A MECHANISM. Thresholds are FITTED from
+    the tenant's own data where possible, and where they are not, the constant must name what
+    it stands in for. A comment could say the same thing, but a comment cannot be enforced;
+    ``__post_init__`` can. So an unfitted threshold that does not
     say what it substitutes for CANNOT BE CONSTRUCTED, and a fitted one must not claim to
     substitute for anything.
 
@@ -145,8 +141,8 @@ class CapabilityRequirement:
     gates: tuple[Gate, ...]
     # THE DATE WINDOW THIS REQUIREMENT NEEDS, named as one of the declaration's own thresholds.
     #
-    # THE OPERATIONAL HALF OF ``Freshness.AS_OF_DATE``, which has existed since slice 1 to mark
-    # capabilities for which a date parameter is meaningful. That was the structural claim; this
+    # THE OPERATIONAL HALF OF ``Freshness.AS_OF_DATE``, which marks
+    # capabilities for which a date parameter is meaningful. That is the structural claim; this
     # is what it costs to actually call one. ``resolve_declaration`` reads the named threshold
     # and computes ``date_from``/``date_to`` from the ``as_of`` it is given, because a window is
     # relative to the moment of asking and therefore cannot be a literal in a declaration.
@@ -196,10 +192,10 @@ class AnalysisDeclaration:
     # proposer MUST have a holdout, because an action without an arm cannot be analysed and a
     # counterfactual cannot be built backwards (see synapse.core.holdout).
     holdout: Holdout | None
-    # What the analysis PRODUCES. Named fields rather than a free-form result, and the payoff
-    # arrived on schedule: the evaluator's row type is checked against this at registry import,
-    # and the action proposer reads these findings rather than whatever the code happened to
-    # return. Still declared before a SCORER exists, for the same reason.
+    # What the analysis PRODUCES. Named fields rather than a free-form result: the evaluator's
+    # row type is checked against this at registry import, and the action proposer reads these
+    # findings rather than whatever the code happened to return. Declared even where no SCORER
+    # exists yet, for the same reason.
     emits: tuple[str, ...]
     thresholds: tuple[Threshold, ...]
     # THE ENVELOPE. The furthest a produced action may travel for ANY tenant — a property of
@@ -208,9 +204,8 @@ class AnalysisDeclaration:
     #
     # A provision binds a rung; ``synapse.persistence.provision_postgres`` refuses one that
     # exceeds this when it LOADS the row, so an over-privileged provision never reaches an
-    # orchestrator. Third instance of declare-in-code / bind-as-data / check-at-the-boundary:
-    # capability gate KINDS bound by an analysis, ``emits`` checked against the evaluator, and
-    # now this.
+    # orchestrator. The same declare-in-code / bind-as-data / check-at-the-boundary shape as
+    # capability gate KINDS bound by an analysis and ``emits`` checked against the evaluator.
     #
     # Defaulted to SHADOW so that a new analysis is not autonomous by omission. An analysis
     # earns a higher ceiling explicitly or does not have one.
@@ -229,7 +224,7 @@ class AnalysisDeclaration:
         # number nobody chose. dead_stock is one keystroke from it, carrying stale_after_days=90
         # beside feed_stale_after_days=3 where the obvious name for the second was the first.
         #
-        # A LATENT TRAP INDEPENDENT OF ANY ONE SLICE, which is why it is checked on the type
+        # A LATENT TRAP INDEPENDENT OF ANY ONE ANALYSIS, which is why it is checked on the type
         # rather than left to whoever writes the next declaration. Duplicate names ACROSS
         # declarations are legal and already exist (stale_after_days means 90 days of no sale in
         # dead_stock and 3 days of stale data in stockout_risk); that is why catalog.py keys its
@@ -265,16 +260,13 @@ DEAD_STOCK = AnalysisDeclaration(
             capability_id="current_state",
             # THE UNIVERSE, plus what makes a dead SKU actionable.
             #
-            # stock_qty IS NOW ENFORCED, and until this slice it was not. The comment here used
-            # to assert that "dead stock with no stock is not a problem to solve" while the
-            # proposer filtered on is_dead_stock alone and read stock_qty only to populate
-            # quantity_at_stake. Measured on staging 2026-08-12: of 38 dead-stock alerts, 20
-            # carried no stock figure and 12 carried zero, so 32 of 38 contradicted the premise
-            # this comment claimed. The evaluator now refuses both (NO_STOCK_QUANTITY and
-            # NO_STOCK_ON_HAND).
+            # stock_qty IS ENFORCED: dead stock with no stock on hand is not a problem to
+            # solve, and the evaluator refuses both a missing figure (NO_STOCK_QUANTITY) and a
+            # zero one (NO_STOCK_ON_HAND) rather than reading stock_qty only to populate
+            # quantity_at_stake.
             #
-            # sku_status IS STILL READ BY NOTHING, AND THIS COMMENT NO LONGER PRETENDS OTHERWISE.
-            # The intent was that a deliberately delisted SKU is not dead, it is finished. It
+            # sku_status IS READ BY NOTHING YET.
+            # The intent is that a deliberately delisted SKU is not dead, it is finished. It
             # cannot be implemented from this repository: the column is typed `str | None` on
             # CurrentStateRow with NO vocabulary anywhere in synapse/src, so expressing "delisted"
             # would mean inventing values and matching against them. WHAT IS NEEDED is the value
@@ -445,11 +437,6 @@ STOCKOUT_RISK = AnalysisDeclaration(
             # and cover is a forward-looking statement. Named rather than inlined so the
             # declaration stays the single source of the number.
             window_from_threshold="window_days",
-            # THE FIRST GATE ANY ANALYSIS HAS EVER BOUND. daily_series has declared
-            # MIN_HISTORY_DAYS since slice 1 and nothing bound it, because dead_stock composes
-            # two gateless capabilities — so the entire precondition path was unexercised by a
-            # real analysis until now.
-            #
             # SEVEN, FROM THE MEASURED LADDER, not from taste. Against staging's 613 events:
             # 1 day -> 65/65, 3 -> 61, 5 -> 55, 7 -> 46, 10 -> 25, 14 -> 9, 20 -> 0, 60 -> 0.
             # Seven passes 46 of 65 and refuses 19, so both directions of the precondition path
@@ -459,12 +446,11 @@ STOCKOUT_RISK = AnalysisDeclaration(
             # DO NOT MOVE THIS TO MAKE ANYTHING PASS. If it stops splitting, that is a finding
             # about the data, not a reason to lower the bar.
             #
-            # ANY_SERIES, AND THAT CHOICE IS WHAT DISCHARGED SLICE 2's DEFERRAL. ALL_SERIES with
-            # 46/65 gives PreconditionUnmet and the analysis never runs at all. ANY_SERIES is
-            # satisfied — and before slice 7, fetch would then have returned rows for all 65
-            # INCLUDING the 19 that failed, so the analysis would have computed cover for series
-            # it had just declared unfit. Satisfied now carries the qualifying population and the
-            # narrowing is bound into fetch.
+            # ANY_SERIES IS THE CHOICE HERE. ALL_SERIES with 46/65 gives PreconditionUnmet and
+            # the analysis never runs at all. ANY_SERIES is satisfied, and fetch must then return
+            # only the qualifying population — not all 65 INCLUDING the 19 that failed — or the
+            # analysis would compute cover for series it had just declared unfit. Satisfied
+            # carries the qualifying population and the narrowing is bound into fetch.
             gates=(MinHistoryDays(days=7, policy=SeriesPolicy.ANY_SERIES),),
         ),
     ),

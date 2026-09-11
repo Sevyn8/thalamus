@@ -97,8 +97,8 @@ def payload_hash(action: Action) -> str:
     THE NATURAL KEY IS NOT ENOUGH ON ITS OWN. Uniqueness on
     ``(declaration_id, declaration_version, verb, as_of, target)`` alone would suppress a
     CORRECTION — a changed quantity, or a changed arm after a deliberate salt change — exactly
-    as uniqueness on canonical's D33 dedup key alone would have silently dropped source
-    corrections. This hash is the fifth component that splits a retry from a correction.
+    as uniqueness on canonical's dedup key alone would silently drop source corrections. This
+    hash is the fifth component that splits a retry from a correction.
 
     WHAT IS COVERED, and why each: ``quantity_at_stake`` and ``expires_on``, because the
     underlying data can move between runs; ``arm``, because a salt change is a NEW experiment
@@ -248,11 +248,10 @@ class PostgresActionAppender:
         target names a different tenant is refused BY THE DATABASE rather than by a check here,
         which is the stronger place for it.
 
-        THE RETURN VALUE ARRIVED IN SLICE 6 and this docstring used to say the opposite —
-        "cannot report suppression". That was true of a caller who only wanted the row written,
-        and false as soon as ``synapse.run`` needed to record how many actions a run actually
-        added. ``rowcount`` after ``ON CONFLICT DO NOTHING`` is 1 for an insert and 0 for a
-        suppression, so the information was always there and simply thrown away.
+        THE RETURN VALUE DISTINGUISHES AN INSERT FROM A SUPPRESSION. ``rowcount`` after
+        ``ON CONFLICT DO NOTHING`` is 1 for an insert and 0 for a suppression, and
+        ``synapse.run`` needs this to record how many actions a run actually added — a caller
+        who only wants the row written has no use for it, but one counting appends does.
 
         It is a real distinction rather than bookkeeping: a second attempt at one slot proposing
         four actions and appending ZERO is the idempotency working exactly as designed, and
@@ -278,8 +277,8 @@ class PostgresActionReader:
         """Every event for this tenant, in append order, validated on the way out.
 
         Raises ``ResultTooLargeError`` rather than truncating: a shortened log reads as a shorter
-        HISTORY, and an attribution study over one is wrong rather than incomplete. Pagination
-        (DIS's D124 keyset pattern) is the answer when a real consumer needs more.
+        HISTORY, and an attribution study over one is wrong rather than incomplete. DIS's keyset
+        pagination pattern is the answer when a real consumer needs more.
         """
         async with rls_session(self._engine, self._tenant_id) as conn:
             rows = (await conn.execute(_SELECT, {"limit": _MAX_ROWS + 1})).mappings().all()
@@ -288,7 +287,7 @@ class PostgresActionReader:
             raise ResultTooLargeError(
                 f"the action log holds more than {_MAX_ROWS} events for tenant "
                 f"{self._tenant_id}; it was NOT truncated, because a shortened log reads as a "
-                "shorter history. Paginate (D124) rather than raising the limit"
+                "shorter history. Paginate rather than raising the limit"
             )
         return [project(dict(row)) for row in rows]
 

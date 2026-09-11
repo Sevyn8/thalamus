@@ -1,4 +1,4 @@
-"""The quarantine console endpoints against the live stack (slice 15a).
+"""The quarantine console endpoints against the live stack.
 
 ``quarantine.*`` is RLS ON + FORCE (single-GUC ``tenant_isolation``, introspected
 Task 0): the database backstops tenant scope, and the repo's explicit ``WHERE
@@ -301,7 +301,7 @@ def test_status_open_returns_new_resolved_returns_empty(
     open_ids = _ids(_list(live_client, token, "status=open"))
     assert {seed.a_row_canonical, seed.a_chunk_other} <= open_ids  # all seeded are NEW
 
-    # resolved has no producing path (D82): none of the seeded NEW items appear.
+    # resolved has no producing path today: none of the seeded NEW items appear.
     resolved_ids = _ids(_list(live_client, token, "status=resolved"))
     assert resolved_ids.isdisjoint(
         {seed.a_row_canonical, seed.a_row_source, seed.a_row_fk, seed.a_chunk_other}
@@ -356,7 +356,7 @@ def test_detail_row(live_client: TestClient, mint_token: Callable[..., str], see
     assert "price" in body["error_context"]  # the flattened string is UNCHANGED (52b keeps it)
     assert body["chain_depth"] == 0
     assert body["original_payload"] is None  # DEFERRED, contract-stable null
-    # Slice 52b additive fields: store identity (null here — the seed carries no store_id)
+    # Additive fields: store identity (null here — the seed carries no store_id)
     # and the structured failures[], typed, ALONGSIDE the unchanged error_context string.
     assert body["store_id"] is None and body["store_name"] is None
     assert body["failures"] == [
@@ -408,7 +408,7 @@ def test_detail_cross_tenant_id_is_404(
     assert response.status_code == 404
 
 
-# -- Slice 52b: store_name via the inline identity_mirror.stores join (both directions) -
+# -- store_name via the inline identity_mirror.stores join (both directions) ------------
 
 
 def test_store_name_resolves_when_mirrored_and_is_null_when_unset(
@@ -475,7 +475,7 @@ def test_store_name_resolves_when_mirrored_and_is_null_when_unset(
         engine.dispose()
 
 
-# -- Slice 17b: PLATFORM see-all + the conjunction gate, over the real HTTP read path ---
+# -- PLATFORM see-all + the conjunction gate, over the real HTTP read path --------------
 
 
 def test_list_platform_sees_all_tenants(

@@ -1,4 +1,4 @@
-"""``config.source_mappings`` reads + writes — through ``rls_session`` only (D67).
+"""``config.source_mappings`` reads + writes — through ``rls_session`` only.
 
 Statements execute Core-style on the session's connection (the service's pinned
 ORM pattern): the declarative model supplies typed columns, the dis-rls
@@ -8,7 +8,7 @@ invisible on read AND refused on write by the policy's WITH CHECK).
 Write semantics owned here (the slice's two recorded boundary calls):
 
 - **Rename updates ALL lineage rows.** ``template_name`` is lineage metadata
-  (D68: "operator-set human label … editable"), not version content — D17
+, not version content — D17
   immutability covers ``mapping_rules``/``source_id``/seq/predecessor. Updating
   every row keeps the lineage label coherent; the EXCLUDE constraint arbitrates
   cross-template uniqueness atomically.
@@ -100,7 +100,7 @@ async def get_template_rows(engine: AsyncEngine, scope: ReadScope, template_id: 
 
 
 async def resolve_active_template(engine: AsyncEngine, tenant_id: UUID, template_id: UUID) -> Row[Any]:
-    """The lineage's single ACTIVE version row — the Slice 8 upload gate.
+    """The lineage's single ACTIVE version row — the upload gate.
 
     Two-step so the response codes stay honest (and oracle-free):
 
@@ -152,7 +152,7 @@ async def create_template(
 ) -> Row[Any]:
     """Insert the lineage's first version: ACTIVE, seq trigger-assigned, no predecessor.
 
-    Create-as-ACTIVE (D88): the v1 is written ``ACTIVE`` with ``activated_at``
+    Create-as-ACTIVE: the v1 is written ``ACTIVE`` with ``activated_at``
     stamped (the ``ck_csm_activated_at`` CHECK requires a non-NULL ``activated_at``
     for an ACTIVE row), so go-live is immediately live. Safe without supersede:
     ``template_id`` is freshly minted by the caller, so the ``(tenant, source,
@@ -166,7 +166,7 @@ async def create_template(
             source_id=source_id,
             template_id=template_id,
             template_name=template_name,
-            template_type=template_type,  # lineage-fixed (Slice 14d)
+            template_type=template_type,  # lineage-fixed
             # version_seq_per_source deliberately OMITTED: NULL reaches the
             # BEFORE-INSERT trigger, which assigns the per-template sequence.
             status=_STATUS_ACTIVE,
@@ -295,7 +295,7 @@ async def _apply_rules_edit(
     mapping_rules: dict[str, Any],
     created_by_user_id: UUID | None,
 ) -> None:
-    """DRAFT edits in place; a STAGED/ACTIVE head chains a NEW DRAFT version (D17)."""
+    """DRAFT edits in place; a STAGED/ACTIVE head chains a NEW DRAFT version."""
     draft = next((row for row in locked if row.status == _STATUS_DRAFT), None)
     if draft is not None:
         await conn.execute(

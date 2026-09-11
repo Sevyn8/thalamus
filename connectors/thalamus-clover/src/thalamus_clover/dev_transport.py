@@ -3,7 +3,7 @@ ConnectorTrigger, run one OFFLINE Clover pull via run_trigger with a fake Clover
 
 This is the orchestrator role, deliberately distinct from the receiver: it STAMPS the
 producer-owned identifiers (a deterministic connector_run_id and a fresh trace_id) and hands
-them on the trigger; the receiver (ConnectorPipeline) reads them and mints nothing (D54).
+them on the trigger; the receiver (ConnectorPipeline) reads them and mints nothing.
 
 connector_run_id is derived from the caller-supplied ``--run-key`` (the logical-run
 boundary), NEVER from wall-clock: a retry reuses the same run_key (same id, dedup collapses
@@ -36,7 +36,7 @@ async def _run(args: argparse.Namespace) -> int:
     connector_run_id = mint_connector_run_id(
         args.tenant_id, args.store_id, args.source_id, args.template_id, args.run_key
     )
-    trace_id = new_trace_id()  # producer mints the trace; the receiver reads it (D54)
+    trace_id = new_trace_id()  # producer mints the trace; the receiver reads it
 
     trigger = ConnectorTrigger(
         schema_version=1,

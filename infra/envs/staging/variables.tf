@@ -172,7 +172,7 @@ variable "cm_frontend_image" {
 
 variable "cm_documents_bucket_name" {
   type        = string
-  description = "Globally-unique GCS bucket name for CM tenant onboarding documents (Slice 3). Feeds CM's GCS_DOCUMENTS_BUCKET once the cm module gains that env var (see the TODO in main.tf)."
+  description = "Globally-unique GCS bucket name for CM tenant onboarding documents. Feeds CM's GCS_DOCUMENTS_BUCKET once the cm module gains that env var (see the TODO in main.tf)."
   default     = "sevyn8-thalamus-cm-documents-staging"
 }
 
@@ -275,7 +275,7 @@ variable "axon_platform_oncall_email" {
   type = string
 
   description = <<-EOT
-    AXON_PLATFORM_ONCALL_EMAIL - where Axon delivers internal platform events (Axon slice 1).
+    AXON_PLATFORM_ONCALL_EMAIL - where Axon delivers internal platform events.
 
     SEPARATE FROM var.alert_email ON PURPOSE, and it resolves to the same mailbox today. That is
     not an oversight to be tidied away: monitoring-alerts is Cloud Monitoring detecting and

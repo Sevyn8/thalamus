@@ -1,7 +1,7 @@
 """Migration 0003 (canonical dedup columns + hot event-time ref): target safety,
 emptiness precondition, reversibility.
 
-M-D38/D64 (Slice 10 prerequisite). Three layers:
+Three layers:
 
   * **Target-safety guard, asserted positively and non-skippably.** The pure
     ``check_migration_target`` refusal logic is unit-testable without a live
@@ -11,7 +11,7 @@ M-D38/D64 (Slice 10 prerequisite). Three layers:
     against empty event tables; the migration re-checks ``COUNT(*) = 0``
     immediately before each add and aborts loudly otherwise. Read on the
     resident DB (read-only), where the precondition state is observed.
-  * **Reversible cycle against an ephemeral scratch DB (Slice 51c, D122).**
+  * **Reversible cycle against an ephemeral scratch DB.**
     ``upgrade head`` adds the four event-table columns NOT NULL, the two
     dedup-window indexes, and the nullable hot column (introspection via
     ``information_schema`` / ``pg_indexes``); ``downgrade 0002`` removes all
@@ -20,8 +20,6 @@ M-D38/D64 (Slice 10 prerequisite). Three layers:
 
 The migration runs against ``ithina_dis_db`` on 5433 only; the in-migration
 guard refuses Customer Master (``ithina_platform_db``) before any DDL.
-
-See: docs/slices/slice-10-streaming-consumer.md, decisions.md D38/D64/D65/D33.
 """
 
 from __future__ import annotations
@@ -142,7 +140,7 @@ def test_event_tables_empty_precondition(admin_engine: Engine) -> None:
     # The NOT NULL adds are legal only because the event tables are empty (the
     # plan precondition, re-checked in-migration). The precondition is only
     # load-bearing BEFORE 0003's columns exist: once the migration has landed,
-    # event rows are normal (Slice 10 writes them) and the precondition is
+    # event rows are normal (the streaming consumer writes them) and the precondition is
     # moot — asserting raw emptiness then would be a false alarm.
     if set(_dedup_columns(admin_engine)) == set(_EXPECTED_PRESENT):
         return  # columns landed; the add-window precondition no longer applies
@@ -152,7 +150,7 @@ def test_event_tables_empty_precondition(admin_engine: Engine) -> None:
 def test_upgrade_head_adds_dedup_columns(admin_engine: Engine) -> None:
     # The resident DB is at head via make run-local (read-only): the dedup
     # columns + both indexes are present — the apply-to-head proof (the
-    # downgrade leg is split out + skipped per D99).
+    # downgrade leg is split out + skipped).
     assert _dedup_columns(admin_engine) == _EXPECTED_PRESENT
     assert _dedup_indexes(admin_engine) == set(_DEDUP_INDEXES)
 

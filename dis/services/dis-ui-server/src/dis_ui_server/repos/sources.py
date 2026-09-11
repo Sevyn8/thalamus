@@ -1,9 +1,9 @@
-"""``config.sources`` reads + writes — the source registry data access (Phase A, D112).
+"""``config.sources`` reads + writes — the source registry data access.
 
 The FIRST writable table dis-ui-server owns in the shared DB. Writes go through
 ``write_session`` (the two-GUC WITH CHECK pins the row to the acted-for tenant); reads go
-through ``read_session``. CORE-STYLE execution on the dis-rls connection (service CLAUDE.md
-durable invariant) — never an ``AsyncSession``, never a ``.commit()`` (the session owns the
+through ``read_session``. CORE-STYLE execution on the dis-rls connection —
+never an ``AsyncSession``, never a ``.commit()`` (the session owns the
 transaction). Mirrors ``repos/mapping_templates.py`` (the create_template write path).
 
 IntegrityError is translated NARROWLY (rule 6): a duplicate ``(tenant_id, source_id)`` PK ->
@@ -42,7 +42,7 @@ def _violates(exc: IntegrityError, constraint: str) -> bool:
 
 
 def _tenant_term(scope: ReadScope) -> list[ColumnElement[bool]]:
-    """The in-query tenant predicate (Slice 17b): applied for a pinned (TENANT) scope,
+    """The in-query tenant predicate: applied for a pinned (TENANT) scope,
     OMITTED for PLATFORM see-all. Conditioned on ``is_platform``, never on tenant-absence."""
     if scope.is_platform:
         return []
@@ -69,7 +69,7 @@ async def list_sources(engine: AsyncEngine, scope: ReadScope) -> Sequence[Row[An
         )
         .select_from(Source)
         # LEFT JOIN identity_mirror.tenants on the tenant PK (≤1 match, no fan-out); RLS-OFF table
-        # (D41), read under the existing read_session. LEFT so an unmirrored tenant → NULL name.
+        # , read under the existing read_session. LEFT so an unmirrored tenant → NULL name.
         .outerjoin(TenantRow, TenantRow.tenant_id == Source.tenant_id)
         .where(*_tenant_term(scope))
         .order_by(Source.source_id)

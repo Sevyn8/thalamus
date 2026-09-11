@@ -1,4 +1,4 @@
-"""Readiness healthz (slice 40a): 200 fresh / 503 stale / 404 elsewhere.
+"""Readiness healthz: 200 fresh / 503 stale / 404 elsewhere.
 
 Drives the ASGI callable directly (scope dict + captured ``send``) — no socket,
 no uvicorn; the staleness branch is driven by pushing ``last_beat`` back.

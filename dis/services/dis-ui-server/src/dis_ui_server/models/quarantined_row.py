@@ -38,17 +38,16 @@ class QuarantinedRow(Base):
     tenant_id: Mapped[UUID] = mapped_column(Uuid)
     trace_id: Mapped[UUID] = mapped_column(Uuid)
     source_id: Mapped[str] = mapped_column(String(128))
-    # Live column (written by the streaming consumer); nullable — the read ORM mirror
-    # catches up in Slice 52b to expose store identity. Resolved to store_name via the
-    # inline identity_mirror.stores join in repos/quarantine.py (no store-name column).
+    # Live column (written by the streaming consumer); nullable. Resolved to store_name
+    # via the inline identity_mirror.stores join in repos/quarantine.py (no store-name column).
     store_id: Mapped[UUID | None] = mapped_column(Uuid)
     row_offset: Mapped[int] = mapped_column(Integer)
     # CHECK ck_qr_failure_stage_vocab (6-member subset); translated to the wire
     # taxonomy in schemas/quarantine.py - the single crosswalk, never re-derived.
     failure_stage: Mapped[str] = mapped_column(String(64))
-    failure_reason: Mapped[str] = mapped_column(String(256))  # a FailureCode member (D79)
+    failure_reason: Mapped[str] = mapped_column(String(256))  # a FailureCode member
     failure_context: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     mapping_version_id: Mapped[int] = mapped_column(BigInteger)  # NOT NULL on rows (post-lookup only)
     quarantined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    # CHECK ck_qr_status_vocab: NEW | RESOLVED | DISMISSED; 11a writes NEW only (D82).
+    # CHECK ck_qr_status_vocab: NEW | RESOLVED | DISMISSED; 11a writes NEW only.
     status: Mapped[str] = mapped_column(String(32))

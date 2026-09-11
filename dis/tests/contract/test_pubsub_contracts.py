@@ -1,15 +1,14 @@
-"""Pub/Sub contract verification (Slice 9a AC6) — the instrument for the D52 hand edits.
+"""Pub/Sub contract verification for the frozen contracts in ``contracts/pubsub/``.
 
-Two assertions over the frozen contracts in ``contracts/pubsub/``:
+Two assertions:
 
   1. Every example validates against its schema (Draft 2020-12 + format checks),
      for all SEVEN envelopes including ``csv.received``.
   2. No identity field anywhere in the contract files retains the retired invented
-     ``t_*``/``s_*`` form (D52) — a scope assertion over the raw file text.
+     ``t_*``/``s_*`` form — a scope assertion over the raw file text.
 
 Errors, never skips: the envelope list is pinned literally (no glob), so a missing
-schema or example file is a loud failure, not a silently smaller test run
-(the Slice 4/7 load-bearing-proof rule).
+schema or example file is a loud failure, not a silently smaller test run.
 """
 
 from __future__ import annotations
@@ -36,7 +35,7 @@ ENVELOPES = (
     "quarantine",
 )
 
-# The retired invented identity form (D52): t_/s_ + 12 lowercase alphanumerics.
+# The retired invented identity form: t_/s_ + 12 lowercase alphanumerics.
 # Lookbehind so legitimate forms never false-positive — e.g. the 's_acme9k2l1mn4'
 # substring inside the upload-session id 'us_acme9k2l1mn4'.
 _RETIRED_FORM = re.compile(r"(?<![a-z0-9_])[ts]_[a-z0-9]{12}")
@@ -73,7 +72,7 @@ def test_no_identity_field_retains_the_retired_form(name: str, kind: str) -> Non
 
 @pytest.mark.parametrize("name", ENVELOPES)
 def test_identity_fields_are_uuid_typed(name: str) -> None:
-    # The positive half of the D52 assertion: every tenant_id/store_id/entity_id
+    # The positive half of the retired-form assertion: every tenant_id/store_id/entity_id
     # property the schema declares is format: uuid.
     schema = json.loads(_read(name, "schema"))
     for field in ("tenant_id", "store_id", "entity_id"):

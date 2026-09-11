@@ -1,4 +1,4 @@
-"""Gate retrofit behavioral tests (Step 6.9.3.2).
+"""Gate retrofit behavioral tests.
 
 8 tests covering the retrofit's behavioral surface end-to-end:
 
@@ -268,7 +268,7 @@ def test_ret_6_gate_markers_capture_correct_tuples() -> None:
     without anchor (/tenant-users). Together they cover the factory's
     two inner-function shapes and the marker's anchor_dep population.
 
-    Step 6.11.2: keyed by ``(method, path)`` rather than path alone
+    Keyed by ``(method, path)`` rather than path alone
     because the tenants write endpoints share parameterised paths with
     the GET ``/tenants/{tenant_id}`` route (PATCH on the same path,
     /suspend + /activate as nested POSTs). Method-aware indexing keeps

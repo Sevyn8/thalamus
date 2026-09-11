@@ -1,5 +1,5 @@
 -- ============================================================================
--- axon_sender grants: the delivery plane's ONLY write credential (Axon slice 1).
+-- axon_sender grants: the delivery plane's ONLY write credential.
 --
 -- THE FIFTH NARROW ROLE IN THIS ESTATE, and the fifth time the same argument has
 -- been made: what a process can do is bounded by its GRANT, not by its code path.
@@ -9,9 +9,9 @@
 --   synapse_writer      the ORCHESTRATOR. INSERT on synapse.actions, the run
 --                       state machine, nothing on provision.
 --   synapse_lifecycle   the console's alert decisions. INSERT on
---                       synapse.action_events and nothing else (slice 5d).
+--                       synapse.action_events and nothing else.
 --   synapse_provisioner enablement. INSERT on synapse.provision plus the two
---                       SELECTs its pre-flight cannot run without (slice 5e).
+--                       SELECTs its pre-flight cannot run without.
 --   axon_sender         THIS FILE. One INSERT, on one table, and NO SELECT
 --                       ANYWHERE.
 --
@@ -38,29 +38,24 @@
 -- ledger of who was contacted about what.
 --
 -- ----------------------------------------------------------------------------
--- NO RETURNING AND NO ON CONFLICT, AND SLICE 5e IS WHY THIS IS SAID HERE
+-- NO RETURNING AND NO ON CONFLICT, AND WHY THIS IS SAID HERE
 -- ----------------------------------------------------------------------------
 -- Both need SELECT. RETURNING needs it on the table; ON CONFLICT needs it on the
--- ARBITER INDEX, which is the one that is not obvious and which cost slice 5e
--- two days of every enable in production failing with
+-- ARBITER INDEX, which is the one that is not obvious and which has already cost
+-- this estate two days of every enable in production failing with
 -- `permission denied for table provision` behind a green apply.
 --
--- The write path therefore mints its own id (so it never needs RETURNING) and
--- has no idempotency mechanism at all (so it never needs ON CONFLICT). There is
--- nothing to be idempotent against yet: the call is in-process and synchronous,
--- once per producer event.
---
--- WHEN THE QUEUE ARRIVES, redelivery makes idempotency real and the obvious
--- mechanism is ON CONFLICT on a natural key. IT WILL FAIL AGAINST THIS ROLE.
--- The two answers that work are recorded in axon/src/axon/ledger.py's docstring:
--- catch SQLSTATE 23505 matched together with the constraint name, or deduplicate
--- before the write on a producer-supplied key. Whichever is chosen, choose it
--- WITH its grant, in that slice, not afterwards.
+-- The write path never needs RETURNING: the PRODUCER mints the delivery id and
+-- puts it in the queue envelope. And it never needs ON CONFLICT: Pub/Sub's
+-- redelivery is handled by catching SQLSTATE 23505 matched together with the
+-- constraint name (axon/src/axon/ledger.py records the full argument, including
+-- why a pre-write dedup lost). Any future writer must choose its mechanism WITH
+-- its grant, in the same change, not afterwards.
 --
 -- ----------------------------------------------------------------------------
 -- NOTHING AT ALL ON axon.tenant_deliveries, AND THAT IS THE POINT
 -- ----------------------------------------------------------------------------
--- The tenant ledger ships EMPTY and UNGRANTED. Nothing writes it in this slice:
+-- The tenant ledger ships EMPTY, and THIS ROLE has nothing on it. Nothing writes it yet:
 -- there is no address book, no tenant credential, no approved template and no
 -- adapter beyond email.
 --
@@ -93,8 +88,8 @@
 -- and it is avoided by sequence: role, then chain, then this file.
 --
 -- NOBYPASSRLS IS NOT DECORATION even though the table this role writes has no
--- RLS. axon.tenant_deliveries is FORCE ROW LEVEL SECURITY, this role will write
--- it one slice from now, and dis-rls's first-use guard refuses a bypassing role
+-- RLS. axon.tenant_deliveries is FORCE ROW LEVEL SECURITY, this role will
+-- eventually write it, and dis-rls's first-use guard refuses a bypassing role
 -- on every engine it opens. Getting this wrong fails at the first request rather
 -- than silently.
 --
@@ -141,9 +136,9 @@ GRANT USAGE ON SCHEMA axon TO axon_sender;
 -- ---------- The write: one table, one verb ------------------------------------
 -- No UPDATE, so a delivery's recorded outcome cannot be edited after the fact: a
 -- ledger that can be rewritten is not evidence of anything. That also means the
--- inbound receipt slice CANNOT move a row from `accepted` to `delivered` with
--- this role, which is correct and deliberate. That slice brings its own grant
--- and the argument for it, in the open.
+-- inbound receipt path CANNOT move a row from `accepted` to `delivered` with
+-- this role, which is correct and deliberate. Whatever builds it brings its own
+-- grant and the argument for it, in the open.
 --
 -- No DELETE, so a delivery cannot be removed.
 --
@@ -158,8 +153,8 @@ GRANT INSERT ON axon.platform_deliveries TO axon_sender;
 --
 -- THE TENANT LEDGER IS NOT THIS ROLE'S, YET. Until a tenant send exists, this
 -- REVOKE is what makes "the platform sender cannot write tenant deliveries" a
--- property of the database rather than of Axon's code. A future slice that
--- builds tenant sending has to come here and argue with a line.
+-- property of the database rather than of Axon's code. Whatever builds tenant
+-- sending has to come here and argue with a line.
 REVOKE ALL ON axon.tenant_deliveries FROM axon_sender;
 
 
@@ -196,8 +191,8 @@ REVOKE ALL ON axon.tenant_deliveries FROM axon_sender;
 --      UPDATE axon.platform_deliveries SET state = 'failed'; -- permission denied
 --      DELETE FROM axon.platform_deliveries;                 -- permission denied
 --
--- 4. The role cannot bypass RLS. It writes a table with none today and a table
---    with FORCE RLS one slice from now.
+-- 4. The role cannot bypass RLS. It writes a table with none today and will
+--    eventually write a table with FORCE RLS.
 --
 --      SELECT rolname, rolsuper, rolbypassrls FROM pg_roles
 --       WHERE rolname = 'axon_sender';

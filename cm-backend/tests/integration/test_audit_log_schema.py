@@ -1,4 +1,4 @@
-"""Step 6.16.1: schema-layer tests for the audit log subsystem.
+"""Schema-layer tests for the audit log subsystem.
 
 Asserts the live database state at the migration head matches the
 design spec in `docs/architecture_audit_logs.md`:
@@ -69,9 +69,9 @@ def _audit_row_args(tenant: Tenant, **overrides: Any) -> dict[str, Any]:
 
     Defaults model a SUCCESS row on tenants suspend.
 
-    Step 6.16.7 LD13 : new audit-row columns
+    The audit-row columns
     (``actor_organization_name``, ``actor_roles``, ``resource_subtype``)
-    populated with defaults satisfying NOT NULL constraints.
+    are populated with defaults satisfying NOT NULL constraints.
     """
     base: dict[str, Any] = {
         "tenant_id": tenant.id,

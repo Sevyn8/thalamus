@@ -1,7 +1,7 @@
 [project]
 name = "dis-rls"
 version = "0.0.0"
-description = "DIS RLS-aware async Postgres session helper. Opens a per-tenant scoped transaction (SET LOCAL app.tenant_id) so canonical reads/writes are tenant-isolated (root CLAUDE.md hard rules 1 & 12)."
+description = "DIS RLS-aware async Postgres session helper. Opens a per-tenant scoped transaction (SET LOCAL app.tenant_id) so canonical reads/writes are tenant-isolated."
 requires-python = ">=3.12"
 dependencies = [
   # DisError root + structured logging + UUIDv7 identifiers.

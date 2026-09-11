@@ -1,6 +1,6 @@
 import type { AuthSnapshot } from "@/lib/auth/auth-cache";
 
-// Phase 5g.1: synchronous permission gate reading from the cached
+// Synchronous permission gate reading from the cached
 // /me/permissions grant list (populated by AuthBoundary at boot).
 //
 // Backend is the single source of truth for grants. UI primitives

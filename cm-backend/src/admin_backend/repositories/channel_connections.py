@@ -30,10 +30,10 @@ a PLATFORM session sees ANOTHER tenant's row rather than merely that the query s
 =================================================================================================
 THE UPSERT USES ON CONFLICT, AND WHY THAT IS SAFE HERE IS NOT A GENERAL PERMISSION
 =================================================================================================
-``channel_connections``' DDL carries a warning naming slice 5e and
+``channel_connections``' DDL carries a warning naming
 ``infra/db-setup/sql/06_axon_sender_grant.sql``: ON CONFLICT reads the ARBITER INDEX, which is a
-SELECT privilege on the table, and 5e spent two days on every enable failing with
-`permission denied` behind a green apply because the writing role held INSERT and no SELECT.
+SELECT privilege on the table. That grant gave the writing role INSERT and no SELECT, so every
+enable failed with `permission denied` behind a green apply.
 
 That role was ``axon_sender``, which deliberately holds no SELECT anywhere and still does. THIS
 role is ``user_admin_backend``, which needs SELECT on this table anyway for both reads above, so
@@ -42,8 +42,8 @@ this statement: ``infra/db-setup/sql/09_cm_channel_connections_grant.sql`` grant
 and UPDATE together. No DELETE: a tenant disconnecting a channel is a status flip, and a row that
 can be deleted is a credential reference that can vanish without a trace.
 
-The difference from 5e is the grant, not the mechanism. Do not read this as "ON CONFLICT is fine
-now"; read it as "this role holds the SELECT that ON CONFLICT needs, and that was checked".
+Do not read this as "ON CONFLICT is fine in general"; read it as "this role holds the SELECT that
+ON CONFLICT needs here, and that was checked".
 """
 
 from __future__ import annotations

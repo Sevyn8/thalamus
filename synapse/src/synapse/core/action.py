@@ -17,13 +17,10 @@ defaults and the constructors refuse anything less.
 
 APPEND-ONLY IS A PROPERTY OF THE SHAPE AND OF THE TABLE. ``ActionEvent`` is frozen, there is no
 update or delete anywhere in this module or in ``synapse.core.action_log``, and a CORRECTION IS
-A NEW EVENT naming the one it supersedes — the D33 lesson applied one layer up. Since slice 5
-the database says the same thing twice more: ``synapse_writer`` holds INSERT and nothing else,
-and a BEFORE UPDATE OR DELETE trigger raises for every role including the table owner.
-
-THE SHAPE CAME FIRST, DELIBERATELY. The table was written a slice later, against types that had
-already run — the opposite of canonical's signal-history table, a DDL written ahead of its
-writer and still holding zero rows in both schemas.
+A NEW EVENT naming the one it supersedes — the canonical event tables' append-only discipline
+applied one layer up. The database says the same thing twice more: ``synapse_writer`` holds
+INSERT and nothing else, and a BEFORE UPDATE OR DELETE trigger raises for every role including
+the table owner.
 
 ANALYTICS MUST READ ``synapse.actions_analytical``, NOT ``synapse.actions``. The table retains
 thirteen immortal test-fixture rows written before the suite was isolated — it is append-only, so
@@ -75,8 +72,7 @@ class Provenance:
 
     - ``declaration_id`` / ``declaration_version`` — which rule, at which revision.
     - ``capability_versions`` — every capability the declaration resolved, at its descriptor
-      version. Available because ``DeclarationSatisfied`` carries the resolutions; it did not,
-      until provenance forced the change.
+      version. Available because ``DeclarationSatisfied`` carries the resolutions.
     - ``thresholds`` — the actual numbers used, not a reference to them. A threshold read from
       the declaration at analysis time would be re-read later at its NEW value, which is the
       subtle version of the same mistake.
@@ -208,9 +204,9 @@ class Action:
         """Whether there is anything to DO about this action, today, for the platform reader.
 
         A FLAG, NEVER A FILTER. Nothing in this plane may use it to suppress, reorder or gate the
-        recording of an action. D1 is structural: nothing sits between propose and record, and
-        the proposers' ``if not finding.is_dead_stock: continue`` is the only filter that exists
-        and is unchanged by this slice. A low-value action is still a recorded action, because
+        recording of an action. The rule is structural: nothing sits between propose and record,
+        and the proposers' ``if not finding.is_dead_stock: continue`` is the only filter that
+        exists. A low-value action is still a recorded action, because
         attribution needs the whole population and a filter applied before recording destroys the
         denominator.
 
@@ -221,7 +217,7 @@ class Action:
                         stock figure reaches here as None. Nothing can be decided from it.
           ``0``         NOT actionable — VERIFIED nothing to act on. A never-sold SKU with zero
                         stock is real catalogue hygiene, but there is no stock to mark down,
-                        transfer or clear. This is the shape of the only action in the log today.
+                        transfer or clear.
           ``> 0``       Actionable.
 
         A BOOL RATHER THAN A TRI-STATE, AND NOTHING IS LOST. The distinction between "unknown"
@@ -245,8 +241,9 @@ class Action:
 class ActionEvent:
     """One append to the log. Frozen, and there is no operation anywhere that edits one.
 
-    A CORRECTION IS A NEW EVENT naming the one it replaces, via ``supersedes``. That is D33's
-    shape one layer up, and it is chosen for the same reason: an append-only log can be replayed
+    A CORRECTION IS A NEW EVENT naming the one it replaces, via ``supersedes``. That is the
+    canonical event tables' shape one layer up, and it is chosen for the same reason: an
+    append-only log can be replayed
     to any point in time, and an edited row destroys the history that makes a study possible.
 
     ``event_id`` AND ``recorded_at`` ARE SUPPLIED, not minted here. ``synapse.core`` mints

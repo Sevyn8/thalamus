@@ -1,10 +1,10 @@
-"""The frozen canonical GCS object-path scheme (root CLAUDE.md hard rule 9).
+"""The frozen canonical GCS object-path scheme.
 
     tenant/{tenant_uuid}/source/{source_id}/yyyy={Y}/mm={M}/dd={D}/{trace_id}.{ext}
 
 Tenant prefix first (the security boundary), source second (operational queries),
 date partitioning last (lifecycle rules). The tenant segment is the **internal
-tenant UUID** (lowercase hex 8-4-4-4-12, decisions.md D53) — never an external
+tenant UUID** (lowercase hex 8-4-4-4-12) — never an external
 code, because the UUID is immutable while external codes are user-editable.
 Confirmed against the ``gcs_uri`` regex in the frozen Pub/Sub contracts. Never
 improvise another shape.

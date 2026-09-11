@@ -1,4 +1,4 @@
-"""Tier-0 structural gate (D51/D52): structural-only, loud, reason-coded."""
+"""Tier-0 structural gate: structural-only, loud, reason-coded."""
 
 from __future__ import annotations
 
@@ -56,6 +56,6 @@ def test_below_min_rows_rejected(payload: bytes) -> None:
 
 
 def test_no_column_or_mapping_awareness() -> None:
-    # Structural ONLY (D51): arbitrary headers and shapes pass; column checks
+    # Structural ONLY: arbitrary headers and shapes pass; column checks
     # are tier 1 (the source-shape suite, downstream).
     assert run_tier0(b"anything,goes,here\n1,2,3\n", **_IDS).row_count == 1

@@ -164,9 +164,7 @@ def test_list_catalog_forwards_incoming_cursor() -> None:
 
 
 def test_search_orders_returns_single_page_and_cursor() -> None:
-    handler, seen = _sequence(
-        [_json_response(200, {"orders": [{"id": "o1"}], "cursor": "NEXT"})]
-    )
+    handler, seen = _sequence([_json_response(200, {"orders": [{"id": "o1"}], "cursor": "NEXT"})])
     page = _puller(handler).search_orders(_TOKEN, location_ids=["L1"], cursor=None)
 
     assert [o["id"] for o in page.orders] == ["o1"]
@@ -193,9 +191,7 @@ def test_batch_inventory_exhausts_cursor_internally() -> None:
             ),
         ]
     )
-    result = _puller(handler).batch_inventory(
-        _TOKEN, catalog_object_ids=["A", "B"], location_ids=["L1"]
-    )
+    result = _puller(handler).batch_inventory(_TOKEN, catalog_object_ids=["A", "B"], location_ids=["L1"])
 
     assert result == {"A": "3", "B": "7"}
     # Two requests: the transport followed the inventory cursor to completion.
@@ -357,7 +353,7 @@ def test_detail_excerpt_is_bounded() -> None:
     assert len(detail) == 512
 
 
-# -- the rate-limit posture the connector-health emit writes (D116) -----------------
+# -- the rate-limit posture the connector-health emit writes -----------------
 #
 # Coarse and boolean-equivalent by design: RATE_LIMIT_THROTTLED once a 429 has been
 # ABSORBED (retried and recovered from), else None. No counts, no delays, no vendor text.

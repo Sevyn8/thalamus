@@ -94,7 +94,7 @@ export type CompanyProfileStepProps = {
   onSaved: () => void;
   onBack: (() => void) | null;
   setDirty: (dirty: boolean) => void;
-  // Slice 7 item 2: "edit" when this step is the standalone edit surface
+  // "edit" when this step is the standalone edit surface
   // (non-ONBOARDING tenant); "onboarding" for create/resume. Create is
   // always onboarding regardless.
   mode: WizardMode;
@@ -416,7 +416,7 @@ function CompanyEdit({
     mutationFn: (patch: TenantPatchPayload) => tenantsApi.patch(tenantId, patch),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["tenants"] });
-      // Slice 7 item 5: ["tenant"] prefix, not ["tenant", tenantId] (which
+      // ["tenant"] prefix, not ["tenant", tenantId] (which
       // does not prefix-match the per-user detail key ["tenant", userId,
       // id]), so the drawer reflects the edit on return.
       void qc.invalidateQueries({ queryKey: ["tenant"] });
@@ -464,7 +464,7 @@ function CompanyEdit({
           setError("name", { type: "server", message: "A tenant with this name already exists" });
           return;
         }
-        // Slice 7 item 1/2: the backend maps NUMERIC(15,2) overflow and the
+        // The backend maps NUMERIC(15,2) overflow and the
         // revenue/stores CHECK constraints to 422 INVALID_TENANT_FIELD. The
         // as-of date fields are now real inputs, so the error anchors to the
         // exact field the backend named (which, for the revenue consistency

@@ -1,4 +1,4 @@
-"""Unit tests for ``slug_for_tenant_root`` (Step 6.20.1).
+"""Unit tests for ``slug_for_tenant_root``.
 
 Pure-Python tests of the mechanical slug rule that derives
 ``(code, path)`` for the tenant-root org_node row provisioned alongside
@@ -6,9 +6,9 @@ every POST `/api/v1/tenants`. No database; no fixtures. Lives under
 ``tests/unit/`` per the existing unit-test layout (``test_engine.py``,
 ``test_permissions_helpers.py``).
 
-The helper's rule is locked at LD3 in ``prompts/step-6_20_1-impl-2026-05-18.md``:
-diacritic-strip, ASCII-only, lowercase, collapse non-alphanumerics to
-single ``-``, trim, truncate at 64 chars, raise on empty.
+The helper's locked rule: diacritic-strip, ASCII-only, lowercase,
+collapse non-alphanumerics to single ``-``, trim, truncate at 64 chars,
+raise on empty.
 """
 import pytest
 

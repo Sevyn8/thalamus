@@ -1,16 +1,15 @@
 """This service writes TWO tables through TWO credentials, and these are what keep it there.
 
-IT WAS READ-ONLY UNTIL SLICE 5d, and every write path since has been the deliberate act this file
-demanded. The original header said "Slice 8b needs a writer for provisioning. It must add one
-DELIBERATELY, which is what these tests turn into a visible act rather than a discovery that it
-was already wired." The mechanism has now worked twice: 5d added the alert lifecycle and 5e added
-provisioning, and each meant editing this file, in the open, with the reasoning attached.
+THIS SERVICE WAS READ-ONLY ORIGINALLY, and every write path since has been the deliberate act
+this file demands: adding one means editing this file, in the open, with the reasoning attached,
+rather than discovering afterward that it was already wired. The mechanism has worked twice: once
+for the alert lifecycle, once for provisioning.
 
 WHAT THE CONTRACT IS NOW. Not "cannot write", and not a blanket "the service may write" either.
 It is an enumeration:
 
-    lifecycle.py   INSERT on synapse.action_events, as synapse_lifecycle    (5d)
-    provision.py   INSERT on synapse.provision, as synapse_provisioner      (5e)
+    lifecycle.py   INSERT on synapse.action_events, as synapse_lifecycle
+    provision.py   INSERT on synapse.provision, as synapse_provisioner
 
 TWO NAMES, NOT A PERMISSION. The counted tests below go from "exactly one" to "exactly two" and
 each exemption is spelled out by filename, so a THIRD write surface fails here and has to be
@@ -38,7 +37,7 @@ FOR that rather than against it. Each of these is one verb on one table; the wri
 ORCHESTRATOR's identity and can append to the action log itself, so a console holding it would
 make every row ambiguous about whether a human or the 04:00 sweep produced it.
 
-THE ARGUMENT, one layer up from slice 5. ``synapse_writer`` holds INSERT and no SELECT, so
+THE SAME ARGUMENT, one layer up. ``synapse_writer`` holds INSERT and no SELECT, so
 "resolvers never write" is a runtime fact rather than a grep. The same reasoning applies here: a
 service that merely CHOOSES not to write outside two files is equivalent in behaviour and not in
 property. A credential that cannot do a thing cannot be made to do it by a bug, a merge, or a
@@ -98,19 +97,16 @@ def test_the_config_loads_with_both_write_dsns_and_no_writer(monkeypatch: pytest
         "SYNAPSE_LIFECYCLE_URL",
         "SYNAPSE_PROVISION_URL",
         "CM_API_BASE_URL",
-        # AXON's three, and slice 2 REDUCED this from five. The sender DSN and both SendGrid
-        # values left with the provider call when the enable route became a publish; the project
-        # id arrived in their place. Covered by the SAME
-        # test as the write DSNs deliberately: this test is the 5d guard, and 5d was an env var
-        # the module never wired sitting dead in staging for two days behind a green apply. A
-        # delivery plane that silently carries nothing is the same failure with a different
-        # blast radius.
+        # AXON's three. The sender DSN and both SendGrid values are not needed here: the enable
+        # route publishes a message rather than calling the provider directly, and the project id
+        # took their place. Covered by the SAME test as the write DSNs deliberately: an env var
+        # the module never wires can sit dead in staging behind a green apply, and a delivery
+        # plane that silently carries nothing is the same failure with a different blast radius.
         #
         # AXON_READER_URL IS IN THIS LIST AND IT IS NOT A WRITE PATH. Without it the console's
         # delivery surface cannot be served at all, and the point of building the read surface
-        # before the queue was that an operator can SEE what the delivery plane did. A revision
-        # that starts without it has a plane nobody can look at, which is the state slice 3
-        # exists to end.
+        # before the queue is that an operator can SEE what the delivery plane did. A revision
+        # that starts without it has a plane nobody can look at.
         "AXON_PLATFORM_ONCALL_EMAIL",
         "AXON_READER_URL",
         "AXON_PROJECT_ID",
@@ -184,8 +180,8 @@ _WRITE_MODULES = {
 def test_no_module_outside_the_two_write_modules_issues_a_write() -> None:
     """GREPPED, because the claim is about every statement this service can execute.
 
-    RESHAPED TWICE, NOT WEAKENED. It used to allow no write anywhere; 5d allowed exactly one file
-    and 5e allows exactly two, BY NAME. A blanket exemption ("the service may write") would be
+    RESHAPED TWICE, NOT WEAKENED. It used to allow no write anywhere, then exactly one file,
+    and now exactly two, BY NAME. A blanket exemption ("the service may write") would be
     the weakening, and it is the easy edit when this goes red, which is why the list above is
     explicit and this docstring says so.
 
@@ -206,7 +202,7 @@ def test_no_module_outside_the_two_write_modules_issues_a_write() -> None:
         # Strip docstrings: several of them discuss writes in order to explain their absence.
         body = "".join(code.split('"""')[::2])
         # EACH KEYWORD CARRIES ITS OWN TRAILING CONTEXT, and that is not decoration. Bare
-        # "TRUNCATE" matched the English word "truncated" the moment slice 3's read path returned
+        # "TRUNCATE" matched the English word "truncated" the moment the read path returned
         # a truncation flag, which is a false positive that would have been "fixed" by renaming a
         # good variable. "TRUNCATE " still catches every real one: the SQL form is always
         # TRUNCATE followed by a table. Same reason "UPDATE " has always had its space.

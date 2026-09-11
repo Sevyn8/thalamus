@@ -51,7 +51,7 @@ variable "vpc_connector_id" {
 
 variable "max_retries" {
   type        = number
-  description = "Task retries on failure. 0: a manually executed pull must fail loudly. Safe to raise (a same-run_key retry mints the same connector_run_id and the D58 dedup collapses it), but a silent retry hides the first failure."
+  description = "Task retries on failure. 0: a manually executed pull must fail loudly. Safe to raise (a same-run_key retry mints the same connector_run_id and the query-based dedup collapses it), but a silent retry hides the first failure."
   default     = 0
 }
 

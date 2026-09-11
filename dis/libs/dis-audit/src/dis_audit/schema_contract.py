@@ -1,23 +1,22 @@
-"""The frozen audit.events schema contract + the fail-loud drift diff (Slice 30c).
+"""The frozen audit.events schema contract + the fail-loud drift diff.
 
-Before this slice the model-vs-schema drift guard checked the column-NAME set
-only (both directions). A type narrowing (``varchar(64)`` → ``varchar(32)``) or
-a nullability flip passed that guard and surfaced only as a runtime INSERT
-failure — which the fire-and-forget writer swallows. That is the same
-silent-loss class as the D45 partition cliff: the audit trail stops recording
-and nothing fails loud.
+The model-vs-schema drift guard checks more than the column-NAME set: a type
+narrowing (``varchar(64)`` → ``varchar(32)``) or a nullability flip would
+otherwise surface only as a runtime INSERT failure — which the fire-and-forget
+writer swallows, so the audit trail would silently stop recording and nothing
+would fail loud.
 
-This module is the hardening: :data:`EXPECTED_COLUMNS` freezes the full
-per-column shape (data_type, is_nullable, character_maximum_length, straight
-from ``information_schema.columns`` vocabulary), and :func:`diff_schema` is a
-PURE comparison — the integration drift guard feeds it the live introspection
-rows; unit tests prove a synthetic narrowing and a nullability flip are
-reported WITHOUT touching the database.
+:data:`EXPECTED_COLUMNS` freezes the full per-column shape (data_type,
+is_nullable, character_maximum_length, straight from
+``information_schema.columns`` vocabulary), and :func:`diff_schema` is a PURE
+comparison — the integration drift guard feeds it the live introspection rows;
+unit tests prove a synthetic narrowing and a nullability flip are reported
+WITHOUT touching the database.
 
 Three-way tie: the model's ``AuditEvent.db_column_names()`` must equal this
 contract's key set (a unit pin), and the live schema must diff clean against
 the contract (the integration guard) — so model ↔ contract ↔ live agree
-transitively, now at type/nullability grain, not just names.
+transitively, at type/nullability grain, not just names.
 """
 
 from __future__ import annotations
@@ -43,7 +42,7 @@ EXPECTED_COLUMNS: dict[str, ColumnSpec] = {
     "event_timestamp": ColumnSpec("timestamp with time zone", "NO"),
     "event_date": ColumnSpec("date", "NO"),
     "trace_id": ColumnSpec("uuid", "NO"),
-    "prior_trace_id": ColumnSpec("uuid", "YES"),  # Slice 30c (the D42 revision)
+    "prior_trace_id": ColumnSpec("uuid", "YES"),
     "tenant_id": ColumnSpec("uuid", "YES"),
     "data_ingress_event_id": ColumnSpec("uuid", "YES"),
     "service_name": ColumnSpec("character varying", "NO", 64),

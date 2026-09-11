@@ -50,7 +50,7 @@ type Alert = {
   store_name: string | null;
   product_name: string | null;
   current_stock_qty: string | null;
-  // Slice 5d. Resolved PER TARGET by the BFF, so a snooze taken on yesterday's
+  // Resolved PER TARGET by the BFF, so a snooze taken on yesterday's
   // detection covers today's new one for the same product at the same store.
   lifecycle_verb: string | null;
   lifecycle_reason: string | null;

@@ -1,4 +1,4 @@
-"""Tenants router: list / stats / detail endpoints (Step 3.3).
+"""Tenants router: list / stats / detail endpoints.
 
 Three GET handlers under the ``/tenants`` sub-prefix; the parent
 ``/api/v1`` prefix comes from ``settings.api_prefix`` at
@@ -491,7 +491,7 @@ async def complete_tenant_onboarding(
     returns 409 ``INVALID_STATE_TRANSITION``; a missing / RLS-filtered
     tenant returns 404 ``TENANT_NOT_FOUND`` (RLS-as-404 per D-17).
 
-    Gating (Slice 6 option a): requires legal profile, billing profile,
+    Gating: requires legal profile, billing profile,
     at least one contact, the Auth0 organization provisioned
     (tenants.auth0_org_id), at least one invited admin user
     (tenant_users.invited_at), and documents all-verified; otherwise 409
@@ -539,7 +539,7 @@ async def provision_tenant_auth0(
     )),
     session: AsyncSession = Depends(get_tenant_session_dep),
 ) -> TenantOrgProvisionResult:
-    """Get-or-create the Auth0 Organization for this tenant (Slice 2c, D-39).
+    """Get-or-create the Auth0 Organization for this tenant.
 
     Auth0-side only: reads the committed tenant row under the PLATFORM session
     and calls Auth0; writes NOTHING to the CM DB. Idempotent via the
@@ -565,7 +565,7 @@ async def provision_tenant_auth0(
         tenant_name=tenant.name,
         display_code=tenant.display_code,
     )
-    # Slice 5 (option a): persist the Auth0 org id so onboarding-state can
+    # Persist the Auth0 org id so onboarding-state can
     # report a durable auth0_organization fact (TRUE/FALSE) for the review
     # gate. Written after the Auth0 get-or-create succeeded; the request
     # session commits at dependency teardown. Idempotent: a re-provision

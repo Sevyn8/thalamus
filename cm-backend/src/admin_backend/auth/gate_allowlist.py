@@ -1,4 +1,4 @@
-"""Mandatory-gate-discipline allowlist (Step 6.9.3.2).
+"""Mandatory-gate-discipline allowlist.
 
 Endpoints listed in ``GATE_EXEMPT_PATHS`` are explicitly exempt from
 RBAC gating. They require authentication (via ``AuthMiddleware``) but
@@ -13,8 +13,7 @@ Coupling — must stay in sync with two other sets:
   - Mandatory-gate-discipline test (consumes both sets)
 
 Adding an endpoint without either a gate or an allowlist entry is a
-deploy-time error by design — the discipline test fails the build. See
-"Note on gate allowlist coupling" in CLAUDE.md.
+deploy-time error by design — the discipline test fails the build.
 
 v0 exempt set (9 paths):
   - ``/api/v1/me/permissions`` — caller-state; gating against the
@@ -23,7 +22,7 @@ v0 exempt set (9 paths):
     boot call flips their INVITED row to ACTIVE); the explicit
     accept-invitation endpoint was retired in favour of it.
   - ``/api/v1/me/can-do`` — caller-state, same.
-  - ``/api/v1/module-access/me`` — caller-state (Slice 8): the caller's
+  - ``/api/v1/module-access/me`` — caller-state: the caller's
     OWN tenant's enabled modules, RLS-scoped to the JWT tenant. Powers
     the tenant-persona launcher without an admin governance grant; the
     admin matrix/modules endpoints stay gated on ADMIN.TENANTS.VIEW.TENANT.
@@ -33,14 +32,13 @@ v0 exempt set (9 paths):
     authenticated user.
   - ``/api/v1/roles`` — role catalogue view; any authenticated user.
   - ``/api/v1/roles/{role_id}/permissions`` — same.
-  - ``/api/v1/roles/{role_id}`` — role detail (E7, Step 6.18.2). Joins
-    the other role read endpoints; PATCH (Step 6.18.3) will gate on
-    ADMIN.ROLES.OVERRIDE.GLOBAL but GET stays exempt per FN-AB-30
-    deferral.
+  - ``/api/v1/roles/{role_id}`` — role detail. Joins the other role
+    read endpoints; PATCH gates on ADMIN.ROLES.OVERRIDE.GLOBAL but GET
+    stays exempt (deliberate deferral).
 
 Forward note: revisit gating ``/permissions``,
 ``/permission-matrix``, ``/roles`` on
-``ADMIN.ROLES.VIEW.TENANT`` when Stage 2 write surfaces (FN-AB-NN).
+``ADMIN.ROLES.VIEW.TENANT`` when further write surfaces land.
 ``/lookups`` stays exempt regardless.
 """
 from __future__ import annotations

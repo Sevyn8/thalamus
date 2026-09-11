@@ -1,8 +1,7 @@
 import { z } from "zod";
 
-// Moved here in Slice 6 from the retired lib/schemas/provision-tenant.ts
-// (the onboarding wizard is the only remaining consumer): a display code is
-// lowercase alphanumerics + hyphens, 3-64 chars, no leading/trailing hyphen.
+// The onboarding wizard is the only consumer: a display code is lowercase
+// alphanumerics + hyphens, 3-64 chars, no leading/trailing hyphen.
 export const DISPLAY_CODE_REGEX = /^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/;
 
 const MONEY_REGEX = /^\d+(\.\d{1,2})?$/;
@@ -20,8 +19,7 @@ const MAX_MONTHLY_REVENUE_USD = 9999999999999.99;
 // shows every tenant_region lookup (INDIA included), and the value is cast
 // to the generated TenantRegion union when the payload is built. This was
 // deliberately independent of the retired provision-tenant schema, whose
-// region enum omitted INDIA (Slice 6 removed it along with
-// ProvisionTenantModal).
+// region enum omitted INDIA.
 export const onboardingCompanySchema = z.object({
   name: z
     .string()

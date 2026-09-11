@@ -1,4 +1,4 @@
-"""Dedup dispositions (D58/D59): the prior-row branches the connector shares with
+"""Dedup dispositions: the prior-row branches the connector shares with
 csv-ingest-worker.
 
 The 24h WINDOW comparison itself lives in ``csv_ingest_worker.bronze.find_prior`` (proven
@@ -235,7 +235,7 @@ async def test_failed_prior_is_no_op() -> None:
 
 
 async def test_duplicate_paths_preserve_a_stored_rate_limit_posture() -> None:
-    """NEGATIVE CASE (D116): a no-op never extracted, so it must not clear the posture.
+    """NEGATIVE CASE: a no-op never extracted, so it must not clear the posture.
 
     Every duplicate branch emits health-seen. None of them ran an extract, so none knows
     whether the vendor is throttling — they pass the ignorance sentinel, and the SQL's

@@ -1,4 +1,4 @@
-"""Orders to the sale-event path, with the D33/D65 source_event_id hint.
+"""Orders to the sale-event path, with the source_event_id hint.
 
 The header is guarded against StoreSkuSaleEvent; the per-row hint is
 ``transaction_id:line_item_seq``; unit_sale_price stays <= unit_retail_price (the DB CHECK).

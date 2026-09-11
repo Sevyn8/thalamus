@@ -9,8 +9,8 @@ THE ENGINE ONE IS THE POINT OF THE FILE. There are two Axon engines on app.state
 opposites: ``axon_engine`` is the SENDER, which holds INSERT and no SELECT anywhere, and
 ``axon_reader_engine`` is the READER, which holds SELECT and no write verb. Reading through the
 wrong one fails in production with `permission denied for table platform_deliveries`, behind a
-green deploy, on a page nobody would connect to a grant file. That is slice 5e's failure exactly,
-and it is a one-word edit away at every call site.
+green deploy, on a page nobody would connect to a grant file. That failure has happened exactly
+this way before, and it is a one-word edit away at every call site.
 """
 
 from __future__ import annotations
@@ -149,8 +149,8 @@ def gated_app(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
 async def test_both_reads_go_through_the_reader_engine(gated_app: Any) -> None:
     """NOT THE SENDER'S. axon_sender holds INSERT and NO SELECT ANYWHERE, deliberately, so a read
     issued through it fails in production with `permission denied for table platform_deliveries`
-    behind a green deploy. That is slice 5e's failure, and both engines are on app.state one
-    attribute name apart.
+    behind a green deploy. That has happened exactly this way before, and both engines are on
+    app.state one attribute name apart.
 
     ASSERTED ON BOTH CALLS, not just the list. The counts are a second statement and would be a
     second place to reach the wrong credential.

@@ -4,12 +4,11 @@ Backs E2 (``GET /api/v1/permissions``).
 
 The permissions table is platform-global, no RLS. Catalogue is
 reference data — both user types see all rows. No ``audience_filter``
-parameter (deliberate scope-out per BUILD_PLAN's Step 6.1: catalogue
-is reference data).
+parameter: the catalogue is reference data, not audience-scoped.
 
 Stateless singleton; mirrors the rest of the v0 repos.
 
-Step 6.6 amendment (2026-05-06): the ``module_asc`` sort key sorts by
+The ``module_asc`` sort key sorts by
 ``lookups.display_order`` (joined via ``list_name='module_code'``)
 rather than by ``Permission.module`` enum ordinal. Two reasons:
 
@@ -27,7 +26,7 @@ rather than by ``Permission.module`` enum ordinal. Two reasons:
     keeps the intended ordering stable).
 
 The LEFT JOIN against ``lookups`` is added unconditionally — the
-catalogue is small (44 rows post Step 6.6) and the JOIN cost is an
+catalogue is small (44 rows) and the JOIN cost is an
 index seek on ``(list_name, code)``, sub-millisecond. The other sort
 keys (``code_asc``, ``code_desc``) don't reference module so they
 ignore the JOIN entirely.

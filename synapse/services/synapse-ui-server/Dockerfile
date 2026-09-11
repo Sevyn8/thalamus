@@ -1,10 +1,9 @@
 # synapse-ui-server — Synapse's BFF, run as a Cloud Run SERVICE.
 #
-# READ-ONLY UNTIL SLICE 5d, and nearly so still: every GET reads through
-# synapse_reader, and the two POSTs write one table each through a role that can do
-# nothing else. synapse_lifecycle appends to synapse.action_events (5d);
-# synapse_provisioner inserts into synapse.provision (5e) and holds no UPDATE, so the
-# console cannot disable a tenant or edit a timezone.
+# MOSTLY READ-ONLY: every GET reads through synapse_reader, and the two POSTs write one
+# table each through a role that can do nothing else. synapse_lifecycle appends to
+# synapse.action_events; synapse_provisioner inserts into synapse.provision and holds no
+# UPDATE, so the console cannot disable a tenant or edit a timezone.
 #
 # A SECOND DOCKERFILE RATHER THAN A PARAMETERISED ONE, and the reasoning matters
 # because this project has paid three times for duplication (the Pub/Sub poll
@@ -88,15 +87,15 @@ COPY synapse/pyproject.toml /synapse/pyproject.toml
 COPY synapse/src /synapse/src
 COPY synapse/services/synapse-ui-server /synapse/services/synapse-ui-server
 
-# AXON, at /axon so the workspace's ../axon member source resolves. Slice 1 makes this
-# service Axon's first PRODUCER, so axon joins the closure the same way thalamus-synapse
+# AXON, at /axon so the workspace's ../axon member source resolves. This service is
+# Axon's first PRODUCER, so axon joins the closure the same way thalamus-synapse
 # already has. `uv tree --package synapse-ui-server` now reaches six workspace members
 # rather than five; a missing source here fails `uv sync --frozen` at build time, which is
 # the intended place to find out.
 #
 # THE ALEMBIC CHAIN AND THE DDL COME WITH IT, deliberately: this image is also what
 # migrate-axon runs, exactly as the orchestrator's image is what migrate-synapse runs. That
-# is migrate-cm's D6 argument (one image, not two) applied a third time, and it is why the
+# is the same one-image-not-two argument used for migrate-cm, applied a third time, and it is why the
 # COPY is the whole axon/ directory rather than axon/src alone.
 COPY axon /axon
 
@@ -146,36 +145,22 @@ ENV ASGI_TARGET="synapse_ui_server.main:create_app"
 # its health check and 404s the console — and it runs synapse.registry's
 # import-time invariants, so a declaration whose evaluator no longer matches its
 # `emits` fails here too.
-# THE ENV LIST IS PART OF THE CONTRACT AND MUST TRACK load_config(). It has now gone
-# stale twice, three months apart in effort and four days apart in fact:
+# THE ENV LIST IS PART OF THE CONTRACT AND MUST TRACK load_config(): a variable added to
+# load_config() must be added here in the same commit, and a variable load_config() stops
+# wanting must be removed here too. A RULE ENFORCED BY A HUMAN REMEMBERING IS NOT ENFORCED,
+# so it is enforced by tests/test_dockerfile_build_check.py, which parses this list and
+# asserts load_config() succeeds under exactly it and fails under any subset — a missing OR
+# a stale variable is a red test before it is a red build.
 #
-#   v6  slice 5d made SYNAPSE_LIFECYCLE_URL required and this list still held the
-#       pre-5d three, so the startup guard fired, correctly, during the build.
-#   v15 slice 3 made AXON_READER_URL required and this list still held the ten
-#       before it. Same failure, same place, same message shape.
+# AXON_SENDER_URL, AXON_SENDGRID_API_KEY and AXON_SENDGRID_FROM_EMAIL are absent because this
+# service no longer sends: the enable route publishes a message and axon-sender does the
+# provider call and the ledger write. AXON_PROJECT_ID takes their place.
 #
-# SLICE 2 SHRANK THIS LIST RATHER THAN GROWING IT, which is the first time that has
-# happened. AXON_SENDER_URL, AXON_SENDGRID_API_KEY and AXON_SENDGRID_FROM_EMAIL are
-# gone because this service no longer sends: the enable route publishes a message
-# and axon-sender does the provider call and the ledger write. AXON_PROJECT_ID
-# arrived in their place. THE TEST CHECKS BOTH DIRECTIONS, so a variable left here
-# after the loader stopped wanting it fails just as loudly as a missing one; that is
-# what caught these three rather than a reader noticing.
-#
-# Both times the guard was right and the check was stale. The rule stated here was
-# "a variable added to load_config() must be added here in the same commit", and it
-# was stated here BEFORE v15 failed, which is the whole point: A RULE ENFORCED BY A
-# HUMAN REMEMBERING IS NOT ENFORCED.
-#
-# It is now enforced by tests/test_dockerfile_build_check.py, which parses this list
-# and asserts load_config() succeeds under exactly it and fails under any subset. A
-# missing variable is a red test before it is a red build.
-#
-# SLICE 5e ADDED TWO MORE, both required and both here in the same commit as the
-# load_config change that demands them: SYNAPSE_PROVISION_URL (the synapse_provisioner
-# DSN) and CM_API_BASE_URL (Customer Master's origin, which the provisioning gate
-# calls). CM_API_BASE_URL is deliberately unreachable at build time for the same
-# reason the DSNs are: it is syntactically valid and nothing dials it here.
+# SYNAPSE_PROVISION_URL (the synapse_provisioner DSN) and CM_API_BASE_URL (Customer Master's
+# origin, which the provisioning gate calls) are both required and both added here in the
+# same commit as the load_config change that demands them. CM_API_BASE_URL is deliberately
+# unreachable at build time for the same reason the DSNs are: it is syntactically valid and
+# nothing dials it here.
 #
 # SYNAPSE_WRITER_URL IS DELIBERATELY ABSENT and must stay absent: load_config refuses
 # to start when it is set, because that is the ORCHESTRATOR's credential. Setting it

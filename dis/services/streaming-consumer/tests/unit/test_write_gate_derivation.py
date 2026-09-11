@@ -1,4 +1,4 @@
-"""Slice 16h: the write-time completeness required set is MODEL-DERIVED.
+"""The write-time completeness required set is MODEL-DERIVED.
 
 ``HOT_REQUIRED_FROM_PROJECTION`` is no longer a hand-curated literal — it is
 ``mandatory_mapping_produced(StoreSkuCurrentPosition, enrichment_guaranteed=…)``
@@ -8,13 +8,13 @@ the same derivation the create-time gate uses. Two guarantees:
 - **No behaviour change (T1):** the derived set yields IDENTICAL COMPLETE/INCOMPLETE
   verdicts to the old hand-curated literal across the mapping matrix — the difference
   ({sku_id}) is inert because guaranteed_hot_columns always covers sku_id (in every
-  mapping's targets). Slice 16i subtracted currency from the required set (its value is
-  enrichment-guaranteed); the enrichment union still covers it on the guaranteed side, so
-  verdicts are unchanged either way. Slice 16j made product_category + unit_cost nullable,
+  mapping's targets). Currency is subtracted from the required set because its value is
+  enrichment-guaranteed; the enrichment union still covers it on the guaranteed side, so
+  verdicts are unchanged either way. product_category and unit_cost are nullable,
   which DELIBERATELY changes the verdict for a snapshot omitting them (now COMPLETE) — so
-  that case was retired from this T1 matrix (it is no longer behaviour-preserving against
-  the pre-16h literal); its new behaviour is asserted by the reduced-set test and the
-  catalogue-write e2e instead. The remaining matrix still reproduces the literal exactly.
+  that case is retired from this T1 matrix (it is no longer behaviour-preserving against
+  the old hand-curated literal); its new behaviour is asserted by the reduced-set test and
+  the catalogue-write e2e instead. The remaining matrix still reproduces the literal exactly.
 - **Hot-model pin (T4):** the set is keyed to the hot/current-position model, NEVER
   the routed target_model — the one real trap, invisible to verdict tests (for events
   the required and guaranteed sets are disjoint, both give False either way), so it is
@@ -55,10 +55,10 @@ def _cases() -> list[tuple[str, SourceMapping, type]]:
     return [
         # snapshot: complete (all 6) / currency-omitted (enrichment covers it) /
         # missing a genuinely-required projected column (product_name). The
-        # "missing unit_cost" case was retired in Slice 16j: unit_cost became
+        # "missing unit_cost" case is retired: unit_cost is
         # nullable, so omitting it now classifies COMPLETE — a deliberate behaviour
         # change, not verdict drift, so it can no longer be compared against the
-        # frozen pre-16h literal here (its new behaviour is proven by the
+        # frozen hand-curated literal here (its new behaviour is proven by the
         # reduced-set test below and the catalogue-write e2e).
         (
             "snapshot_complete",
@@ -140,7 +140,7 @@ def test_derived_set_reproduces_old_literal_verdicts(monkeypatch: pytest.MonkeyP
 
 def test_required_set_is_the_model_derivation_not_a_literal() -> None:
     # T4 (mutation-evident): the constant IS the hot-model derivation with the enrichment
-    # value-guaranteed fields subtracted (Slice 16i). A future model nullability change
+    # value-guaranteed fields subtracted. A future model nullability change
     # (16j) is reflected with no edit here; a re-baked literal breaks this.
     assert mapping_module.HOT_REQUIRED_FROM_PROJECTION == mandatory_mapping_produced(
         StoreSkuCurrentPosition, frozenset(enrichment_fields(CURRENT_POSITION))
@@ -160,7 +160,7 @@ def test_required_set_is_hot_model_pinned_not_routed_target() -> None:
 
 
 def test_slice_50a_change_signal_columns_do_not_enter_the_required_or_staleness_sets() -> None:
-    # Slice 50a routing-invariance (the primary regression risk): the two compute-owned
+    # Routing-invariance (the primary regression risk): the two compute-owned
     # change-signal columns MUST NOT appear in the write-time completeness required-set
     # (else routing could flip) nor in the catalogue staleness set (else attribute_
     # staleness_map construction would change). The equality pins above (== the 3-member

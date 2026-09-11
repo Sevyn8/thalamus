@@ -1,4 +1,4 @@
-"""Field catalog (slice 14b b + 14d): type-aware derivation, drift guard, uniform shape.
+"""Field catalog: type-aware derivation, drift guard, uniform shape.
 
 The endpoint half runs over the UNREACHABLE-DB client — passing proves the
 catalog opens no ``rls_session`` and touches no database (acceptance: "no
@@ -27,7 +27,7 @@ from dis_validation import (
 
 TENANT_B = "019e5e3c-b5d6-7eed-93f9-3778a7a7a160"
 
-# The uniform object shape (Slice 14d), in wire order.
+# The uniform object shape, in wire order.
 _SHAPE = (
     "key",
     "display_name",
@@ -71,10 +71,10 @@ def test_consumer_injected_columns_are_never_mappable() -> None:
 def test_snapshot_mandatory_is_the_derived_not_null_set() -> None:
     snap = build_field_catalogs()[SNAPSHOT]
     flagged = {e.key for e in snap if e.mandatory}
-    # Slice 16i: the mandatory set subtracts the enrichment value-guaranteed columns,
-    # so currency (enrichment-supplied value) is NOT mandatory though tax_treatment was
-    # never mappable. Slice 16j: product_category and unit_cost became nullable, so they
-    # left the required set too (is_required() False). The catalog flag tracks the same
+    # The mandatory set subtracts the enrichment value-guaranteed columns,
+    # so currency (enrichment-supplied value) is NOT mandatory though tax_treatment is
+    # never mappable. product_category and unit_cost are nullable, so they are
+    # outside the required set too (is_required() False). The catalog flag tracks the same
     # derivation the create gate uses — this equality IS the auto-follow proof.
     hot_enrichment = enrichment_guaranteed_for(StoreSkuCurrentPosition)
     assert flagged == set(mandatory_mapping_produced(StoreSkuCurrentPosition, hot_enrichment))
@@ -86,7 +86,7 @@ def test_snapshot_mandatory_is_the_derived_not_null_set() -> None:
 
 
 def test_snapshot_currency_is_present_but_optional() -> None:
-    # Slice 16i headline: currency is mappable-but-optional (the lib supplies its value),
+    # currency is mappable-but-optional (the lib supplies its value),
     # distinct from tax_treatment which is non-mappable. It must stay a PRESENT catalog
     # entry with mandatory=false, NOT be dropped like an enrichment-produced column.
     snap = {e.key: e for e in build_field_catalogs()[SNAPSHOT]}
@@ -101,7 +101,7 @@ def test_event_mandatory_flags_match_the_live_required_sets() -> None:
         assert flagged == set(mandatory_mapping_produced(model))
 
 
-# -- uniform 10-key shape, sink, constraints (Slice 14d) --------------------------
+# -- uniform 10-key shape, sink, constraints --------------------------------------
 
 
 def test_uniform_object_shape_across_every_type() -> None:

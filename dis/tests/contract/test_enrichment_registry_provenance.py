@@ -1,10 +1,10 @@
-"""slice-5b cross-lib drift (§8b, load-bearing): the dis-enrichment registry and the
-dis-validation provenance partitions are two code-owned declarations that MUST stay
+"""Cross-lib drift check: the dis-enrichment registry and the dis-validation
+provenance partitions are two code-owned declarations that MUST stay
 consistent, or the consumer widens ``owned_columns`` with a column the canonical-shape
 drift guard has not been told to admit — a silent gate hole. These fail loud.
 
 The relationship is NOT naive equality: ``currency`` is a registered enrichment field
-whose VALUE the lib overrides (D95), but its ORIGIN is still the mapping, so it stays
+whose VALUE the lib overrides, but its ORIGIN is still the mapping, so it stays
 ``mapping_produced``; ``tax_treatment`` genuinely originates in enrichment, so it is
 ``enrichment_produced``. import-linter forbids the two pure libs importing each other;
 this test (outside both packages) is the agreement check.

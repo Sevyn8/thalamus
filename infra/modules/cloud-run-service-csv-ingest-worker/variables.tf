@@ -3,7 +3,7 @@
 #
 # csv-ingest-worker is a long-running Pub/Sub PULL consumer deployed as an
 # always-on Cloud Run Service (RUN_HEALTH_SERVER=true serves /healthz for the
-# probe alongside the pull loop). D58: the query-based dedup is single-instance
+# probe alongside the pull loop). The query-based dedup is single-instance
 # only, so min=max=1 and cpu_idle=false are CORRECTNESS constraints, not tuning.
 # DB connection is private-IP TCP through the connector (no socket, no
 # cloudsql.client). POSTGRES_URL is secret-backed by reference.
@@ -42,7 +42,7 @@ variable "vpc_connector_id" {
   description = "Serverless VPC Access connector id (module.network.vpc_connector_id / thalamus-vpcconn). Egress to the private Cloud SQL IP goes through this."
 }
 
-# --- Cloud Run sizing (D58: single-instance correctness constraint) ---
+# --- Cloud Run sizing (single-instance correctness constraint) ---
 
 variable "min_instances" {
   type        = number
@@ -52,7 +52,7 @@ variable "min_instances" {
 
 variable "max_instances" {
   type        = number
-  description = "Maximum instances. Pinned to 1 (D58): the query-based dedup is single-instance only. Do not raise."
+  description = "Maximum instances. Pinned to 1: the query-based dedup is single-instance only. Do not raise."
   default     = 1
 }
 

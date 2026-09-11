@@ -1,10 +1,10 @@
-"""The catalogue (snapshot) write path (Slice 14d): the completeness branch, the
+"""The catalogue (snapshot) write path: the completeness branch, the
 staleness stamp, and the event-path-unchanged guard.
 
 The completeness branch is pinned to the REGISTRIES, not to today's values: each
 test perturbs a projection registry and asserts the derived branch follows — so a
 future hardcoding or drift fails the test. The staleness tracked set is NOT
-registry-derived (Slice 50d): it is an explicit published set, pinned as such below
+registry-derived: it is an explicit published set, pinned as such below
 (a registry edit must NOT move it).
 """
 
@@ -42,7 +42,7 @@ def _event() -> IngressReadyEvent:
     )
 
 
-# -- the staleness set is an EXPLICIT published set (Slice 50d) -------------------
+# -- the staleness set is an EXPLICIT published set -------------------
 
 
 def test_catalogue_staleness_set_is_the_explicit_published_set() -> None:
@@ -51,7 +51,7 @@ def test_catalogue_staleness_set_is_the_explicit_published_set() -> None:
         catalogue_staleness_columns,
     )
 
-    # Slice 50d: the four catalogue-reachable freshness columns — an explicit surface,
+    # The four catalogue-reachable freshness columns — an explicit surface,
     # NOT the retired mapping_produced ∩ event_contendable derivation. currency,
     # product_name, sku_status, promo_identifier LEFT the set; expiry_date JOINED it.
     expected = {"current_retail_price", "unit_cost", "stock_qty", "expiry_date"}
@@ -62,7 +62,7 @@ def test_catalogue_staleness_set_is_the_explicit_published_set() -> None:
 def test_staleness_set_is_independent_of_the_projection_registries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Slice 50d: the tracked set is EXPLICIT, so perturbing either projection registry
+    # The tracked set is EXPLICIT, so perturbing either projection registry
     # must NOT move it — the exact opposite of the retired 14d registry-follows property.
     # This pins the decoupling (a registry edit that WOULD have added a column under the
     # old intersection changes nothing now).
@@ -94,7 +94,7 @@ def test_catalogue_guaranteed_is_identity_projection() -> None:
     )
     # Identity: the mapping-produced targets ARE the hot columns (no registry image),
     # PLUS the enrichment-guaranteed fields (currency, tax_treatment) the lib always
-    # supplies on this path (slice-5b, D95).
+    # supplies on this path.
     assert guaranteed_hot_columns(source, StoreSkuCurrentPosition) == frozenset(
         {"sku_id", "product_name", "stock_qty", "currency", "tax_treatment"}
     )
@@ -103,7 +103,7 @@ def test_catalogue_guaranteed_is_identity_projection() -> None:
 def test_catalogue_guaranteed_follows_the_targets_not_a_hardcoded_set() -> None:
     from streaming_consumer.pipeline.mapping import guaranteed_hot_columns
 
-    # The enrichment-guaranteed fields are always present (slice-5b, D95); the
+    # The enrichment-guaranteed fields are always present; the
     # mapping-driven part still follows the targets exactly.
     enrichment = frozenset({"currency", "tax_treatment"})
     one = SourceMapping.model_validate(
@@ -153,7 +153,7 @@ def test_valid_snapshot_classifies_complete_and_incomplete_does_not() -> None:
 
 
 def test_currency_omitted_still_complete_via_enrichment_companion_still_incomplete() -> None:
-    # slice-5b (D95, criterion 4): currency LEFT the mapping-required set (the lib now
+    # Currency LEFT the mapping-required set (the lib now
     # guarantees it), so a snapshot mapping that does NOT map currency classifies
     # COMPLETE — where pre-slice it would NOT (currency was required from the projection).
     from streaming_consumer.pipeline.mapping import classify_hot_completeness
@@ -196,7 +196,7 @@ def test_currency_omitted_still_complete_via_enrichment_companion_still_incomple
 
 
 def test_enriched_value_is_seen_by_post_validation_gate() -> None:
-    # slice-5b (D94, criterion 3): enrichment runs BEFORE post-validation, so the gate
+    # Enrichment runs BEFORE post-validation, so the gate
     # SEES enriched values. A valid store currency is char(3) and can never be invalid,
     # so the gate's EXISTENCE is proven with a deliberately-invalid handed-in fact — NOT
     # a production-reachable path (documented so this is not later mistaken for dead code
@@ -258,7 +258,7 @@ def test_catalogue_groups_project_and_stamp() -> None:
     assert group.last_source_event_at == _RECEIVED  # received_ts is the event-time
     # Natural-key columns are NOT in projected (carried as fixed params).
     assert "sku_id" not in group.projected
-    # Slice 50d: attribute_staleness_map stamps only the TRACKED columns the row set,
+    # Attribute_staleness_map stamps only the TRACKED columns the row set,
     # with the received_ts value. This row sets price + cost (tracked) but also
     # product_name/currency (written as values, NOT tracked) and reorder_point (neither).
     import orjson
@@ -274,7 +274,7 @@ def test_catalogue_groups_project_and_stamp() -> None:
 
 
 def test_catalogue_groups_blank_tracked_column_not_stamped() -> None:
-    # Slice 50f Fix 1: the stamp trigger is NON-NULL-VALUE-PRESENT, not projected-membership. A
+    # The stamp trigger is NON-NULL-VALUE-PRESENT, not projected-membership. A
     # tracked column present but NULL is NOT stamped; a non-null tracked column in the same row
     # still is. The filter is `is not None`, NOT truthiness — a legitimate ZERO (0.00 price, 0 qty)
     # MUST still stamp, which truthiness would wrongly drop.

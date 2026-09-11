@@ -1,12 +1,12 @@
 """Migration 0002 (identity_mirror external codes): target safety + reversibility.
 
-Slice 9a AC4. Two layers:
+Two layers:
 
   * **Target-safety guard, asserted positively and non-skippably.** The pure
     ``check_migration_target`` refusal logic is unit-testable without a live bind
     (the ``test_reader_guards`` precedent): it refuses the Customer Master database
     outright, refuses any non-expected database, and passes only the DIS database.
-  * **Reversible cycle against an EPHEMERAL scratch DB (Slice 51c, D122).** ``upgrade head``
+  * **Reversible cycle against an EPHEMERAL scratch DB.** ``upgrade head``
     adds the two nullable columns (live introspection via ``information_schema``),
     ``downgrade 0001`` removes them cleanly, re-upgrade restores them — all on a scratch DB
     created and torn down within the test, never the resident DB (5433).
@@ -87,7 +87,7 @@ def _code_columns(engine: Engine) -> dict[tuple[str, str], str]:
 
 def test_upgrade_head_adds_the_code_columns(scratch_db: ScratchDB) -> None:
     # APPLY-TO-HEAD on the scratch DB (brought to head by the scratch_db fixture): the
-    # upgrade leaves both code columns present. The downgrade leg is split out + skipped (D99).
+    # upgrade leaves both code columns present. The downgrade leg is split out + skipped.
     assert _code_columns(scratch_db.engine) == {
         ("tenants", "display_code"): "YES",
         ("stores", "store_code"): "YES",

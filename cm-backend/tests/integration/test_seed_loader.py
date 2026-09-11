@@ -14,7 +14,7 @@ Layer shape:
 
 Note on RLS visibility (D-29). All six multi-tenant tables use the
 unconditional PLATFORM OR-branch, so a PLATFORM session sees every
-row. Post Step 6.8.1 split (D-34), the previously-mixed
+row. Since the split (D-34), the previously-mixed
 ``user_role_assignments`` is gone; it lives in two physical tables:
 ``platform_user_role_assignments`` (no RLS) and
 ``tenant_user_role_assignments`` (RLS+FORCE, unconditional OR-branch).
@@ -30,22 +30,22 @@ from admin_backend.config import get_settings
 # excel_reader's phantom-row filter (which drops a stray #VALUE!
 # row at row 1,048,558 in role_permissions).
 #
-# Step 6.1 narrowed the permission catalogue: dropped the
+# The permission catalogue was narrowed: dropped the
 # PRICING_OS.MARKDOWNS.APPROVE.REGION row (scope='REGION' no longer in
 # permission_scope_enum) AND the 4 role_permissions referencing it.
 # 24 -> 23 permissions, 117 -> 113 role_permissions.
 #
-# Step 6.8.1 split user_role_assignments. The seed Excel is unchanged
+# user_role_assignments was split. The seed Excel is unchanged
 # (still 22 logical rows: 3 PLATFORM-audience + 19 TENANT-side); the
 # loader routes each row to one of the two physical tables.
 #
-# Phase 3 seed update (2026-05-13, post-Step-6.9.3.2): +1 permission
+# Catalogue update: +1 permission
 # (ADMIN.TENANTS.VIEW.TENANT tuple) and +2 role_permissions (OWNER →
 # ADMIN.TENANTS.VIEW.TENANT, OWNER → ADMIN.ORG_NODES.VIEW.TENANT).
 # 30 -> 31 permissions, 120 -> 122 role_permissions.
 #
-# Phase 3b seed update (2026-05-16, pre-Step-6.13 catalogue gap closure
-# per FN-AB-47): +2 permissions (ADMIN.ORG_NODES.CONFIGURE.GLOBAL,
+# Catalogue gap closure (per FN-AB-47): +2 permissions
+# (ADMIN.ORG_NODES.CONFIGURE.GLOBAL,
 # ADMIN.ORG_NODES.VIEW.GLOBAL) and +5 role_permissions (SUPER_ADMIN ->
 # both new GLOBAL tuples, PLATFORM_ADMIN -> both new GLOBAL tuples,
 # OWNER -> ADMIN.ORG_NODES.CONFIGURE.TENANT).
@@ -57,15 +57,15 @@ EXPECTED_VISIBLE_COUNTS_PLATFORM = {
     "stores": 25,
     "tenant_users": 17,
     "roles": 15,
-    # 2026-05-20 (Step 6.16.3 operator catalogue update):
+    # Operator catalogue update:
     # +1 permission `ADMIN.AUDIT_LOG.VIEW.GLOBAL` (36 -> 37).
     # Net role_permissions movement (132 -> 131): platform roles
     # SUPER_ADMIN / PLATFORM_ADMIN / SUPPORT_ADMIN previously held
     # `.VIEW.TENANT`; operator REVOKED those and GRANTED
     # `.VIEW.GLOBAL` to the same 3 platform roles. Tenant-side
     # `.VIEW.TENANT` grants on the 8 tenant roles unchanged.
-    # 2026-08-12 (Step 6.22 channels permission catalogue, migration
-    # b7e3c95a1d84): THESE COUNTS DELIBERATELY DO NOT MOVE, and the reason
+    # Channels permission catalogue migration
+    # b7e3c95a1d84: THESE COUNTS DELIBERATELY DO NOT MOVE, and the reason
     # is worth stating because the obvious edit is wrong.
     #
     # The migration adds 3 permissions and 4 role_permissions for the new
@@ -148,12 +148,12 @@ async def test_l2_seed_row_counts(platform_session):
 async def test_l2b_role_assignments_total_split_correctly(platform_session):
     """Post-split: PLATFORM session reads both physical tables directly.
 
-    Before Step 6.8.1, ``user_role_assignments`` used the IS-NULL-gated
+    Before the split, ``user_role_assignments`` used the IS-NULL-gated
     D-29 form, so PLATFORM-without-impersonation only saw the 3
     PLATFORM-audience rows; this test iterated per-tenant impersonation
     to verify that gate.
 
-    Post Step 6.8.1 / 6.8.2 (D-34): ``tenant_user_role_assignments``
+    Post-split (D-34): ``tenant_user_role_assignments``
     uses the unconditional OR-branch, so PLATFORM-without-impersonation
     sees all rows; ``platform_user_role_assignments`` has no RLS at
     all. No iteration needed; sum the two counts directly and compare
@@ -221,7 +221,7 @@ async def test_l3_seed_sentinel_rows(platform_session):
 
     # PLATFORM-audience role assignments now live on
     # ``platform_user_role_assignments`` (no RLS; every session sees
-    # them). Post Step 6.8.1 split: no ``tenant_id`` /
+    # them). No ``tenant_id`` /
     # ``tenant_user_id`` / ``org_node_id`` columns to check — the
     # physical table separation IS the audience guarantee.
     result = await platform_session.execute(

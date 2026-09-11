@@ -3,7 +3,7 @@
 Reuses the csv-ingest-worker runtime seams (the GCS client, the ingress.ready publisher)
 and the RLS engine, exactly as the Square connector's pipeline does, so a Clover connector
 deploys with the same data-plane wiring. ``pii_backend=None`` keeps the gate fail-loud
-(v1, D40).
+(v1: no real PII backend exists yet).
 """
 
 from __future__ import annotations
@@ -79,5 +79,5 @@ def build_clover_pipeline(
         bronze_bucket=sdk_config.bronze_bucket,
         adapter=adapter,
         connector_name="clover",
-        pii_backend=None,  # v1.0: NO real backend exists; the gate fails loud (D40)
+        pii_backend=None,  # v1.0: NO real backend exists; the gate fails loud
     )

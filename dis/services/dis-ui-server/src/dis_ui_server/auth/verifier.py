@@ -1,15 +1,15 @@
-"""DEV-STUB token verifier — the single seam the 13b JWKS swap replaces.
+"""DEV-STUB token verifier — the single seam the JWKS swap replaces.
 
 Verifies the HMAC HS256 dev token byte-identically to the UI's ``/dev/login``
-stub (contract §2.1; ``services/dis-ui/src/auth/dev/devStubSecret.ts`` /
+stub (``services/dis-ui-ver2/src/auth/dev/devStubSecret.ts`` /
 ``signStubToken.ts``), so dev tokens round-trip end to end. NOT FOR PRODUCTION:
 the secret guards nothing real and is deliberately a constant, not config —
 an env override would let the two sides drift. The real Customer Master JWKS
-verifier (13b, D25) replaces only :func:`verify_token`; the :class:`Identity`
+verifier replaces only :func:`verify_token`; the :class:`Identity`
 shape and the ``scope.py`` dependencies are stable.
 
-Claim set (pinned by the UI stub and ``dis-ui-server-contract.md``): ``sub``
-(required), ``user_type`` (required, ``TENANT``|``PLATFORM`` — Slice 17b,
+Claim set (pinned by the UI stub): ``sub``
+(required), ``user_type`` (required, ``TENANT``|``PLATFORM`` —
 reject-on-ambiguous: absent/empty/unknown is a hard 401), ``tenant_id`` /
 ``store_id`` (optional, string — but a TENANT MUST carry ``tenant_id`` and a
 PLATFORM MUST NOT, enforced here), ``roles`` (optional, list of strings; absent
@@ -30,7 +30,7 @@ from dis_ui_server.auth.identity import Identity, UserType
 
 
 class Verifier(Protocol):
-    """The token-verification seam (13b): mode-selectable at startup.
+    """The token-verification seam: mode-selectable at startup.
 
     ``StubVerifier`` (HS256 dev stub, this module) and ``Auth0Verifier``
     (RS256/JWKS, ``auth0.py``) both satisfy it. ``scope.py`` holds one instance
@@ -40,7 +40,8 @@ class Verifier(Protocol):
 
     def verify(self, raw: str) -> Identity: ...
 
-# Contract §2.1 dev-stub parameters — byte-identical to dis-ui's devStubSecret.ts.
+
+# Dev-stub parameters — byte-identical to dis-ui-ver2's devStubSecret.ts.
 DEV_STUB_SECRET = "dis-ui-dev-stub-secret-not-for-production"
 DEV_STUB_ISSUER = "https://customer-master.local"
 DEV_STUB_AUDIENCE = "dis"
@@ -68,7 +69,7 @@ def _roles_claim(claims: dict[str, Any]) -> tuple[str, ...]:
 
 
 def _user_type_claim(claims: dict[str, Any]) -> UserType:
-    """The REQUIRED explicit ``user_type`` claim (plain name, Slice 17b).
+    """The REQUIRED explicit ``user_type`` claim (plain name).
 
     Absent, empty, or an unrecognized value is a hard rejection — never defaulted or
     downgraded (reject-on-ambiguous). The claim, not ``tenant_id`` presence, is the
@@ -112,7 +113,7 @@ def verify_token(raw: str) -> Identity:
     if not isinstance(sub, str) or not sub:
         raise AuthTokenError("claim 'sub' is not a non-empty string", reason="bad_claims")
 
-    # user_type is REQUIRED and EXPLICIT (Slice 17b); the user_type<->tenant_id coherence
+    # user_type is REQUIRED and EXPLICIT; the user_type<->tenant_id coherence
     # is enforced HERE, at the single token-inspection seam, so no incoherent scope ever
     # reaches a handler. Reject-on-ambiguous: never defaulted, never downgraded.
     user_type = _user_type_claim(claims)
@@ -122,7 +123,7 @@ def verify_token(raw: str) -> Identity:
     if user_type is UserType.PLATFORM and tenant_id:
         # PLATFORM is see-all; the acted-for tenant is a per-request body field on the
         # write path, never a token claim. A PLATFORM token carrying a real tenant_id is
-        # an incoherent scope, rejected (decision 2). null/empty/absent are equivalent.
+        # an incoherent scope, rejected. null/empty/absent are equivalent.
         raise AuthTokenError("PLATFORM token must not carry a tenant_id claim", reason="bad_claims")
 
     return Identity(
@@ -137,11 +138,10 @@ def verify_token(raw: str) -> Identity:
 class StubVerifier:
     """STUB-mode verifier: a thin wrapper over :func:`verify_token`.
 
-    The default mode (DIS_AUTH_MODE unset / STUB). Behavior is exactly the
-    existing HS256 dev-stub path, so local dev and the existing tests are
-    unchanged; only the call site moves from a module function to this object
-    (held on ``app.state.verifier``) so the AUTH0 mode can swap in the
-    RS256/JWKS verifier without touching ``scope.py``'s consumers.
+    Selected only by ``DIS_AUTH_MODE=STUB`` (AUTH0 is the default, and STUB
+    additionally requires a local database). Behavior is the HS256 dev-stub
+    path; the object lives on ``app.state.verifier`` so the AUTH0 mode swaps
+    in the RS256/JWKS verifier without touching ``scope.py``'s consumers.
     """
 
     def verify(self, raw: str) -> Identity:

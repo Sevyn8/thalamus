@@ -1,4 +1,4 @@
-"""AuditLogsRepo : read-only access to the two audit tables (Step 6.16.3).
+"""AuditLogsRepo : read-only access to the two audit tables.
 
 Two methods:
 
@@ -53,12 +53,12 @@ from admin_backend.models.tenant_user import ActorUserType
 class AuditActivityDetailRow:
     """One audit row, fully projected.
 
-    Carries all 19 stored columns (post-6.16.7) plus the synthesised
+    Carries all 19 stored columns plus the synthesised
     ``scope`` string (``'TENANT'`` or ``'PLATFORM'``). The router-side
     mapper projects this to the 14-field ``AuditActivityListItem`` or
     the 19-field ``AuditActivityDetail`` for the wire response.
 
-    Step 6.16.7 LD10 added 3 stored columns:
+    LD10 adds 3 stored columns:
     ``actor_organization_name``, ``actor_roles``, ``resource_subtype``.
     """
 

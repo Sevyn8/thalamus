@@ -71,7 +71,7 @@ const INITIAL: FormState = {
   longitude: "",
 };
 
-// Phase 5h.2: parent picker flattens the tenant's org tree. Valid
+// The parent picker flattens the tenant's org tree. Valid
 // parents are nodes strictly above STORE in the type ordinal
 // (TENANT root + BUSINESS_UNIT / HQ / COUNTRY / REGION). Tenant root
 // is synthesised from OrgTreeResponse.tenant_root_id (the TENANT-type
@@ -126,7 +126,7 @@ export function CreateStoreModal({
   onOpenChange,
   onCreated,
 }: CreateStoreModalProps) {
-  // Phase 5g.1.5: TENANT-OWNER persona has exactly one tenant to
+  // TENANT-OWNER persona has exactly one tenant to
   // operate in — auto-bind it from JWT claims and hide the picker.
   // PLATFORM keeps the picker (cross-tenant create) populated from
   // useTenants (which 403s for TENANT JWTs anyway, so the fetch is

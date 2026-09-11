@@ -1,4 +1,4 @@
-"""Tier-0 structural CSV validation (D51/D52) — owned by the upload endpoint.
+"""Tier-0 structural CSV validation — owned by the upload endpoint.
 
 Structural ONLY: file present (the multipart reader's concern), non-empty,
 decodes, parses as CSV, min-rows floor. Column- and mapping-aware checks are
@@ -9,12 +9,12 @@ Honesty note on "parses as CSV": almost any decoded text tokenises as CSV, so
 the load-bearing structural gates are the decode and the min-rows floor; the
 ``csv.Error`` branch catches the pathological cases (e.g. unterminated quoted
 fields spanning the file). The worker's DuckDB preflight re-sniffs downstream
-with a real dialect detector (D13/D16) — this gate exists so a structurally
+with a real dialect detector — this gate exists so a structurally
 hopeless file is a clean 4xx with no GCS write and no publish.
 
 A failure raises ``UploadStructureError`` (422) with a machine-stable ``reason``
 (``empty_file``, ``not_utf8``, ``not_csv``, ``below_min_rows``) and NEVER any
-cell value or payload content (hard rule 2 posture).
+cell value or payload content (payload content never reaches logs or errors).
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ class Tier0Result:
 
 
 def run_tier0(file_bytes: bytes, *, tenant_id: str, trace_id: str) -> Tier0Result:
-    """The D51 gate. Raises ``UploadStructureError`` on any structural failure."""
+    """The tier-0 gate. Raises ``UploadStructureError`` on any structural failure."""
     if not file_bytes or not file_bytes.strip():
         raise UploadStructureError(
             "uploaded file is empty",

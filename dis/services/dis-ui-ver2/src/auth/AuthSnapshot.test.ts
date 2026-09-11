@@ -1,7 +1,7 @@
 import type { AuthSnapshot } from './AuthSnapshot'
 import { isOps } from './AuthSnapshot'
 
-// isOps keys on the token's user_type (the backend's read-scope discriminator, D91), NOT on the
+// isOps keys on the token's user_type (the backend's read-scope discriminator), NOT on the
 // dis:ops role. The load-bearing regression: dev tokens grant the full role set (incl. dis:ops)
 // to TENANT users, yet the backend still pins their reads to the tenant — so a TENANT must NOT be
 // treated as ops just because it carries dis:ops.

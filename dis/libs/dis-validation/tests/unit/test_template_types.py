@@ -1,4 +1,4 @@
-"""The template-type vocabulary (Slice 14d): the one shared definition.
+"""The template-type vocabulary: the one shared definition.
 
 The keys + the type→model mapping live here so the BFF (catalog, validator, type
 endpoint) and the streaming consumer (routing) read one source. These tests pin

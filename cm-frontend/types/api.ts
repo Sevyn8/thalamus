@@ -218,7 +218,7 @@ export type MatrixRow = Omit<Schemas["MatrixRow"], "cells"> & {
 export type MatrixResponse = Omit<Schemas["MatrixResponse"], "items"> & {
   items: MatrixRow[];
 };
-// Slice 8: GET /module-access/me caller-state read. Same module_code
+// GET /module-access/me caller-state read. Same module_code
 // bridge to the hand-maintained ModuleCode union as the matrix cells.
 export type MyModuleItem = Omit<Schemas["MyModuleItem"], "module_code"> & {
   module_code: ModuleCode;
@@ -278,10 +278,9 @@ export type RecentActivityRow = {
   result: AuditResult;
 };
 
-// Client onboarding wizard (Slice 4, wired against backend Slices 1-3:
-// section endpoints, onboarding-state, documents with signed URLs).
-// All re-exported from generated; regenerate with `pnpm gen:types` after
-// any backend contract change.
+// Client onboarding wizard (section endpoints, onboarding-state, documents
+// with signed URLs). All re-exported from generated; regenerate with
+// `pnpm gen:types` after any backend contract change.
 export type TenantCreateRequest = Schemas["TenantCreateRequest"];
 export type TenantPatchRequest = Schemas["TenantPatchRequest"];
 
@@ -314,7 +313,7 @@ export type DocumentDownloadUrlResponse =
   Schemas["DocumentDownloadUrlResponse"];
 export type DocumentRejectRequest = Schemas["DocumentRejectRequest"];
 
-// Auth0 provisioning results (Slice 5, Access & users). First frontend
+// Auth0 provisioning results. First frontend
 // wiring of the provision-auth0 endpoints. Both are Auth0-side reports;
 // the tenant org id is now also persisted server-side (option a) so
 // onboarding-state.auth0_organization is a durable TRUE/FALSE.

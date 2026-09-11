@@ -1,30 +1,26 @@
-"""Shared fixtures for integration tests (Steps 2.3, 2.4, 3.2).
+"""Shared fixtures for integration tests.
 
-Originally extracted from tests/integration/test_middleware.py at
-Step 2.4 (FastAPI / middleware fixtures). Step 3.2 added the
-repo-layer fixtures (engine, session_factory, platform_auth,
+The repo-layer fixtures here (engine, session_factory, platform_auth,
 tenant_auth_factory, make_tenant, platform_session,
-tenant_session_factory) — these are the building blocks for every
-subsequent Repo's integration tests (stores 4.5, platform_users 5.1,
-etc.).
+tenant_session_factory) are the building blocks for every Repo's
+integration tests.
 
 The `app_with_test_routes` fixture manually wires app.state to skip
 the lifespan (which would run assert_app_role_no_bypassrls and install
 logging globally). The real /v1/health and /v1/ready are now
-registered by create_app() itself; the previous stub /v1/health from
-Step 2.3's fixture has been dropped to avoid the route-registration
-conflict.
+registered by create_app() itself; a previous stub /v1/health fixture
+has been dropped to avoid the route-registration conflict.
 
-Repo-layer test pattern (Step 3.2 onwards). The make_tenant factory
+Repo-layer test pattern: the make_tenant factory
 *commits* (it has to: setup runs in one get_tenant_session call as
 PLATFORM, assertions run in a separate get_tenant_session call as
 PLATFORM or TENANT — they are different transactions on potentially
 different connections from the pool, so setup must be visible to the
 assertion phase). Cleanup is via explicit DELETE in fixture teardown,
-not via transaction rollback. This pattern only works post-Step-3.0:
-pre-3.0, the PLATFORM session's WITH CHECK predicate would have
-rejected the INSERT because tenants_self_access lacked the
-PLATFORM-visibility OR-branch.
+not via transaction rollback. This pattern relies on the
+PLATFORM-visibility OR-branch in tenants_self_access's WITH CHECK
+predicate — without it, the PLATFORM session's INSERT would be
+rejected.
 """
 import io
 import logging
@@ -207,12 +203,12 @@ def error_log_buffer() -> Any:
 
 
 # ============================================================================
-# Repo-layer fixtures (Step 3.2 onwards)
+# Repo-layer fixtures
 #
 # The fixtures below build up from the engine to the per-test factories.
 # They are independent of `app_with_test_routes` (which wires the FastAPI
 # app for middleware/health tests) — repo-layer integration tests bypass
-# FastAPI entirely per the test pyramid (CLAUDE.md "Test pyramid").
+# FastAPI entirely per the test pyramid.
 # ============================================================================
 
 
@@ -256,12 +252,12 @@ async def session_factory(
 def platform_auth() -> AuthContext:
     """Synthetic PLATFORM AuthContext for fixture-only DB operations.
 
-    Not JWT-minted-and-verified (that path lives in Step 2.3 middleware
+    Not JWT-minted-and-verified (that path lives in the middleware
     tests). The frozen Pydantic model is constructed directly with a
     fresh `user_id` per test; PLATFORM with `tenant_id=None` matches
     the standard non-impersonating shape (D-24).
 
-    `# type: ignore[call-arg]` is the same pattern used at Step 2.2a's
+    `# type: ignore[call-arg]` is the same pattern used in
     `tests/unit/test_session.py` — mypy strict + Pydantic v2 + dict
     unpacking interact awkwardly for required fields.
     """
@@ -281,7 +277,7 @@ async def seed_completion_facts(
     invited: bool = True,
     docs: bool = True,
 ) -> None:
-    """Stamp the three DB-only facts the Slice-6 complete-onboarding gate
+    """Stamp the three DB-only facts the complete-onboarding gate
     requires beyond the section rows: the Auth0 organization id
     (tenants.auth0_org_id), an invited admin user (tenant_users.invited_at),
     and a verified document (tenant_documents all VERIFIED).
@@ -405,13 +401,14 @@ async def make_tenant(
     the setup data, setup must commit. Cleanup is by explicit DELETE.
 
     The PLATFORM session's WITH CHECK admits the INSERT via the
-    OR-clause landed at Step 3.0 (D-29). Pre-3.0, this would fail.
+    tenants_self_access OR-clause (D-29); without it, the INSERT
+    would fail.
 
     Usage:
         tenant_a = await make_tenant(name="Alpha")
         tenant_b = await make_tenant(
             name="Bravo", status=TenantStatus.ONBOARDING)
-        # Anchor-reachable tenant (Step 6.15 amendment):
+        # Anchor-reachable tenant:
         tenant_c = await make_tenant(name="Charlie", with_root=True)
 
     Pass ``with_root=True`` when the test exercises any endpoint
@@ -463,7 +460,7 @@ async def make_tenant(
         # The async-for body runs once. Exiting the loop drives the
         # generator to completion: `session.begin()` exits cleanly
         # (commit) and the session is closed. `expire_on_commit=False`
-        # at Step 2.2a keeps the returned Tenant's attributes loaded
+        # keeps the returned Tenant's attributes loaded
         # even after detach.
 
         if with_root:
@@ -516,14 +513,14 @@ async def make_tenant(
 
     # Teardown order (each step's FK to ``tenants`` is ON DELETE
     # RESTRICT):
-    #   1. audit rows  (Step 6.16.4 extension: ``tenant_activity_audit_logs``
+    #   1. audit rows  (``tenant_activity_audit_logs``
     #      and ``platform_activity_audit_logs`` both pin tenants);
     #   2. root org_nodes;
     #   3. tenants.
     # The audit cleanup mirrors the ``cleanup_tenants_router`` fixture
-    # introduced by Step 6.16.2 for ``test_tenants_writes_router.py``,
+    # in ``test_tenants_writes_router.py``,
     # promoted here so any test that creates a tenant via ``make_tenant``
-    # and then triggers an audit-emitting endpoint (Step 6.16.4 onward)
+    # and then triggers an audit-emitting endpoint
     # cleans up without further per-test wiring.
     if created_ids:
         async for session in get_tenant_session(
@@ -569,7 +566,7 @@ async def cleanup_documents(
     session_factory: async_sessionmaker[AsyncSession],
     platform_auth: AuthContext,
 ) -> AsyncIterator[list[UUID]]:
-    """Slice 3: delete tenant_documents rows for tracked tenants at
+    """Delete tenant_documents rows for tracked tenants at
     teardown so the ``make_tenant`` teardown's tenant DELETE (FK
     ON DELETE RESTRICT) succeeds. List ``make_tenant`` BEFORE this
     fixture in test signatures so this tears down first."""
@@ -631,18 +628,17 @@ def tenant_session_factory(
 
 
 # ============================================================================
-# Step 3.3 fixtures: make_store + make_tenant_user
+# make_store + make_tenant_user fixtures
 #
-# These mirror Step 3.2's `make_tenant`: async factory, PLATFORM session
+# These mirror `make_tenant`: async factory, PLATFORM session
 # insert, commit, DELETE-tracked teardown. `make_tenant_user` uses raw
-# SQL via the live ORM stub at `admin_backend.models.tenant_user` (full
-# model since Step 5.2); `make_store` was raw-SQL against the
-# 2-column lightweight stub until Step 6.17.2 upgraded it to ORM-native
-# inserts via the full `models.store.Store`.
+# SQL via the live ORM stub at `admin_backend.models.tenant_user` (the
+# full model); `make_store` uses ORM-native inserts via the full
+# `models.store.Store`.
 #
-# These factories also serve Step 3.3 directly — the tenants router's
-# aggregate endpoints exercise stores and tenant_users counts, so the
-# integration tests need a way to create those rows.
+# These factories also serve the tenants router's
+# aggregate endpoints, which exercise stores and tenant_users counts, so
+# the integration tests need a way to create those rows.
 # ============================================================================
 
 
@@ -654,19 +650,18 @@ async def make_store(
     """Async factory: insert + commit a Store via PLATFORM session,
     return persisted ORM object. Tracks IDs and DELETEs at teardown.
 
-    Step 6.17.2 upgraded from raw-SQL INSERT (2-column lightweight
-    stub) to ORM-native via the full ``models.store.Store``. The
+    Uses ORM-native inserts via the full ``models.store.Store``. The
     signature preserves backwards-compatibility with existing call
     sites in ``test_tenants_router.py`` and ``test_dashboard_router.py``;
     callers passing no overrides get a US-country, ACTIVE, exclusive-tax
     store with audit-actor pairs left NULL/NULL (Pattern (b) XOR-permitted).
 
-    The ``country`` parameter (new at 6.17.2) lets callers override the
+    The ``country`` parameter lets callers override the
     default ``'United States'`` directly — used by ``test_dashboard_router
     ::S6`` to spread stores across multiple countries without a raw
     UPDATE post-insert.
 
-    Step 6.21.2 made ``stores.org_node_id`` NOT NULL. To preserve
+    ``stores.org_node_id`` is NOT NULL. To preserve
     backward compatibility for callers that omit ``org_node_id``, the
     fixture now auto-provisions a paired STORE-type org_node (under a
     get-or-create TENANT-root for the tenant) and tracks it for
@@ -744,7 +739,7 @@ async def make_store(
         tax_treatment: TaxTreatment = TaxTreatment.EXCLUSIVE,
         status: StoreStatus = StoreStatus.ACTIVE,
     ) -> Store:
-        # Step 6.21.2: auto-provision a paired STORE-type org_node when
+        # Auto-provision a paired STORE-type org_node when
         # the caller didn't supply one. Keeps existing call sites that
         # predate the NOT NULL constraint working unchanged.
         if org_node_id is None:
@@ -939,7 +934,7 @@ async def make_tenant_user(
 
 
 # ============================================================================
-# Step 3.4.5 fixtures: make_platform_user + make_tenant_module_access
+# make_platform_user + make_tenant_module_access fixtures
 #
 # `tenant_module_access` requires NOT NULL FK to platform_users on three
 # audit-actor columns (enabled_by_user_id, created_by_user_id,
@@ -968,7 +963,7 @@ async def make_platform_user(
     invitation_accepted_at, suspended_*). Tests that need an ACTIVE
     user pass status='ACTIVE' plus the auth0_sub +
     invitation_accepted_at companion fields. SUSPENDED is intentionally
-    out of scope (the suspended_* tower is heavier; Step 5.1's full
+    out of scope (the suspended_* tower is heavier; the full
     PlatformUser model owns that).
 
     The lightweight return type is a SimpleNamespace with ``id``;
@@ -1164,7 +1159,7 @@ async def make_tenant_module_access(
 
 
 # ============================================================================
-# Step 5.3 fixture: make_org_node
+# make_org_node fixture
 #
 # Mirrors make_store's raw-SQL pattern: the live org_nodes table has more
 # NOT NULL columns than the ORM model would infer for INSERT (and a
@@ -1284,10 +1279,10 @@ async def make_org_node(
 
 
 # ============================================================================
-# Step 6.1 fixtures: make_role + make_permission + make_role_permission
+# make_role + make_permission + make_role_permission fixtures
 #
-# Raw-SQL-INSERT factories for the RBAC catalogue. Mirror Step 5.2's
-# `make_tenant_user` shape: PLATFORM session, commit, DELETE-tracked
+# Raw-SQL-INSERT factories for the RBAC catalogue. Mirror
+# `make_tenant_user`'s shape: PLATFORM session, commit, DELETE-tracked
 # teardown. Audit-actor pairs (Pattern (b)) left NULL/NULL on every row
 # (XOR-permitted).
 #
@@ -1530,12 +1525,12 @@ async def make_role_permission(
 
 
 # ============================================================================
-# Step 6.8.3 fixtures: make_platform_user_role_assignment +
-# make_tenant_user_role_assignment.
+# make_platform_user_role_assignment + make_tenant_user_role_assignment
+# fixtures.
 #
 # Both factories use raw SQL INSERTs (mirroring make_tenant_user /
-# make_org_node / make_role_permission). The audience-check triggers
-# from Step 6.8.1 enforce role-audience consistency at INSERT time:
+# make_org_node / make_role_permission). Audience-check triggers
+# enforce role-audience consistency at INSERT time:
 #   - platform_user_role_assignments: role.audience must be 'PLATFORM'.
 #   - tenant_user_role_assignments:   role.audience must be 'TENANT'.
 # The factories TRUST the caller to pass an audience-matching role_id;
@@ -1667,7 +1662,7 @@ async def make_tenant_user_role_assignment(
         tenant AND ``org_node_id``'s parent tenant. Composite FKs
         ``fk_tenant_user_role_assignments_tenant_user_same_tenant``
         and ``fk_tenant_user_role_assignments_org_node_same_tenant``
-        reject mismatches at INSERT (Step 6.8.1 / D-34 / AI-RBAC-06).
+        reject mismatches at INSERT (D-34 / AI-RBAC-06).
 
     Returns a SimpleNamespace with ``.id`` populated.
 
@@ -1764,13 +1759,13 @@ async def make_tenant_user_role_assignment(
 
 
 # ============================================================================
-# Step 6.9.3.2 fixtures: super_admin_jwt + tenant_owner_jwt_factory
+# super_admin_jwt + tenant_owner_jwt_factory fixtures
 #
-# Background. Step 6.9.3.2's gate retrofit changes has_permission's SQL to
-# filter by `pura.platform_user_id = :user_id` (or tura.tenant_user_id).
-# Existing test JWTs minted with a random uuid.uuid4() never match a
-# seeded role assignment → gate denies → 403 → 7 router test files
-# break. These two fixtures replace the random-UUID JWT pattern with
+# Background. has_permission's SQL filters by
+# `pura.platform_user_id = :user_id` (or tura.tenant_user_id).
+# A test JWT minted with a random uuid.uuid4() never matches a
+# seeded role assignment → gate denies → 403. These two fixtures
+# replace the random-UUID JWT pattern with
 # JWTs that map to real seeded grants:
 #
 #   - `super_admin_jwt` mints a PLATFORM JWT for the seeded Anjali user
@@ -2073,11 +2068,11 @@ async def tenant_owner_jwt_factory(
 
 
 # ============================================================================
-# Step 6.16.3 fixtures: make_tenant_activity_audit_log + make_platform_activity_audit_log
+# make_tenant_activity_audit_log + make_platform_activity_audit_log fixtures
 #
 # The audit emission tests (test_audit_emission_tenants / _failures) drive
 # emission through real HTTP requests, then verify rows landed in the right
-# table. The 6.16.3 read-endpoint tests need direct audit-row insertion so
+# table. The read-endpoint tests need direct audit-row insertion so
 # tests can verify list / detail / filter / cursor behaviour without spinning
 # up the full POST /tenants flow per test.
 #
@@ -2126,7 +2121,7 @@ async def make_tenant_activity_audit_log(
         actor_user_id: UUID | None = None,
         actor_user_type: str = "PLATFORM",
         actor_display_name: str = "Test Actor",
-        # Step 6.16.7 LD13 : new audit-row columns. Defaults satisfy the
+        # LD13 : audit-row columns. Defaults satisfy the
         # NOT NULL constraints; tests pass explicit values when they
         # want to drive specific behaviour.
         actor_organization_name: str = "Test Org",
@@ -2269,7 +2264,7 @@ async def make_platform_activity_audit_log(
         actor_user_id: UUID | None = None,
         actor_user_type: str = "PLATFORM",
         actor_display_name: str = "Test Platform Actor",
-        # Step 6.16.7 LD13 : new audit-row columns. Defaults satisfy
+        # LD13 : audit-row columns. Defaults satisfy
         # NOT NULL constraints on the platform table.
         actor_organization_name: str = "Platform-Ithina",
         actor_roles: str = "Test Role",

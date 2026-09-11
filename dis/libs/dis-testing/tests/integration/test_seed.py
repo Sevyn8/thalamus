@@ -31,7 +31,7 @@ def test_seed_writes_default_mapping_and_is_idempotent(seeded_identity: Engine) 
     assert second.mappings_inserted == 0
 
     # The mirror is populated by the sync, the mapping by the seed. config.source_mappings
-    # is RLS ON (Slice 14a) and dis_engine is the NOBYPASSRLS service role: the mapping
+    # is RLS ON and dis_engine is the NOBYPASSRLS service role: the mapping
     # count must read under the fixture tenant's GUC or it returns zero rows.
     primary_uuid = fx.tenant_uuid_for(fx.PRIMARY_TENANT.display_code)
     with dis_engine.begin() as conn:
@@ -53,7 +53,7 @@ def test_seed_writes_default_mapping_and_is_idempotent(seeded_identity: Engine) 
 def test_default_mapping_version_seq_is_one(seeded_identity: Engine) -> None:
     dis_engine = seeded_identity
     tenant_uuid = fx.tenant_uuid_for(str(fx.DEFAULT_SOURCE_MAPPING["tenant_display_code"]))
-    # RLS ON (Slice 14a): the read must carry the tenant GUC (NOBYPASSRLS role).
+    # RLS ON: the read must carry the tenant GUC (NOBYPASSRLS role).
     with dis_engine.begin() as conn:
         conn.execute(
             text("SELECT set_config('app.tenant_id', :tid, true)"),
@@ -68,10 +68,10 @@ def test_default_mapping_version_seq_is_one(seeded_identity: Engine) -> None:
             {"tid": str(tenant_uuid), "sid": fx.DEFAULT_SOURCE_MAPPING["source_id"]},
         ).one()
     assert row.version_seq_per_source == 1
-    # The Slice 14a grain: the row carries a template. Its id is the fixture
-    # pin on a virgin DB but the 0005-backfill mint on a DB that pre-dates
-    # 14a (the seeder existence-guard never rewrites it), so assert validity
-    # plus the deterministic name — identical in both provenances.
+    # The row carries a template. Its id is the fixture pin on a virgin DB but
+    # the migration backfill mint on a pre-existing DB (the seeder
+    # existence-guard never rewrites it), so assert validity plus the
+    # deterministic name — identical in both provenances.
     assert isinstance(UUID(str(row.template_id)), UUID)
     assert row.template_name == fx.DEFAULT_TEMPLATE_NAME
 

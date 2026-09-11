@@ -1,4 +1,4 @@
-"""Migration 0008 (DUPLICATE_* outcomes + prior_trace_id — the D42 revision):
+"""Migration 0008 (DUPLICATE_* outcomes + prior_trace_id):
 target safety, the additive cycle, the refuse-loudly downgrade, and
 fresh-bootstrap convergence.
 
@@ -7,7 +7,7 @@ Layers (the 0002..0007 migration-test conventions):
   * **Target-safety guard, asserted positively and non-skippably** (the pure
     ``check_migration_target``: refuses Customer Master outright, refuses any
     non-expected database, passes only the DIS database).
-  * **Additive cycle against an ephemeral scratch DB (Slice 51c, D122).**
+  * **Additive cycle against an ephemeral scratch DB.**
     ``upgrade head``: ``prior_trace_id`` present (uuid, nullable) and the
     outcome CHECK carries 6 values — additive, never a drop-recreate.
     ``downgrade 0007``: the column is gone and the 4-value CHECK is restored.
@@ -22,8 +22,6 @@ Layers (the 0002..0007 migration-test conventions):
     carry the full normalized audit.events shape the delta path (resident
     migrated reference) carries, including a clean ``diff_schema`` against the
     dis-audit schema contract.
-
-See: docs/slices/slice-30c-audit-tier2.md, decisions.md D42 (revised), D77/D78/D79.
 """
 
 from __future__ import annotations
@@ -270,8 +268,8 @@ def test_reapplying_0008_on_an_already_migrated_table_is_a_noop(scratch_db: Scra
     Scoped to ``upgrade 0008`` (not ``upgrade head``): this test proves 0008's
     idempotency, so it re-runs ONLY 0008. Re-running the whole tail would also re-apply
     0016 (telemetry.connector_health), whose CREATE is NOT existence-gated — a separate,
-    still-non-idempotent migration this slice surfaces but does not fix (Slice 51c gates
-    only 0013; the deferred trigger covers the rest).
+    still-non-idempotent migration this surfaces but does not fix (the existence gate
+    covers only 0013; the deferred trigger covers the rest).
     """
     before = _audit_shape(scratch_db.engine)
     scratch_db.alembic("stamp", "0007")

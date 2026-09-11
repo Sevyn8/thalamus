@@ -1,4 +1,4 @@
-"""Integration tests for GET /api/v1/lookups (Step 3.6).
+"""Integration tests for GET /api/v1/lookups.
 
 Real Postgres, real router via FastAPI's sync TestClient. Mirrors the
 shape used by ``test_tenants_router.py``: the ``app_client`` fixture
@@ -66,10 +66,9 @@ def _auth(jwt: str) -> dict[str, str]:
 def test_l1_get_lookups_returns_all_requested_lists(app_client, settings):
     """All 5 categories return their seeded rows in display_order.
 
-    The 4 PG-enum-backed categories were seeded by Step 3.6's
-    migration (0644a4186e48); module_code was seeded by Step 3.4.5.
-    country is deferred (see Step 3.6 known follow-up); not in the
-    request here.
+    The 4 PG-enum-backed categories were seeded by migration
+    0644a4186e48; module_code was seeded separately. country is
+    deferred (known follow-up); not in the request here.
     """
     resp = app_client.get(
         "/api/v1/lookups",
@@ -105,7 +104,7 @@ def test_l1_get_lookups_returns_all_requested_lists(app_client, settings):
     assert tiers[0]["display_name"] == "Enterprise"
     assert tiers[0]["display_order"] == 1
 
-    # tenant_region: 3 rows (Slice 1 added INDIA to US, EU).
+    # tenant_region: 3 rows.
     assert len(lookups["tenant_region"]) == 3
 
     # tenant_status: 5 rows in display_order.

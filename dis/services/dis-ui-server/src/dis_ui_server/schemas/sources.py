@@ -50,5 +50,5 @@ class SourceCreate(BaseModel):
     channel: ChannelWire | None = None
     store_id: str | None = Field(default=None, max_length=128)
     schedule: str | None = Field(default=None, max_length=128)
-    # PLATFORM impersonation target (Slice 17b/D92); a TENANT naming one is rejected 403.
+    # PLATFORM impersonation target; a TENANT naming one is rejected 403.
     acting_for_tenant_id: UUID | None = None

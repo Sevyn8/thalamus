@@ -1,4 +1,4 @@
-"""RBAC read endpoints (Step 6.1).
+"""RBAC read endpoints.
 
 Four GET endpoints across three URL prefixes, all accepting both
 PLATFORM and TENANT JWTs (multi-user-type per the v0 auth model):
@@ -103,11 +103,11 @@ _matrix_repo = PermissionMatrixRepo()
 class RoleNotFoundError(ClientError):
     """Raised when a role lookup by id finds nothing.
 
-    Per D-17 / Step 6.1's audience-filter convention this fires for
-    both genuinely missing rows AND rows filtered out by the
-    audience-gate (e.g., a TENANT JWT requesting a PLATFORM-audience
-    role's id). Distinguishing the two would leak that the role
-    exists in the other audience.
+    Per D-17's audience-filter convention this fires for both
+    genuinely missing rows AND rows filtered out by the audience-gate
+    (e.g., a TENANT JWT requesting a PLATFORM-audience role's id).
+    Distinguishing the two would leak that the role exists in the
+    other audience.
     """
 
     public_message = "Role not found"
@@ -127,7 +127,7 @@ def _audience_filter_for(auth: AuthContext) -> str | None:
 
 def _actor_type_from_auth(auth: AuthContext) -> ActorUserType:
     """Map ``AuthContext.user_type`` (Literal) to ``ActorUserType``
-    (typed enum) for Pattern (b) audit-actor writes (Step 6.18.3).
+    (typed enum) for Pattern (b) audit-actor writes.
 
     Mirrors ``routers/v1/stores.py::_actor_type_from_auth`` and
     ``routers/v1/tenant_users.py::_actor_type_from_auth`` exactly.
@@ -336,7 +336,7 @@ async def get_role(
     return RoleDetail.model_validate(detail)
 
 
-# ---- E8: PATCH /api/v1/roles/{role_id} (Step 6.18.3) -----------------------
+# ---- E8: PATCH /api/v1/roles/{role_id} --------------------------------------
 #
 # Role-edit write endpoint. Gated by ADMIN.ROLES.OVERRIDE.GLOBAL plus
 # audience="PLATFORM" (defense-in-depth against catalogue drift; the

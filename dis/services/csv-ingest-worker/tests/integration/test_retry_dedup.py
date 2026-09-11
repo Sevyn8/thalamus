@@ -1,14 +1,14 @@
-"""The Slice 8 client-retry story, proven ACROSS the seam on the live stack.
+"""The client-retry story, proven ACROSS the seam on the live stack.
 
 dis-ui-server's tests prove a retry re-derives the same deterministic
-``upload_session_id``; the worker's units prove the D58 dedup query. This module
+``upload_session_id``; the worker's units prove the dedup query. This module
 proves the two actually compose: two real csv.received events shaped exactly as
 a client retry produces them (same bytes → same payload_sha256, same
 tenant/store/template → same upload_session_id, DIFFERENT trace_id and DIFFERENT
 trace-keyed GCS object per attempt) run through the real pipeline against live
 5433 — and exactly one bronze row and exactly one ingress.ready publish exist.
 
-One publish total is also the D65 protection, structurally: an id-less source's
+One publish total is also the double-count protection, structurally: an id-less source's
 ``source_event_id`` is ``bronze_ref:chunk_row_index``, so double-counted
 canonical events require a second bronze row / second ingress.ready — which the
 dedup never lets exist.
@@ -131,7 +131,7 @@ async def test_double_delivery_retry_yields_one_bronze_row_and_one_publish(
     assert len(rows) == 1, f"expected exactly one bronze row, found {len(rows)}"
     assert rows[0][0] == first.trace_id
 
-    # Exactly ONE ingress.ready ever left this pipeline: the D65 structural
+    # Exactly ONE ingress.ready ever left this pipeline: the structural
     # guarantee (no second bronze_ref can mint duplicate id-less source_event_ids
     # downstream).
     assert len(publisher.messages_for("ingress.ready")) == 1
@@ -176,4 +176,4 @@ async def test_orphan_then_retry_yields_one_bronze_row_referencing_the_retry_obj
     assert rows[0][0] == retry.trace_id
     assert rows[0][1] == retry.gcs_uri  # bronze references the RETRY's object…
     assert rows[0][1] != orphan.gcs_uri  # …never the orphan (which nothing references)
-    assert len(publisher.messages_for("ingress.ready")) == 1  # one publish total (D65)
+    assert len(publisher.messages_for("ingress.ready")) == 1  # one publish total

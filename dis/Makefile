@@ -48,7 +48,7 @@ test:
 	uv run pytest -c pyproject.toml ../connectors
 	uv run pytest -c pyproject.toml ../synapse
 
-# mypy --strict gate (slice-9d): ENFORCING and growing. A package is added to
+# mypy --strict gate: ENFORCING and growing. A package is added to
 # MYPY_PACKAGES in the SAME commit that clears it; the list only ever grows.
 # Per-package invocation because identically-named test modules across libs
 # cannot share one mypy run (test dirs have no __init__.py, by design — pytest
@@ -110,8 +110,9 @@ topics-create:
 	@uv run python tools/local/create_topics.py
 
 # Seed the default TEST fixtures (tenants, stores, one source mapping) into the
-# DIS database. Test infrastructure only — NOT a runtime path (runtime
-# identity_mirror population is Slice 7; source mappings, Slice 14). Idempotent.
+# DIS database. Test infrastructure only — NOT a runtime path (at runtime,
+# identity_mirror is populated by mirror-sync and source mappings are written
+# via the mapping API). Idempotent.
 seed:
 	@uv run python -m dis_testing.seed
 

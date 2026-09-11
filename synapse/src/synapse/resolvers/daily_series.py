@@ -1,27 +1,26 @@
 """The ``daily_series`` resolver, and the probe that measures its precondition.
 
-The SECOND capability, and the one that turned resolution from "does a resolver exist"
-into "can this be satisfied FOR THIS TENANT, RIGHT NOW". Two things it forced:
+Resolution here answers "can this be satisfied FOR THIS TENANT, RIGHT NOW", not merely
+"does a resolver exist". Two structural facts:
 
 1. GATES. The capability declares the KIND it can be measured on
    (``synapse.core.capability.GateKind``), a caller supplies the threshold and the policy
    (``synapse.core.analysis``), and the MEASUREMENT is here — ``probe_min_history_days`` names
-   a table, so it can only live in this package (D6). That three-way split is the whole reason
+   a table, so it can only live in this package. That three-way split is the whole reason
    the resolution outcomes can be told apart without running the resolver body. The
    measurement grain is ``SERIES_GRAIN``, and the registry checks it against the descriptor's
    declared grain at import; see that constant for the per-tenant defect it exists to prevent.
-   (Slice 1 had the threshold on the descriptor as ``preconditions``; two callers wanting
-   different numbers is what moved it.)
-2. The D33 collapse as a shared helper (``._collapse``). An aggregate over the raw event
-   table double-counts every correction, and this is the first real aggregate in the
-   codebase — ``SUM(quantity) GROUP BY date``, named in the streaming consumer's own
-   CLAUDE.md as the case that would expose it.
+   Thresholds live on the caller's declaration, not the descriptor: two callers may want
+   different numbers.
+2. The read-time correction collapse as a shared helper (``._collapse``). An aggregate over
+   the raw event table double-counts every correction — ``SUM(quantity) GROUP BY date`` is
+   exactly the case that exposes it.
 
 WHERE EACH PREDICATE GOES, AND WHY IT IS NOT A PERFORMANCE QUESTION. This is the
 subtlest thing in the module:
 
 - ``tenant_id`` and ``store_id`` are pushed INSIDE the collapse. Safe because both are
-  components of the D33 dedup key: a correction cannot change them and remain the same
+  components of the dedup key: a correction cannot change them and remain the same
   logical event, so restricting to them cannot hide a superseding row.
 - ``sku_id`` and the DATE WINDOW are applied OUTSIDE the collapse, to the surviving rows.
   They are NOT in the dedup key, so a correction may change either — a mis-mapped SKU
@@ -81,12 +80,12 @@ _COLUMNS: tuple[str, ...] = tuple(StoreSkuSaleEvent.model_fields)
 # `_check_registry` asserts exactly that at import — the rule being that a precondition must
 # be measured at the grain the capability's rows are AT.
 #
-# WHY THIS EXISTS AS A CONSTANT. The first version of this probe counted
-# COUNT(DISTINCT event_date) per TENANT. It passed a 60-day threshold trivially on a tenant
-# with 613 events spread over 66 (store, sku) pairs at roughly 9 observations each — a number
-# that describes the tenant's calendar and nothing about whether any series is forecastable.
-# The declared grain and the measured grain disagreed, and nothing could see it because the
-# measured grain was buried in a WHERE clause. Now it is a tuple two layers can compare.
+# WHY THIS EXISTS AS A CONSTANT. A probe that counts COUNT(DISTINCT event_date) per TENANT
+# passes a 60-day threshold trivially on a tenant with 613 events spread over 66 (store, sku)
+# pairs at roughly 9 observations each — a number that describes the tenant's calendar and
+# nothing about whether any series is forecastable. When the measured grain is buried in a
+# WHERE clause, nothing can see it disagree with the declared grain. As a tuple, two layers
+# can compare them.
 #
 # tenant_id is included even though the WHERE clause pins it, so that this tuple IS the
 # query's GROUP BY rather than something derived from it. Grouping by a constant column costs
@@ -131,8 +130,7 @@ _AGGREGATE_COLUMNS: Final[tuple[str, ...]] = (
 # ResultTooLargeError: this grain multiplies stores by SKUs by DAYS, and a clamped series
 # is missing DATES, which reads as "no sales that day" rather than as truncation. At beta
 # SKU counts one store-month exceeds this, so a caller wanting that narrows by SKU; the
-# answer when a real consumer needs more is keyset pagination (DIS's D124 pattern), not a
-# bigger number.
+# answer when a real consumer needs more is keyset pagination, not a bigger number.
 _MAX_ROWS = 20_000
 
 # The most qualifying series a fetch will narrow BY IDENTITY. The narrowing renders as a tuple
@@ -242,7 +240,7 @@ async def resolve_daily_series(
     only_series: tuple[tuple[str, ...], ...] | None = None,
     limit: int = _MAX_ROWS,
 ) -> Sequence[DailySeriesRow]:
-    """Net daily movement per SKU per store, corrections collapsed per D33.
+    """Net daily movement per SKU per store, corrections collapsed at read time.
 
     ``scope`` carries the tenant and is the ONLY source of tenancy — never a caller field,
     never defaulted. ``store_id`` narrows within it and cannot widen it: the RLS session is
@@ -256,8 +254,8 @@ async def resolve_daily_series(
     WHAT THE COLLAPSE DOES AND DOES NOT REMOVE. Redeliveries: gone (suppressed at write by
     migration 0019, and any that predate it collapse here). Corrections under the same
     dedup key: counted ONCE, at the corrected value. Corrections from a source that
-    supplies no ``transaction_id``/``line_item_seq``: **NOT collapsed** — D65's fallback
-    key embeds the bronze object, so the original and the correction are different keys and
+    supplies no ``transaction_id``/``line_item_seq``: **NOT collapsed** — the fallback
+    dedup key embeds the bronze object, so the original and the correction are different keys and
     both are counted. That is a limitation of the key, not of this query, and a consumer
     reconciling against a POS report for such a source will see the difference.
 
@@ -286,7 +284,7 @@ async def resolve_daily_series(
     if sku_id is not None:
         survivor_filters.append(collapsed.c.sku_id == sku_id)
 
-    # THE QUALIFYING-POPULATION NARROWING (slice 7). ``resolve()`` supplies this from the
+    # THE QUALIFYING-POPULATION NARROWING. ``resolve()`` supplies this from the
     # probe's identities so the rows returned describe exactly the series the gate passed.
     #
     # None means UNMEASURED — no gate ran — and returns everything in scope. An EMPTY tuple is
@@ -357,7 +355,8 @@ def probe_statement(
 
     A unit test compiles this and asserts the GROUP BY is exactly ``SERIES_GRAIN``, which is
     what stops the declared measurement grain from drifting away from the query that
-    implements it. That drift is precisely how the per-tenant defect survived being written.
+    implements it. That drift is exactly how a declared grain and a measured grain come apart
+    unnoticed.
 
     Shape:
 
@@ -372,9 +371,9 @@ def probe_statement(
     The value is HANDED IN by the resolution engine from the descriptor; this module never
     sources a threshold.
 
-    THE COLLAPSE IS APPLIED, reversing the earlier reasoning that it was unnecessary. That
-    reasoning ("COUNT(DISTINCT event_date) is duplicate-insensitive") was true only of the
-    per-TENANT count it was written for. At series grain it is false: a correction that
+    THE COLLAPSE IS APPLIED, and it is not optional here. "COUNT(DISTINCT event_date) is
+    duplicate-insensitive" is true only of a per-TENANT count. At series grain it is
+    false: a correction that
     changes ``sku_id`` files its dates under BOTH the old and the new SKU, inventing a
     phantom series and inflating a real one. Both errors are in the PERMISSIVE direction —
     more series, higher coverage — which is the wrong direction for a gate. The cost is a
@@ -413,9 +412,8 @@ def qualifying_statement(
 ) -> Select[tuple[str, str, str]]:
     """WHICH series clear ``required``, at SERIES_GRAIN. The identities behind the counts.
 
-    Slice 7 added this to discharge the qualifying-population deferral on ``Satisfied``: the
-    counts alone cannot narrow a fetch, so an analysis under ANY_SERIES would receive rows for
-    series the gate had just refused.
+    The counts alone cannot narrow a fetch, so without this an analysis under ANY_SERIES
+    would receive rows for series the gate had just refused.
 
     DELIBERATELY A SEPARATE STATEMENT rather than a widened ``probe_statement``. The counts are
     an aggregate over the per-series subquery and the identities are the subquery's rows; one
@@ -465,11 +463,11 @@ async def probe_min_history_days(
     distance.
 
     MEASURED AT SERIES GRAIN (``SERIES_GRAIN``), which is the capability's declared grain minus
-    the date column. The earlier per-tenant version of this probe returned one number for the
-    whole tenant: on a tenant with 613 events across 66 (store, sku) pairs at ~9 observations
-    each, it reported the tenant's ~80-day calendar and passed a 60-day threshold, while every
-    individual series was unforecastable. Per-tenant is not a coarser answer to the same
-    question; it is an answer to a different question.
+    the date column. A per-tenant count returns one number for the whole tenant: on a tenant
+    with 613 events across 66 (store, sku) pairs at ~9 observations each, it reports the
+    tenant's ~80-day calendar and passes a 60-day threshold, while every individual series is
+    unforecastable. Per-tenant is not a coarser answer to the same question; it is an answer
+    to a different question.
 
     MEASURED OVER THE SCOPE'S WHOLE HISTORY, not the window a caller asks for: the precondition
     asks whether a series is fit at all, and requesting seven days does not make sixty days of

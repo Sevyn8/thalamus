@@ -1,4 +1,4 @@
-"""Integration tests for the tenant-documents endpoints (Slice 3).
+"""Integration tests for the tenant-documents endpoints.
 
 A fake ``SignedUrlGenerator`` is injected on ``app.state.gcs_signer`` (no
 GCS, no network); the TestClient is built WITHOUT the lifespan context

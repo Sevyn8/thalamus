@@ -1,4 +1,4 @@
-"""config.source_mappings template grain + RLS (Slice 14a acceptance criteria).
+"""config.source_mappings template grain + RLS.
 
 Grain half (the 0005 keys, exercised through real INSERTs):
   * One ACTIVE per (tenant, source, template): a second ACTIVE for the same
@@ -11,8 +11,7 @@ Grain half (the 0005 keys, exercised through real INSERTs):
     is rejected; version rows of ONE template share the name freely; a
     DEPRECATED row frees its name for a new template.
 
-RLS half (modeled on tests/integration/test_rls_isolation.py — the Slice 4
-proof shape):
+RLS half (modeled on tests/integration/test_rls_isolation.py):
   * Writes go through ``rls_session`` (exercising the policy WITH CHECK); the
     read-backs use a RAW connection with manual ``set_config`` — independent
     of the helper, so the test does not merely agree with itself.
@@ -77,19 +76,19 @@ async def engine() -> AsyncIterator[AsyncEngine]:
     url = os.environ.get("POSTGRES_URL")
     if not url:
         raise StackRequiredError(
-            "POSTGRES_URL is not set — the Slice 14a grain/RLS tests refuse to skip "
+            "POSTGRES_URL is not set — the grain/RLS tests refuse to skip "
             "silently. Bring up the stack (make run-local) and export POSTGRES_URL "
             "(5433 / ithina_dis_db)."
         )
 
-    # Identity FK targets (tenants A and B) come from the Slice 2 seeder; idempotent.
+    # Identity FK targets (tenants A and B) come from the seeder; idempotent.
     from dis_testing.seed import seed_default_fixtures
 
     try:
         seed_default_fixtures(url=url)
     except Exception as exc:  # noqa: BLE001 — stack down → ERROR loudly, never skip
         raise StackRequiredError(
-            f"DIS Postgres unreachable for the Slice 14a grain/RLS tests ({exc!r}); "
+            f"DIS Postgres unreachable for the grain/RLS tests ({exc!r}); "
             "refusing to skip. Bring up the stack (make run-local)."
         ) from exc
 
@@ -157,7 +156,7 @@ async def _visible_rows(engine: AsyncEngine, tenant_id: str | None, *, relation:
     transaction on a pooled connection has run ``set_config(..., true)``, the
     GUC placeholder reverts to ``''`` (not NULL) for that session, and
     ``''::uuid`` errors instead of matching zero rows — still fail-closed, but
-    the zero-rows negative control (the Slice 4 shape) is the virgin-session
+    the zero-rows negative control is the virgin-session
     behaviour, so the pool is disposed first.
     """
     if tenant_id is None:
@@ -372,7 +371,7 @@ async def test_deprecated_row_frees_its_name(engine: AsyncEngine, cleanup_test_m
 
 
 # ---------------------------------------------------------------------------
-# RLS: posture + isolation (the Slice 4 proof shape, on source_mappings).
+# RLS: posture + isolation (on source_mappings).
 # ---------------------------------------------------------------------------
 
 

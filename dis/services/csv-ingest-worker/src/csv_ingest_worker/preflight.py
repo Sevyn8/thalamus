@@ -1,11 +1,11 @@
-"""The DuckDB structural preflight (D13 permissive, D16) — DuckDB is contained HERE.
+"""The DuckDB structural preflight (deliberately permissive) — DuckDB is contained HERE.
 
 Structural only: does the object parse as CSV, is a header present, plausible
 structure (>= 1 column), row count, type sniff. NO column- or mapping-aware checks —
-those are the source-shape suite's (Slice 10). Parse-as-CSV is mechanism the sniff
-needs, not the tier-0 policy gate (that is dis-ui-server's upload endpoint, D51).
+those belong to the downstream mapping stage. Parse-as-CSV is mechanism the sniff
+needs, not the tier-0 policy gate (that is dis-ui-server's upload endpoint).
 
-Pinned-dependency containment (the Slice 5 pattern): this module is the only place
+Pinned-dependency containment: this module is the only place
 DuckDB is imported, and the behaviours it relies on — ``sniff_csv`` prepared-parameter
 binding, ``Columns``/``HasHeader`` result shape, header detection, and
 ``duckdb.Error`` on unparseable input — are asserted by the canary tests in
@@ -36,10 +36,10 @@ class PreflightResult:
     column_types: tuple[str, ...]
     row_count: int
     size_bytes: int
-    # The single-character field separator DuckDB's sniff_csv detected (Slice 16f).
+    # The single-character field separator DuckDB's sniff_csv detected.
     # Carried onto ingress.ready so the consumer parses with the right delimiter
     # instead of a hardcoded comma. sniff_csv exposes no confidence signal, so the
-    # detected value is carried as-is (the locked decision); a wrong delimiter fails
+    # detected value is carried as-is; a wrong delimiter fails
     # loudly at the consumer's mapping gate rather than corrupting silently.
     delimiter: str
 
@@ -109,8 +109,8 @@ def run_preflight(data: bytes, *, tenant_id: str, trace_id: str) -> PreflightRes
             trace_id=trace_id,
         )
     if not has_header:
-        # Headerless is structural failure here: PII detection (D40 heuristic) and
-        # the Slice 10 mapping are column-NAME based; auto-generated names carry none.
+        # Headerless is structural failure here: PII detection (name heuristic) and
+        # the downstream mapping are column-NAME based; auto-generated names carry none.
         raise PreflightFailedError(
             "structural preflight failed: no header row detected",
             reason="no_header",

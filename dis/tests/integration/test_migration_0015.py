@@ -1,12 +1,12 @@
-"""Migration 0015 (reconcile attribute_staleness_map column comment — Slice 50d).
+"""Migration 0015 (reconcile attribute_staleness_map column comment).
 
 Proves, against the resident DIS database (5433, read-only reference) and an ephemeral
-scratch DB (Slice 51c, D122):
+scratch DB:
 
   * **Target-safety guard** (pure, always-run, never skips): refuses Customer Master
     and any non-DIS database; passes the DIS database.
   * **Comment reconciled at head** (the headline effect): the resident
-    ``attribute_staleness_map`` column comment equals the Slice 50d text — and,
+    ``attribute_staleness_map`` column comment equals the reconciled text — and,
     load-bearing, equals the text in the schema-file DDL. Because 0015 sets the comment
     on BOTH the fresh-bootstrap and delta paths, the real drift risk a comment-only
     migration must guard is migration-constant vs schema-file divergence; this asserts
@@ -15,11 +15,11 @@ scratch DB (Slice 51c, D122):
     comment, … , 0015 re-applies it) upgrades clean to head and lands the identical
     comment the resident migrated reference carries.
 
-Downgrade-reversibility (restore the pre-slice comment) is deferred until staging (D99),
+Downgrade-reversibility (restore the pre-slice comment) is deferred until staging,
 matching the 0014 precedent; the downgrade leg is authored in the migration.
 
-See: docs/slices/slice-50d-staleness-map-rework.md, the 0005 COMMENT-reconciliation
-precedent, the 0014 fresh==migrated scratch-DB precedent.
+See: the 0005 COMMENT-reconciliation precedent, the 0014 fresh==migrated scratch-DB
+precedent.
 """
 
 from __future__ import annotations
@@ -120,7 +120,7 @@ def test_migration_new_comment_matches_the_schema_file() -> None:
 
 def test_resident_comment_matches_schema_file_at_head(admin_engine: Engine) -> None:
     """The resident DB (at head via make run-local) carries the reconciled column comment,
-    equal to the schema-file text (== the Slice 50d set) — schema-file == migration constant
+    equal to the schema-file text — schema-file == migration constant
     == resident DB. Read-only: no alembic runs against the resident DB."""
     live = _column_comment(admin_engine)
     assert live == _schema_file_comment()
@@ -150,7 +150,7 @@ def test_fresh_bootstrap_converges_with_delta_path(scratch_db: ScratchDB, admin_
     )
 
 
-# --- Downgrade round-trip: deferred until staging (D99) -----------------------
+# --- Downgrade round-trip: deferred until staging -----------------------
 
 
 @pytest.mark.skip(reason="downgrade-reversibility deferred until staging (D99)")

@@ -1,4 +1,4 @@
-"""ModulesAccessRepo — read-only data access for the Module Access endpoints (Step 6.7).
+"""ModulesAccessRepo — read-only data access for the Module Access endpoints.
 
 Two methods, both RLS-bound via session GUCs (no ``tenant_id``
 parameter — D-24 source-binding):
@@ -14,17 +14,17 @@ parameter — D-24 source-binding):
     page via tenants × modules CROSS JOIN LEFT JOIN
     ``tenant_module_access``, (3) total count for pagination.
 
-Schema-qualified ``text()`` SQL per the "Note on raw text() SQL"
-convention (Step 6.5.1). The two consumers of `lookups` here mirror
+Schema-qualified ``text()`` SQL, every table reference qualified via
+``get_settings().db_schema``. The two consumers of `lookups` here mirror
 ``permission_matrix.py``'s posture: per-call interpolation of
 ``get_settings().db_schema`` into f-strings; injection-safe because the
 Settings layer field-validates ``db_schema`` as a Postgres identifier.
 
 Sort key validation reuses the shared ``InvalidSortKeyError`` from
-``repositories/_errors.py`` (Step 5.2). The router catches and re-raises
+``repositories/_errors.py``. The router catches and re-raises
 as the shared ``InvalidSortKeyClientError`` (400).
 
-Step 6.6 sort-stability decision applies: module ordering is anchored
+Module ordering is anchored
 on ``lookups.display_order`` (decoupled from enum ordinal), so adding
 or reordering enum values doesn't perturb the rendered sequence.
 """
@@ -103,7 +103,7 @@ class MatrixCellRow:
 # Sort-key vocabulary (column-only — no aggregate keys for /matrix)
 # =============================================================================
 #
-# Mirrors ``/tenants``'s base column-key set (Step 6.4). The aggregate
+# Mirrors ``/tenants``'s base column-key set. The aggregate
 # keys (num_users_active_*, num_stores_*) are deliberately absent —
 # the matrix doesn't expose those aggregates per row.
 
@@ -196,12 +196,12 @@ class ModulesAccessRepo:
     ) -> list[MyModuleRow]:
         """Return the caller-tenant's ``tenant_module_access`` rows.
 
-        Slice 8 (E4). No ``tenant_id`` argument: RLS scopes the rows to
+        (E4). No ``tenant_id`` argument: RLS scopes the rows to
         the caller's tenant via the session GUCs (D-24). The caller MUST
         be a TENANT session; a PLATFORM session would see every tenant's
         rows via the D-29 OR-branch, so the router short-circuits PLATFORM
         callers before calling this. Ordered by ``lookups.display_order``
-        (decoupled from enum ordinal per Step 6.6). Schema-qualified per
+        (decoupled from enum ordinal). Schema-qualified per
         the raw-SQL convention.
         """
         schema = get_settings().db_schema
@@ -386,7 +386,7 @@ class ModulesAccessRepo:
         return tenant_rows, cells_by_tenant, total
 
     # ------------------------------------------------------------------
-    # Step 6.15 write surface: enable / disable transitions
+    # Write surface: enable / disable transitions
     # ------------------------------------------------------------------
     #
     # Both methods are PLATFORM-only at the route layer (audience="PLATFORM"
@@ -434,7 +434,7 @@ class ModulesAccessRepo:
         UPDATE, and takes the UPDATE branch (LD8). One retry is
         sufficient because the second SELECT sees the committed row.
 
-        Step 6.16.5 audit emission (LD2): the no-op ENABLED-already
+        Audit emission (LD2): the no-op ENABLED-already
         branch produces ZERO audit rows (closes FN-AB-42). First-time
         INSERT emits with ``before.status=None``; DISABLED -> ENABLED
         emits with ``before.status='DISABLED'``. ``auth`` + ``request_id``
@@ -597,7 +597,7 @@ class ModulesAccessRepo:
 
         Defensive fallback to ``<unknown>`` for either field if the
         lookup row is missing (very unlikely for tenant; the lookups
-        rows for the 6 modules were seeded at Step 3.4.5 / 6.7).
+        rows for the 6 modules were seeded via migration).
         """
         schema = get_settings().db_schema
         result = await session.execute(
@@ -625,7 +625,7 @@ class ModulesAccessRepo:
         return tenant_name, module_label
 
     # ------------------------------------------------------------------
-    # Step 6.15 private transition helpers
+    # Private transition helpers
     # ------------------------------------------------------------------
 
     async def _select_for_update(
@@ -775,14 +775,14 @@ class ModulesAccessRepo:
 
 
 class TransitionResult(StrEnum):
-    """Outcome enum for ``ModulesAccessRepo.disable`` (Step 6.15).
+    """Outcome enum for ``ModulesAccessRepo.disable``.
 
     Two values: ``OK`` (a row exists, transition or no-op applied) and
     ``NOT_FOUND`` (no row for the supplied (tenant_id, module) pair —
     only the disable path can produce this; enable upserts).
 
-    Local to this module mirroring ``TenantsRepo``'s ``TransitionResult``
-    (Step 6.11.1). Per locked decisions, the two enums stay separate
+    Local to this module mirroring ``TenantsRepo``'s ``TransitionResult``.
+    Per locked decisions, the two enums stay separate
     even though both happen to carry ``OK`` and ``NOT_FOUND``: cross-
     resource transition semantics differ (tenants raise 409
     INVALID_STATE_TRANSITION; modules are idempotent-200 on no-op).

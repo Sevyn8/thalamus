@@ -1,23 +1,23 @@
-"""DisError → HTTP status + the §2.3 error envelope.
+"""DisError → HTTP status + the house error envelope.
 
-Business logic raises dis-core domain errors, never ``HTTPException`` (root
-CLAUDE.md convention); these handlers are the single place a DIS error becomes
-an HTTP response. Envelope (every error response, §2.3):
+Business logic raises dis-core domain errors, never ``HTTPException``; these
+handlers are the single place a DIS error becomes an HTTP response. Envelope
+(every error response):
 
     {"error": {"code", "message", "trace_id", "details"}}
 
 ``code`` is the snake_case error-class name minus the ``Error`` suffix (the
 contract's ``mapping_state_conflict`` pattern); ``message`` is human-readable
 and PII-free (domain errors never carry payloads or tokens by construction);
-``trace_id`` is present when one is bound on the request context (13a mints
-none — minting happens only at the two ingress-starting endpoints, later
-slices); ``details`` carries the error's load-bearing context attributes
-(code-quality rule 5). Body-shape validation failures (FastAPI 422) use the
-same envelope, with the offending input values STRIPPED — a request body can
-contain anything, including PII, and must never echo into an error response.
+``trace_id`` is present when one is bound on the request context (minting
+happens only at the ingress-starting endpoints); ``details`` carries the
+error's load-bearing context attributes. Body-shape validation failures
+(FastAPI 422) use the same envelope, with the offending input values STRIPPED
+— a request body can contain anything, including PII, and must never echo into
+an error response.
 
 The handlers live in this service, not dis-core: dis-core is deliberately
-FastAPI-free (dependency-light, its CLAUDE.md).
+FastAPI-free (dependency-light).
 """
 
 from __future__ import annotations
@@ -62,18 +62,18 @@ from dis_ui_server.oauth.errors import (
 
 _log = get_logger(SERVICE_NAME)
 
-# Explicit, reviewable mapping (contract §2.3). Resolution walks the MRO so a
+# Explicit, reviewable mapping. Resolution walks the MRO so a
 # future leaf subclass inherits its family's status; an unmapped DisError is a
 # plain 500 — fail visible, never invent a status.
 _STATUS_BY_ERROR: dict[type[DisError], int] = {
     AuthTokenError: 401,
     TenantScopeError: 403,
     OpsRoleRequiredError: 403,
-    # Slice 14b data endpoints (contract §2.3 + §7).
-    MappingConfigError: 400,  # rules fail the D49 shape or the semantic gate
-    InvalidTemplateTypeError: 400,  # template_type outside the in-code vocabulary (14d)
+    # Data endpoints.
+    MappingConfigError: 400,  # rules fail the engine shape or the semantic gate
+    InvalidTemplateTypeError: 400,  # template_type outside the in-code vocabulary
     ResourceNotFoundError: 404,  # throw-style lookups (template detail / PATCH)
-    # Slice 51b runs pagination (D124): an undecodable or filter-mismatched opaque cursor is an
+    # Runs pagination: an undecodable or filter-mismatched opaque cursor is an
     # invalid value for a query param on a GET — the SAME category as a bad status/window filter
     # value (FastAPI → 422). Deliberate 422 (not 400): matches the endpoint's filter-validation
     # posture and UploadStructureError's "well-formed request, content fails a gate" precedent.
@@ -82,10 +82,10 @@ _STATUS_BY_ERROR: dict[type[DisError], int] = {
     MappingStateConflictError: 409,  # deprecated lineage / concurrent-edit race / non-ACTIVE upload target
     SourceAlreadyExistsError: 409,  # pk_config_sources (tenant_id, source_id) duplicate
     RlsContextError: 500,
-    # Slice 8 csv-uploads (contract §8).
+    # csv-uploads.
     UploadRequestError: 400,  # malformed multipart: missing/repeated part, bad template_id form
     PayloadTooLargeError: 413,  # the mid-stream ceiling (and the Content-Length early check)
-    UploadStructureError: 422,  # tier-0 structural gate (D51): empty/not-utf8/not-csv/min-rows
+    UploadStructureError: 422,  # tier-0 structural gate: empty/not-utf8/not-csv/min-rows
     StoreStateConflictError: 409,  # resolved-but-not-ACTIVE store (after the 404 resolve — no oracle)
     # Retryable dependency failures: the request was valid; GCS or Pub/Sub was
     # not reachable. 503 (the IdentityServiceUnavailableError precedent), never
@@ -93,7 +93,7 @@ _STATUS_BY_ERROR: dict[type[DisError], int] = {
     # upload's GCS write path (path construction inputs are validated upstream).
     StorageError: 503,
     EventPublishError: 503,  # object already written: the accepted-orphan posture
-    # Square OAuth connect (S2). Optional-at-boot feature: unconfigured -> 503; bad/expired
+    # Square OAuth connect. Optional-at-boot feature: unconfigured -> 503; bad/expired
     # signed state -> 422 (well-formed request, content fails a gate); state tenant vs caller
     # mismatch -> 403; a failed code exchange -> 502 (upstream vendor failure).
     OauthNotConfiguredError: 503,

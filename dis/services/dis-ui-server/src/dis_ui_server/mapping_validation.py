@@ -1,11 +1,11 @@
-"""The create/edit ``mapping_rules`` gate — D49 shape + the 14b semantic layer.
+"""The create/edit ``mapping_rules`` gate — engine shape + the semantic layer.
 
 A mapping-template write stores config the streaming consumer will later parse,
 route, and run; anything it would refuse must be a clean 400 HERE, never a
 stored-invalid-config write. Four steps, all raising ``MappingConfigError``
 (mapped to 400 by ``errors_http``):
 
-1. **Shape + D49 args** — ``SourceMapping.model_validate`` (the engine contract:
+1. **Shape + engine args** — ``SourceMapping.model_validate`` (the engine contract:
    frozen, ``extra="forbid"``, mandatory locale/separator/format declarations,
    derive composition typing). A pydantic ``ValidationError`` is wrapped, exactly
    as the consumer wraps it (``streaming_consumer/pipeline/mapping.py``).
@@ -17,8 +17,8 @@ stored-invalid-config write. Four steps, all raising ``MappingConfigError``
    ``source_sale_timestamp`` vs ``source_event_timestamp``). Same rule as the
    consumer's ``route_target_model``; both sides derive from the ONE source,
    ``dis_validation.mapping_produced_columns`` (drift-guarded), so the SETS
-   cannot diverge — only this ~10-line check is repeated (surfaced in the slice
-   plan as a later promotion candidate into dis-validation).
+   cannot diverge — only this ~10-line check is repeated (a candidate for
+   promotion into dis-validation).
 4. **Mandatory coverage** — every required (non-Optional) field of the routed
    model that is mapping-produced must be provided by rename or derive
    (constant/copy/date_from_datetime count: "PROVIDED", not "a CSV column must
@@ -28,12 +28,12 @@ stored-invalid-config write. Four steps, all raising ``MappingConfigError``
    pricing-only and inventory-only templates both pass. (The row-level
    ``value_before OR value_after`` CHECK is deliberately NOT lifted to config
    validation: step 4 is strictly NOT-NULL-derived — one canonical truth, no
-   hand-curated extras. An authored change-template lint is a surfaced later
-   refinement, operator-gated.)
+   hand-curated extras. An authored change-template lint is a possible later
+   refinement.)
 
 The catalog endpoint derives from the same two sources (same models, same
 provenance accessor), so what the catalog shows mappable and what this gate
-accepts cannot drift (slice principle: one canonical truth).
+accepts cannot drift (one canonical truth).
 """
 
 from __future__ import annotations
@@ -69,7 +69,7 @@ SECTION_BY_MODEL: dict[type[BaseModel], FieldSection] = {
 
 
 def parse_mapping_rules(raw: dict[str, Any], *, tenant_id: str) -> SourceMapping:
-    """Step 1+2: the D49 engine contract, plus the consumer's non-empty-rename rule."""
+    """Step 1+2: the engine contract shape, plus the consumer's non-empty-rename rule."""
     try:
         source = SourceMapping.model_validate(raw)
     except ValidationError as exc:
@@ -117,12 +117,12 @@ def _model_label(model: type[BaseModel]) -> str:
 
 
 def enrichment_guaranteed_for(model: type[BaseModel]) -> frozenset[str]:
-    """The enrichment value-guaranteed columns for ``model`` (Slice 16i, D95/D98).
+    """The enrichment value-guaranteed columns for ``model``.
 
     Current-position is the only enriched table, so the hot model returns
     ``enrichment_fields(CURRENT_POSITION)`` (currency, tax_treatment) and the event
-    models return the empty set (enrichment never runs on the event path — the D98
-    asymmetry), leaving their mandatory sets unchanged. Subtracted from
+    models return the empty set (enrichment never runs on the event path),
+    leaving their mandatory sets unchanged. Subtracted from
     ``mandatory_mapping_produced`` so an enrichment-supplied column is not demanded of
     the mapping while staying mapping-produced by origin (still legal to MAP, just not
     required). Mirrors the consumer's ``target_model is StoreSkuCurrentPosition`` gate.
@@ -217,7 +217,7 @@ def validate_mapping_rules(raw: dict[str, Any], *, tenant_id: str) -> SourceMapp
 def validate_mapping_rules_for_type(
     raw: dict[str, Any], *, template_type: str, tenant_id: str
 ) -> SourceMapping:
-    """The type-keyed gate (Slice 14d): shape + non-empty rename + target legality
+    """The type-keyed gate: shape + non-empty rename + target legality
     by type + mandatory coverage (+ catalogue presence pairings). Returns the
     validated document for storage/serving."""
     require_template_type(template_type, tenant_id=tenant_id)

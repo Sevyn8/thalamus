@@ -1,4 +1,4 @@
-"""Slice 11a: deterministic failure → quarantine (direct write) → ACK.
+"""Deterministic failure → quarantine (direct write) → ACK.
 
 The storm-stopper acceptance criteria against the live stack (5433 + emulators):
 
@@ -223,7 +223,7 @@ async def test_row_indexed_engine_failure_holds_rows_good_rows_not_written(
     assert row.failure_stage == "MAPPING_EXECUTION"
     assert row.failure_reason == "VALIDATION_ROW_FAILED"
     assert row.failure_context["failures"], "column/check/reason detail rides failure_context"
-    # Slice 52b: the per-failure detail now rides failure_context.failures[] — for this
+    # The per-failure detail now rides failure_context.failures[] — for this
     # cast failure (qty='abc') the offending value + the mapping cell fields are persisted.
     detail = row.failure_context["failures"][0]
     assert detail["value"] == "abc", "AC1: the offending cell value is persisted (52b)"

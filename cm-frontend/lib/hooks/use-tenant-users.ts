@@ -10,8 +10,7 @@ import {
 } from "@/lib/api/tenant-users";
 import { useAuthSnapshot } from "@/lib/auth/auth-cache";
 
-// Phase 5h.1.1 (2026-05-21): userId in queryKey to prevent cross-
-// persona cache bleed. See Finding #50.
+// userId in queryKey prevents cross-persona cache bleed.
 
 export function useTenantUsers(params?: TenantUserListParams) {
   const userId = useAuthSnapshot()?.user?.userId ?? null;
@@ -31,8 +30,8 @@ export function useTenantUser(id: string) {
   });
 }
 
-// Phase 5n.8.1: write hooks. Server-wait per Finding #32. Both list +
-// per-user caches invalidate on success — list because status / roles
+// Write hooks. Server-wait pattern — no optimistic state. Both list +
+// per-user caches are invalidated on success — list because status / roles
 // affect row rendering; detail because the drawer reads from it.
 
 function invalidateTenantUser(

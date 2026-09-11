@@ -1,5 +1,5 @@
 """Cross-channel dedup isolation (connector reuse): api and csv rows with the SAME
-payload never collide. dis_channel is part of the D58 dedup key, so find_prior scoped
+payload never collide. dis_channel is part of the dedup key, so find_prior scoped
 to one channel must not return the other channel's row - proven on live 5433."""
 
 from __future__ import annotations

@@ -9,10 +9,10 @@
 #
 # These are DEV-STUB tokens: HS256-signed with the constant secret the
 # dis-ui-server verifier checks (services/dis-ui-server/src/dis_ui_server/auth/
-# verifier.py). NOT production credentials. The 13b JWKS/RS256 swap (D25)
-# replaces the verifier; these tokens stop working then.
+# verifier.py). NOT production credentials: they verify only when dis-ui-server
+# runs in STUB auth mode; the AUTH0/JWKS mode rejects them.
 #
-# Two-GUC token contract (Slice 17b, D91/D92). Every token now carries an
+# Two-GUC token contract. Every token carries an
 # explicit user_type claim; the verifier rejects a token without it.
 #   - TENANT  user: user_type=TENANT, tenant_id = CLOUD core.tenants.id (the RLS
 #                   boundary). Reads/writes its own tenant only.
@@ -139,7 +139,7 @@ if [ "$found" -eq 0 ]; then
 fi
 
 echo
-echo "Done. Tokens are 90-day, full DIS roles, explicit user_type (Slice 17b)."
+echo "Done. Tokens are 90-day, full DIS roles, explicit user_type."
 echo "TENANT token's signed tenant_id is the RLS boundary; PLATFORM (Anjali) sees all tenants,"
 echo "and impersonates one by naming acting_for_tenant_id in a POST/PATCH /mapping-templates body."
 echo "Use:  curl -s <base>/api/v1/stores-onboarded -H \"Authorization: Bearer \$(cat scripts/jwt/tokens/marcus-t-dis-90d.jwt)\""

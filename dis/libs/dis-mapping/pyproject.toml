@@ -1,7 +1,7 @@
 [project]
 name = "dis-mapping"
 version = "0.0.0"
-description = "DIS mapping engine: pure four-sub-stage transform (rename -> normalize -> cast -> derive) over a mapping and a parsed in-memory chunk, producing a partial canonical contribution (slice-05; D4, D8, D20)."
+description = "DIS mapping engine: pure four-sub-stage transform (rename -> normalize -> cast -> derive) over a mapping and a parsed in-memory chunk, producing a partial canonical contribution."
 requires-python = ">=3.12"
 dependencies = [
   # Errors (DisError root), structured logging adapter.

@@ -1,6 +1,6 @@
 """SQLAlchemy ORM model for the ``tenant_tax_registrations`` table.
 
-Client onboarding, Slice 1. 1:N with ``tenants``. Multi-state GSTIN is
+1:N with ``tenants``. Multi-state GSTIN is
 supported: uniqueness is ``(tenant_id, registration_type,
 registration_number)`` (not per-type), and ``jurisdiction`` carries the
 state / region for a given registration.

@@ -1,4 +1,4 @@
-"""Step 6.14 unit tests for the tenant-users request schemas.
+"""Unit tests for the tenant-users request schemas.
 
 Pure Pydantic-layer tests with no DB or HTTP. Covers the
 ``RoleAssignmentItem`` shape and the ``roles`` field on the two

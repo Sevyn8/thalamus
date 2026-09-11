@@ -1,12 +1,11 @@
-"""Role assignments router (Step 6.8.3 — Half 2 / E4).
+"""Role assignments router (E4).
 
 One GET endpoint at ``/api/v1/role-assignments`` returning a grouped
 envelope ``{platform_assignments, tenant_assignments}`` with each
 block carrying its own ``{items, pagination}``.
 
 Auth posture (multi-user-type, but with a security-load-bearing
-twist — see CLAUDE.md "v0 auth model" note for the standard
-patterns).
+twist).
 
   - PLATFORM JWTs see BOTH blocks populated. The platform-side block
     is a direct read against ``platform_user_role_assignments`` (no
@@ -20,7 +19,7 @@ patterns).
     issued — and the platform_assignments block returns
     ``{items: [], pagination.total: 0}``.
 
-    **Security-load-bearing (locked decision 12 of Step 6.8.3):**
+    **Security-load-bearing (locked decision 12):**
     ``platform_user_role_assignments`` has NO RLS. The audience check
     happens at the application layer here. If the platform-side
     query were issued under a TENANT session, every row on the
@@ -36,8 +35,8 @@ Sort key validation: an unknown ``sort`` raises ``InvalidSortKeyError``
 in the Repo (a ValueError subclass shared via ``repositories._errors``).
 The handler catches it and re-raises as ``InvalidSortKeyClientError``
 from ``admin_backend.errors`` so the response surfaces as 400
-``INVALID_SORT_KEY`` instead of 500. Mirrors the pattern from Step
-6.4 / 5.2 / 5.1 / 3.3.
+``INVALID_SORT_KEY`` instead of 500. Mirrors the pattern used across
+the other list endpoints in this package.
 """
 from typing import Any
 from uuid import UUID
@@ -85,8 +84,8 @@ _repo = RoleAssignmentsRepo()
 
 # ---- Mappers ---------------------------------------------------------------
 #
-# The pre-emptive nested shapes from Step 6.8.2 (in
-# schemas/role_assignment.py) include inline mini-objects for role,
+# The nested response shapes (in schemas/role_assignment.py) include
+# inline mini-objects for role,
 # tenant_user, tenant, org_node, platform_user. Their data lives on
 # the related ORM rows rather than on the assignment row itself; we
 # fetch via additional SELECTs against the same RLS-bound session.

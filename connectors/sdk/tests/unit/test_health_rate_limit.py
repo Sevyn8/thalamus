@@ -1,4 +1,4 @@
-"""The rate_limit_state writer on the connector-health emit (D116).
+"""The rate_limit_state writer on the connector-health emit.
 
 Offline: no database. A recording fake stands in for the ``rls_session`` connection, so
 these assert the SQL the emit ISSUES and the binds it carries — the statement shape plus

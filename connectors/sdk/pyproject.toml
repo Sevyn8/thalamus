@@ -8,11 +8,11 @@ dependencies = [
   "dis-core",
   # The bronze write goes through the RLS-aware session (hard rules 1 and 12).
   "dis-rls",
-  # GCS object write + build_object_path/split_object_uri (hard rule 9, D53).
+  # GCS object write + build_object_path/split_object_uri (hard rule 9).
   "dis-storage",
   # Fire-and-forget audit to audit.events (hard rule 11); the FailureCode vocabulary.
   "dis-audit",
-  # The fail-loud PII gate (hard rule 2, D40) reused off the CSV worker.
+  # The fail-loud PII gate (hard rule 2) reused off the CSV worker.
   "dis-pii",
   # Reused bronze sink (BronzeRow/find_prior/insert_row/mark_published), the
   # IngressReadyEnvelope + Publisher seam, the connector-health emit, and the

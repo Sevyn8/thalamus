@@ -1,6 +1,6 @@
 """SQLAlchemy ORM model for the ``tenant_contacts`` table.
 
-Client onboarding, Slice 1. 1:N with ``tenants``.
+1:N with ``tenants``.
 
 ``contact_type`` is TEXT validated app-side against the ``contact_type``
 ``lookups`` list (PRIMARY/BILLING/TECHNICAL/LEGAL). Email lowercase +

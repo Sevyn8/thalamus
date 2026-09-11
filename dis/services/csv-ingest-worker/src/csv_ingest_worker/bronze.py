@@ -1,23 +1,23 @@
 """The bronze sink: dedup lookup, the one metadata-only INSERT, and the publish mark.
 
 Every statement here runs on a connection yielded by ``dis-rls`` ``rls_session``
-under the EVENT's tenant (hard rules 1 & 12) — tenant scoping is the RLS policy's
+under the EVENT's tenant — tenant scoping is the RLS policy's
 (``bronze.data_ingress_events`` is FORCE RLS, ``tenant_isolation`` USING + WITH
 CHECK on ``app.tenant_id``), inherited target guard included
 (``current_database()=='ithina_dis_db'``, NOBYPASSRLS; DIS on 5433, never CM).
 
 Metadata only: pointer, identity, hash, counts, status. NEVER payload bytes, never
-cell values (hard rule 2).
+cell values.
 
-Idempotency key (D54 / build-guide): ``(tenant, source_payload_id=upload_session_id,
+Idempotency key: ``(tenant, source_payload_id=upload_session_id,
 payload_sha256)`` within ``DEDUP_WINDOW_HOURS`` measured against the prior row's
 ``received_at``. The key components are required values — empty ones raise
 ``EventContractError`` here as the last line even though the envelope already
-enforces them (code-quality rule 4: never a silent fallback). The pre-9b smoke rows
+enforces them (never a silent fallback). Legacy smoke rows
 carry NULL ``source_payload_id``/``payload_sha256`` and can never match the
 non-NULL equality.
 
-CONCURRENCY (registered in decisions.md D58): the check is query-based — there is
+CONCURRENCY: the check is query-based — there is
 no UNIQUE constraint over the key (a 24h *window* cannot be a plain unique index) —
 so it is correct for a SINGLE worker instance. Scaling to concurrent instances
 requires a constraint/upsert design first.
@@ -38,7 +38,7 @@ from dis_core.errors import EventContractError
 from dis_core.timestamps import now_utc
 
 # The worker writes only these two lifecycle states; PUBLISHED is reached via
-# mark_published, PROCESSED/QUARANTINED belong to later pipeline stages (Slice 10/11).
+# mark_published, PROCESSED/QUARANTINED belong to downstream pipeline stages.
 ProcessingStatus = Literal["RECEIVED", "FAILED"]
 
 DIS_CHANNEL = "csv_upload"
@@ -80,12 +80,12 @@ class BronzeRow:
     payload_sha256: str
     row_count: int | None
     source_payload_id: str
-    # Replay lineage (Slice 8 / D71): persisted from the event; informational like
-    # mapping_version_id. NULL only on pre-Slice-8 rows — and deliberately NOT read
+    # Replay lineage: persisted from the event; informational like
+    # mapping_version_id. NULL only on legacy rows — and deliberately NOT read
     # back for the resume-and-mark re-publish (the envelope takes it off the
     # incoming event), so a NULL prior row can never wedge the publish.
     template_id: UUID
-    # The uploaded file's original name (Slice 51a / D120), read off csv.received and persisted
+    # The uploaded file's original name, read off csv.received and persisted
     # verbatim. Display metadata only — NULL when the upload carried no filename.
     original_filename: str | None
     received_at: datetime
@@ -195,7 +195,7 @@ async def insert_row(conn: AsyncConnection, row: BronzeRow) -> None:
 
 
 async def mark_published(conn: AsyncConnection, *, bronze_id: UUID, published_at: datetime) -> None:
-    """Stamp the publish: ``published_at`` + status PUBLISHED (resume-and-mark, D59)."""
+    """Stamp the publish: ``published_at`` + status PUBLISHED (the resume-and-mark stamp)."""
     await conn.execute(
         text(
             "UPDATE bronze.data_ingress_events "

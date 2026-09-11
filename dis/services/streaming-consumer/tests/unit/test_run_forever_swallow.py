@@ -163,9 +163,7 @@ async def test_non_transient_error_logs_bug_at_error(
     ],
     ids=["deadline", "transient", "programming"],
 )
-async def test_loop_survives_every_tier(
-    exc: BaseException, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_loop_survives_every_tier(exc: BaseException, monkeypatch: pytest.MonkeyPatch) -> None:
     """No tier re-raises: the loop reaches a second poll in every case."""
     subscriber = _subscriber(monkeypatch, raises=exc)
     await _run_one_pass(subscriber)

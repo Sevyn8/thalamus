@@ -77,7 +77,7 @@ _SOURCES_CONNECTED = text("SELECT count(DISTINCT source_id) AS n FROM config.sou
 # Chunk 9 adds a LEFT JOIN identity_mirror.tenants for tenant_name. Grouping additionally by
 # ``t.name`` does NOT change the aggregate values: name is functionally dependent on tenant_id (its
 # PK), so ``(tenant_id, name)`` is the SAME partition as ``tenant_id`` — the SUM/count are
-# byte-identical to Chunk 6. RLS-OFF table (D41); LEFT so an unmirrored tenant → NULL name.
+# byte-identical to Chunk 6. RLS-OFF table; LEFT so an unmirrored tenant → NULL name.
 _ROWS_INGESTED_BY_TENANT = text(
     "SELECT e.tenant_id AS tenant_id, COALESCE(SUM(e.row_count), 0) AS n, t.name AS tenant_name "
     "FROM audit.events e "
@@ -134,7 +134,7 @@ class DashboardMetricsData:
 
 
 async def fetch_dashboard_metrics(engine: AsyncEngine, scope: ReadScope) -> DashboardMetricsData:
-    """Read every Dashboard metric in one scoped session (Slice 17b).
+    """Read every Dashboard metric in one scoped session.
 
     ``scope`` comes from ``require_read_scope`` (verified token only): a TENANT scope
     pins ``app.tenant_id``; a PLATFORM scope reads see-all (aggregates span every tenant)

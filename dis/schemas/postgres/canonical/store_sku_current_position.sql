@@ -15,7 +15,7 @@
 -- active.
 --
 -- ----------------------------------------------------------------------------
--- Phase 0 migration order (required for this DDL to succeed)
+-- Migration order (required for this DDL to succeed)
 -- ----------------------------------------------------------------------------
 --
 -- 1. Create schemas in the DIS database:
@@ -120,17 +120,18 @@ CREATE TABLE canonical.store_sku_current_position (
     -- ---------- Staleness ----------
     attribute_staleness_map     JSONB                               NULL,
 
-    -- ---------- Per-attribute change signal (Slice 50a) ----------
-    -- Nullable, empty until Slice 50b maintains them on the catalogue/snapshot
-    -- upsert. Consumer-maintained at write (50b), NOT a daily-compute job.
+    -- ---------- Per-attribute change signal ----------
+    -- Maintained by the streaming consumer on the catalogue/snapshot upsert;
+    -- a stamp advances only when its value column actually changes. Nullable
+    -- (never stamped = no change observed). NOT a daily-compute job.
     current_retail_price_changed_at TIMESTAMPTZ                      NULL,
     product_name_changed_at         TIMESTAMPTZ                      NULL,
 
-    -- ---------- Event-time-wins reference (D64/0003) ----------
+    -- ---------- Event-time-wins reference ----------
     last_source_event_at        TIMESTAMPTZ                         NULL,
         -- Source event timestamp of the last event-table row merged into this
         -- hot row. Comparison reference for the event-time-wins conditional
-        -- upsert (architecture 2.3.1, D64). NULL = never event-written
+        -- upsert (architecture 2.3.1). NULL = never event-written
         -- (e.g. pre-seeded catalogue rows). Consumer-injected by the
         -- streaming consumer.
 
@@ -152,7 +153,7 @@ CREATE TABLE canonical.store_sku_current_position (
     -- uq_sscp_natural_key (below, M-HOTKEY/0004): PG15 cannot arbitrate
     -- ON CONFLICT against a NULLS NOT DISTINCT constraint when key segments
     -- are NULL, and the streaming consumer's hot upsert must be atomic under
-    -- N autoscaled instances (D58 split). The two sentinel CHECKs below make
+    -- N autoscaled instances. The two sentinel CHECKs below make
     -- '' engine-impossible, so the COALESCE key's uniqueness domain equals
     -- the retired NND constraint's.
 
@@ -224,7 +225,7 @@ CREATE TABLE canonical.store_sku_current_position (
 -- sentinel because PG15 cannot arbitrate ON CONFLICT against a NULLS NOT
 -- DISTINCT index when key segments are NULL; '' is engine-impossible via the
 -- two sentinel CHECKs, so this uniqueness domain equals the retired
--- uq_sscp_natural. Concurrency-safe under N consumer instances (D58 split).
+-- uq_sscp_natural. Concurrency-safe under N consumer instances.
 CREATE UNIQUE INDEX uq_sscp_natural_key
     ON canonical.store_sku_current_position
     (tenant_id, store_id, sku_id, COALESCE(sku_variant, ''), COALESCE(sku_lot_batch, ''));

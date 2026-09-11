@@ -1,4 +1,4 @@
-"""The producer-owned ``connector_run_id`` mint (D54).
+"""The producer-owned ``connector_run_id`` mint.
 
 Lives here, and NOT in ``dev_transport``, for a packaging reason: ``real_transport``
 is the production entrypoint and reused this function, so importing it from

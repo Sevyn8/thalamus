@@ -1,4 +1,4 @@
-"""The RETRIED readback degrades, never wedges (Slice 30b).
+"""The RETRIED readback degrades, never wedges.
 
 ``_seen_before`` is an audit-side concern, so it inherits the fire-and-forget
 posture: a failing readback (engine down, table missing) returns ``False`` —

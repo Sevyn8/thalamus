@@ -39,25 +39,21 @@ export function OrgTreePane({
 }: OrgTreePaneProps) {
   const tree = useOrgTree(tenantId ?? "");
 
-  // Phase 5g.1.4: synthesize a TENANT-typed root row so the tenant
-  // itself is selectable in the hierarchy. Backend's org-tree response
-  // surfaces HQ as the first concrete node and exposes the tenant
-  // identity only as siblings of `tree[]` (tenant_root_id +
-  // tenant_root_code from Step 6.21.1). The synthetic row is
-  // read-only from the org-tree surface (kebab actions hidden in
-  // OrgTreeRow when node_type === "TENANT") — tenant lifecycle lives
-  // on /superadmin/tenants.
+  // Synthesize a TENANT-typed root row so the tenant itself is selectable
+  // in the hierarchy. Backend's org-tree response surfaces HQ as the
+  // first concrete node and exposes the tenant identity only as
+  // siblings of `tree[]` (tenant_root_id + tenant_root_code). The
+  // synthetic row is read-only from the org-tree surface (kebab actions
+  // hidden in OrgTreeRow when node_type === "TENANT") — tenant lifecycle
+  // lives on /superadmin/tenants.
   //
-  // Phase 5i.2 (2026-05-25): synthesis routed through the shared
-  // synthesizeTenantRoot helper. Two behavior changes fall out:
-  //  (a) synthetic row's `id` is now `tenant_root_id` (the org_nodes
-  //      table UUID) rather than `tenant_id` (tenants table UUID) —
-  //      this corrects a latent mismatch where the synthetic row's id
-  //      was the wrong UUID for "Add child node" POSTs against
-  //      /tenants/{id}/org-tree, which expects a parent_id from
-  //      org_nodes. Resolves the Finding #46 follow-up.
+  // Synthesis is routed through the shared synthesizeTenantRoot helper.
+  // The synthetic row's `id` is `tenant_root_id` (the org_nodes table
+  // UUID) rather than `tenant_id` (tenants table UUID) — using the
+  // wrong UUID here breaks "Add child node" POSTs against
+  // /tenants/{id}/org-tree, which expects a parent_id from org_nodes.
   //
-  // Slice 8: this helper feeds the POPULATED-tree render only. The
+  // This helper feeds the POPULATED-tree render only. The
   // empty (root-only) tenant case is handled by its own branch below
   // (header + "Add the first node" CTA), not by rendering the synthetic
   // row, so an empty tenant is no longer a dead end.
@@ -198,7 +194,7 @@ export function OrgTreePane({
     );
   }
 
-  // Slice 8: root-only tenants (wizard-created tenants have just their
+  // Root-only tenants (wizard-created tenants have just their
   // TENANT root, which the tree endpoint filters out, so tree is empty)
   // are no longer a dead end. Render the tenant header with "+ Add node"
   // plus a first-node CTA that opens the create modal in parentless mode

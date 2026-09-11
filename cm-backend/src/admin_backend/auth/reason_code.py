@@ -2,9 +2,9 @@
 
 Binary in v0: ``GRANT_MATCHED`` on allowed, ``NO_MATCHING_GRANT_OR_OUT_OF_SCOPE``
 on denied. Granular codes (cascade vs module-suspended vs no-match)
-deferred until Step 6.16's audit log writes need to differentiate.
+are deferred until audit log writes need to differentiate.
 
-Public contract: 6.9.2 will import this enum, and Step 6.16 audit log
+Public contract: the permission gate imports this enum, and audit log
 schemas may reference its values. v0 values stay stable; future
 narrowing or rename requires a coordinated migration.
 """

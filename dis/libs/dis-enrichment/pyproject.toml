@@ -1,7 +1,7 @@
 [project]
 name = "dis-enrichment"
 version = "0.0.0"
-description = "DIS enrichment engine: pure lookup-enrichment over a canonical contribution. Owns a registry of canonical fields resolved from an authoritative internal source (handed in by the consumer); the lib's value wins over the mapping. Snapshot/current-position only this slice (slice-5b; D94, D95, D98)."
+description = "DIS enrichment engine: pure lookup-enrichment over a canonical contribution. Owns a registry of canonical fields resolved from an authoritative internal source (handed in by the consumer); the lib's value wins over the mapping. Snapshot/current-position only."
 requires-python = ">=3.12"
 dependencies = [
   # Errors (DisError root: EnrichmentError), structured logging adapter.

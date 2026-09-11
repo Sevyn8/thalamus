@@ -17,11 +17,11 @@ StoreTaxTreatment = Literal["inclusive", "exclusive"]
 
 
 class OnboardedStore(BaseModel):
-    """One onboarded store, from ``identity_mirror.stores`` (fields per slice 14b)."""
+    """One onboarded store, from ``identity_mirror.stores``."""
 
     store_id: str  # internal UUID, lowercase string (opaque to the UI, §2.2)
     name: str
-    store_code: str | None  # nullable at source (D55) — served as-is, never invented
+    store_code: str | None  # nullable at source — served as-is, never invented
     status: StoreStatus
     country: str
     timezone: str

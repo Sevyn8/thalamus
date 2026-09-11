@@ -39,9 +39,8 @@ export type ModuleSummaryCardProps = {
   onClick: () => void;
 };
 
-// Phase 5e.3: rewritten to consume backend's ModuleCard shape.
-// Tagline dropped — backend doesn't ship it; pre-5e.3 hand-fixture
-// taglines became dev/prod skew once the wiring landed.
+// Consumes backend's ModuleCard shape. Tagline dropped — backend
+// doesn't ship it.
 export function ModuleSummaryCard({ module, onClick }: ModuleSummaryCardProps) {
   const Icon = ICON_BY_CODE[module.module_code];
   return (

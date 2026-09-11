@@ -75,7 +75,7 @@ module "cm_service" {
   auth0_ticket_result_url  = var.cm_auth0_ticket_result_url
 }
 
-# --- Wave 2: CM tenant-documents bucket (Slice 3) ---
+# --- Wave 2: CM tenant-documents bucket ---
 #
 # Bucket for CM tenant onboarding documents; uploads/downloads go direct to
 # GCS via V4 signed URLs minted by CM. IAM is granted below to the cm runtime
@@ -133,14 +133,14 @@ module "migrate_cm_job" {
   vpc_connector_id      = module.network.vpc_connector_id
 }
 
-# TODO(operator, Slice 3): wire the bucket name into the CM container env as
+# TODO(operator): wire the bucket name into the CM container env as
 # GCS_DOCUMENTS_BUCKET (and optionally GCS_SIGNER_SERVICE_ACCOUNT_EMAIL =
 # module.cm_service.service_account_email). The cloud-run-service-cm module
 # builds its env from a FIXED set of typed variables (no generic env map), so
 # this requires a two-line change to that module (a new gcs_documents_bucket
-# variable + an optional_env entry). That module is intentionally NOT edited in
-# this slice; the exact diff is in the Slice-3 report. Until applied, CM boots
-# fine but the document endpoints return 503 DOCUMENT_STORAGE_UNAVAILABLE.
+# variable + an optional_env entry). That module is intentionally NOT edited
+# yet. Until applied, CM boots fine but the document endpoints return 503
+# DOCUMENT_STORAGE_UNAVAILABLE.
 
 # --- Wave 2: CM frontend (cm-frontend) Cloud Run service ---
 #
@@ -153,7 +153,7 @@ module "migrate_cm_job" {
 # service here) and is publicly callable via an allUsers invoker binding. Both
 # are recorded facts about the live service, declared so Terraform describes
 # reality; the SA is on the ledger to fix before production.
-# --- Synapse: the read-only BFF behind the superadmin console (slice 8a) ---
+# --- Synapse: the read-only BFF behind the superadmin console ---
 #
 # INTERNAL INGRESS + AN IAM INVOKER BINDING, so this is the FIRST service in this
 # project that is not anonymously reachable. Every other one carries an
@@ -185,7 +185,7 @@ module "synapse_ui_server" {
   jwt_issuer   = "https://sevyn8.us.auth0.com/"
   jwt_audience = "https://api.sevyn8.com"
 
-  # WHERE THE PROVISIONING GATE ASKS ITS QUESTION (slice 5e). The BFF forwards the
+  # WHERE THE PROVISIONING GATE ASKS ITS QUESTION. The BFF forwards the
   # caller's own Auth0 token to CM's /api/v1/me/can-do and denies unless CM says
   # the caller holds ADMIN.TENANTS.CONFIGURE.GLOBAL. Synapse holds no copy of CM's
   # permission model.
@@ -198,7 +198,7 @@ module "synapse_ui_server" {
   # points at it.
   cm_api_base_url = module.cm_service.service_url
 
-  # AXON (slice 1). This service is the delivery plane's first PRODUCER: the enable route hands
+  # AXON. This service is the delivery plane's first PRODUCER: the enable route hands
   # the provisioning event to Axon, which carries it to on-call and writes its own ledger row.
   #
   # THE ON-CALL ADDRESS IS DELIBERATELY NOT var.alert_email. That variable belongs to
@@ -279,7 +279,7 @@ resource "google_pubsub_topic" "ingress_ready" {
 # and more concretely they have DIFFERENT REPLAY PROCEDURES: a dead csv.received
 # message replays from its bronze row or a re-upload, while a dead ingress.ready
 # message replays through the `ingress.resubmit` path that does not exist yet
-# (Slice 12). One topic would force whoever drains it to demultiplex by envelope
+#. One topic would force whoever drains it to demultiplex by envelope
 # shape before they could act.
 #
 # BOTH IAM GRANTS BELOW ARE LOAD-BEARING. The Pub/Sub service agent needs
@@ -427,10 +427,10 @@ resource "google_pubsub_subscription" "csv_received_sub" {
 #
 # max_delivery_attempts = 100 (~16h), FIVE TIMES the csv lane's 20, and the
 # asymmetry is reasoned rather than arbitrary. This is the lane carrying the
-# documented HOT_POSITION_MISSING self-heal: per
-# services/streaming-consumer/CLAUDE.md, a D63 position miss and the store-miss
-# contract violation are DELIBERATELY excluded from the 11a quarantine allowlist
-# because "redelivery is their designed recovery" until the catalogue or position
+# documented HOT_POSITION_MISSING self-heal: a first-seen-SKU position miss and
+# the store-miss contract violation are DELIBERATELY excluded from the
+# quarantine allowlist because "redelivery is their designed recovery" until
+# the catalogue or position
 # onboards. That gap is a HUMAN process - sales uploads at 5pm, catalogue lands
 # the next morning - so 2.3h would dead-letter a message that was going to
 # succeed. ~16h covers same-working-day onboarding.
@@ -466,11 +466,11 @@ resource "google_pubsub_subscription" "ingress_ready_sub" {
 }
 
 ###############################################################################
-# AXON'S SEND LANE (slice 2). Topic, subscription, dead-letter topic, dead-letter
+# AXON'S SEND LANE. Topic, subscription, dead-letter topic, dead-letter
 # subscription, and both service-agent grants.
 #
-# WHY A QUEUE AT ALL. Slice 1 called the send in-process from the 5e enable route
-# and named the hole in its own comment: if the LEDGER WRITE failed there was no
+# WHY A QUEUE AT ALL. The send used to be called in-process from the enable
+# route, and that shape named the hole in its own comment: if the LEDGER WRITE failed there was no
 # row, possibly an email, and a successful enable, with nothing afterwards able to
 # tell that anything was owed. A durable queue makes the intent survive the
 # consumer, so a failed write nacks and is retried instead of evaporating.
@@ -654,7 +654,7 @@ module "mirror_sync_consumer_job" {
   vpc_connector_id = module.network.vpc_connector_id
 }
 
-# --- Synapse: the orchestrator job and its daily schedule (slice 6b) ---
+# --- Synapse: the orchestrator job and its daily schedule ---
 #
 # THE FIRST SCHEDULED ANYTHING IN THIS PROJECT. Everything else here is invoked by a request, a
 # Pub/Sub push, or an operator running `gcloud run jobs execute`. This module adds the Cloud
@@ -800,12 +800,12 @@ module "clover_connector_job" {
   clover_api_base_url = var.clover_base_url
 }
 
-# --- Slice 9: alerting, across DIS and Synapse ---
+# --- Alerting, across DIS and Synapse ---
 #
 # THE FIRST OBSERVABILITY IN THIS PROJECT. Verified live before writing: 0 alert policies, 0
 # notification channels, 0 log-based metrics. Six policies, one email channel, two log metrics.
 #
-# ONE MODULE FOR BOTH PLANES on purpose (D1). Alerting per-component is how the dead-letter
+# ONE MODULE FOR BOTH PLANES on purpose. Alerting per-component is how the dead-letter
 # queues, the registry cleanup and Synapse's failed runs all ended up unobserved: each was
 # somebody's concern and none was anybody's.
 #
@@ -847,7 +847,7 @@ module "monitoring_alerts" {
 # --- migrate-synapse: the way Synapse's chain reaches this database ---
 #
 # NOT WIRED BEFORE NOW, and that absence was the finding: Synapse has had its own alembic chain
-# since slice 5 and no mechanism to apply it. How 0001-0003 got here is recorded nowhere in this
+# with no mechanism to apply it. How 0001-0003 got here is recorded nowhere in this
 # repository. Second instance of the same ledger item as DIS's missing migrate job.
 #
 # THE SAME IMAGE AS THE ORCHESTRATOR, by reference rather than a second pin, so the migration can
@@ -866,7 +866,7 @@ module "migrate_synapse_job" {
   vpc_connector_id = module.network.vpc_connector_id
 }
 
-# --- migrate-axon: the way Axon's chain reaches this database (Axon slice 1) ---
+# --- migrate-axon: the way Axon's chain reaches this database ---
 #
 # SHIPPED WITH THE MODULE'S FIRST SLICE RATHER THAN AFTER IT, and that is the whole point. Both
 # jobs above were written to close an absence that had already cost something: DIS's chain
@@ -874,7 +874,7 @@ module "migrate_synapse_job" {
 # recorded nowhere. Adding a third chain with no mechanism, to save copying a module, would make
 # a standing HIGH finding true of one more plane.
 #
-# THE IMAGE IS THE BFF'S, not an Axon image, because Axon has none: slice 1 gives it no server.
+# THE IMAGE IS THE BFF'S, not an Axon image, because Axon has none: it has no server of its own.
 # synapse-ui-server's Dockerfile COPYs the whole axon/ directory, chain and DDL included, and
 # this job runs alembic out of it with the CMD overridden.
 #

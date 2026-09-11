@@ -116,13 +116,13 @@ def gated_app(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
         # two functions stubbed below, which ignore them.
         app.state.engine = object()
         app.state.provision_engine = object()
-        # AXON (slice 2). The enable route no longer sends: it PUBLISHES one message and
+        # AXON. The enable route no longer sends: it PUBLISHES one message and
         # returns, and axon-sender does the provider call and the ledger write behind the queue.
         # So the state this fixture builds shrank from an engine plus an adapter plus an address
         # to a publisher plus an address.
         #
         # THE PUBLISHER IS A FAKE ON app.state, NOT A PATCH, and that is a real improvement over
-        # the slice-1 shape. The route reaches it through the same attribute the lifespan sets,
+        # patching a name. The route reaches it through the same attribute the lifespan sets,
         # so there is no name to patch and therefore no way for a test to pass against a route
         # that stopped calling it. The vacuity trap the old comment named is gone rather than
         # guarded against.
@@ -320,7 +320,7 @@ async def test_a_duplicate_at_the_write_is_200_and_says_so(gated_app) -> None:  
 
 
 # ---------------------------------------------------------------------------
-# AXON (slice 1): the enable route is the delivery plane's first producer
+# AXON: the enable route is the delivery plane's first producer
 # ---------------------------------------------------------------------------
 
 

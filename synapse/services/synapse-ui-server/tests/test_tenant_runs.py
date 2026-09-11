@@ -289,14 +289,14 @@ def test_the_fleet_route_still_exists_and_is_unchanged(monkeypatch: pytest.Monke
 
 
 # ---------------------------------------------------------------------------
-# The refusal breakdown reaches the console (slice 5b)
+# The refusal breakdown reaches the console
 # ---------------------------------------------------------------------------
 
 
 def test_every_run_query_selects_the_refusal_breakdown() -> None:
     """THE SEAM THAT SILENTLY DROPS DATA. A column written by the orchestrator and not selected
     here is invisible to the console, and nothing fails — which is exactly what happened to
-    ``detail``: it has been populated for blocked and failed runs since slice 6 and no query
+    ``detail``: it has long been populated for blocked and failed runs and no query
     ever asked for it.
 
     All three run-bearing queries are checked, because the fleet table, the tenant's run history

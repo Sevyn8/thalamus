@@ -132,9 +132,9 @@ def test_identity_changed_validates_against_frozen_schema(
 
     message = body["message"]
     assert message["entity"] == entity
-    # Identity fields are the internal UUIDs (D52) — never the codes or t_*/s_*.
+    # Identity fields are the internal UUIDs — never the codes or t_*/s_*.
     assert message["entity_id"] == expected_entity_uuid
-    # The payload carries status (D46) plus the authoritative code (D55).
+    # The payload carries status plus the authoritative code.
     assert "is_active" not in message["payload"]
     if entity == "tenant":
         assert message["payload"]["display_code"] == code

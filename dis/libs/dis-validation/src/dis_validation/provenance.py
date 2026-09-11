@@ -1,23 +1,22 @@
-"""Column provenance: which canonical columns the mapping produces (slice-05 OQ9).
+"""Column provenance: which canonical columns the mapping produces.
 
 The partial-contribution framing rests on this line: the engine emits the
 source-owned, mapping-produced columns; the consumer injects identity
 (``tenant_id``/``store_id``), ``trace_id``, ``mapping_version_id`` and the other
-write-time columns (D8, hard rule 5, D22). The line was drawn from the LIVE
-``ithina_dis_db`` canonical schema (introspected columns + column comments,
-slice-05 plan mode), not from DDL files or docs.
+write-time columns. The line was drawn from the LIVE canonical schema
+(introspected columns + column comments), not from DDL files or docs.
 
 The registry carries an EXPLICIT five-way partition per model (consumer-injected,
-DB-generated, compute-owned, mapping-produced, and — slice-5b, D95 —
+DB-generated, compute-owned, mapping-produced, and
 enrichment-produced: canonical values written by the dis-enrichment lib from an
 authoritative internal source, NOT the mapping). ``assert_no_drift`` checks the
 partition against ``model_fields`` exactly, BOTH directions — so a canonical
-column added to the model (the Slice 3 live-schema reconciliation forces that)
-cannot silently join any set: it must be classified here or the guard errors.
-This guard ERRORS (``SuiteDriftError``), it never skips — criterion 6.
+column added to the model cannot silently join any set: it must be classified
+here or the guard errors.
+This guard ERRORS (``SuiteDriftError``), it never skips.
 
 ``store_sku_signal_history`` is not mapping-produced at all (daily-compute
-output; no ``mapping_version_id`` column exists on it — D22/D31/D32). Requesting
+output; no ``mapping_version_id`` column exists on it). Requesting
 a mapping-time treatment of it raises by design.
 """
 
@@ -44,21 +43,21 @@ class ColumnProvenance:
     db_generated: frozenset[str]
     compute_owned: frozenset[str]
     mapping_produced: frozenset[str]
-    # Enrichment-produced (slice-5b, D95): canonical values the dis-enrichment lib
+    # Enrichment-produced: canonical values the dis-enrichment lib
     # writes from an authoritative internal source, NOT the mapping. Subject to the
-    # SAME canonical-shape gate as mapping-produced (D94), so the drift guard admits
+    # SAME canonical-shape gate as mapping-produced, so the drift guard admits
     # them as source-owned (canonical_shape.materialize). Default empty: only the
-    # current-position table registers any this slice.
+    # current-position table registers any.
     enrichment_produced: frozenset[str] = frozenset()
 
 
 # Common to all three mapping-fed tables (introspected evidence inline):
 _COMMON_CONSUMER_INJECTED = frozenset(
     {
-        "tenant_id",  # identity — consumer-injected after the engine runs (D8)
-        "store_id",  # identity — composite store FK (D39); engine never holds it
-        "mapping_version_id",  # stamped by the streaming consumer (hard rule 5, D22)
-        "trace_id",  # minted at the receiver, propagated by the consumer (hard rule 4)
+        "tenant_id",  # identity — consumer-injected after the engine runs
+        "store_id",  # identity — composite store FK; engine never holds it
+        "mapping_version_id",  # stamped by the streaming consumer
+        "trace_id",  # minted at the receiver, propagated by the consumer
         "dis_channel",  # live comment: "Ingress channel that delivered the data" — envelope fact
         "ingest_metadata",  # live comment names dis_received_timestamp/dis_published_timestamp/
         # csv_row_num — consumer-known lineage, not source data
@@ -78,31 +77,29 @@ PROVENANCE: dict[type[BaseModel], ColumnProvenance] = {
             {
                 # Live comment: "Comparison reference for the event-time-wins
                 # conditional upsert ... Consumer-injected by the streaming
-                # consumer." (D64, migration 0003.)
+                # consumer."
                 "last_source_event_at",
             }
         ),
         db_generated=_COMMON_DB_GENERATED,
         compute_owned=frozenset(
             {
-                # Daily-compute output (D31); refreshed on current_position daily.
+                # Daily-compute output; refreshed on current_position daily.
                 "velocity_7day",
                 "stock_age_days",
                 "unit_cost_trend_30day",
                 "attribute_staleness_map",
-                # OPERATOR-CONFIRMED JUDGMENT, not introspected fact (slice-05 plan
-                # Revision 2, confirmation 3): live comment says "Previous-day
-                # retail price for change-detection by ROOS agents ... TBD" — no
-                # source asserts yesterday's price, so it is classified
-                # compute-owned. Owning slice: 18 (daily-compute). Revisitable.
+                # OPERATOR-CONFIRMED JUDGMENT, not introspected fact: live comment
+                # says "Previous-day retail price for change-detection by ROOS
+                # agents ... TBD" — no source asserts yesterday's price, so it is
+                # classified compute-owned (owned by daily-compute). Revisitable.
                 "yesterday_retail_price",
-                # SLICE-50a: per-attribute change signals. "Compute-owned" here means
-                # consumer-maintained at write by the catalogue/snapshot path in Slice
-                # 50b — NOT a daily-compute job (no such job exists or is planned for
+                # Per-attribute change signals. "Compute-owned" here means
+                # consumer-maintained at write by the catalogue/snapshot path —
+                # NOT a daily-compute job (no such job exists or is planned for
                 # these). Classified compute_owned (never mapping_produced) so they stay
                 # out of the source-mapped set and the write-time completeness
                 # required-set (mandatory_mapping_produced), leaving routing unchanged.
-                # 50a adds the columns nullable and empty; 50b maintains them.
                 "current_retail_price_changed_at",
                 "product_name_changed_at",
             }
@@ -132,61 +129,56 @@ PROVENANCE: dict[type[BaseModel], ColumnProvenance] = {
                 "receipt_date",
                 "expiry_source",
                 "expiry_confidence",
-                # SLICE-10 VERIFICATION ITEM (family judgment, not inscription):
-                # the live comment names no populator ("TRUE if this SKU is
-                # regulated. Default FALSE; NULLABLE ... to allow 'unknown'");
-                # classified mapping-produced as catalogue-data family. Verify when
-                # Slice 10 builds the write path.
+                # FAMILY JUDGMENT, not inscription: the live comment names no
+                # populator ("TRUE if this SKU is regulated. Default FALSE;
+                # NULLABLE ... to allow 'unknown'"); classified mapping-produced
+                # as catalogue-data family.
                 "regulatory_flag",
                 "regulatory_type",
-                # UNCONFIRMABLE FROM LIVE EVIDENCE (flagged, slice-05 adversarial
-                # pass): currency carries NO column comment, while its sibling
-                # tax_treatment is explicitly "Denormalized from store" and
-                # identity_mirror.stores also carries a currency column — so
-                # store-denormalization is plausible by symmetry. Kept
-                # mapping-produced (the mapping can produce it, e.g. a per-source
-                # `constant`); owner: Slice 10 settles who writes it.
+                # UNCONFIRMABLE FROM LIVE EVIDENCE: currency carries NO column
+                # comment, while its sibling tax_treatment is explicitly
+                # "Denormalized from store" and identity_mirror.stores also
+                # carries a currency column — so store-denormalization is
+                # plausible by symmetry. Kept mapping-produced (the mapping can
+                # produce it, e.g. a per-source `constant`).
                 "currency",
                 "reorder_point",
                 "sku_status",
             }
         ),
-        # Enrichment-produced (slice-5b, D98): tax_treatment migrates from
-        # consumer-injected into the dis-enrichment lib on the current-position
-        # path and becomes canonical-shape-validated (the TaxTreatment enum vocab).
-        # The event models keep tax_treatment consumer-injected (event path out of
-        # scope) — the deliberate D98 asymmetry. currency STAYS mapping-produced:
-        # the lib overrides its VALUE, not the column's origin (the mapping still
-        # produces the column; the lib's value wins, D95).
+        # Enrichment-produced: on the current-position path tax_treatment is
+        # written by the dis-enrichment lib and is canonical-shape-validated
+        # (the TaxTreatment enum vocab). The event models keep tax_treatment
+        # consumer-injected — a deliberate asymmetry. currency STAYS
+        # mapping-produced: the lib overrides its VALUE, not the column's origin
+        # (the mapping still produces the column; the lib's value wins).
         enrichment_produced=frozenset({"tax_treatment"}),
     ),
     StoreSkuSaleEvent: ColumnProvenance(
         consumer_injected=_COMMON_CONSUMER_INJECTED
         | frozenset(
             {
-                # D33 dedup key (D38 resolution, migration 0003). Live comments:
-                # "Consumer-injected from the ingress.ready envelope" /
-                # "Consumer-injected (D38 resolution)" — populated by the
-                # consumer (envelope source_id; transaction_id:line_item_seq or
-                # the D65 bronze_ref:row_index fallback), never by the engine.
+                # Dedup-key columns. Live comment: "Consumer-injected from the
+                # ingress.ready envelope" — populated by the consumer (envelope
+                # source_id; transaction_id:line_item_seq or the
+                # bronze_ref:row_index fallback), never by the engine.
                 "source_id",
                 "source_event_id",
                 # Live comment: "Soft cross-reference ... at write time" — a DB row
                 # id the engine cannot know.
                 "store_sku_current_position_id",
-                # SLICE-10 VERIFICATION ITEM (interpretation, not inscription): the
-                # live comment says "the id of the original SALE event ... may be
-                # NULL if the source does not provide it" — but the id is a
-                # DIS-internal uuid no source can mint; the source provides its own
-                # reference, which the consumer resolves to the DIS id at write
-                # time. Classified consumer-injected on that reasoning; verify when
-                # Slice 10 builds the write path.
+                # INTERPRETATION, not inscription: the live comment says "the id
+                # of the original SALE event ... may be NULL if the source does
+                # not provide it" — but the id is a DIS-internal uuid no source
+                # can mint; the source provides its own reference, which the
+                # consumer resolves to the DIS id at write time. Classified
+                # consumer-injected on that reasoning.
                 "related_sale_event_id",
-                # Live comment: "Denormalized from store." (same evidence as the hot
-                # table; reclassified during the slice-05 adversarial pass).
+                # Live comment: "Denormalized from store." (same evidence as the
+                # hot table).
                 "tax_treatment",
-                # Migration 0019: sha256 hex of the mapping-produced payload, computed
-                # by the consumer (canonical_row_hash) as the fifth component of
+                # sha256 hex of the mapping-produced payload, computed by the
+                # consumer (canonical_row_hash) as the fifth component of
                 # uq_ssse_redelivery. Consumer-injected, NOT mapping-produced — it is
                 # derived FROM the mapping's output, so no source supplies it and it must
                 # never reach the field catalog as a mappable column.
@@ -197,13 +189,12 @@ PROVENANCE: dict[type[BaseModel], ColumnProvenance] = {
         compute_owned=frozenset(),
         mapping_produced=frozenset(
             {
-                # OPERATOR-CONFIRMED JUDGMENT (slice-05 plan Revision 2,
-                # confirmation 3): event_date is mapping-produced via the derive
-                # sub-stage (live comment: "DATE derived from
-                # source_sale_timestamp::date at UTC. CHECK constraint enforces").
-                # The consumer could equally stamp it at write; the slice fixes the
-                # consumer-injected set to exactly identity/trace_id/
-                # mapping_version_id, so it lands in derive. Owning slice: 10.
+                # OPERATOR-CONFIRMED JUDGMENT, not introspected fact: event_date
+                # is mapping-produced via the derive sub-stage (live comment:
+                # "DATE derived from source_sale_timestamp::date at UTC. CHECK
+                # constraint enforces"). The consumer could equally stamp it at
+                # write; the consumer-injected set is fixed to exactly
+                # identity/trace_id/mapping_version_id, so it lands in derive.
                 "event_date",
                 "sku_id",
                 "sku_variant",
@@ -223,7 +214,7 @@ PROVENANCE: dict[type[BaseModel], ColumnProvenance] = {
                 # currency: same unconfirmable-provenance flag as on the hot table.
                 "currency",
                 "payment_method",
-                # Arrives tokenized at the receiver (D24); mapped as data.
+                # Arrives tokenized at the receiver; mapped as data.
                 "customer_token",
                 "sale_channel",
             }
@@ -233,25 +224,25 @@ PROVENANCE: dict[type[BaseModel], ColumnProvenance] = {
         consumer_injected=_COMMON_CONSUMER_INJECTED
         | frozenset(
             {
-                # D33 dedup key (D38 resolution, migration 0003); same evidence
-                # as the sale model. Change events have no native source event
-                # id, so the D65 fallback always applies — still consumer-known.
+                # Dedup-key columns; same evidence as the sale model. Change
+                # events have no native source event id, so the
+                # bronze_ref:row_index fallback always applies — still
+                # consumer-known.
                 "source_id",
                 "source_event_id",
                 "store_sku_current_position_id",
                 # Live comment: "Typed shortcut for numeric attributes ... Populated
                 # by the streaming consumer for INVENTORY, PRICE, and COST changes
-                # alongside JSONB value_before." — explicit. (Reclassified from
-                # mapping-produced during the slice-05 adversarial pass.)
+                # alongside JSONB value_before." — explicit.
                 "numeric_value_before",
                 # Live comment: "Same population rules as numeric_value_before."
                 "numeric_value_after",
                 # Family inference (near-evidence): the signed delta of the two
                 # consumer-populated shortcut columns can only be consumer-computed.
                 "numeric_change",
-                # Migration 0019: see the sale model's entry. Same classification for the
+                # See the sale model's row_hash entry. Same classification for the
                 # same reason — derived from the mapping's output, never supplied by a
-                # source. D4: both event tables get this, or the fix is half-applied.
+                # source. Both event tables carry it.
                 "row_hash",
             }
         ),
@@ -279,7 +270,7 @@ PROVENANCE: dict[type[BaseModel], ColumnProvenance] = {
     ),
 }
 
-# Daily-compute output, never mapping-produced (D22/D31/D32): no mapping-time
+# Daily-compute output, never mapping-produced: no mapping-time
 # suite exists for it; asking for one is drift by definition.
 NOT_MAPPING_PRODUCED: frozenset[type[BaseModel]] = frozenset({StoreSkuSignalHistory})
 
@@ -288,13 +279,12 @@ def assert_no_drift(model: type[BaseModel]) -> None:
     """Assert the provenance partition matches ``model.model_fields`` exactly.
 
     Both directions: every model field is classified in exactly one set, and every
-    classified column exists on the model. Errors (never skips) on any mismatch —
-    slice-05 criterion 6.
+    classified column exists on the model. Errors (never skips) on any mismatch.
     """
     if model in NOT_MAPPING_PRODUCED:
         raise SuiteDriftError(
             f"{model.__name__} is daily-compute output, not mapping-produced "
-            "(D22/D31/D32; it carries no mapping_version_id) — no mapping-time "
+            "(it carries no mapping_version_id) — no mapping-time "
             "suite or provenance partition exists for it",
             model=model.__name__,
         )
@@ -352,11 +342,11 @@ def mapping_produced_columns(model: type[BaseModel]) -> frozenset[str]:
 
 
 def enrichment_produced_columns(model: type[BaseModel]) -> frozenset[str]:
-    """The columns the dis-enrichment lib may produce for ``model`` (drift-checked, slice-5b).
+    """The columns the dis-enrichment lib may produce for ``model`` (drift-checked).
 
-    These are source-owned for the canonical-shape gate (D94): the suite drift
+    These are source-owned for the canonical-shape gate: the suite drift
     guard admits ``owned ⊆ mapping_produced ∪ enrichment_produced``. Empty for every
-    model except the current-position table this slice (D95/D98).
+    model except the current-position table.
     """
     assert_no_drift(model)
     return PROVENANCE[model].enrichment_produced
@@ -369,17 +359,17 @@ def mandatory_mapping_produced(
     mapping-produced, minus any column whose value is enrichment-guaranteed.
 
     The intersection of pydantic required-ness with the provenance partition gives the
-    columns the mapping is the ORIGIN of; subtracting ``enrichment_guaranteed`` (Slice
-    16i, D95) drops the columns the dis-enrichment lib supplies the VALUE for (currency
+    columns the mapping is the ORIGIN of; subtracting ``enrichment_guaranteed``
+    drops the columns the dis-enrichment lib supplies the VALUE for (currency
     on the current-position path), so they are not demanded of the mapping even though
     they remain mapping-produced by origin (still legal to map, just not required).
 
     ``enrichment_guaranteed`` is passed IN by the caller (the consumer / dis-ui-server
     hand in ``enrichment_fields(table)``) so this lib stays pure — it never imports
     dis-enrichment. Default empty preserves the plain required-∩-mapping-produced set
-    (the sale/change event models, which enrichment does not touch — D98).
+    (the sale/change event models, which enrichment does not touch).
 
-    Promoted here in Slice 16h so a SINGLE derivation feeds both the create-time gate
+    Defined here so a SINGLE derivation feeds both the create-time gate
     (dis-ui-server ``check_mandatory_coverage``) and the write-time completeness gate
     (streaming-consumer ``classify_hot_completeness``); a canonical-model change flows
     through automatically (and trips the provenance drift guard first if unclassified).

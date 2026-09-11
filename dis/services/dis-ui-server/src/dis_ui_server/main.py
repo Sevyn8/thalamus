@@ -10,7 +10,7 @@ Startup split (test-pinned, the liveness/readiness foundation):
   connectivity check, so ``/healthz`` serves 200 while ``/readyz`` degrades to
   503 where the first real connect happens.
 
-The lifespan owns the engine (dis-rls CLAUDE.md: caller owns the engine, no
+The lifespan owns the engine (dis-rls convention: caller owns the engine, no
 hidden global) and disposes it on shutdown.
 
 Run: ``uvicorn dis_ui_server.main:app`` (the Dockerfile CMD).
@@ -89,10 +89,10 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             "are accepted, and their claims drive RLS. Local use only.",
             extra={"event": "dis.auth.verifier_selected", "auth_mode": "STUB"},
         )
-    # Slice 8 upload dependencies — all construction-lazy like the engine (no
+    # Upload dependencies — all construction-lazy like the engine (no
     # network I/O until first use), so the liveness/readiness split holds: a
     # missing env var crashloops here, an unreachable backend degrades later.
-    # PubsubPublisher is emulator-or-ambient (slice 40a): the emulator when
+    # PubsubPublisher is emulator-or-ambient: the emulator when
     # PUBSUB_EMULATOR_HOST is set, real Pub/Sub via ambient credentials when not.
     # Tests override these state entries with fakes after startup.
     app.state.storage = StorageClient(bucket=config.gcs_bucket_bronze)
@@ -188,11 +188,11 @@ def create_app(extra_api_routers: Sequence[APIRouter] = ()) -> FastAPI:
     """
     configure_logging()  # idempotent
     app = FastAPI(title=SERVICE_NAME, lifespan=_lifespan)
-    # CORS for the browser-served dis-ui SPA (Slice 14c). Explicit origins only
+    # CORS for the browser-served dis-ui SPA. Explicit origins only
     # (no wildcard exists anywhere); allow_credentials=False because auth is the
-    # Authorization: Bearer header, never cookies (dis-ui client.ts + contract
-    # §2.1 "No cookies, no CSRF surface") — the Authorization header itself is
-    # granted via allow_headers. Pure ASGI middleware: it wraps the §2.3 error
+    # Authorization: Bearer header, never cookies (no cookies, no CSRF surface)
+    # — the Authorization header itself is
+    # granted via allow_headers. Pure ASGI middleware: it wraps the error
     # envelopes too (a browser can read a 4xx body), and adds nothing when no
     # Origin header is present (probes and curl traffic are byte-unchanged).
     app.add_middleware(

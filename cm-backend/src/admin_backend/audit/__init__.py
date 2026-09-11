@@ -1,7 +1,7 @@
 """Audit emission package.
 
-Step 6.16.2 establishes this top-level package as the home for shared
-audit emission helpers. The package is intentionally separate from
+This top-level package is the home for shared audit emission
+helpers. The package is intentionally separate from
 ``repositories/`` (it is not a data-access layer) and from
 ``routers/`` (it is not request-handling) because the same helpers
 are called from both sides: repo methods for success-path emission

@@ -1,4 +1,4 @@
-"""Slice 50b (D113): per-attribute change-stamp maintenance on the catalogue upsert.
+"""Per-attribute change-stamp maintenance on the catalogue upsert.
 
 Proven by writing REAL rows to ithina_dis_db (5433) through the real pipeline (the
 seeded ``template_type='snapshot'`` mapping) and reading them back after each
@@ -85,7 +85,7 @@ async def _ingest(
 ) -> None:
     """One catalogue snapshot ingestion for ``sku`` through the real pipeline.
 
-    ``expected_hot`` / ``expected_noops`` are EXACT (Slice 50f Fix 2): a forward write is 1/0; the
+    ``expected_hot`` / ``expected_noops`` are EXACT: a forward write is 1/0; the
     gate-rejected older replay (Ingestion 5) is 0/1. The no-op still ACKs (disposition ``written``).
     """
     chunk = seed_chunk(
@@ -208,7 +208,7 @@ async def test_change_stamps_advance_only_on_real_change(
     assert r1.last_updated_at < r2.last_updated_at < r3.last_updated_at < r4.last_updated_at
 
     # --- Ingestion 5: older-ingest-time replay. Nothing advances; row unchanged (AC5). --
-    # Slice 50f (Fix 2): the rejected replay is counted as a no-op (0 hot / 1 noop), NOT a write.
+    # The rejected replay is counted as a no-op (0 hot / 1 noop), NOT a write.
     # Exact counts — pre-fix the catalogue path reported 1/0, so these would go red without Fix 2.
     await _ingest(
         pipeline,
@@ -256,8 +256,8 @@ async def test_conditional_stamp_is_load_bearing(
     Swap ONLY the stamp clause for an UNCONDITIONAL variant (advance on every
     update), run the real pipeline, re-ingest IDENTICAL values, and show the stamp
     ADVANCES — i.e. the ingestion-2/4 hold assertions above would FAIL under the
-    exact mistake the CASE guards against. Mirrors the Slice 50a mis-classification
-    guard (test_write_gate_derivation.py).
+    exact mistake the CASE guards against. Mirrors the mis-classification
+    guard in test_write_gate_derivation.py.
     """
     import streaming_consumer.sinks.canonical as canonical
 

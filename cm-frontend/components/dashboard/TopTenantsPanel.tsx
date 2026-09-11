@@ -67,11 +67,6 @@ export function TopTenantsPanel() {
     <Card>
       <CardHeader className="flex-row items-center justify-between">
         <CardTitle>Top tenants by users</CardTitle>
-        {/* Phase 5c.partial-deploy.hotfix2: "Demo data" badge
-            removed — this section now reads from Sanjeev's real
-            /api/v1/tenants endpoint with sort/limit. Recent
-            Activity panel still carries the badge until Sanjeev
-            ships /audit-logs at Step 6.2. */}
         <Link
           href="/superadmin/tenants"
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"

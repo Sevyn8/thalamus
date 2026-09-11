@@ -22,23 +22,19 @@ underlying RLS-protected table). PLATFORM JWT sees fleet-wide
 aggregates; TENANT JWT sees own-tenant aggregates. Same SQL runs
 for both user types — RLS does the persona projection.
 
-Step 6.5 amendment (2026-05-06): the ``tenants.status`` enum has
-**five** values (ONBOARDING, TRIAL, ACTIVE, SUSPENDED, TERMINATED),
-not the four the prompt's CTE assumed. The CTE adds an explicit
+The ``tenants.status`` enum has **five** values (ONBOARDING, TRIAL,
+ACTIVE, SUSPENDED, TERMINATED). The CTE adds an explicit
 ``onboarding`` filter so the router's sub_text helper can break out
 ONBOARDING as a distinct lifecycle segment. ``total`` continues to
-use ``status != 'TERMINATED'``, which already covered ONBOARDING
+use ``status != 'TERMINATED'``, which already covers ONBOARDING
 correctly via the broad filter.
 
-Step 6.5.1 amendment (2026-05-06): both ``text()`` queries
-schema-qualify every table reference via ``get_settings().db_schema``
-interpolation, mirroring ``repositories/permission_matrix.py``.
-Pre-Step-6.5.1 the queries were module-level constants with
-unqualified table names; they worked locally because the role-
-default search_path included ``core``, but failed on Cloud SQL
-with ``relation "tenants" does not exist``. Schema qualification
-removes the search_path dependency. See CLAUDE.md "Note on raw
-text() SQL".
+Both ``text()`` queries schema-qualify every table reference via
+``get_settings().db_schema`` interpolation, mirroring
+``repositories/permission_matrix.py``. Unqualified table names work
+locally because the role-default search_path includes ``core``, but
+fail on Cloud SQL with ``relation "tenants" does not exist``. Schema
+qualification removes the search_path dependency.
 """
 from __future__ import annotations
 
@@ -117,9 +113,8 @@ class DashboardRepo:
         ``app.user_type`` GUCs (set by ``get_tenant_session``); RLS
         filters each inner SELECT independently.
 
-        Schema-qualified per Step 6.5.1 — every table reference uses
-        the configured ``db_schema`` rather than relying on
-        ``search_path``. See CLAUDE.md "Note on raw text() SQL".
+        Every table reference is schema-qualified using the configured
+        ``db_schema`` rather than relying on ``search_path``.
         """
         schema = get_settings().db_schema
         sql = text(
@@ -207,7 +202,7 @@ class DashboardRepo:
         constants. As each forward note resolves, this method
         widens to cover the newly-real cards.
 
-        Schema-qualified per Step 6.5.1 (see ``fleet_stats`` docstring).
+        Schema-qualified the same way as ``fleet_stats`` (see its docstring).
         """
         schema = get_settings().db_schema
         sql = text(

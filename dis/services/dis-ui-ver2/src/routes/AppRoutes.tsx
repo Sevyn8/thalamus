@@ -27,9 +27,9 @@ import { Sources } from './Sources'
 import { TemplateDetail } from './TemplateDetail'
 
 // Router-agnostic route registry. /dev/login is public (bare, no Shell). Everything under
-// AuthBoundary renders inside the Shell. Ingestion Runs (GET /api/v1/runs, bronze/D111) and
+// AuthBoundary renders inside the Shell. Ingestion Runs (GET /api/v1/runs, over bronze) and
 // Canonical Explorer (GET /api/v1/canonical/store-sku-positions) are wired to real endpoints.
-// Connector Health is wired to GET /api/v1/connector-health (Phase B, D116) under a premium lock
+// Connector Health is wired to GET /api/v1/connector-health under a premium lock
 // (faded real content). Schema Drift and Credentials are premium-locked lock-message-only surfaces.
 export function AppRoutes() {
   return (
@@ -65,11 +65,11 @@ export function AppRoutes() {
           {/* Onboard Square: DEV UTILITY (provisioning parity tool), hidden from nav. The
               customer journey is /connect/square. */}
           <Route path="/onboard-square" element={<OnboardSquare />} />
-          {/* Ingestion Runs — real (GET /api/v1/runs over bronze, D111). */}
+          {/* Ingestion Runs — real (GET /api/v1/runs over bronze). */}
           <Route path="/ingestion-runs" element={<IngestionRuns />} />
           {/* Canonical Explorer — real (GET /api/v1/canonical/store-sku-positions). */}
           <Route path="/canonical" element={<CanonicalExplorer />} />
-          {/* Connector Health — real (GET /api/v1/connector-health, D116 Phase B). */}
+          {/* Connector Health — real (GET /api/v1/connector-health). */}
           <Route path="/connector-health" element={<ConnectorHealth />} />
           <Route path="/credentials" element={<Credentials />} />
         </Route>

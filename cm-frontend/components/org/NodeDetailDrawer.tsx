@@ -48,10 +48,10 @@ function MetadataRow({ label, children }: { label: string; children: React.React
 
 // Backend's OrgNodeTreeItem omits parent_id / ltree_path / depth, so
 // the drawer can't render a path breadcrumb without threading parent
-// context from the tree-walk caller. Phase 4e drops the breadcrumb
-// section in favor of immediate-children counts; if breadcrumb UX
-// becomes load-bearing we'll thread ancestor names down via prop or
-// resolve via tree-walk in the caller.
+// context from the tree-walk caller. There is no breadcrumb section;
+// immediate-children counts stand in for it. If breadcrumb UX becomes
+// load-bearing, thread ancestor names down via prop or resolve via
+// tree-walk in the caller.
 function Body({ node }: { node: OrgNodeTreeItem }) {
   const Icon = ICON_BY_TYPE[node.node_type];
 

@@ -1,4 +1,4 @@
-"""Integration tests for has_permission() (Step 6.9.1).
+"""Integration tests for has_permission().
 
 Real Postgres, real schema, real RLS, real ltree. No FastAPI machinery.
 Each test builds its own role + assignment graph via the conftest
@@ -936,7 +936,7 @@ async def test_x1_tenant_a_user_denied_at_tenant_b_anchor(
 
 
 # ============================================================================
-# Scope cascade (Step 6.9.3.1) — T_SC1..T_SC8
+# Scope cascade — T_SC1..T_SC8
 # ============================================================================
 #
 # Cascade direction is downward only: a grant at level N satisfies checks at

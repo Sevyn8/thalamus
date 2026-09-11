@@ -107,7 +107,7 @@ export function DocumentsStep({ tenantId, onSaved, onBack, setDirty, mode }: Ste
     setUploading(true);
     setProgress(0);
 
-    // Phase 1: reserve the row + get the signed PUT URL.
+    // Step 1 of the upload: reserve the row + get the signed PUT URL.
     let created;
     try {
       created = await documentsApi.createUploadUrl(tenantId, {
@@ -134,7 +134,7 @@ export function DocumentsStep({ tenantId, onSaved, onBack, setDirty, mode }: Ste
     // The row now exists in PENDING_REVIEW. Show it in the list immediately.
     invalidate();
 
-    // Phase 2: direct PUT to GCS. On any failure/cancel, delete the row we
+    // Step 2 of the upload: direct PUT to GCS. On any failure/cancel, delete the row we
     // just created so no orphan PENDING_REVIEW row pollutes the counts.
     const controller = new AbortController();
     abortRef.current = controller;

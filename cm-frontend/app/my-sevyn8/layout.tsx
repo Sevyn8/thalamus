@@ -4,10 +4,10 @@ import { AuthBoundary } from "@/components/shared/AuthBoundary";
 import { ImpersonationBanner } from "@/components/chrome/ImpersonationBanner";
 import { UserMenu } from "@/components/chrome/UserMenu";
 
-// Phase 5d.1: My Sevyn8 launcher chrome. Bare-centered layout (no
-// product sidebar, no ProductSwitcher) — this surface IS the
-// product picker. A minimal top-right corner carries UserMenu so
-// persona switching + theme work without forcing the full TopBar.
+// My Sevyn8 launcher chrome. Bare-centered layout (no product
+// sidebar, no ProductSwitcher) — this surface IS the product picker.
+// A minimal top-right corner carries UserMenu so persona switching +
+// theme work without forcing the full TopBar.
 //
 // AuthBoundary still gates: unauthenticated visits redirect to
 // /auth/login. ImpersonationBanner is included so demo audiences see

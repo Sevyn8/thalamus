@@ -128,8 +128,8 @@ async def test_delivery_proof_and_trace_discipline(
 
 
 def test_no_identity_client_exists() -> None:
-    # AC2/D28: the consumer makes no Identity Service call — the module the
-    # reserved tree holds for Slice 13 does not exist at all in Slice 10.
+    # AC2: the consumer makes no Identity Service call — the module does not
+    # exist at all yet.
     with pytest.raises(ImportError):
         __import__("streaming_consumer.clients.identity")
 

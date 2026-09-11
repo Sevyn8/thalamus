@@ -1,4 +1,4 @@
-"""Step 6.16.5 : audit emission for org-tree add-node + edit-node.
+"""Audit emission for org-tree add-node + edit-node.
 
 Per-endpoint success + failure coverage of the org-tree write
 surface.
@@ -428,8 +428,8 @@ async def test_os7_edit_node_with_no_actual_change_emits_zero_rows(
 
 
 # ---------------------------------------------------------------------------
-# OS_N1 : Step 6.16.7 LD7 — resource_subtype populated for ORG_NODE
-# emission on both POST add-node and PATCH edit-node (LOAD-BEARING).
+# OS_N1 : resource_subtype populated for ORG_NODE emission on both
+# POST add-node and PATCH edit-node (LOAD-BEARING).
 # ---------------------------------------------------------------------------
 
 
@@ -441,11 +441,10 @@ async def test_os_n1_add_and_edit_node_populate_resource_subtype(
     session_factory,
     platform_auth,
 ) -> None:
-    """LOAD-BEARING (Step 6.16.7 LD7): both org-tree emission sites
+    """LOAD-BEARING — both org-tree emission sites
     populate ``resource_subtype`` with the row's ``node_type`` enum
     value frozen at write time. The 2 org-tree repo call sites are the
-    ONLY emission paths that pass a non-None resource_subtype kwarg
-    per LD13 centralisation.
+    ONLY emission paths that pass a non-None resource_subtype kwarg.
     """
     tenant = await make_tenant(name="OSN1-Tenant", with_root=True)
     troot_id, _troot_path, _ = await _fetch_tenant_root(

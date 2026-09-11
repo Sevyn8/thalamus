@@ -1,6 +1,6 @@
 """Audit emission helpers.
 
-Two entry points per Step 6.16.2 LD2:
+Two entry points:
 
 1. ``emit_audit_event(session, ...)``: same-transaction emission for
    the success path. The caller (repo method that owns the data write
@@ -17,19 +17,19 @@ Two entry points per Step 6.16.2 LD2:
    failure on the failure path.
 
 Both entry points share the same column-level mechanics: they
-construct the appropriate ORM model instance, populate the 16 columns
-per the design doc spec, and persist. The routing decision (which
+construct the appropriate ORM model instance, populate the audit
+columns per the design doc spec, and persist. The routing decision (which
 table) is governed by the routing principle in
 ``docs/architecture_audit_logs.md`` Architecture section, refined by
 the ``route_to_platform`` flag for the design-doc-named exception
 (POST /tenants success rows route to ``platform_activity_audit_logs``
 even though tenant_id is set).
 
-Per FN-AB-58, ``_actor_type_from_auth`` is a 4th local copy of the
-helper that maps ``AuthContext.user_type`` Literal to the
-``ActorUserType`` enum value. The other 3 live in routers/v1/rbac.py,
-routers/v1/tenant_users.py, routers/v1/stores.py. 6.16.2 does not
-promote to a shared module; FN-AB-58 stays open.
+``_actor_type_from_auth`` is a 4th local copy of the helper that maps
+``AuthContext.user_type`` Literal to the ``ActorUserType`` enum value.
+The other 3 live in routers/v1/rbac.py, routers/v1/tenant_users.py,
+routers/v1/stores.py. Not promoted to a shared module; FN-AB-58
+tracks consolidation.
 
 Per the design doc Emission contract section, the JSONB ``details``
 payload shape varies by ``result_type``. The builders below construct
@@ -68,8 +68,7 @@ _logger = logging.getLogger("admin_backend.audit")
 # Mapping from (HTTP method, route template) to the audit triple
 # (action code, resource type, route_to_platform_flag). The exception
 # handler consults this dict to decide whether to emit a failure-path
-# audit row and what action / resource_type to record. Sub-step 6.16.4
-# and 6.16.5 extend this dict; 6.16.2 lands only the 4 tenant routes.
+# audit row and what action / resource_type to record.
 AUDITED_ROUTES: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("POST", "/api/v1/tenants"): ("CREATE", "TENANT", True),
     ("PATCH", "/api/v1/tenants/{tenant_id}"): ("UPDATE", "TENANT", False),
@@ -83,8 +82,8 @@ AUDITED_ROUTES: dict[tuple[str, str], tuple[str, str, bool]] = {
         "TENANT",
         False,
     ),
-    # Step 6.16.4 : tenant-users + roles emission. Per LD1, route_to_platform=False
-    # for tenant-users (tenant_id is read from path or row), True for roles
+    # Tenant-users + roles emission: route_to_platform=False for
+    # tenant-users (tenant_id is read from path or row), True for roles
     # (catalogue is platform-scope; no tenant_id column on roles).
     ("POST", "/api/v1/tenant-users"): ("CREATE", "TENANT_USER", False),
     ("PATCH", "/api/v1/tenant-users/{user_id}"): (
@@ -103,8 +102,8 @@ AUDITED_ROUTES: dict[tuple[str, str], tuple[str, str, bool]] = {
         False,
     ),
     ("PATCH", "/api/v1/roles/{role_id}"): ("UPDATE", "ROLE", True),
-    # Step 6.16.5 : module-access + org-tree + stores emission. Per
-    # LD1, route_to_platform=False on all 7 (tenant_id always known
+    # Module-access + org-tree + stores emission:
+    # route_to_platform=False on all 7 (tenant_id always known
     # via path or row lookup). Stores set-status entry's "SET_STATUS"
     # is the FAILURE-PATH action code; the SUCCESS path emits one of
     # 4 per-target action codes (OPEN_SOFT / ACTIVATE / CLOSE /
@@ -138,7 +137,7 @@ AUDITED_ROUTES: dict[tuple[str, str], tuple[str, str, bool]] = {
         "STORE",
         False,
     ),
-    # Slice 2 : client-onboarding section writes + wizard state +
+    # Client-onboarding section writes + wizard state +
     # complete-onboarding. All tenant-scoped under /tenants/{tenant_id};
     # resource_type TENANT (the tenant is the addressable resource; the
     # 1:1 / 1:N sections have no path id), route_to_platform=False.
@@ -172,9 +171,9 @@ AUDITED_ROUTES: dict[tuple[str, str], tuple[str, str, bool]] = {
         "TENANT",
         False,
     ),
-    # Slice 3 : client-onboarding document writes. Tenant-scoped under
+    # Client-onboarding document writes. Tenant-scoped under
     # /tenants/{tenant_id}/documents; resource_type TENANT (the tenant is
-    # the addressable resource, mirroring the Slice-2 sections),
+    # the addressable resource, mirroring the onboarding sections),
     # route_to_platform=False. The GET reads (list, download-url) are not
     # audited. upload-url has no path document_id; verify/reject/delete
     # carry {document_id} but still record resource_type=TENANT so the
@@ -209,19 +208,18 @@ AUDITED_ROUTES: dict[tuple[str, str], tuple[str, str, bool]] = {
 
 _ACTION_LABELS: dict[str, str] = {
     "CREATE": "Created",
-    # Step 6.16.7 LD8 : UPDATE label changes "Updated" -> "Edited"
-    # for the audit list-view redesign. The action code stays UPDATE
-    # in the DB column for D-31 append-only stability; only the
-    # rendered label changes.
+    # UPDATE renders as "Edited" in the audit list view. The action
+    # code stays UPDATE in the DB column for append-only stability
+    # (D-31); only the rendered label differs.
     "UPDATE": "Edited",
     "SUSPEND": "Suspended",
     "ACTIVATE": "Activated",
-    # Step 6.16.5 : module-access enable/disable + stores per-target
-    # transition labels per LD3. ACTIVATE reused (already present).
-    # OPEN_SOFT is reserved per FN-AB-68: target=OPENING is not
-    # reachable via the live TRANSITION_MATRIX (entry-only via POST
-    # /stores per 6.17.4 LD1) but the label stays in the vocabulary
-    # for D-31 append-only stability and forward matrix relaxation.
+    # Module-access enable/disable + stores per-target transition
+    # labels. ACTIVATE is shared with the tenant/user lifecycle.
+    # OPEN_SOFT is reserved (FN-AB-68): target=OPENING is not
+    # reachable via the live TRANSITION_MATRIX (OPENING is entry-only
+    # via POST /stores) but the label stays in the vocabulary for
+    # append-only stability and forward matrix relaxation.
     # SET_STATUS is the failure-path action code; success path emits
     # one of the 4 per-target codes.
     "ENABLE": "Enabled",
@@ -229,14 +227,12 @@ _ACTION_LABELS: dict[str, str] = {
     "OPEN_SOFT": "Soft-opened",
     "CLOSE": "Closed",
     "DEACTIVATE": "Deactivated",
-    # Step 6.16.7 LD8 : SET_STATUS label changes "Status change" ->
-    # "Set status" for the audit list-view redesign.
     "SET_STATUS": "Set status",
-    # Slice 2d-accept (D-40): self-service invite-accept (INVITED -> ACTIVE).
+    # Self-service invite-accept (INVITED -> ACTIVE).
     "ACCEPT_INVITATION": "Accepted invitation",
-    # Slice 2d-send (D-41): staff sends the invitation (sets invited_at).
+    # Staff sends the invitation (sets invited_at).
     "SEND_INVITATION": "Sent invitation",
-    # Slice 2 : client-onboarding section writes + wizard state +
+    # Client-onboarding section writes + wizard state +
     # complete-onboarding.
     "COMPLETE_ONBOARDING": "Completed onboarding",
     "UPSERT_LEGAL_PROFILE": "Saved legal profile",
@@ -244,7 +240,7 @@ _ACTION_LABELS: dict[str, str] = {
     "UPSERT_BILLING_PROFILE": "Saved billing profile",
     "REPLACE_CONTACTS": "Saved contacts",
     "UPDATE_ONBOARDING": "Updated onboarding state",
-    # Slice 3 : client-onboarding document writes.
+    # Client-onboarding document writes.
     "CREATE_DOCUMENT": "Uploaded document",
     "VERIFY_DOCUMENT": "Verified document",
     "REJECT_DOCUMENT": "Rejected document",
@@ -265,12 +261,12 @@ _RESULT_LABELS: dict[AuditResultType, str] = {
 def _actor_type_from_auth(user_type: str) -> ActorUserType:
     """Map ``AuthContext.user_type`` Literal to ``ActorUserType``.
 
-    Per LD6, this is the 4th local copy of the helper in the codebase.
+    This is the 4th local copy of the helper in the codebase.
     The other 3 copies live in:
       - src/admin_backend/routers/v1/rbac.py
       - src/admin_backend/routers/v1/tenant_users.py
       - src/admin_backend/routers/v1/stores.py
-    FN-AB-58 tracks consolidation; not done in this step.
+    FN-AB-58 tracks consolidation.
     """
     if user_type == "PLATFORM":
         return ActorUserType.PLATFORM
@@ -283,8 +279,8 @@ def _label_for_action(action: str) -> str:
     """Return the human-readable label for an action code.
 
     Falls back to the action code itself if unknown (defensive; the
-    set is closed at v0 per LD4, but future actions land here as new
-    entries to the dict).
+    v0 action vocabulary is closed, but future actions land here as
+    new entries to the dict).
     """
     return _ACTION_LABELS.get(action, action)
 
@@ -294,7 +290,7 @@ def _label_for_result(result_type: AuditResultType) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Step 6.16.7 LD12 : Type label dispatch for the ``what`` field
+# Type label dispatch for the ``what`` field
 # ---------------------------------------------------------------------------
 
 
@@ -324,13 +320,13 @@ _ORG_NODE_SUBTYPE_LABELS: dict[str, str] = {
 def _label_for_resource_type(
     resource_type: str, resource_subtype: str | None
 ) -> str:
-    """Return the user-facing Type label per LD12.
+    """Return the user-facing Type label.
 
     For non-ORG_NODE resource_types, dispatches on ``resource_type``
     against ``_RESOURCE_TYPE_LABELS``. For ORG_NODE rows, dispatches on
-    ``resource_subtype`` against ``_ORG_NODE_SUBTYPE_LABELS``. Pre-
-    6.16.7 historical ORG_NODE rows (NULL ``resource_subtype``) render
-    as ``"Org node"`` per LD11 historical fallback.
+    ``resource_subtype`` against ``_ORG_NODE_SUBTYPE_LABELS``.
+    Historical ORG_NODE rows written before ``resource_subtype``
+    existed (NULL) render as ``"Org node"``.
 
     Falls back to the raw ``resource_type`` value for any unmapped
     code (defensive; the v0 vocabulary is closed but future additions
@@ -344,14 +340,14 @@ def _label_for_resource_type(
 
 
 # ---------------------------------------------------------------------------
-# Step 6.16.7 LD9 : CONFLICT qualifier dispatch for result_label
+# CONFLICT qualifier dispatch for result_label
 # ---------------------------------------------------------------------------
 
 
 # Maps the ``code`` constant of each CONFLICT-class ClientError to a
 # qualifier phrase that composes into ``"Blocked – <qualifier>"``. The
-# 9 codes match the 409 ClientError subclasses enumerated at Step
-# 6.16.7 pre-flight Check #7. When a CONFLICT row's code is not in
+# 9 codes match the 409-mapped ClientError subclasses in
+# ``admin_backend.errors``. When a CONFLICT row's code is not in
 # this dict (e.g., a future ClientError that maps to 409 without an
 # entry here), the static ``_RESULT_LABELS["CONFLICT"] = "Conflict"``
 # remains the fallback.
@@ -393,7 +389,7 @@ def compose_conflict_result_label(code: str | None) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Step 6.16.7 LD5 + LD6 : actor enrichment resolvers
+# Actor enrichment resolvers
 # ---------------------------------------------------------------------------
 
 
@@ -403,7 +399,7 @@ _PLATFORM_ORG_NAME = "Platform-Ithina"
 async def _resolve_actor_organization_name(
     conn: Any, auth: AuthContext
 ) -> str:
-    """Return the actor's organisation name for the audit row per LD6.
+    """Return the actor's organisation name for the audit row.
 
     PLATFORM actors return the literal ``"Platform-Ithina"``. TENANT
     actors return the tenant's ``name`` from ``core.tenants``. Falls
@@ -438,8 +434,7 @@ async def _resolve_actor_organization_name(
 
 
 async def _resolve_actor_roles(conn: Any, auth: AuthContext) -> str:
-    """Return the actor's active role names as a comma-separated string
-    per LD5.
+    """Return the actor's active role names as a comma-separated string.
 
     PLATFORM actors: JOIN ``platform_user_role_assignments`` (no RLS)
     -> ``roles`` filtered by ``platform_user_id = auth.user_id`` and
@@ -455,7 +450,7 @@ async def _resolve_actor_roles(conn: Any, auth: AuthContext) -> str:
     Sorted by ``roles.name`` ASC for deterministic display. Joined
     with ``", "`` separator (comma + single space). Pattern mirrors
     the existing ``_resolve_role_labels`` helper in
-    ``repositories/tenant_users.py`` (Step 6.16.4) which uses ANY-array
+    ``repositories/tenant_users.py`` which uses ANY-array
     SELECTs against ``roles`` keyed by UUID set; difference is the
     filter clause (this resolver filters by actor user id, not by a
     pre-computed UUID set).
@@ -512,7 +507,7 @@ def build_success_details_for_create(
 
     Shape: ``{"snapshot": {...the created entity...}}``.
 
-    Step 6.16.4 LD8: when ``roles`` is provided (tenant-users CREATE),
+    LD8: when ``roles`` is provided (tenant-users CREATE),
     the snapshot includes ``roles`` as a list of frozen-label items
     each carrying ``{role_id, role_name, org_node_id, org_node_name}``
     per LD9.
@@ -538,7 +533,7 @@ def build_success_details_for_update(
     ``after`` are projected to only the fields that changed (the
     caller filters to the diff set).
 
-    Step 6.16.4 LD8: when the request includes a role-list or
+    LD8: when the request includes a role-list or
     permission-list diff, BOTH sides carry the full list (not the
     diff) per Phase 1 Q1. Each role item carries the 4 frozen-label
     fields per LD9; each permission item carries ``{permission_id,
@@ -589,7 +584,7 @@ def build_permission_denied_details(
     is ``"PLATFORM"`` or ``"TENANT"``. ``caller_roles`` is an optional
     list of role codes / names; defaults to empty when not available.
 
-    Step 6.16.4 LD11: when a handler-side guard (e.g.
+    LD11: when a handler-side guard (e.g.
     ``_raise_if_self_edit``) produces the 403, ``denial_reason``
     names the specific guard (e.g. ``"SELF_EDIT_FORBIDDEN"``).
     Standard sub-keys remain present; the optional one augments.
@@ -659,7 +654,7 @@ def build_internal_error_details(
     Sanitised_message must NOT include user-supplied content; it is
     the generic envelope's ``public_message`` or a fixed string.
 
-    Step 6.16.4 LD12: when the 500 is a Layer 2 invariant tripwire
+    LD12: when the 500 is a Layer 2 invariant tripwire
     (e.g. ``InternalInvariantViolationError`` from
     ``RolesRepo.update``), ``invariant`` names the specific guard
     (e.g. ``"OVERRIDE_GLOBAL_HOLDER_PRESERVATION"``). Standard
@@ -739,7 +734,7 @@ async def emit_audit_event(
         ``tenant_id`` is non-None; into ``platform_activity_audit_logs``
         when it is None.
 
-    Step 6.16.7 LD13 : actor enrichment + resource_subtype.
+    LD13: actor enrichment + resource_subtype.
 
     The two new actor columns (``actor_organization_name`` and
     ``actor_roles``) are resolved centrally here via the LD5 / LD6
@@ -882,7 +877,7 @@ async def emit_audit_event_in_new_transaction(
     schema = get_settings().db_schema
     # Initial table choice based on caller-supplied tenant_id and
     # route_to_platform. The final choice may flip after the post-
-    # lookup re-evaluation below (Step 6.16.4 LD7: TENANT_USER routes
+    # lookup re-evaluation below (LD7: TENANT_USER routes
     # gain tenant_id from a tenant_users JOIN even when the caller
     # didn't have it).
     table = (
@@ -902,7 +897,7 @@ async def emit_audit_event_in_new_transaction(
         "actor_user_id": auth.user_id,
         "actor_user_type": _actor_type_from_auth(auth.user_type).value,
         "actor_display_name": auth.email,
-        # Step 6.16.7 LD13 : actor enrichment columns + resource_subtype.
+        # LD13: actor enrichment columns + resource_subtype.
         # ``actor_organization_name`` and ``actor_roles`` are resolved
         # inside the ``async with engine.begin()`` block below, AFTER
         # the ``app.user_type='PLATFORM'`` GUC is set on the new
@@ -938,7 +933,7 @@ async def emit_audit_event_in_new_transaction(
             await conn.execute(
                 text("SELECT set_config('app.user_type', 'PLATFORM', true)")
             )
-            # Step 6.16.7 LD5 / LD6 : actor enrichment resolvers under
+            # LD5 / LD6 : actor enrichment resolvers under
             # the new connection (post-GUC-set so RLS admits the read on
             # tenant_user_role_assignments). The resolvers return
             # safe-defaults ("-" / "Platform-Ithina") when lookups
@@ -960,7 +955,7 @@ async def emit_audit_event_in_new_transaction(
             # still happens when tenant_id is set so the audit row
             # carries the snapshot consistently.
             #
-            # Step 6.16.4 LD3 / Deviation 2 (Option A): dispatch on
+            # LD3 / Deviation 2 (Option A): dispatch on
             # ``resource_type`` to pick the right lookup table. TENANT
             # reads ``tenants.name``; TENANT_USER reads
             # ``tenant_users.full_name`` (and also reads
@@ -1054,7 +1049,7 @@ async def emit_audit_event_in_new_transaction(
                 and module_code is not None
                 and params["tenant_id"] is not None
             ):
-                # Step 6.16.5 LD9: module-access label resolves from
+                # LD9: module-access label resolves from
                 # ``core.lookups`` (list_name='module_code'). The row's
                 # ``resource_id`` is the ``tenant_module_access.id``,
                 # looked up by (tenant_id, module_code); on
@@ -1112,7 +1107,7 @@ async def emit_audit_event_in_new_transaction(
                             else module_code
                         )
             elif resource_type_str == "ORG_NODE":
-                # Step 6.16.5 LD9: org-tree label = org_nodes.name (when
+                # LD9: org-tree label = org_nodes.name (when
                 # node_id is known via path on PATCH). POST add-node
                 # has no path node_id; on its failure rows resource_id
                 # stays NULL and resource_label stays NULL (the
@@ -1120,7 +1115,7 @@ async def emit_audit_event_in_new_transaction(
                 # branch; the tenant branch's CHECK is symmetric and
                 # admits both-NULL too — both columns are nullable).
                 #
-                # Step 6.16.7 LD7 : also fetch ``node_type`` and back-
+                # LD7: also fetch ``node_type`` and back-
                 # fill ``resource_subtype`` for failure rows when the
                 # row is reachable. POST add-node failures (no path
                 # node_id) leave resource_subtype NULL.
@@ -1173,7 +1168,7 @@ async def emit_audit_event_in_new_transaction(
                             else "<unknown>"
                         )
             elif resource_type_str == "STORE":
-                # Step 6.16.5 LD9: stores label = stores.name (when
+                # LD9: stores label = stores.name (when
                 # store_id is known via path on PATCH or set-status).
                 # POST /stores has no path store_id; the body was
                 # consumed by FastAPI before the failure handler ran
@@ -1248,7 +1243,7 @@ async def emit_audit_event_in_new_transaction(
                 # column shapes are symmetric. Switch table name in
                 # the prepared SQL.
                 table = "tenant_activity_audit_logs"
-            # Step 6.16.7 LD13 : INSERT statement extended from 14
+            # LD13: INSERT statement extended from 14
             # explicit columns to 17 (adds actor_organization_name,
             # actor_roles, resource_subtype). Missing this retrofit
             # would cause NOT NULL violations on failure-path emissions
@@ -1297,7 +1292,7 @@ async def emit_audit_event_in_new_transaction(
 
 
 # ---------------------------------------------------------------------------
-# Convenience helpers for the exception handler (Step 6.16.2 + later)
+# Convenience helpers for the exception handler
 # ---------------------------------------------------------------------------
 
 

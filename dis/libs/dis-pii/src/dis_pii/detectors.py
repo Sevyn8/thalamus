@@ -1,16 +1,15 @@
 """PII detection over a caller-supplied source mapping.
 
-Detection is **field-name and pattern based** (root CLAUDE.md hard rule 2 names the
-PII set: phone, email, loyalty_id, PAN, Aadhaar, and tenant-policy fields; D24). It
-inspects the column names the mapping references and matches them against a PII
-name set.
+Detection is **field-name and pattern based** — the PII set covers phone,
+email, loyalty_id, PAN, Aadhaar, and tenant-policy fields. It inspects the
+column names the mapping references and matches them against a PII name set.
 
 There is **no explicit per-column PII flag** in the live ``config.source_mappings``
-schema or in the ``mapping_rules`` shape (introspected Slice 4), so there is no flag
-to read and no "honour an explicit list" path — detection is purely heuristic. The
-consequence is a **false-negative risk**: a PII column whose name the matcher does
-not recognise is not detected, so the gate does not fire on it. This limit is
-recorded in ``decisions.md`` D40; do not read it as a guarantee that all PII is caught.
+schema or in the ``mapping_rules`` shape, so there is no flag to read and no
+"honour an explicit list" path — detection is purely heuristic. The
+consequence is a **false-negative risk**: a PII column whose name the matcher
+does not recognise is not detected, so the gate does not fire on it. Do not
+read this as a guarantee that all PII is caught.
 """
 
 from __future__ import annotations

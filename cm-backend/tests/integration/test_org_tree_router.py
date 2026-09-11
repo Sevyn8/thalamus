@@ -1,4 +1,4 @@
-"""Integration tests for the org-tree router (Step 5.3).
+"""Integration tests for the org-tree router.
 
 Two endpoints under test:
 
@@ -6,7 +6,7 @@ Two endpoints under test:
   - E3: ``GET /api/v1/tenants/{tenant_id}/org-nodes/{node_id}/children``
 
 Real Postgres, real schema, real RLS, real router via FastAPI's
-TestClient. JWTs minted via Step 2.1's ``make_test_jwt``. Mirrors
+TestClient. JWTs minted via ``make_test_jwt``. Mirrors
 ``test_tenant_users_router.py``'s shape (multi-user-type with
 RLS-as-404 cross-tenant test).
 
@@ -33,9 +33,9 @@ Coverage map vs. invariants I1-I13 in the prompt:
   T19  E3 node with no children -> 200 + empty items
   T20  mixed-depth subtrees: loaded_children correct on both branches
   T21  E2 invalid UUID -> 422
-  T22  E2 tenant_root_* fields populate under PLATFORM -- Step 6.21.1
-  T23  E2 tenant_root_* fields populate under TENANT OWNER -- Step 6.21.1
-  T24  E2 tenant_root_* fields populate on empty-descendants tenant -- Step 6.21.1
+  T22  E2 tenant_root_* fields populate under PLATFORM
+  T23  E2 tenant_root_* fields populate under TENANT OWNER
+  T24  E2 tenant_root_* fields populate on empty-descendants tenant
 
 Fixture-built trees use the canonical Buc-ee's-shape:
   TENANT(BUC) -> HQ(BU-HQ) -> REGION(FL,TX) -> STORE(...) -> DEPT(...).
@@ -192,8 +192,7 @@ async def test_t1_e2_small_tenant_full_tree_envelope(
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
-    # Top-level shape (D-30 exception — singleton resource). The three
-    # tenant_root_* fields land at Step 6.21.1.
+    # Top-level shape (D-30 exception — singleton resource).
     assert set(body.keys()) == {
         "tenant_id",
         "tenant_name",
@@ -267,14 +266,13 @@ async def test_t2_e2_empty_tenant_with_root_only_returns_empty_tree(
     """Tenant with ONLY a TENANT-root org_node (no descendants). Returns
     200 with empty tree.
 
-    Post Step 6.9.3.2: the gate's ``get_tenant_anchor`` dep requires a
-    tenant-root org_node to exist; a tenant with ZERO org_nodes raises
-    404 from the anchor (no row to resolve the cascade anchor). The
-    test's prior premise ("architecturally invalid but DDL-permissive")
-    is no longer reachable via the API — the test now provisions a
-    tenant root, satisfying the anchor, and asserts the same empty-tree
-    response shape for "tenant exists but has no descendants below the
-    implicit root."
+    The gate's ``get_tenant_anchor`` dep requires a tenant-root
+    org_node to exist; a tenant with ZERO org_nodes raises 404 from
+    the anchor (no row to resolve the cascade anchor). A tenant with
+    "no org_nodes at all" is therefore not reachable via the API —
+    the test provisions a tenant root, satisfying the anchor, and
+    asserts the empty-tree response shape for "tenant exists but has
+    no descendants below the implicit root."
     """
     tenant = await make_tenant(name="T2-RootOnly")
     await make_org_node(
@@ -596,7 +594,7 @@ def test_t14_e2_no_jwt_returns_401(app_client):
     assert resp.json()["code"] == "AUTH_MISSING"
 
 
-# ---- T22: tenant_root_* fields populate (PLATFORM) -- Step 6.21.1 ----------
+# ---- T22: tenant_root_* fields populate (PLATFORM) -------------------------
 async def test_t22_e2_tenant_root_fields_platform(
     app_client, settings, make_tenant, make_org_node,
     super_admin_jwt,
@@ -605,8 +603,7 @@ async def test_t22_e2_tenant_root_fields_platform(
     GET /org-tree on a non-empty tenant: the three new top-level fields
     (``tenant_root_id``, ``tenant_root_code``, ``tenant_root_path``)
     surface the tenant-root org_node so the frontend can use the correct
-    UUID as ``parent_id`` on POST /org-tree. See Step 6.21.1 and
-    ``docs/investigations/2026-05-20-write-surface-coupling.md``.
+    UUID as ``parent_id`` on POST /org-tree.
     """
     refs = await _build_bucees(make_tenant, make_org_node)
     tenant = refs["tenant"]
@@ -639,7 +636,7 @@ async def test_t22_e2_tenant_root_fields_platform(
             assert descendant["node_type"] != "TENANT"
 
 
-# ---- T23: tenant_root_* fields under TENANT OWNER -- Step 6.21.1 -----------
+# ---- T23: tenant_root_* fields under TENANT OWNER ---------------------------
 async def test_t23_e2_tenant_root_fields_tenant_owner(
     app_client, make_tenant, make_org_node, tenant_owner_jwt_factory,
 ):
@@ -813,14 +810,11 @@ async def test_t18_e3_cross_tenant_node_returns_404(
     )
 
     # TENANT-A asks E3 with B's tenant_id and B's hq node id.
-    # Step 6.9.3.2 retrofit moved the lookup into the anchor dep
+    # The lookup runs through the anchor dep
     # ``get_org_node_anchor(tenant_b.id, hq_b_id)`` which runs under
     # tenant_a's session GUCs; RLS on org_nodes hides tenant_b's rows
-    # → anchor raises ORG_NODE_NOT_FOUND (404). The 404 surface and
-    # information-disclosure property are unchanged; only the error
-    # code differs from the pre-retrofit path (which would have raised
-    # TENANT_NOT_FOUND in the handler body before reaching the
-    # node-exists check).
+    # → anchor raises ORG_NODE_NOT_FOUND (404). The 404 surface
+    # avoids disclosing that another tenant's node exists.
     resp = app_client.get(
         f"/api/v1/tenants/{tenant_b.id}/org-nodes/{hq_b_id}/children",
         headers=_auth(_tenant_jwt(settings, tenant_a.id)),
@@ -920,7 +914,7 @@ def test_t21_e2_invalid_uuid_returns_422(app_client, settings, super_admin_jwt):
     """Malformed UUID in path-param -> FastAPI's 422.
 
     FastAPI's path-param UUID validation rejects malformed values
-    before the handler runs. tenants_router test 13 (Step 3.3) confirms
+    before the handler runs. tenants_router's equivalent test confirms
     422; we mirror that envelope."""
     resp = app_client.get(
         "/api/v1/tenants/not-a-uuid/org-tree",

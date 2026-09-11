@@ -6,12 +6,12 @@
 -- platform_deliveries has no such column at all.
 --
 -- WHY A SPLIT RATHER THAN ONE TABLE WITH A NULLABLE tenant_id. This repository
--- has already built the nullable-tenant_id shape once and then spent a slice
--- undoing it: Customer Master's user_role_assignments carried an IS-NULL-gated
--- RLS policy until Step 6.8.1 split it into platform_* and tenant_* tables, and
--- its D-34 records the two structural side effects that forced the split. A
--- PLATFORM session could not read the whole table in one query, and cross-tenant
--- injection prevention had to live in application code rather than in the schema.
+-- has already built the nullable-tenant_id shape once and had to undo it on a
+-- populated table: Customer Master's user_role_assignments carried an
+-- IS-NULL-gated RLS policy until it was split into platform_* and tenant_*
+-- tables, for two structural reasons. A PLATFORM session could not read the
+-- whole table in one query, and cross-tenant injection prevention had to live
+-- in application code rather than in the schema.
 -- CM's audit log is the second instance of the same split and is the closest
 -- precedent to this file: core.tenant_activity_audit_logs and
 -- core.platform_activity_audit_logs are a symmetric pair, one RLS'd and one not.
@@ -82,8 +82,9 @@ CREATE TABLE IF NOT EXISTS axon.platform_deliveries (
     --      Same discipline as synapse.action_events.lifecycle_event_id.
     --   2. RETURNING NEEDS SELECT. The sender holds INSERT and no SELECT at all,
     --      so a server-generated default would leave the writer unable to learn
-    --      the id it just wrote without a privilege it must not have. Slice 5e
-    --      lost two days to exactly that class of mistake with ON CONFLICT.
+    --      the id it just wrote without a privilege it must not have. A write
+    --      path that silently needs SELECT has already cost days in production
+    --      (ON CONFLICT's arbiter read; 06_axon_sender_grant.sql records it).
     delivery_id             UUID                                NOT NULL,
 
     created_at              TIMESTAMPTZ                         NOT NULL,
@@ -186,13 +187,14 @@ COMMENT ON COLUMN axon.platform_deliveries.state IS
 -- The tenant ledger: multi-channel, and the TENANT is the sender.
 -- ----------------------------------------------------------------------------
 --
--- SHIPS EMPTY AND UNGRANTED IN THIS SLICE. Nothing writes it: there is no
--- address book, no tenant credential, no approved template and no adapter beyond
--- email. It is built now anyway, for two reasons.
+-- SHIPS EMPTY. Nothing writes it: there is no address book, no tenant
+-- credential, no approved template and no adapter beyond email. (It is READABLE:
+-- axon_reader and axon_tenant_reader hold SELECT, granted by 07 and 08.) It is
+-- built ahead of its writer for two reasons.
 --
 --   1. The RLS shape is the hard part, and altering RLS on a table that holds
---      rows is a live-data operation. CM's Step 6.8.1 exists because an RLS
---      shape was chosen early and had to be undone on a populated table.
+--      rows is a live-data operation. CM has already paid for choosing an RLS
+--      shape early and undoing it on a populated table.
 --   2. Building it now is what forces the USING-versus-WITH-CHECK decision below
 --      to be made in daylight rather than by whoever writes the first tenant
 --      send under time pressure.
@@ -270,7 +272,7 @@ ALTER TABLE axon.tenant_deliveries FORCE ROW LEVEL SECURITY;
 -- =============================================================================
 -- USING carries the unconditional PLATFORM branch: a PLATFORM session READS
 -- every tenant's deliveries, which is what a fleet-wide operator console needs
--- and what CM's D-29 pattern gives every multi-tenant table in this estate.
+-- and what every multi-tenant table in this estate provides the same way.
 --
 -- WITH CHECK DOES NOT. A write must name the tenant whose session it is running
 -- in. This is where this policy departs from the precedent it otherwise copies:
@@ -286,7 +288,7 @@ ALTER TABLE axon.tenant_deliveries FORCE ROW LEVEL SECURITY;
 --
 -- The cost is stated so it is not discovered: the first tenant send must open
 -- rls_session(engine, tenant_id), NOT rls_platform_session. That is the same
--- shape synapse.provision's policy forces on slice 5e's enable path, and 05's
+-- shape synapse.provision's policy forces on the enable path, and 05's
 -- verify block spends two whole sections proving it bites.
 --
 -- NULLIF(..., '') IS LOAD-BEARING, not decoration. Postgres registers a
@@ -296,9 +298,7 @@ ALTER TABLE axon.tenant_deliveries FORCE ROW LEVEL SECURITY;
 -- way and every policy in this estate wraps it identically.
 -- DROPPED FIRST, BECAUSE `CREATE POLICY IF NOT EXISTS` DOES NOT EXIST. Every DDL file in this
 -- chain is required to be hand-runnable and repeatable, which 0001 states as its contract, and
--- CREATE TABLE IF NOT EXISTS delivers that for the tables and nothing for the policies. This file
--- carried the defect from slice 1 until now: channels.sql found it by running, fixed itself, and
--- recorded that this file had the same defect.
+-- CREATE TABLE IF NOT EXISTS delivers that for the tables and nothing for the policies.
 --
 -- BEHAVIOUR-PRESERVING ON THE PATH REVISION 0001 ACTUALLY TAKES. 0001 applies this file to a
 -- fresh database, where the policy cannot already exist, so the DROP matches nothing and the

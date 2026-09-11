@@ -1,7 +1,7 @@
 """trace_id generation and context-local access.
 
-A ``trace_id`` is minted once per ingress chunk at the receiver (architecture §8,
-CLAUDE.md hard rule 4) and propagated end-to-end — never regenerated mid-pipeline.
+A ``trace_id`` is minted once per ingress chunk at the receiver (architecture §8)
+and propagated end-to-end — never regenerated mid-pipeline.
 It is a UUIDv7 (``ids.new_uuid7``), matching the ``trace_id uuid NOT NULL`` columns
 in canonical/event/audit tables.
 

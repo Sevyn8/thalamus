@@ -13,9 +13,9 @@ export type PlatformUserListParams = {
   limit?: number;
 };
 
-// Phase 5n.1: routes through lib/api/client.ts, whose base URL is
-// resolved at runtime via runtime-config (/api/config). Only GET
-// endpoints shipped backend-side; writes (5h) pending.
+// Routes through lib/api/client.ts, whose base URL is resolved at
+// runtime via runtime-config (/api/config). Read-only: the backend
+// exposes only GET endpoints for platform users.
 export const platformUsersApi = {
   list: (params?: PlatformUserListParams) =>
     apiFetch<PlatformUserListResponse>(

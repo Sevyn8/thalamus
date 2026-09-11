@@ -200,7 +200,7 @@ def test_adapter_satisfies_protocol_shape() -> None:
     assert isinstance(result.rows[0], ExtractRow)
 
 
-# -- the rate-limit posture the adapter carries onto ExtractResult (D116) -----------
+# -- the rate-limit posture the adapter carries onto ExtractResult -----------
 
 
 def test_extract_carries_the_api_posture_onto_every_domain() -> None:

@@ -73,12 +73,12 @@ WORKDIR /app
 COPY --from=builder --chown=app:app /opt/venv /opt/venv
 
 # Application source. Migrations are bundled because the image is also used
-# as the alembic-runner in the schema bring-up step (Step 4.1).
+# as the alembic-runner for schema bring-up.
 COPY --chown=app:app src/ /app/src/
 COPY --chown=app:app migrations/ /app/migrations/
 COPY --chown=app:app alembic.ini /app/alembic.ini
 
-# Cloud Run Job verification scripts (Step 4.1). Selective copy: only the
+# Cloud Run Job verification scripts. Selective copy: only the
 # scripts intended to run inside the image. Dev-only tooling (check_setup.sh,
 # excel_to_seed_sql.py, apply_seeds.sh) stays excluded via .dockerignore.
 COPY --chown=app:app scripts/verify_cloud_schema.py /app/scripts/verify_cloud_schema.py
@@ -168,7 +168,6 @@ EXPOSE 8080
 # shell with uvicorn so SIGTERM reaches the app for graceful shutdown.
 # Cloud Run / GKE Job overrides CMD with `alembic upgrade head` for schema
 # bring-up; the app itself never runs migrations on boot.
-# --log-config will be added at Step 7.2.1 when the JSON log config file lands.
 #
 # READS $ASGI_TARGET rather than repeating the string. The build-check above
 # resolved that exact variable, so the two cannot disagree. See the ENV for what

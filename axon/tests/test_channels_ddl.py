@@ -139,7 +139,7 @@ def test_each_policy_is_dropped_before_it_is_created(source: str, policy_name: s
     policy will copy the CREATE and not the line above it. That is the drift this asserts.
 
     COVERS EVERY POLICY-BEARING FILE IN THIS SCHEMA, not only the one the defect was found in.
-    deliveries.sql carried the same defect from slice 1 and was fixed by adding the DROP; it is
+    deliveries.sql carried the same defect and was fixed by adding the DROP; it is
     parametrised here so the convention is ENFORCED across the schema rather than satisfied in
     one file and left to chance in the next. Adding a fourth policy anywhere means adding a case.
     """
@@ -195,7 +195,7 @@ def test_the_join_columns_keep_the_ledgers_widths() -> None:
 
 
 def test_the_suppression_reason_is_not_redefined_here() -> None:
-    """'no_approved_template' ALREADY EXISTS in both ledgers' vocabularies. This slice adds
+    """'no_approved_template' ALREADY EXISTS in both ledgers' vocabularies. channels.sql adds
     nothing to them, and a second definition would be the drift these tests exist to catch."""
     deliveries = _DELIVERIES.read_text(encoding="utf-8")
     assert deliveries.count("'no_approved_template'") == 2, (
@@ -351,7 +351,7 @@ def test_the_platform_ledger_takes_no_foreign_key() -> None:
 
 def test_template_version_id_stays_nullable() -> None:
     """Every existing row is NULL and email traffic legitimately has no approved template. A
-    NOT NULL in this slice would refuse the only traffic that exists."""
+    NOT NULL today would refuse the only traffic that exists."""
     deliveries = _DELIVERIES.read_text(encoding="utf-8")
     assert "template_version_id     BIGINT                              NULL" in deliveries
     assert "SET NOT NULL" not in _channels()
@@ -371,24 +371,24 @@ def test_the_registry_ships_empty() -> None:
 
 
 def test_neither_table_is_granted_to_anything() -> None:
-    """SLICE 1'S RECORDED PRECEDENT. A grant arrives with the code that needs it and with the
-    session posture that code must open. Nothing reads these tables and nothing writes them, so
-    a grant now would be a credential reaching a table no code opens a session against."""
+    """A grant arrives with the code that needs it and with the session posture that code must
+    open. Neither the DDL nor the migration grants anything: grants live in the numbered infra
+    files (CM's write path on channel_connections is 09_cm_channel_connections_grant.sql), and
+    channel_templates stays ungranted because no code opens a session against it."""
     migration = _MIGRATION.read_text(encoding="utf-8")
     for table in ("channel_connections", "channel_templates"):
         assert f"GRANT SELECT ON axon.{table}" not in migration
         assert f"GRANT INSERT ON axon.{table}" not in migration
     assert "GRANT" not in _channels_code(), (
-        "channels.sql is granting something. Grants live in numbered files or in the migration, "
-        "and this slice has decided there are none."
+        "channels.sql is granting something. Grants live in the numbered infra files, never in this DDL."
     )
 
 
 def test_axon_does_not_derive_the_secret_name() -> None:
-    """SLICE 5 DELETED ``axon.vault`` AND THIS KEEPS IT DELETED.
+    """``axon.vault`` WAS DELETED AND THIS KEEPS IT DELETED.
 
-    It was landed in slice 4 under a zero-dead-controls exception, on the premise that it would
-    PRE-EXIST TWO CALLERS. It pre-existed one. Customer Master is the writer and cannot import
+    A shared secret-name derivation helper is only a seam if it has TWO CALLERS, and this one
+    could only ever have one. Customer Master is the writer and cannot import
     this package: cm-backend is not a uv workspace member and its Dockerfile builds from
     cm-backend/ with no path to axon/. So CM derives the name and stores it in ``secret_ref``,
     and Axon reads that column verbatim.
@@ -414,7 +414,7 @@ def test_axon_does_not_derive_the_secret_name() -> None:
 
 
 def test_the_ddl_does_not_claim_a_live_derivation_helper() -> None:
-    """The column comment named ``axon.vault.secret_id_for`` until slice 5. A comment naming a
+    """The column comment once named ``axon.vault.secret_id_for``. A comment naming a
     module that no longer exists is the lying-artifact class this repository keeps paying for, so
     the executable COMMENT must not name it. The prose above the column may discuss the deletion,
     which is why this reads the COMMENT statement rather than the whole file."""
@@ -458,10 +458,10 @@ def test_the_credential_itself_is_not_a_column() -> None:
 
 
 def test_the_on_conflict_trap_is_recorded_where_the_writer_will_read_it() -> None:
-    """(f)6, WRITTEN DOWN RATHER THAN REPORTED. The natural writer is an upsert on
+    """WRITTEN DOWN RATHER THAN REPORTED. The natural writer is an upsert on
     (tenant_id, channel); ON CONFLICT reads the arbiter index, which is a SELECT the sender's
-    role does not hold. That cost slice 5e two days and it will cost the next slice the same
-    unless the warning is in the table it applies to."""
+    role does not hold. That mistake (incident 5e) cost two days of production failures and
+    will recur unless the warning is in the table it applies to."""
     ddl = _channels()
     assert "ON CONFLICT" in ddl and "5e" in ddl and "06_axon_sender_grant.sql" in ddl, (
         "the ON CONFLICT warning naming 5e and the grant file has gone from channel_connections"

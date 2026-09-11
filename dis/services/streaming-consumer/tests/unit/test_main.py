@@ -1,4 +1,4 @@
-"""The slice-40a toggle seam in ``_run``: off = the pure loop (no server object),
+"""The healthz toggle seam in ``_run``: off = the pure loop (no server object),
 on = healthz server + loop as sibling tasks — the SAME ``run_forever`` callable in
 both branches (the Worker-Pools config-only switch), and the server answers while
 a loop iteration is in flight (no starvation)."""

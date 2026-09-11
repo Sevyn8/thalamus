@@ -1,9 +1,9 @@
 """csv.received envelope (producer side): population + the both-directions drift guard.
 
-The 9b pattern, pointed at the PRODUCER: the model is field-for-field the frozen
-contract (hard rule 10), the wire form validates against the schema with the
+Pointed at the PRODUCER: the model is field-for-field the frozen
+contract, the wire form validates against the schema with the
 same Draft 2020-12 + format validator the repo contract tests use, and absent
-optional codes are OMITTED, never null-filled (D52).
+optional codes are OMITTED, never null-filled.
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ def test_wire_form_validates_against_frozen_contract() -> None:
     wire = json.loads(_build().to_bytes())
     Draft202012Validator.check_schema(_SCHEMA)
     Draft202012Validator(_SCHEMA, format_checker=FormatChecker()).validate(wire)
-    assert wire["template_id"] == str(_TEMPLATE)  # the Slice 8 carry (D71)
+    assert wire["template_id"] == str(_TEMPLATE)  # required envelope carry
     assert wire["schema_version"] == 1
 
 

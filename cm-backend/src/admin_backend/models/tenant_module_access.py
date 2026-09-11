@@ -6,16 +6,15 @@ direct to ``platform_users``, no ``*_by_user_type`` discriminator
 (modules are managed by Ithina staff only; no TENANT user_type ever
 appears in audit-actor columns).
 
-Resolves FN-AB-16 by replacing the Step 3.3
-``_module_entitlements_stub.py`` Python dict.
+This is the real, DB-backed source of module entitlements (there is
+no in-memory or stubbed fallback).
 
-Per the "Note on PG enum columns" convention, ``module`` and
-``status`` use ``postgresql.ENUM(..., create_type=False,
+``module`` and ``status`` use ``postgresql.ENUM(..., create_type=False,
 native_enum=True)`` — never ``Text`` (Postgres has no implicit
 varchar -> enum cast).
 
-Per Step 3.1's amendment, ``id``, ``created_at``, ``updated_at``
-carry ``server_default=FetchedValue()`` so SQLAlchemy omits them
+``id``, ``created_at``, ``updated_at`` carry
+``server_default=FetchedValue()`` so SQLAlchemy omits them
 from INSERT and reads them back via RETURNING.
 """
 from datetime import datetime
@@ -109,8 +108,9 @@ class TenantModuleAccess(Base):
     )
 
     # ---------- Audit (Pattern (a) per D-13) ----------
-    # FK declarations live at the DB layer per Step 3.1's pattern; no
-    # SA-level relationship() to PlatformUser (the model lands at 5.1).
+    # FK declarations live at the DB layer; no SA-level relationship()
+    # to PlatformUser is modelled here (matches the project convention
+    # used by the other audit-actor columns in this package).
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

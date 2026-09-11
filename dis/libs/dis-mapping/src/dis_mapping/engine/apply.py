@@ -1,19 +1,19 @@
-"""``apply_mapping`` — the pure four-sub-stage engine (slice-05; D4, D8, D20).
+"""``apply_mapping`` — the pure four-sub-stage engine.
 
 A pure function over ``(mapping, chunk)``: no Postgres, GCS, Pub/Sub, network, or
 file I/O. The same call wraps in today's container consumer loop and a future
-Beam DoFn (D4's runner-swap guarantee rests on this purity).
+Beam DoFn (the runner-swap guarantee rests on this purity).
 
 What it produces: a PARTIAL canonical contribution — the source-owned,
 mapping-produced columns only (rename targets + derive targets). What it never
 produces: ``tenant_id`` / ``store_id`` / ``trace_id`` / ``mapping_version_id``
-(consumer-injected after the engine runs; hard rule 5, D8, D22) — the engine has
+(consumer-injected after the engine runs) — the engine has
 no parameters from which it could populate them.
 
 Failure semantics: per-cell, typed, returned as data alongside the rows that
 succeeded. A row with ANY failed cell is dropped whole (no nulled-cell
-pass-through). No pass-threshold is applied and nothing is routed — B2 (threshold
-and chunk-vs-row routing) is the consumer's, Slice 10; ``row_index`` on every
+pass-through). No pass-threshold is applied and nothing is routed — threshold
+and chunk-vs-row routing are the streaming consumer's; ``row_index`` on every
 failure keeps both routings implementable there.
 """
 
@@ -40,7 +40,7 @@ def apply_mapping(
 
     ``log_context`` (optional ``tenant_id``/``trace_id``) is used ONLY to bind log
     fields; it never enters the output frame. Log lines carry column/op names and
-    counts — never a cell value (root CLAUDE.md: no PII, no raw payloads).
+    counts — never a cell value (no PII, no raw payloads in logs).
     """
     log = get_logger(
         "dis-mapping",
@@ -52,7 +52,7 @@ def apply_mapping(
     failures: list[CellNormalizationFailure] = []
     rename_inverse = {canonical: source for source, canonical in mapping.rename.items()}
 
-    # The four sub-stages, in the mandatory order (D20). No stage filters or
+    # The four sub-stages, in the mandatory order. No stage filters or
     # reorders rows, so a frame position IS the input-chunk row index throughout.
     frame = run_rename(chunk, mapping.rename)
     frame = run_normalize(frame, mapping.normalize, rename_inverse, failures)

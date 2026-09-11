@@ -13,8 +13,7 @@
 # substitution at load time generates fresh IDs).
 #
 # For cloud cross-tenant testing, mint JWTs inline with hardcoded
-# cloud-side UUIDs — see prompts/step-4_4-cloud-run-deploy-dev.md
-# section 5 for the pattern.
+# cloud-side UUIDs instead.
 #
 # PLATFORM JWTs (no tenant_id claim) are unaffected — same script
 # output works against local and cloud.

@@ -11,8 +11,7 @@ import {
 } from "@/lib/api/roles";
 import { useAuthSnapshot } from "@/lib/auth/auth-cache";
 
-// Phase 5h.1.1 (2026-05-21): userId in queryKey to prevent cross-
-// persona cache bleed. See Finding #50.
+// userId in queryKey prevents cross-persona cache bleed.
 
 export function useRoles(params?: RoleListParams) {
   const userId = useAuthSnapshot()?.user?.userId ?? null;
@@ -52,7 +51,7 @@ export function usePermissionMatrix() {
   });
 }
 
-// Phase 5d.3: role-assignments. Server-side RLS scopes for TENANT
+// Role-assignments. Server-side RLS scopes for TENANT
 // JWTs; client passes filters through unchanged.
 export function useRoleAssignments(params?: RoleAssignmentsParams) {
   const userId = useAuthSnapshot()?.user?.userId ?? null;
@@ -63,7 +62,7 @@ export function useRoleAssignments(params?: RoleAssignmentsParams) {
   });
 }
 
-// Phase 5n.10: role detail (Step 6.18.2) + update (Step 6.18.3).
+// Role detail + update.
 // Detail query keyed by id so multiple edit modals don't share state;
 // invalidated alongside the role list + permission matrix on update.
 

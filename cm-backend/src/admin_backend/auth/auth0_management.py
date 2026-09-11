@@ -1,30 +1,30 @@
 """Auth0ManagementClient: thin M2M client for the Auth0 Management API v2.
 
-Slice 2b. A small seam over ``httpx`` for the Management operations Slice 2c
-will compose into tenant / tenant-user provisioning (D-39). This module does
-NOT wire into any handler and does NOT hit the live Auth0 tenant at
-construction; provisioning hooks land in 2c.
+A small seam over ``httpx`` for the Management operations that tenant /
+tenant-user provisioning composes into (D-39). This module does NOT wire into
+any handler and does NOT hit the live Auth0 tenant at construction;
+provisioning hooks are added by the caller.
 
 Auth: client-credentials (M2M) grant against the Management audience using the
 "Cortex CM Backend M2M" app. The access token is cached in-memory and refreshed
-on expiry (mirrors the Slice-1 Auth0Client posture). Every token / HTTP /
+on expiry (mirrors the AuthClient posture). Every token / HTTP /
 parse failure maps to a typed ``Auth0ManagementError`` (a ServerError), never a
 raw unhandled 500, per D-39.
 
 Idempotency (D-39) is intentionally NOT baked in here: this client exposes
-plain ``create_*`` and ``get_*`` methods and lets 2c compose the natural-key
-get-or-create (Organization by deterministic name, user by email), keeping the
-client thin.
+plain ``create_*`` and ``get_*`` methods and lets the caller compose the
+natural-key get-or-create (Organization by deterministic name, user by
+email), keeping the client thin.
 
 Seam: the client is fake-injectable two ways. For the client's own offline
 tests, an ``httpx.AsyncClient`` (backed by ``httpx.MockTransport``) is injected
 so the real request-building / response-parsing runs without a network. For
-2c and its tests, ``Auth0ManagementClientProtocol`` lets a fake stand in for
-the whole client (mirrors the Slice-1 ``AuthClient`` Protocol).
+callers and their tests, ``Auth0ManagementClientProtocol`` lets a fake stand
+in for the whole client (mirrors the ``AuthClient`` Protocol).
 
 Not a guess: ``create_user`` takes ``connection`` as a parameter rather than
 hardcoding a connection name; the database-connection name is tenant Auth0
-config, resolved by 2c (likely a future setting), not assumed here.
+config, resolved by the caller (likely a future setting), not assumed here.
 """
 from __future__ import annotations
 
@@ -126,8 +126,9 @@ class Auth0User(BaseModel):
 
 @runtime_checkable
 class Auth0ManagementClientProtocol(Protocol):
-    """The Management operations Slice 2c depends on. 2c and its tests inject a
-    fake satisfying this Protocol; mypy --strict covers the substitution."""
+    """The Management operations that provisioning depends on. Callers and
+    their tests inject a fake satisfying this Protocol; mypy --strict covers
+    the substitution."""
 
     async def create_organization(self, *, name: str, display_name: str) -> Organization: ...
 
@@ -357,7 +358,7 @@ class Auth0ManagementClient:
         self, *, user_id: str, result_url: str
     ) -> str:
         """Generate a password-change ticket for a pre-created user; returns the
-        ticket URL (Slice 2d-send, D-41). Auth0 does not send an email for
+        ticket URL. Auth0 does not send an email for
         tickets; CM delivers the URL via SendGrid. Failures map to
         Auth0ManagementError.
         """
@@ -389,7 +390,7 @@ class Auth0ManagementClient:
         connection: str,
         email_verified: bool = True,
     ) -> None:
-        """Update a user's email in Auth0 (Slice 2e, D-42).
+        """Update a user's email in Auth0.
 
         ``connection`` is REQUIRED: the Management API needs it for email
         updates on database connections. ``email_verified=True`` per D-42

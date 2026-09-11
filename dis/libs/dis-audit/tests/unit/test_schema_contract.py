@@ -1,10 +1,10 @@
-"""The drift-guard hardening's narrowing proof (Slice 30c) — pure, no DB.
+"""The drift-guard's narrowing proof — pure, no DB.
 
 The integration guard feeds :func:`diff_schema` the REAL information_schema
-rows; here we prove the diff actually CATCHES the failure modes the old
-name-set guard let through (the D45 silent-loss class): a type narrowing and a
-nullability flip are reported, by synthesizing live-shaped rows from the
-contract itself and tampering one axis at a time. No database is touched.
+rows; here we prove the diff actually CATCHES the failure modes a name-set-only
+guard would miss: a type narrowing and a nullability flip are reported, by
+synthesizing live-shaped rows from the contract itself and tampering one axis
+at a time. No database is touched.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def test_clean_schema_diffs_empty() -> None:
 
 
 def test_contract_covers_24_columns_and_agrees_with_the_model() -> None:
-    assert len(EXPECTED_COLUMNS) == 24  # +prior_trace_id (Slice 30c)
+    assert len(EXPECTED_COLUMNS) == 24  # includes prior_trace_id
     assert AuditEvent.db_column_names() == set(EXPECTED_COLUMNS)
 
 

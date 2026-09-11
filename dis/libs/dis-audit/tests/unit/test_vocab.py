@@ -11,8 +11,9 @@ from enum import StrEnum
 
 from dis_audit.stages import EventScope, Outcome, Stage
 
-# Phase-1 pipeline stage set (events.sql header / BQ audit_events stage vocab). Phase-3-only
-# BQ_EXPORTED / PARTITION_DROPPED are deliberately excluded (dead Phase-3 surface).
+# Pipeline stage set for the current Cloud-SQL-only audit path (events.sql header /
+# BQ audit_events stage vocab). BQ_EXPORTED / PARTITION_DROPPED are deliberately
+# excluded (dead surface until the BigQuery archive path exists).
 _PHASE1_STAGES = {
     "RECEIVED",
     "PII_TOKENIZED",
@@ -41,10 +42,9 @@ def test_event_scope_membership() -> None:
 
 
 def test_outcome_membership() -> None:
-    # Exactly the six live CHECK values. FLIPPED by Slice 30c (the D42 revision):
-    # DUPLICATE_NOOP / DUPLICATE_OVERWRITTEN are first-class members — promoted
-    # from event_data for console queryability, superseding the Slice-10 JSONB
-    # resolution. They refine SUCCESS (the append-only insert landed, D33).
+    # Exactly the six live CHECK values. DUPLICATE_NOOP / DUPLICATE_OVERWRITTEN are
+    # first-class members — promoted from event_data for console queryability. They
+    # refine SUCCESS (the append-only insert landed).
     assert {o.value for o in Outcome} == {
         "SUCCESS",
         "FAILURE",
@@ -57,6 +57,6 @@ def test_outcome_membership() -> None:
 
 def test_stage_is_closed_phase1_set() -> None:
     assert {s.value for s in Stage} == _PHASE1_STAGES
-    # Phase-3-only stages stay out (phase boundary, not slice boundary).
+    # Stages tied to the deferred BigQuery archive path stay out.
     assert "BQ_EXPORTED" not in {s.value for s in Stage}
     assert "PARTITION_DROPPED" not in {s.value for s in Stage}

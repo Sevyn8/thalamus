@@ -12,9 +12,10 @@
 #   1. Subscribes to ingress.ready (INGRESS_READY_SUBSCRIPTION), not csv.received.
 #   2. Publishes nothing: NO pubsub.publisher grant, NO topic input.
 #   3. storage.objectViewer (read-only bronze), not objectAdmin.
-#   4. max_instances is a var (default 1), NOT a D58 correctness pin: the
-#      consumer is concurrency-safe, so a single instance is a staging choice
-#      that is safe to raise. min=1 + cpu_idle=false still required (the pull
+#   4. max_instances is a var (default 1), NOT a correctness pin (unlike
+#      csv-ingest-worker's single-instance dedup constraint): the consumer is
+#      concurrency-safe, so a single instance is a staging choice that is safe
+#      to raise. min=1 + cpu_idle=false still required (the pull
 #      loop must stay alive and CPU-allocated).
 #
 # NOT granted here, by design:

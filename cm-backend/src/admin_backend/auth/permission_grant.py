@@ -1,9 +1,9 @@
 """PermissionGrant: one permission held by one user at one anchor.
 
-Shipped at Step 6.9.1; consumed at Step 6.9.2's ``/me/permissions``
-endpoint. ``has_permission()`` itself returns ``(bool, ReasonCode, str)``
+Consumed by the ``/me/permissions`` endpoint.
+``has_permission()`` itself returns ``(bool, ReasonCode, str)``
 and never constructs PermissionGrant — the dataclass is the stable
-contract for the future enumeration endpoint to materialise.
+contract the enumeration endpoint materialises.
 
 Frozen dataclass: hashable, equality-comparable, immutable. The
 ``anchor_path`` field is ``None`` for PLATFORM-audience grants (which

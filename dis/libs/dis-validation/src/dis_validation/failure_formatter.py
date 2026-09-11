@@ -1,14 +1,13 @@
 """Failure formatting: Pandera raw failure cases -> typed, tenant-readable reasons.
 
-The three failure types stay DISTINCT (D18/D20): source-shape and canonical-shape
+The three failure types stay DISTINCT: source-shape and canonical-shape
 failures are built here; normalization failures originate in ``dis-mapping``
 (``CellNormalizationFailure``) and are never re-detected or re-formatted by this
 lib.
 
 The failure objects may carry the offending value (``value``) — that is the
 quarantine payload the console needs. It is NEVER logged by this lib; log lines
-carry column/check names and counts only (root CLAUDE.md: no PII, no raw
-payloads).
+carry column/check names and counts only (no PII, no raw payloads in logs).
 """
 
 from __future__ import annotations

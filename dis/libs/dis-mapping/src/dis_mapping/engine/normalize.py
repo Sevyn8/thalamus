@@ -1,15 +1,14 @@
 """The normalize sub-stage: ordered per-column transform lists over canonical strings.
 
 Normalize canonicalizes REPRESENTATION (str -> canonical str); cast converts type
-afterwards — the ordering is load-bearing, not stylistic (D20:
-``cast("23,45", float)`` fails where ``cast(normalize("23,45"), float)`` succeeds).
+afterwards — the ordering is load-bearing, not stylistic:
+``cast("23,45", float)`` fails where ``cast(normalize("23,45"), float)`` succeeds.
 
 Each column's transform list is applied SEQUENTIALLY IN DECLARED ORDER. A cell
 that fails at step *k* is recorded with that step's ``op`` and ``transform_index``
 and its value is nulled; every op passes null through untouched, which is what
 "skips the remaining steps for that cell" means operationally. The whole row is
-dropped from the contribution later (partial rows yield nothing; slice-05
-criterion 3).
+dropped from the contribution later (partial rows yield nothing).
 
 All ops are pure Series -> Series computations: no I/O of any kind.
 """

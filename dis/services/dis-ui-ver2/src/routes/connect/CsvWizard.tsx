@@ -266,7 +266,7 @@ export function CsvWizard({ onBack }: { onBack: () => void }) {
     try {
       // Persist the HUMAN-EDITED mapping via the SAME builder the dry-run used (identical body).
       const input = buildCreateInput()
-      // Source-first (D112): register the source entity (channel csv_upload — this IS the manual
+      // Source-first: register the source entity (channel csv_upload — this IS the manual
       // CSV path), tolerating a 409 if it already exists (a prior run, or the 0013 backfill). Any
       // other error surfaces (createSourceIfAbsent re-throws it). Then create the mapping template.
       await createSourceIfAbsent({

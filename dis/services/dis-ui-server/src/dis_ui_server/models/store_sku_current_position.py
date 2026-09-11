@@ -1,21 +1,21 @@
 """``canonical.store_sku_current_position`` — the hot per-(tenant,store,sku) position (READ-ONLY).
 
 A faithful read mirror of the columns the ``GET /canonical/store-sku-positions`` list serves.
-dis-ui-server reads canonical read-only (already in the service read-set — CLAUDE.md "Reads from:
-Cloud SQL read replica (canonical)"; today only the dashboard reads it, via count(*)). The
-streaming consumer / daily-compute remain canonical's SOLE writers (root CLAUDE.md); this model
-is typed read metadata only — the canonical repo builds SELECT-only statements.
+dis-ui-server reads canonical read-only from the Cloud SQL read replica; today only the
+dashboard reads it, via count(*). The streaming consumer / daily-compute remain canonical's
+SOLE writers; this model is typed read metadata only — the canonical repo builds SELECT-only
+statements.
 
-RLS is the standard two-GUC policy (D91): ``tenant_isolation`` = ``USING (tenant_id =
+RLS is the standard two-GUC policy: ``tenant_isolation`` = ``USING (tenant_id =
 app.tenant_id OR app.user_type='PLATFORM')`` + ``WITH CHECK`` tenant-pin — identical READ
 behaviour to ``quarantine.*`` / bronze. tenant_id is NOT NULL (no system rows). The per-tenant
 scope rides ``read_session``; the explicit ``WHERE tenant_id`` predicate in ``repos/canonical.py``
 is defense-in-depth.
 
-Slice 52a widens the served set to the FULL live column set of the table EXCEPT ``tenant_id``
+The served set is the FULL live column set of the table EXCEPT ``tenant_id``
 (scope, never on the wire) and ``ingest_metadata`` (operator-excluded, drawer-noise) — 43 canonical
 columns, plus ``store_name`` attached by the repo's ``identity_mirror.stores`` join. So the mirror is
-now near-complete by design; every served column is a mapped attribute here because the repo's
+near-complete by design; every served column is a mapped attribute here because the repo's
 ``_LIST_COLUMNS`` resolves each via ``getattr`` on this model. ``ingest_metadata`` is intentionally
 NOT mapped (not served). Enum columns (``tax_treatment``, ``expiry_source``) map as ``String`` — for
 a read-only SELECT the DB enum value comes back as its text label. The per-value source->transform

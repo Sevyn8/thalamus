@@ -6,7 +6,7 @@ template auto-maps them. This module is pure (no I/O, no vendor client); it take
 Square JSON and returns ``ExtractRow`` values (all strings, the CSV cell shape). The
 connector never calls ``dis-mapping``.
 
-Follow-ups (tracked in connectors/BUILD.md section 10, not resolved here):
+Deliberate limitations (not resolved here):
 - ``tax_treatment`` is NOT NULL on both canonical models but has no direct Square source
   (denormalized-from-store in DIS). It is deliberately NOT emitted, so snapshot rows are
   INCOMPLETE and take the streaming consumer's conditional-update path until the product
@@ -129,7 +129,7 @@ def catalog_inventory_to_rows(
 
 def inventory_to_rows(inventory_by_variation: Mapping[str, str]) -> list[ExtractRow]:
     """Inventory-only refresh: sku_id + stock_qty rows (a partial snapshot). These are
-    INCOMPLETE by design and take the consumer's conditional-update path (D63)."""
+    INCOMPLETE by design and take the consumer's conditional-update path."""
     return [
         ExtractRow(values={"sku_id": variation_id, "stock_qty": str(quantity)})
         for variation_id, quantity in inventory_by_variation.items()
@@ -139,7 +139,7 @@ def inventory_to_rows(inventory_by_variation: Mapping[str, str]) -> list[Extract
 def orders_to_rows(orders: Sequence[Mapping[str, Any]]) -> list[ExtractRow]:
     """Map Square Orders line items to ``store_sku_sale_events`` rows.
 
-    ``source_event_id_hint`` is ``transaction_id:line_item_seq`` (D33/D65); the streaming
+    ``source_event_id_hint`` is ``transaction_id:line_item_seq``; the streaming
     consumer derives the canonical ``source_event_id`` from the mapped columns.
     """
     rows: list[ExtractRow] = []

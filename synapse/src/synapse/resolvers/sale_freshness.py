@@ -34,10 +34,9 @@ WHY NOT REUSE WHAT THE ANALYSES ALREADY FETCH. ``dead_stock`` resolves ``last_sa
 that can log it. ``runner._run_one`` holds a ``DeclarationSatisfied`` carrying ``fetch`` CALLABLES,
 not rows; the PLAN fetches. ``Satisfied.fetch`` has no memoisation, so calling it again would issue
 a second full series read rather than reusing the first, and threading the value back out of the
-plan is a Plan-signature change — the same blocker that deferred populating ``run.detail``
-(outstanding item 4). One cheap aggregate beats quietly taking on deferred work.
+plan is a Plan-signature change. One cheap aggregate beats quietly taking on that larger change.
 
-And ``daily_series`` is WINDOWED (``window_days``: 28 and 14 in slice 7), so for a tenant stale
+And ``daily_series`` is WINDOWED (``window_days``: 28 and 14 for the current analyses), so for a tenant stale
 beyond its window it resolves EMPTY — no date at all, in exactly the case most worth reporting.
 """
 

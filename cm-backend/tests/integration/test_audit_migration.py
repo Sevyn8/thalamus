@@ -1,4 +1,4 @@
-"""Step 6.16.7 migration tests for `7a3c8e9d2f5b_step_6_16_7_audit_actor_enrichment.py`.
+"""Migration tests for `7a3c8e9d2f5b_step_6_16_7_audit_actor_enrichment.py`.
 
 Verifies the migration's invariants without actually running upgrade /
 downgrade against the live test DB (the chain is already at head;
@@ -25,7 +25,7 @@ artifacts):
   - AT_N8 : resource_subtype stays NULLABLE; omitted INSERT succeeds.
 
 LOAD-BEARING : AT_N1 - AT_N8 (the migration's invariants are the
-schema-side contract underlying every Step 6.16.7 emission test).
+schema-side contract underlying every audit emission test).
 """
 from __future__ import annotations
 

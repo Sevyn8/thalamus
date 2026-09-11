@@ -4,8 +4,9 @@
 ledger as ``state='failed'`` with the detail, and it never reaches the caller of a fire-and-record
 send: an enable must not fail because an email did not go out.
 
-``LedgerWriteError`` means the row could not be written. It is the deeper failure, and it is the
-one nothing in this slice can mitigate. See ``send.py`` for why the queue exists.
+``LedgerWriteError`` means the row could not be written. It is the deeper failure: everything may
+have succeeded with no evidence left behind. The consumer nacks on it so the queue retries the
+write; see ``send.py``.
 
 MODELLED ON CM'S ``EmailSendError``, which carries ``provider`` and ``status_code`` as structured
 context rather than formatting them into the message. Same discipline here: the credential is

@@ -1,9 +1,8 @@
-"""Subscriber emulator-or-ambient construction (slice 40a).
+"""Subscriber emulator-or-ambient construction.
 
 The pubsub_v1 client honours PUBSUB_EMULATOR_HOST natively, so BOTH branches
-construct the same bare ``SubscriberClient()`` — the slice deleted the
-emulator-required guard; this pins that the no-emulator branch (pre-40a a raise)
-constructs the no-kwargs ambient shape.
+construct the same bare ``SubscriberClient()``; this pins that the no-emulator
+branch constructs the no-kwargs ambient shape rather than raising.
 """
 
 from __future__ import annotations
@@ -48,7 +47,7 @@ def test_subscriber_constructs_without_emulator_var_ambient_mode(
 
 
 async def test_run_forever_beats_heartbeat_each_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Slice 40a: the heartbeat is written by the LOOP, unconditionally — no toggle,
+    # The heartbeat is written by the LOOP, unconditionally — no toggle,
     # no server involved. One cycle (poll_once cancels out of the infinite loop)
     # must advance last_beat.
     monkeypatch.setenv("PUBSUB_EMULATOR_HOST", "127.0.0.1:9")

@@ -8,10 +8,10 @@ import type { ChannelWire, SourceRow, SourceStatus } from '../lib/dis-ui-server/
 import { useSources } from '../lib/dis-ui-server/sources'
 import { distinctTenants, matchesTenant, SYSTEM_TENANT, tenantFull, tenantName } from '../lib/dis-ui-server/tenant-label'
 
-// Data Pipelines — the source registry, wired to the real GET /api/v1/sources (Phase B, D112).
+// Data Pipelines — the source registry, wired to the real GET /api/v1/sources.
 // REAL columns from the registry: Source (display_name + source_id), Method (channel), Schedule,
 // Status (operator enablement). The runtime columns the mockup also shows (Last/Next run,
-// Quality %, connector health) are L1 — worker-produced telemetry with no registry/route yet —
+// Quality %, connector health) are worker-produced telemetry with no registry/route yet —
 // shown as a marked-pending note, NOT fabricated. channel NULL (un-inferred by the backfill)
 // renders "—". A row click opens a detail drawer of the REGISTRY facts only (no liveness).
 
@@ -57,9 +57,9 @@ function StatusBadge({ status }: { status: SourceStatus }) {
   )
 }
 
-// Row-click detail drawer — REGISTRY facts only (Item 4a honesty guard): identity + config +
+// Row-click detail drawer — REGISTRY facts only (honesty guard): identity + config +
 // enablement + the registry record timestamps. Deliberately shows NO liveness/last-ingest/health;
-// that is the Connector Health surface's job (D116). Reads the in-hand row (no extra fetch). Esc +
+// that is the Connector Health surface's job. Reads the in-hand row (no extra fetch). Esc +
 // scrim close; the panel takes focus and carries dialog aria.
 function SourceDetail({ source, onClose }: { source: SourceRow | null; onClose: () => void }) {
   const open = source !== null

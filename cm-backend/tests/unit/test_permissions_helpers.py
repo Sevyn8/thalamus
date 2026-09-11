@@ -1,4 +1,4 @@
-"""Unit tests for ``satisfying_scopes`` and ``_SCOPE_CASCADE_ORDER`` (Step 6.9.3.1).
+"""Unit tests for ``satisfying_scopes`` and ``_SCOPE_CASCADE_ORDER``.
 
 Pure-Python tests. No database, no fixtures. Live in ``tests/unit/``
 alongside other DB-free unit tests (``test_engine.py`` etc.).

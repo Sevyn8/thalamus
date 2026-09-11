@@ -1,6 +1,6 @@
 """The qualifying-population fix, and the trap inside it.
 
-SLICE 2 DEFERRED THIS WITH A SELF-NAMING TRIGGER — "the first analysis that binds a gate" — and
+THIS WAS DEFERRED WITH A SELF-NAMING TRIGGER — "the first analysis that binds a gate" — and
 ``stockout_risk`` is that analysis. Before the fix, an ANY_SERIES gate that passed 46 of 65
 series would hand back a fetch returning all 65, so the analysis computed cover for series it had
 just declared unfit.
@@ -180,7 +180,7 @@ def test_a_window_naming_a_threshold_that_does_not_exist_is_refused() -> None:
 def test_a_window_against_a_last_write_capability_is_refused() -> None:
     """THE CHECK THAT PROVES THIS FIELD IS THE OPERATIONAL HALF OF ``freshness``.
 
-    ``Freshness`` has said since slice 1 which capabilities a date parameter is meaningful for.
+    ``Freshness`` says which capabilities a date parameter is meaningful for.
     LAST_WRITE means asking for a past date is not answerable, so a window against one is a
     question the capability's own contract says has no answer — and it would pass a date_from
     the resolver does not accept. A field that could be declared anywhere would be a parameter

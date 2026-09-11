@@ -1,4 +1,4 @@
-"""Connector-health emit unit surface (D116): the upsert shape + the fire-and-forget posture.
+"""Connector-health emit unit surface: the upsert shape + the fire-and-forget posture.
 
 The SQL is proven against the live schema (WITH CHECK isolation, the ON CONFLICT) by the
 integration suite; here the pure logic is pinned: ``upsert_health_seen``/``upsert_health_error``
@@ -119,7 +119,7 @@ async def test_emit_seen_is_fire_and_forget(monkeypatch: pytest.MonkeyPatch) -> 
         yield  # pragma: no cover
 
     monkeypatch.setattr(pipeline_module, "rls_session", exploding_rls_session)
-    # A failing health write must NOT raise into the data path (fire-and-forget, D116).
+    # A failing health write must NOT raise into the data path (fire-and-forget).
     await _min_pipeline()._emit_health_seen(_event())
 
 

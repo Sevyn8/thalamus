@@ -1,8 +1,8 @@
 """RoleAssignmentsRepo — read-only data access for the post-split URA tables.
 
-Two list methods, one per physical table. The 6.8.3
+Two list methods, one per physical table. The
 ``/role-assignments`` router calls both (PLATFORM JWT) or only the
-tenant-side one (TENANT JWT, per locked decision 12 of Step 6.8.3 —
+tenant-side one (TENANT JWT, per locked decision 12 —
 security-load-bearing) and assembles the grouped response shape with
 two ``{items, pagination}`` blocks.
 
@@ -12,7 +12,7 @@ unconditional OR-branch on ``tenant_user_role_assignments``). For the
 platform table, no scoping — platform-global; the audience-check
 trigger ensures only PLATFORM-audience role rows live there.
 
-Step 6.8.3 — ``list_tenant_assignments`` extended with a new
+``list_tenant_assignments`` accepts a new
 optional ``tenant_id`` filter. This is *application-layer narrowing*
 for PLATFORM callers who want to scope a listing to a single tenant;
 it composes with RLS without conflict (RLS already restricts TENANT
@@ -39,7 +39,7 @@ from admin_backend.models import (
 from admin_backend.repositories._errors import InvalidSortKeyError
 
 
-# Sort vocabulary for /role-assignments (Step 6.8.3, locked decision 14).
+# Sort vocabulary for /role-assignments (locked decision 14).
 # Public frozenset for validation; internal maps for SQL clauses.
 # Stable secondary sort by ``id ASC`` is appended at query time so
 # identical primary-sort values page deterministically. ``dict[str, Any]``
@@ -133,7 +133,7 @@ class RoleAssignmentsRepo:
         (D-29 unconditional OR-branch); TENANT JWTs see only rows
         whose ``tenant_id`` matches ``app.tenant_id``.
 
-        ``tenant_id`` filter (Step 6.8.3): application-layer narrowing
+        ``tenant_id`` filter: application-layer narrowing
         for PLATFORM callers wanting a single-tenant view. Composes
         with RLS without conflict.
 

@@ -1,13 +1,13 @@
 [project]
 name = "dis-audit"
 version = "0.0.0"
-description = "DIS audit-event model + fire-and-forget Cloud SQL writer for audit.events (Phase 1; BigQuery archive deferred to Phase 3, decisions.md D34). Owns the stage/scope/outcome vocabulary its service consumers import."
+description = "DIS audit-event model + fire-and-forget Cloud SQL writer for audit.events, with a deferred BigQuery archive path. Owns the stage/scope/outcome vocabulary its service consumers import."
 requires-python = ">=3.12"
 dependencies = [
   # DisError root + UUIDv7 + UTC timestamps + structured logging + BqClient seam.
   "dis-core",
-  # The write posture goes through the RLS-aware session (audit.events is FORCE-RLS;
-  # decisions.md D43). dis-rls brings the target-safety guard and rls_session.
+  # The write posture goes through the RLS-aware session (audit.events is FORCE-RLS).
+  # dis-rls brings the target-safety guard and rls_session.
   "dis-rls",
   # Async engine + connection for the Cloud SQL writer (psycopg v3 async driver).
   "sqlalchemy[asyncio]>=2.0.36",

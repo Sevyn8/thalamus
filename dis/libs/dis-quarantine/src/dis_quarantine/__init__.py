@@ -1,5 +1,5 @@
 """dis-quarantine — quarantine record models, the fail-loud Cloud SQL writer, and
-the ``failure_stage`` vocabulary (Slice 11a).
+the ``failure_stage`` vocabulary.
 
 Three responsibilities:
 

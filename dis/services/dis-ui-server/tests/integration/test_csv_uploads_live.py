@@ -1,8 +1,8 @@
-"""``POST /api/v1/csv-uploads`` against the LIVE stack (Slice 8 acceptance).
+"""``POST /api/v1/csv-uploads`` against the LIVE stack.
 
 Real everything: the RLS template resolve on the live ``config.source_mappings``
 (template grain, 0005), the in-query store resolve on the live mirror, the GCS
-emulator write at the D53 path, the real ``csv.received`` publish on the Pub/Sub
+emulator write at the canonical bronze object path, the real ``csv.received`` publish on the Pub/Sub
 emulator (drained through a throwaway verification subscription and validated
 against the frozen contract), and the live ``audit.events`` write.
 
@@ -12,7 +12,7 @@ confirm existence. A TRANSIENT INACTIVE store (the ``inactive_store`` fixture,
 inserted under tenant A and reverted on teardown — the baseline mirror is
 all-ACTIVE) proves the operator's ACTIVE-only 409 gate on real mirror rows.
 
-Loud-error posture (the Slice 4/7 lesson): a missing stack env var ERRORS,
+Loud-error posture: a missing stack env var ERRORS,
 never skips.
 """
 
@@ -64,7 +64,7 @@ def _require_env(name: str) -> str:
     value = os.environ.get(name)
     if not value:
         raise StackRequiredError(
-            f"{name} is not set — the Slice 8 upload integration tests refuse to skip "
+            f"{name} is not set — the upload integration tests refuse to skip "
             "silently. Bring up the stack (make run-local) and load .env."
         )
     return value
@@ -226,13 +226,13 @@ def test_valid_upload_lands_object_and_contract_valid_event(
     assert body["source_id"] == active_template_a["source_id"]
     assert body["tenant_id"] == TENANT_A
 
-    # The object is REALLY at the D53 path on the (emulated) bucket.
+    # The object is REALLY at the canonical bronze object path on the (emulated) bucket.
     bucket, object_key = split_object_uri(body["gcs_uri"])
     assert bucket == upload_env["GCS_BUCKET_BRONZE"]
     assert StorageClient(bucket=bucket).download_bytes(object_key) == _GOOD_CSV
 
     # The event REALLY published, and the wire validates against the frozen
-    # contract — required template_id included (D71 carry).
+    # contract — required template_id included.
     [wire] = [m for m in verify_subscription() if m["trace_id"] == body["trace_id"]]
     Draft202012Validator(_CSV_SCHEMA, format_checker=FormatChecker()).validate(wire)
     assert wire["template_id"] == active_template_a["template_id"]

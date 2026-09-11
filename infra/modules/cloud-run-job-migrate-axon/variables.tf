@@ -7,10 +7,11 @@ variable "image" {
     THE SAME IMAGE AS synapse-ui-server, and it must stay that way. Pass
     var.synapse_ui_server_image, never a separately pinned tag: a migration has to run the code
     it ships with, and a second pin lets the migration sit a revision behind the workload it
-    migrates for. This is migrate-cm's D6 argument applied to the third chain.
+    migrates for. This is the same argument that governs migrate-cm's image pin, applied to
+    the third chain.
 
-    WHY THE BFF'S IMAGE AND NOT AN AXON IMAGE. Axon has no image of its own, because slice 1
-    gives it no server: its only producer is the BFF and the send is in-process. The BFF's
+    WHY THE BFF'S IMAGE AND NOT AN AXON IMAGE. Axon has no image of its own: its only producer
+    is the BFF and the send is in-process. The BFF's
     Dockerfile therefore COPYs the whole axon/ directory, chain and DDL included, and this job
     runs alembic out of it. If Axon ever gains a service of its own, this variable moves to
     that image and the reasoning above is unchanged.

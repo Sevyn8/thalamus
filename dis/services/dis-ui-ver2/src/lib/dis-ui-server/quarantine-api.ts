@@ -4,16 +4,16 @@ import type { AuthSnapshot } from '../../auth/AuthSnapshot'
 import { getJson } from './client'
 import { isRealMode } from './mode'
 
-// Tenant Quarantine console (slice 15a, b8b85f4), tenant slice. Types mirror the real
+// Tenant Quarantine console. Types mirror the real
 // dis-ui-server contract EXACTLY (services/dis-ui-server/.../schemas/quarantine.py): the two
 // reads are GET /api/v1/quarantine?source=&error_type=&status=&window= -> { items, open_count }
 // (open_count is filter-INDEPENDENT) and GET /api/v1/quarantine/{item_id} where item_id is the
 // type-tagged "row:<uuid>"/"chunk:<uuid>" handle returned by the list (round-tripped verbatim).
-// Mode-aware (T10): real mode calls the live endpoints; fixture mode (default + tests) returns
+// Mode-aware: real mode calls the live endpoints; fixture mode (default + tests) returns
 // inlined items and applies the filters client-side so the screen works with no backend.
 //
-// Honest semantics (slice 15a): original_payload is DEFERRED -> ALWAYS null; status "resolved"
-// returns nothing (no resolve path exists, D82); source == source_id (no registry); chain_depth
+// Honest semantics: original_payload is DEFERRED -> ALWAYS null; status "resolved"
+// returns nothing (no resolve path exists); source == source_id (no registry); chain_depth
 // is always 0 (no lineage). There is NO resolve/dismiss/resubmit action server-side.
 
 // Wire vocabularies (mirrored 1:1 from the backend Literal types).
@@ -25,13 +25,13 @@ export type StageWire = 'source-shape' | 'canonical-shape' | 'fk' | 'normalizati
 export type QuarantineListRow = {
   id: string // type-tagged "row:<uuid>"/"chunk:<uuid>" - opaque, round-tripped to detail
   kind: Kind
-  tenant_id: string // Chunk 1: owning tenant (quarantine.*.tenant_id, NOT NULL)
-  tenant_name?: string | null // Chunk 9: identity_mirror.tenants.name; absent (older backend)/null → UUID
+  tenant_id: string // owning tenant (quarantine.*.tenant_id, NOT NULL)
+  tenant_name?: string | null // identity_mirror.tenants.name; absent (older backend)/null → UUID
   trace_id: string
   source_id: string // the filter key (Dashboard ?source= deep link)
   source: string // display name; == source_id today
-  store_id: string | null // 52b: the held item's store (uuid str); null if unset/unmirrored
-  store_name: string | null // 52b: resolved via the inline stores join; null when store_id null
+  store_id: string | null // the held item's store (uuid str); null if unset/unmirrored
+  store_name: string | null // resolved via the inline stores join; null when store_id null
   error_reason: string // a FailureCode member
   failure_stage: StageWire
   failed_at: string // ISO-8601
@@ -43,7 +43,7 @@ export type QuarantineListResponse = {
   open_count: number // filter-INDEPENDENT (the header badge)
 }
 
-// One structured per-failure entry on the DETAIL (52b). Only check + reason are always present;
+// One structured per-failure entry on the DETAIL. Only check + reason are always present;
 // EVERY other field is nullable (present-but-null on the wire, never absent) -> check with
 // !== null, NEVER truthiness (row_index / transform_index can legitimately be 0). Additive: lives
 // ALONGSIDE the unchanged flattened error_context string, never replacing it. (Field order mirrors
@@ -64,16 +64,16 @@ export type QuarantineDetail = {
   kind: Kind
   trace_id: string
   source: string // NOTE: detail has source but NO source_id (the list carries source_id)
-  store_id: string | null // 52b: the held item's store (uuid str); null if unset/unmirrored
-  store_name: string | null // 52b: resolved via the inline stores join; null when store_id null
+  store_id: string | null // the held item's store (uuid str); null if unset/unmirrored
+  store_name: string | null // resolved via the inline stores join; null when store_id null
   failed_at: string
   mapping_version: number | null // the "v1" token; null for pre-lookup chunk failures
   error_reason: string
   failure_stage: StageWire
-  error_context: string // the flat human summary (UNCHANGED; 52b keeps it alongside failures[])
-  failures: QuarantineFailure[] // 52b: structured per-failure detail (detail only)
-  original_payload: Record<string, unknown> | null // DEFERRED this slice -> always null
-  chain_depth: number // always 0 (no lineage until Slice 12)
+  error_context: string // the flat human summary, kept alongside failures[]
+  failures: QuarantineFailure[] // structured per-failure detail (detail only)
+  original_payload: Record<string, unknown> | null // DEFERRED -> always null
+  chain_depth: number // always 0 (no lineage exists)
 }
 
 // The four server-side filters (all optional; absent = no constraint). Mirrors the query params.
@@ -86,8 +86,8 @@ export type QuarantineFilters = {
 
 // ---- Fixture data (local dev + tests). Two sources so the Source filter has options; all open
 // (resolved yields nothing, matching the real endpoint). original_payload is always null. The
-// failures[] arrays are engineered to exercise every 52b edge case the live data can't yet show
-// (all current live rows are pre-52b, so their value/source_column/expected_format are all null):
+// failures[] arrays are engineered to exercise every structured-failure edge case the live data
+// can't yet show (rows written before failures[] existed carry null value/source_column/expected_format):
 // row 1 = MULTI-FAILURE thin structural (mirrors the live product_name + product_description case),
 // row 2 = RICH mapping (value + source_column + expected_format + transform_index:0 + row_index:0,
 // proving 0 survives a !== null check), chunk 3 = thin structural whole-batch + NULL store_name.

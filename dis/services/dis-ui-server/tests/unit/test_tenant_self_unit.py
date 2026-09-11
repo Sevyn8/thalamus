@@ -57,9 +57,7 @@ def test_platform_caller_is_403(client: TestClient, mint_token: Callable[..., st
     """
     resp = client.get(
         "/api/v1/tenant-self",
-        headers=_bearer(
-            mint_token(user_type="PLATFORM", tenant_id=None, roles=("dis:ops", "dis:read"))
-        ),
+        headers=_bearer(mint_token(user_type="PLATFORM", tenant_id=None, roles=("dis:ops", "dis:read"))),
     )
     assert resp.status_code == 403
     assert resp.json()["error"]["code"] == "tenant_scope"
@@ -99,9 +97,7 @@ def test_unmirrored_tenant_is_200_with_nulls_not_404(
         return None
 
     monkeypatch.setattr("dis_ui_server.handlers.tenants.get_tenant_self", _fake)
-    resp = client.get(
-        "/api/v1/tenant-self", headers=_bearer(mint_token(tenant_id=TENANT_UNMIRRORED))
-    )
+    resp = client.get("/api/v1/tenant-self", headers=_bearer(mint_token(tenant_id=TENANT_UNMIRRORED)))
     assert resp.status_code == 200
     assert resp.json() == {
         "tenant_id": TENANT_UNMIRRORED,
@@ -113,7 +109,7 @@ def test_unmirrored_tenant_is_200_with_nulls_not_404(
 def test_mirror_null_display_code_is_served_as_null(
     client: TestClient, mint_token: Callable[..., str], monkeypatch: Any
 ) -> None:
-    """``display_code`` is nullable at source (D55) — served as-is, never invented."""
+    """``display_code`` is nullable at source — served as-is, never invented."""
 
     async def _fake(_engine: Any, _tenant_id: UUID) -> Any:
         return _row("Zabka Group", None)

@@ -1,10 +1,10 @@
-"""Per-resource anchor dependency functions (Step 6.9.3.2).
+"""Per-resource anchor dependency functions.
 
 Anchor deps look up an ``org_node.path`` for a request's target row,
 returning a ltree-formatted string suitable for passing to
 ``has_permission``'s ``target_anchor`` parameter.
 
-CRITICAL — security invariant (per F-THREADING-4): on lookup miss,
+CRITICAL — security invariant: on lookup miss,
 these functions RAISE the appropriate ``*NotFoundError`` (404). They do
 NOT return ``None`` to signal "not found." Returning ``None`` would
 short-circuit the cascade clause in ``has_permission`` to TRUE (no
@@ -15,8 +15,8 @@ endpoints declare no ``anchor_dep``).
 
 RLS layering: these queries inherit the request's ``app.tenant_id`` /
 ``app.user_type`` GUCs via the injected session. Cross-tenant target
-ids surface as ``*NotFoundError`` via RLS-invisible reads — matches
-D-17's "RLS-as-404" framing.
+ids surface as ``*NotFoundError`` via RLS-invisible reads — RLS
+misses read as 404, never 403.
 """
 from __future__ import annotations
 

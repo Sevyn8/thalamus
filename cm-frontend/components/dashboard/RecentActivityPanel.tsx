@@ -9,19 +9,18 @@ import { ErrorInline } from "@/components/shared/ErrorInline";
 import { AuditActivityCompactRow } from "@/components/audit/AuditActivityCompactRow";
 import { useAuditActivities } from "@/lib/hooks/use-audit";
 
-// Phase 5h.4 (2026-05-23): RecentActivityPanel migrated from
-// pre-5h.1 audit-logs stub to the live /audit/activities feed.
-// Persona-scoping comes from backend RLS: PLATFORM sees the system-
-// wide feed, TENANT sees own-tenant rows only. Empty for tenants
-// that haven't generated audit events yet (expected v0 state).
+// Backed by the live /audit/activities feed. Persona-scoping comes from
+// backend RLS: PLATFORM sees the system-wide feed, TENANT sees own-tenant
+// rows only. Empty for tenants that haven't generated audit events yet
+// (expected state, not an error).
 //
-// Row click + View all both navigate to /superadmin/audit. In-place
-// detail drawer from the panel is deferred — for v0 the panel is a
-// preview affordance pointing to the full audit surface.
+// Row click + View all both navigate to /superadmin/audit. There is no
+// in-place detail drawer from the panel; it is a preview affordance
+// pointing to the full audit surface.
 //
-// Phase 5i.1 (2026-05-25): row layout factored to AuditActivityCompactRow
-// which leverages the `what` field (6.16.7) for a single-line summary
-// and includes resource_type + result chips.
+// Row layout is factored to AuditActivityCompactRow, which leverages the
+// `what` field for a single-line summary and includes resource_type +
+// result chips.
 
 const ROW_LIMIT = 5;
 

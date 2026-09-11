@@ -1,4 +1,4 @@
-"""The enrichment registry — a code-owned declaration behind a swappable seam (D95).
+"""The enrichment registry — a code-owned declaration behind a swappable seam.
 
 Each ``EnrichmentField`` names: the canonical field the lib writes, the
 authoritative internal source and the field on it the value resolves from, and a

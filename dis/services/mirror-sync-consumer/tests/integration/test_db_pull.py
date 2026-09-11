@@ -44,7 +44,7 @@ _BRONZE_INSERT = text(
 
 
 async def test_first_load_mirrors_every_cm_record(run_env: None, cm_admin: Engine, dis_admin: Engine) -> None:
-    # D55 faithful copy, NULL case: the baseline fixture set is all-coded (it
+    # Faithful copy, NULL case: the baseline fixture set is all-coded (it
     # mirrors real Customer Master), so the nullable-store_code path is exercised
     # via a SCOPED edge inserted into the test-CM stand-in only — reverted in
     # teardown so the stand-in returns to its synced baseline (HARD REVERT RULE).
@@ -91,7 +91,7 @@ async def test_first_load_mirrors_every_cm_record(run_env: None, cm_admin: Engin
                 row.tax_treatment,
             )
 
-        # D55 faithful copy, NULL case ASSERTED (never skipped): the scoped edge
+        # Faithful copy, NULL case ASSERTED (never skipped): the scoped edge
         # store has store_code IS NULL in the stand-in; its mirror row must be NULL too.
         assert cm_s[CODELESS_EDGE_STORE_ID].store_code is None, "edge NULL store_code missing in test CM"
         assert mir_s[CODELESS_EDGE_STORE_ID].store_code is None
@@ -112,14 +112,14 @@ async def test_first_load_mirrors_every_cm_record(run_env: None, cm_admin: Engin
 async def test_existing_rows_without_codes_are_backfilled(
     run_env: None, cm_admin: Engine, dis_admin: Engine
 ) -> None:
-    """Backfill (Slice 9a): mirror rows that predate the code columns (NULL codes)
+    """Backfill: mirror rows that predate the code columns (NULL codes)
     gain display_code/store_code on the next normal sync run — no one-off step —
     and the run after that is a true no-op (idempotent by IS DISTINCT FROM)."""
     await _run()  # ensure rows exist
 
     tenant = fx.PRIMARY_TENANT
     coded_store = fx.PRIMARY_STORE
-    # Simulate pre-9a rows: NULL the codes directly (independent admin write).
+    # Simulate pre-backfill rows: NULL the codes directly (independent admin write).
     # Failure-safe (hard revert rule): the NULL-ing + asserts run inside a try whose
     # finally ALWAYS restores the real codes, so a mid-test raise (or a failing _run)
     # cannot leave the SHARED primary identity (buc-ees / TX-101) dirty for the rest
@@ -262,7 +262,7 @@ async def test_rerun_after_cm_change_converges(run_env: None, cm_admin: Engine, 
 
 
 async def test_mirrored_rows_satisfy_composite_store_fk(run_env: None, dis_admin: Engine) -> None:
-    # Criterion 7: a write referencing a SYNCED (tenant, store) succeeds; an absent identity
+    # A write referencing a SYNCED (tenant, store) succeeds; an absent identity
     # fails the composite FK. The referenced identity comes from the sync run, not the seeder.
     assert await _run() == EXIT_OK
     store = fx.STORES[0]

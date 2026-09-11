@@ -72,7 +72,7 @@ def status_db_values_for(status: StatusWire) -> list[str]:
 
 
 class QuarantineFailure(BaseModel):
-    """One structured per-failure entry in a detail response (Slice 52b).
+    """One structured per-failure entry in a detail response.
 
     Only ``check`` and ``reason`` are always present; EVERY other field is OPTIONAL
     (nullable), because at least one of the three failure types omits each — ``value``
@@ -93,7 +93,7 @@ class QuarantineFailure(BaseModel):
 
 
 class QuarantineListRow(BaseModel):
-    """One held item in the console table (fields per slice 15a §a; store identity 52b)."""
+    """One held item in the console table."""
 
     id: str  # type-tagged held-item id "row:<uuid>"/"chunk:<uuid>" - opaque, round-tripped to detail
     kind: Kind
@@ -122,7 +122,7 @@ class QuarantineListResponse(BaseModel):
 
 
 class QuarantineDetail(BaseModel):
-    """One held item in full, for the Row detail panel (fields per slice 15a §b; 52b additions)."""
+    """One held item in full, for the Row detail panel."""
 
     id: str  # the same type-tagged id
     kind: Kind
@@ -138,4 +138,4 @@ class QuarantineDetail(BaseModel):
     error_context: str  # composed from failure_stage + failure_context (UNCHANGED; 52b keeps it)
     failures: list[QuarantineFailure] = Field(default_factory=list)  # 52b: structured detail (detail only)
     original_payload: dict[str, object] | None  # DEFERRED this slice -> always null (build-cost fast-follow)
-    chain_depth: int  # literal 0 - no parent_trace_id lineage until Slice 12
+    chain_depth: int  # literal 0 - no parent_trace_id lineage is tracked yet

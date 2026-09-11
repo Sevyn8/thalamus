@@ -11,8 +11,8 @@ import {
 } from '../lib/dis-ui-server/mapping-templates'
 import { createSourceIfAbsent } from '../lib/dis-ui-server/sources'
 
-// Onboard Square (e2e slice steps 6-7). ONE clickable screen that PROVISIONS the Square
-// api-source + an ACTIVE snapshot template (create-as-ACTIVE, D88) through the REAL BFF
+// Onboard Square. ONE clickable screen that PROVISIONS the Square
+// api-source + an ACTIVE snapshot template (create-as-ACTIVE) through the REAL BFF
 // (POST /sources, POST /mapping-templates) and then VIEWS connector health
 // (GET /connector-health). It does NOT fire a pull: the pull stays CLI-triggered (the spine
 // transport). "Clickable" here means provisions + views, nothing more.
@@ -69,7 +69,7 @@ export function OnboardSquare() {
         channel: 'api',
         store_id: STORE_CODE,
       })
-      // 2) Create the ACTIVE snapshot template (create-as-ACTIVE, D88). Column-based body;
+      // 2) Create the ACTIVE snapshot template (create-as-ACTIVE). Column-based body;
       //    the BFF derives + validates the mapping_rules server-side.
       const detail = await createMappingTemplate({
         source_id: SOURCE_ID,

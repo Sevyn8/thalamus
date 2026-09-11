@@ -1,13 +1,12 @@
-"""Transform and cast specs — the bounded declarative vocabulary (slice-05 OQ3).
+"""Transform and cast specs — the bounded declarative vocabulary.
 
 Ops are ATOMIC and SINGLE-PURPOSE. A column carries an ORDERED LIST of
 ``TransformSpec`` applied in declared sequence (e.g. ``normalize_whitespace`` then
 ``normalize_case``); list order is significant and tenant-declared. It sits one
-level under the mandatory ``rename -> normalize -> cast -> derive`` stage ordering
-(D20). An empty list is a valid no-op.
+level under the mandatory ``rename -> normalize -> cast -> derive`` stage ordering.
+An empty list is a valid no-op.
 
-Locale rule (no doc home exists in the repo; pinned here and in this lib's
-CLAUDE.md): ``parse_decimal``'s ``decimal_separator`` and ``thousands_separator``,
+Locale rule (pinned here): ``parse_decimal``'s ``decimal_separator`` and ``thousands_separator``,
 and ``parse_integer``'s ``thousands_separator``, are MANDATORY declarations —
 never defaulted, never inferred. The key must be present; ``thousands_separator``
 may be an explicit JSON ``null`` meaning "this source uses no thousands
@@ -15,7 +14,7 @@ separator" (still a declaration). Ambiguity like ``"1,299.50"`` vs ``"1.299,50"`
 is resolved by declaration only. A missing declaration raises
 :class:`~dis_core.errors.MappingConfigError` at construction, never at runtime.
 
-Validation here is *config* validation (code-quality rule 4): per-cell data
+Validation here is *config* validation: per-cell data
 failures at runtime are typed result objects (``CellNormalizationFailure``),
 never exceptions.
 """
@@ -31,7 +30,7 @@ from dis_core.errors import MappingConfigError
 
 # -- The bounded vocabulary ------------------------------------------------------
 # Normalize ops: str -> canonical-str representation (cast converts type after;
-# normalize-before-cast is load-bearing, D20). All ops pass null through untouched,
+# normalize-before-cast is load-bearing). All ops pass null through untouched,
 # which is what lets a cell that failed at step k skip the remaining steps.
 NORMALIZE_OPS: frozenset[str] = frozenset(
     {
@@ -49,7 +48,7 @@ NORMALIZE_OPS: frozenset[str] = frozenset(
 )
 
 # Derive generators: produce a derive target's initial value (derive is bounded to
-# the same declarative vocabulary as normalize — no arbitrary logic; slice-05).
+# the same declarative vocabulary as normalize — no arbitrary logic).
 DERIVE_GENERATOR_OPS: frozenset[str] = frozenset({"copy", "constant", "date_from_datetime"})
 
 CastType = Literal["string", "integer", "decimal", "date", "datetime", "boolean"]

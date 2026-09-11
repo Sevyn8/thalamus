@@ -1,26 +1,26 @@
 """The per-event ingest pipeline: trust the event, preflight, gate, write, publish.
 
-Stage order (one concern per function, code-quality rule 7):
+Stage order (one concern per function):
 
-1. path cross-check  — split_object_uri + parse_object_path vs the event (D53);
+1. path cross-check  — split_object_uri + parse_object_path vs the event;
                        a mismatch is a malformed PRODUCER (loud error), never a
-                       re-resolution — the event stays the trust boundary (D54).
+                       re-resolution — the event stays the trust boundary.
 2. read + hash       — download via dis-storage; sha256 (the content-hash key part).
 3. idempotency       — dedup lookup under rls_session. PUBLISHED or FAILED prior →
                        full no-op returning the PRIOR trace_id. Unpublished RECEIVED
-                       prior → resume-and-mark (D59): complete the lost publish, no
+                       prior → resume-and-mark: complete the lost publish, no
                        second bronze row.
 4. preflight         — DuckDB structural sniff. Failure → bronze FAILED row + audit,
                        NO publish (write-then-CONDITIONALLY-publish), terminal.
 5. PII gate          — dis-pii fail-loud over the sniffed header, BEFORE the
-                       RECEIVED-path bronze write (hard rule 2).
-6. bronze write      — one metadata-only row via rls_session (hard rules 1 & 12).
-7. publish + mark    — frozen ingress.ready AFTER bronze lands (D5), then stamp
+                       RECEIVED-path bronze write (PII never lands in bronze).
+6. bronze write      — one metadata-only row via rls_session.
+7. publish + mark    — frozen ingress.ready AFTER bronze lands, then stamp
                        published_at/PUBLISHED. A crash between 6 and 7 is healed by
                        the step-3 resume branch on redelivery.
 
 The worker READS identity and trace_id off the event and NEVER mints a trace_id or
-resolves identity (D54, hard rule 4): nothing here imports dis_core.identity or
+resolves identity: nothing here imports dis_core.identity or
 calls a trace-id generator for the trace (the bronze row id is minted via
 dis-core ``new_uuid7`` — an id, not a trace).
 """
@@ -63,7 +63,7 @@ _log = get_logger(SERVICE_NAME)
 
 Disposition = Literal["ingested", "duplicate_noop", "duplicate_resumed", "preflight_failed"]
 
-# The DuckDB preflight's closed reason set -> the stable vocabulary (Slice 30b).
+# The DuckDB preflight's closed reason set -> the stable failure-code vocabulary.
 _PREFLIGHT_CODES: dict[str, FailureCode] = {
     "not_csv": FailureCode.PREFLIGHT_NOT_CSV,
     "no_columns": FailureCode.PREFLIGHT_NO_COLUMNS,
@@ -74,7 +74,7 @@ _PREFLIGHT_CODES: dict[str, FailureCode] = {
 
 @dataclass
 class _Lap:
-    """The per-stage duration seam (Slice 30b): stages run sequentially, so
+    """The per-stage duration seam: stages run sequentially, so
     elapsed-since-the-previous-audit-point IS the stage span at audit grain."""
 
     _mark: float = field(default_factory=time.monotonic)
@@ -118,7 +118,7 @@ class IngestPipeline:
         log = _log.bind(stage="pipeline", tenant_id=str(event.tenant_id), trace_id=str(event.trace_id))
         lap = _Lap()
 
-        # 1. Path cross-check (consistency check, not re-resolution — D54).
+        # 1. Path cross-check (consistency check, not re-resolution).
         object_key = await self._cross_check_path(event, lap)
 
         # 2. Read + hash (read-only; before any write).
@@ -138,7 +138,7 @@ class IngestPipeline:
         if prior is not None:
             return await self._handle_duplicate(event, prior, data, lap)
 
-        # 4. Structural preflight (D13/D16). Failure → FAILED bronze row, no publish.
+        # 4. Structural preflight. Failure → FAILED bronze row, no publish.
         try:
             preflight = run_preflight(data, tenant_id=str(event.tenant_id), trace_id=str(event.trace_id))
         except PreflightFailedError as exc:
@@ -161,8 +161,8 @@ class IngestPipeline:
             },
         )
 
-        # 5. PII gate — BEFORE the bronze write (hard rule 2). Fail-loud: a detected
-        #    column with no backend raises (and v1.0 has no backend, D40).
+        # 5. PII gate — BEFORE the bronze write, so PII never lands. Fail-loud: a
+        #    detected column with no backend raises (and no backend exists).
         detected = await self._gate_pii(event, preflight, lap)
 
         # 6. Bronze write (metadata only) via dis-rls under the EVENT's tenant.
@@ -180,7 +180,7 @@ class IngestPipeline:
             row_count=preflight.row_count,
             source_payload_id=event.upload_session_id,
             template_id=event.template_id,
-            original_filename=event.file_name,  # Slice 51a / D120 — persisted verbatim, may be None
+            original_filename=event.file_name,  # persisted verbatim, may be None
             received_at=received_at,
             processing_status="RECEIVED",
         )
@@ -197,7 +197,7 @@ class IngestPipeline:
             event_data={"pii_columns_detected": len(detected)},
         )
 
-        # 7. Publish AFTER bronze lands (D5), then stamp the publish (D59).
+        # 7. Publish AFTER bronze lands, then stamp the publish.
         envelope = build_ingress_ready(
             event,
             trace_id=event.trace_id,
@@ -217,24 +217,24 @@ class IngestPipeline:
             duration_ms=lap.lap(),
             event_data={"topic": INGRESS_READY_TOPIC},
         )
-        await self._emit_health_seen(event)  # D116: connector saw a successful arrival
+        await self._emit_health_seen(event)  # connector saw a successful arrival
         log.info("ingested")
         return IngestOutcome(disposition="ingested", trace_id=event.trace_id, bronze_id=bronze_id)
 
-    # -- connector-health emit (D116): additive + fire-and-forget --------------
+    # -- connector-health emit: additive + fire-and-forget ----------------------
 
     async def _emit_health_seen(self, event: CsvReceivedEvent) -> None:
         """Stamp a successful arrival on telemetry.connector_health (best-effort).
 
         Additive to the pipeline and FIRE-AND-FORGET: a health-emit failure is logged and
-        swallowed, never raised into the data path (extends hard rule 11's audit-telemetry
-        posture to connector-health telemetry, D116). The upsert runs on an ``rls_session``
+        swallowed, never raised into the data path (the same posture as
+        fire-and-forget audit telemetry). The upsert runs on an ``rls_session``
         under the event's tenant, so WITH CHECK pins the write to that tenant.
         """
         try:
             async with rls_session(self.engine, event.tenant_id) as conn:
                 await upsert_health_seen(conn, tenant_id=event.tenant_id, source_id=event.source_id)
-        except Exception:  # noqa: BLE001 — telemetry emit never blocks ingest (D116, hard rule 11 posture)
+        except Exception:  # noqa: BLE001 — telemetry emit never blocks ingest
             _log.bind(
                 stage="connector_health",
                 tenant_id=str(event.tenant_id),
@@ -249,7 +249,7 @@ class IngestPipeline:
                 await upsert_health_error(
                     conn, tenant_id=event.tenant_id, source_id=event.source_id, detail=detail
                 )
-        except Exception:  # noqa: BLE001 — telemetry emit never blocks ingest (D116, hard rule 11 posture)
+        except Exception:  # noqa: BLE001 — telemetry emit never blocks ingest
             _log.bind(
                 stage="connector_health",
                 tenant_id=str(event.tenant_id),
@@ -276,7 +276,7 @@ class IngestPipeline:
             if path_value != event_value:
                 error = EventPathMismatchError(
                     f"csv.received gcs_uri disagrees with the event on {field_name!r} "
-                    "(malformed producer; the event is the trust boundary, D54)",
+                    "(malformed producer; the event is the trust boundary)",
                     field=field_name,
                     event_value=event_value,
                     path_value=path_value,
@@ -291,8 +291,8 @@ class IngestPipeline:
                     duration_ms=lap.lap(),
                     failure_code=FailureCode.PATH_MISMATCH,
                     failure_message=str(error),
-                    # Identifiers only, never payload (Slice 30b: the mismatch
-                    # detail rides event_data instead of being buried in fmsg).
+                    # Identifiers only, never payload; the mismatch detail rides
+                    # event_data instead of being buried in the failure message.
                     event_data={
                         "field": field_name,
                         "event_value": event_value,
@@ -305,11 +305,11 @@ class IngestPipeline:
     async def _handle_duplicate(
         self, event: CsvReceivedEvent, prior: PriorIngest, data: bytes, lap: _Lap
     ) -> IngestOutcome:
-        """Redelivery semantics (D59): full no-op, or resume the lost publish.
+        """Redelivery semantics: full no-op, or resume the lost publish.
 
         ``data`` (the downloaded bytes, in hand from the pre-dedup read) lets the
         resume branch re-derive the delimiter via a fresh ``run_preflight`` so the
-        republished ``ingress.ready`` carries the correct separator (Slice 16f) — the
+        republished ``ingress.ready`` carries the correct separator — the
         worker sets it on EVERY publish path, never defaults the resume to comma. The
         re-sniff is deterministic over the same bytes; the prior row is RECEIVED, so
         preflight already passed on them and passes again.
@@ -317,8 +317,8 @@ class IngestPipeline:
         log = _log.bind(stage="idempotency", tenant_id=str(event.tenant_id), trace_id=str(event.trace_id))
         if prior.processing_status == "FAILED" or prior.is_published:
             # Same content + session + tenant already concluded → no second bronze
-            # row, no second publish; return the PRIOR trace_id. Slice 30c (the
-            # D42 revision): the duplicate kind is the OUTCOME and the prior
+            # row, no second publish; return the PRIOR trace_id. The
+            # duplicate kind is the OUTCOME and the prior
             # trace is a COLUMN — queryable, not event_data keys.
             await self.audit.emit(
                 stage=Stage.RECEIVED,
@@ -330,7 +330,7 @@ class IngestPipeline:
                 duration_ms=lap.lap(),
                 event_data={"prior_status": prior.processing_status},
             )
-            await self._emit_health_seen(event)  # D116: a duplicate is still a live arrival
+            await self._emit_health_seen(event)  # a duplicate is still a live arrival
             log.info("duplicate within dedup window; no-op")
             return IngestOutcome(
                 disposition="duplicate_noop", trace_id=prior.trace_id, bronze_id=prior.bronze_id
@@ -338,9 +338,9 @@ class IngestPipeline:
 
         # Unpublished RECEIVED prior: bronze landed, the publish was lost. Complete
         # it under the PRIOR trace_id and mark it (no second bronze row). A rare
-        # duplicate publish is tolerated (Pub/Sub is at-least-once; Slice 10 dedups).
+        # duplicate publish is tolerated (Pub/Sub is at-least-once; the consumer dedups).
         # Re-derive the delimiter from the same bytes so the resumed publish carries
-        # the correct separator (Slice 16f); the prior RECEIVED row means preflight
+        # the correct separator; the prior RECEIVED row means preflight
         # already passed on these bytes, so this re-sniff does not newly fail.
         preflight = run_preflight(data, tenant_id=str(event.tenant_id), trace_id=str(event.trace_id))
         envelope = build_ingress_ready(
@@ -355,7 +355,7 @@ class IngestPipeline:
             await mark_published(conn, bronze_id=prior.bronze_id, published_at=now_utc())
         await self.audit.emit(
             stage=Stage.INGRESS_PUBLISHED,
-            # Slice 30c: the resume IS a retry-completion (the lost publish,
+            # The resume IS a retry-completion (the lost publish,
             # completed on redelivery) — RETRIED makes it legible as one.
             outcome=Outcome.RETRIED,
             tenant_id=event.tenant_id,
@@ -364,7 +364,7 @@ class IngestPipeline:
             duration_ms=lap.lap(),
             event_data={"resumed": True, "topic": INGRESS_READY_TOPIC},
         )
-        await self._emit_health_seen(event)  # D116: the resumed publish is a live arrival
+        await self._emit_health_seen(event)  # the resumed publish is a live arrival
         log.info("duplicate with unpublished prior; publish resumed and marked")
         return IngestOutcome(
             disposition="duplicate_resumed", trace_id=prior.trace_id, bronze_id=prior.bronze_id
@@ -378,7 +378,7 @@ class IngestPipeline:
         error: PreflightFailedError,
         lap: _Lap,
     ) -> IngestOutcome:
-        """Preflight failure: bronze FAILED row + audit, NO publish, terminal (D13).
+        """Preflight failure: bronze FAILED row + audit, NO publish, terminal.
 
         The FAILED row persists nothing column-derived (metadata only), so there is
         nothing for the PII gate to gate on this path; the gate guards the
@@ -398,7 +398,7 @@ class IngestPipeline:
             row_count=None,  # nothing parsed
             source_payload_id=event.upload_session_id,
             template_id=event.template_id,
-            original_filename=event.file_name,  # Slice 51a / D120 — persisted verbatim, may be None
+            original_filename=event.file_name,  # persisted verbatim, may be None
             received_at=now_utc(),
             processing_status="FAILED",
         )
@@ -411,12 +411,12 @@ class IngestPipeline:
             trace_id=event.trace_id,
             bronze_id=bronze_id,
             duration_ms=lap.lap(),
-            # The stable vocabulary (Slice 30b); the raw reason rides event_data.
+            # The stable failure-code vocabulary; the raw reason rides event_data.
             failure_code=_PREFLIGHT_CODES.get(error.reason or "", FailureCode.INFRA_FAILURE),
             failure_message=str(error),
             event_data={"preflight_failed": True, "reason": error.reason, "detail": error.detail},
         )
-        # D116: a failed run stamps the connector's error state (coarse reason, non-PII).
+        # A failed run stamps the connector's error state (coarse reason, non-PII).
         await self._emit_health_error(event, detail=error.reason or "preflight_failed")
         _log.bind(stage="preflight", tenant_id=str(event.tenant_id), trace_id=str(event.trace_id)).error(
             "structural preflight failed; FAILED bronze row written, no publish"
@@ -429,9 +429,9 @@ class IngestPipeline:
         """The fail-loud gate over the sniffed header; FAILURE audit before re-raise.
 
         The FAILURE row's ``data_ingress_event_id`` is correctly NULL: the gate
-        runs BEFORE the bronze write (hard rule 2 — PII never lands), so no
-        bronze row exists at this point (Slice 30b register note: the detected
-        COUNT rides ``event_data``; names/values never do).
+        runs BEFORE the bronze write (PII never lands), so no bronze row exists
+        at this point (the detected COUNT rides ``event_data``; names/values
+        never do).
         """
         try:
             detected = gate_csv_headers(

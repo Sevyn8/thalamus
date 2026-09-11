@@ -57,9 +57,7 @@
 -- THAT GRANT WIDENS synapse_reader BEYOND ITS ORIGINAL TWO CANONICAL TABLES.
 -- Deliberate: something will read the log back, and the alternative is every
 -- read-side test holding an admin credential — a worse posture than a read-only
--- role reading a read-only thing. sql/03's verification block and the
--- resolvers' module docstring were updated in the same change, because both
--- said "exactly two tables" and both stopped being true here.
+-- role reading a read-only thing.
 --
 -- ----------------------------------------------------------------------------
 -- APPEND-ONLY IS TWO MECHANISMS, AND THIS FILE IS ONLY ONE OF THEM
@@ -112,23 +110,23 @@ REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA synapse FROM syn
 
 
 -- ============================================================================
--- RE-GRANT WHAT MIGRATION 0003 GAVE. THIS FILE WAS UNSAFE TO RE-RUN.
+-- RE-GRANT WHAT MIGRATION 0003 GAVE, OR THIS FILE IS UNSAFE TO RE-RUN.
 -- ============================================================================
--- THE DEFECT, and it was live until 2026-08-05. This file was written before
--- migration 0003 existed, so its blanket
+-- The blanket statements above,
 --
 --     REVOKE ALL ON ALL TABLES IN SCHEMA synapse FROM synapse_reader;
 --     REVOKE UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA synapse FROM synapse_writer;
 --
--- strips privileges 0003 later granted on tables this file never mentions.
--- Re-running it would have:
---   - removed SELECT on synapse.provision and synapse.run from synapse_reader,
+-- strip privileges migration 0003 grants on tables the sections above never
+-- mention. Without the re-grants below, re-running this file would:
+--   - remove SELECT on synapse.provision and synapse.run from synapse_reader,
 --     breaking ALL THREE database-backed console routes at once, and
---   - removed UPDATE on synapse.run from synapse_writer, which is how the
+--   - remove UPDATE on synapse.run from synapse_writer, which is how the
 --     orchestrator records a finish — so runs would start and never complete.
 --
--- BOTH FILES WERE INDIVIDUALLY CORRECT. The pair was not, and nothing about
--- running this one tells you it invalidates the other. That is why the guard is
+-- A hand-run grant file and a migration can each be individually correct while
+-- the PAIR is not, and nothing about running one tells you it invalidates the
+-- other. That is why the guard is
 -- tests/test_grants_cover_reads.py::test_no_hand_run_file_revokes_what_a_migration_granted
 -- and not a comment in either file: a comment cannot compare two artifacts.
 --
@@ -151,13 +149,12 @@ REVOKE DELETE ON synapse.run FROM synapse_reader, synapse_writer;
 
 
 -- ============================================================================
--- RE-GRANT WHAT MIGRATION 0006 GAVE. THE SAME DEFECT, CAUGHT BY THE GUARD.
+-- RE-GRANT WHAT MIGRATION 0006 GAVE. SAME SHAPE AS THE 0003 SECTION.
 -- ============================================================================
--- SECOND INSTANCE OF THE PAIRING ABOVE, and this time the test found it before
--- the file shipped rather than after: adding synapse.action_events in 0006 made
--- this file's blanket `REVOKE ALL ON ALL TABLES IN SCHEMA synapse FROM
--- synapse_reader` strip the console's SELECT on the operator decision log. The
--- guard named the table.
+-- synapse.action_events (migration 0006) is another table this file's blanket
+-- `REVOKE ALL ON ALL TABLES IN SCHEMA synapse FROM synapse_reader` strips:
+-- without the re-grant below, the console loses SELECT on the operator
+-- decision log.
 --
 -- THE THIRD ROLE IS HANDLED HERE TOO, because this file's job is to re-assert the
 -- WHOLE synapse posture, not the writer's half of it. synapse_lifecycle is the
@@ -171,8 +168,8 @@ GRANT  INSERT ON synapse.action_events        TO synapse_lifecycle;
 
 -- THE ORCHESTRATOR MUST NOT HOLD THIS TABLE. Migration 0001 set ALTER DEFAULT
 -- PRIVILEGES granting synapse_writer INSERT on every FUTURE table in the schema,
--- so action_events arrived writable by the sweep's identity — verified by running
--- 0006 and reading information_schema. If the orchestrator can append lifecycle
+-- so action_events arrives writable by the sweep's identity unless revoked
+-- here. If the orchestrator can append lifecycle
 -- events, no row is attributable to the process that caused it. The blanket
 -- REVOKE above already removes it; this states the intent so a later re-grant
 -- has to argue with a line rather than with silence.
@@ -190,8 +187,8 @@ REVOKE USAGE ON SCHEMA canonical FROM synapse_writer;
 -- VERIFY (run manually — each has a specific wrong answer)
 -- ----------------------------------------------------------------------------
 --
--- 1. EXACTLY the intended grants, and no more. SEVEN rows since slice 6a; this
---    block said "Two rows" and named synapse_writer | UPDATE as a fault until
+-- 1. EXACTLY the intended grants, and no more. SEVEN rows; this block once
+--    said "Two rows" and named synapse_writer | UPDATE as a fault until
 --    migration 0003 added synapse.provision and synapse.run.
 --
 --      SELECT grantee, table_name, privilege_type
@@ -215,7 +212,8 @@ REVOKE USAGE ON SCHEMA canonical FROM synapse_writer;
 --      SELECT privilege_type FROM information_schema.role_table_grants
 --       WHERE grantee = 'synapse_writer' AND table_name = 'actions';
 --      -> INSERT, and nothing else. A SELECT here would mean the append
---         credential can read the log back, which is the posture slice 5 built.
+--         credential can read the log back, which is the append-only posture
+--         this file enforces.
 --
 --      -- and nothing whatsoever on provision: enablement is an operator act
 --      SELECT count(*) FROM information_schema.role_table_grants

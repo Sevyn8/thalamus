@@ -1,12 +1,11 @@
 """Synapse's own error base. Pure; imports nothing.
 
-WHY NOT dis_core.errors, which the root CLAUDE.md points every DIS service at: Synapse
-is a PEER of DIS, not a member of it (D1). It depends on two DIS LIBRARIES — dis-canonical
-for row shapes and dis-rls for the session discipline — because duplicating either would
-copy safety-critical code across planes. An error taxonomy is neither: it is the
-vocabulary a plane raises in, and taking DIS's would make Synapse's failures read as DIS
-failures in logs and handlers. The line stays where it already is in this project: reuse
-a lib when reimplementing it would duplicate a mechanism, not to save a base class.
+WHY NOT dis_core.errors: Synapse is a PEER of DIS, not a member of it. It depends on two
+DIS LIBRARIES — dis-canonical for row shapes and dis-rls for the session discipline —
+because duplicating either would copy safety-critical code across planes. An error
+taxonomy is neither: it is the vocabulary a plane raises in, and taking DIS's would make
+Synapse's failures read as DIS failures in logs and handlers. Reuse a lib when
+reimplementing it would duplicate a mechanism, not to save a base class.
 """
 
 from __future__ import annotations

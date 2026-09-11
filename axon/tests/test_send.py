@@ -87,8 +87,8 @@ def _message() -> Message:
 async def _send(adapter: Any, **overrides: Any) -> SendOutcome:
     """Drive the send path with a caller-minted delivery_id, as the consumer does.
 
-    A FRESH UUIDv7 PER CALL unless a test pins one. Slice 2 moved the mint out of send_platform
-    to the producer, so the id is now an argument; a test that reused one id across calls would
+    A FRESH UUIDv7 PER CALL unless a test pins one. The mint lives with the producer, so the id
+    is an argument; a test that reused one id across calls would
     be asserting the idempotency path by accident rather than on purpose.
     """
     kwargs: dict[str, Any] = {
@@ -150,7 +150,7 @@ async def test_a_provider_failure_is_recorded_and_never_raised(recorded: _Record
 async def test_a_ledger_failure_returns_unrecorded_rather_than_raising(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """THE HOLE THIS SLICE CANNOT CLOSE, PINNED SO IT IS NOT MISTAKEN FOR A BUG.
+    """THE HOLE THE SEND PATH CANNOT CLOSE ON ITS OWN, PINNED SO IT IS NOT MISTAKEN FOR A BUG.
 
     If the ledger write fails there is no row, there may have been an email, and the producer
     succeeded. Nothing afterwards can tell that anything was owed, because the row that failed to
@@ -158,7 +158,7 @@ async def test_a_ledger_failure_returns_unrecorded_rather_than_raising(
 
     It still does not raise: failing the enable would trade a lost record for a lost enablement.
     It comes back with recorded=False so the caller can log at ERROR, which is the most this
-    slice can do and is exactly why send.py names this as the reason the queue exists.
+    path can do and is exactly why send.py names this as the reason the queue exists.
     """
 
     async def boom(engine: object, record: DeliveryRecord) -> None:
@@ -173,14 +173,14 @@ async def test_a_ledger_failure_returns_unrecorded_rather_than_raising(
 
 
 async def test_the_supplied_delivery_id_reaches_the_ledger_unchanged(recorded: _Recorded) -> None:
-    """SUPPLIED BY THE CALLER, WHICH IS WHAT MAKES THE WHOLE SLICE IDEMPOTENT.
+    """SUPPLIED BY THE CALLER, WHICH IS WHAT MAKES THE LEDGER WRITE IDEMPOTENT.
 
-    Slice 1 minted it here, which was right while the call was in-process and once per producer
-    event. Under a queue that would mint a NEW id per redelivery, so the same intent would reach
-    the ledger as N rows and pk_platform_deliveries would refuse none of them. The mint moved to
-    the producer and rides in the envelope; this asserts the path does not substitute its own.
+    Minted here instead, a redelivery would carry a NEW id, so the same intent would reach
+    the ledger as N rows and pk_platform_deliveries would refuse none of them. The mint lives
+    with the producer and rides in the envelope; this asserts the path does not substitute its
+    own.
 
-    A server-side DEFAULT is still not an option for the same reason as before: it would need
+    A server-side DEFAULT is not an option either: it would need
     RETURNING to learn the id, RETURNING needs SELECT, and axon_sender deliberately has none.
     """
     pinned = new_uuid7()

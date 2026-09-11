@@ -1,4 +1,4 @@
-"""Unit tests for the GCS signed-URL seam (Slice 3).
+"""Unit tests for the GCS signed-URL seam.
 
 Two layers:
 

@@ -1,5 +1,5 @@
 -- ============================================================================
--- synapse_provisioner grants: the console's ENABLEMENT credential (slice 5e).
+-- synapse_provisioner grants: the console's ENABLEMENT credential.
 --
 -- THE FOURTH SYNAPSE ROLE, and the fourth time the same argument has been made:
 -- what a process can do is bounded by its GRANT, not by its code path.
@@ -9,7 +9,7 @@
 --   synapse_writer      the ORCHESTRATOR. INSERT on synapse.actions, the run
 --                       state machine, nothing on provision.
 --   synapse_lifecycle   the console's alert decisions. INSERT on
---                       synapse.action_events and nothing else (slice 5d).
+--                       synapse.action_events and nothing else.
 --   synapse_provisioner THIS FILE. Enablement, and nothing else.
 --
 -- ----------------------------------------------------------------------------
@@ -225,8 +225,8 @@ GRANT SELECT ON canonical.store_sku_current_position TO synapse_provisioner;
 -- ---------- Stated as SQL rather than as a comment, because a comment cannot
 -- ---------- be re-run --------------------------------------------------------
 --
--- THE DIRECTION IS THE SAFETY PROPERTY. Slice 5e builds enablement and
--- deliberately does not build disable or re-enable: synapse.provision holds ONE
+-- THE DIRECTION IS THE SAFETY PROPERTY. This role grants enablement and
+-- deliberately does not grant disable or re-enable: synapse.provision holds ONE
 -- window per (tenant, analysis), so clearing disabled_at loses the fact that
 -- there was a gap and the attribution denominator for that period silently
 -- becomes wrong. provision.sql names the append-only enablement history as the
@@ -284,7 +284,7 @@ REVOKE ALL ON synapse.provision FROM synapse_lifecycle;
 --        synapse_reader.
 --      - synapse | provision | UPDATE   means the console can disable a tenant
 --        and re-enable one, which corrupts the attribution denominator silently.
---        That is the whole reason slice 5e ships enable and nothing else.
+--        That is the whole reason this role holds enable and nothing else.
 --
 -- 2. The role holds NOTHING on the action log, the decision log or the run table.
 --

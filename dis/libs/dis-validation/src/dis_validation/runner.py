@@ -2,8 +2,8 @@
 
 Takes data and a definition handed in by the caller and returns pass or typed
 failures — no DB access, no config read (resolving which suite version is active
-and fetching it from ``config.source_mappings`` is the consumer's side-input,
-Slice 10). The two entry points keep the two failure types distinct (D18).
+and fetching it from ``config.source_mappings`` is the streaming consumer's
+side-input). The two entry points keep the two failure types distinct.
 """
 
 from __future__ import annotations
@@ -76,7 +76,7 @@ def run_source_shape(
     return SourceShapeResult(passed=True)
 
 
-# Schema of pandera's polars failure_cases frame (mirrored by the D50 synthesis).
+# Schema of pandera's polars failure_cases frame (mirrored by the Decimal-workaround synthesis).
 _FAILURE_CASES_SCHEMA: dict[str, pl.DataType] = {
     "failure_case": pl.String(),
     "schema_context": pl.String(),
@@ -90,7 +90,7 @@ _FAILURE_CASES_SCHEMA: dict[str, pl.DataType] = {
 def _decimal_dtype_precheck(
     schema: pa.DataFrameSchema, contribution: pl.DataFrame
 ) -> tuple[pa.DataFrameSchema, pl.DataFrame | None]:
-    """D50 workaround — scoped STRICTLY to Decimal-schema columns.
+    """Upstream-pandera-Decimal-bug workaround — scoped STRICTLY to Decimal-schema columns.
 
     pandera 0.31.1's polars engine crashes with a raw ``AssertionError``
     (``polars_engine.py``: "The return is expected to be of Decimal class") when a
@@ -166,7 +166,7 @@ def run_canonical_shape(
             model=definition.target_model.__name__,
         ) from exc
     if synthesized_cases is not None:
-        # pandera passed everything it ran, but the D50 pre-check found Decimal
+        # pandera passed everything it ran, but the Decimal-workaround pre-check found Decimal
         # dtype mismatches — the contribution fails on those.
         failures = format_canonical_shape_failures(synthesized_cases)
         log = _logger("validate.canonical_shape", log_context)

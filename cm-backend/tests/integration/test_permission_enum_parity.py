@@ -1,4 +1,4 @@
-"""Step 6.22: the Python `PermissionResource` enum and Postgres `resource_enum` must agree.
+"""The Python `PermissionResource` enum and Postgres `resource_enum` must agree.
 
 This is the check whose ABSENCE let `ModuleCode` diverge. `module_code_enum` carries 7 values in
 Postgres against 6 in Python: ROOS was retired from the Python vocabulary on 2026-05-12 and left

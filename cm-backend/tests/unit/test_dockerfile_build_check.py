@@ -291,8 +291,8 @@ def test_every_name_in_the_build_check_env_is_actually_required(
     Removing a genuinely required name must make Settings refuse. If it does not, that name is
     dead weight in the build check: somebody will maintain it believing it does something, and a
     value nothing reads is indistinguishable from a value read at a moment nobody expects. This
-    is the direction that caught three stale entries on synapse-ui-server when slice 2 SHRANK
-    its list, which a one-way assertion could never have seen.
+    is the direction that caught three stale entries on synapse-ui-server when its list
+    SHRANK, which a one-way assertion could never have seen.
     """
     env = _build_check_env()
     build_check_env({name: value for name, value in env.items() if name != omitted})

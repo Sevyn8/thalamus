@@ -6,9 +6,8 @@ rather than a nicety:
 
 - import-linter forbids ``dis_canonical``, ``dis_rls``, ``sqlalchemy`` and ``psycopg``
   to ``synapse.core``, forbids the DB layers to ``synapse.registry`` as DIRECT imports,
-  and fixes the layer order ``registry > resolvers > core``. (This list previously read
-  "every ``synapse.*`` module EXCEPT ``synapse.resolvers``", which the contracts never
-  said; the layers contract is what makes the general rule true.)
+  and fixes the layer order ``registry > resolvers > core``; the layers contract is
+  what makes the general rule true.
 - a grep test fails if a canonical table name appears anywhere outside
   ``synapse/resolvers/``. That test is THE MECHANISM for the table-name half, not a
   belt: a table name is a string literal, and no import graph can see a string.
@@ -70,7 +69,7 @@ _current_position = table(
 )
 
 # A runaway guard, not pagination. The beta fleet is single digits of tenants; if
-# this is ever reached the caller needs a keyset design (DIS's D124 pattern), not a
+# this is ever reached the caller needs a keyset pagination design, not a
 # bigger number.
 _MAX_ROWS = 5000
 

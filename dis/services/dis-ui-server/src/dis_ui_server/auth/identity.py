@@ -3,7 +3,7 @@
 DISTINCT from ``dis_core.identity.models.Identity`` (the UUID-typed Customer
 Master contract model used by the identity-service client): this dataclass is
 the auth seam's wire-opaque view — ``tenant_id`` / ``store_id`` are opaque
-strings to handlers (per D37/D52 the real values are internal UUIDs serialized
+strings to handlers (the real values are internal UUIDs serialized
 lowercase, but nothing here parses them), and ``tenant_id is None`` means a
 PLATFORM (cross-tenant ops) user. Never import the dis-core model here.
 """
@@ -15,11 +15,11 @@ from enum import StrEnum
 
 
 class UserType(StrEnum):
-    """The session posture asserted by the verified token (Slice 17b).
+    """The session posture asserted by the verified token.
 
     EXPLICIT — read from the required ``user_type`` claim and validated at
-    verification, never derived from ``tenant_id`` presence (that derivation was the
-    "looks honoured, isn't" ambiguity this slice removes).
+    verification, never derived from ``tenant_id`` presence (deriving it from
+    presence alone is ambiguous: it looks honoured but isn't).
     """
 
     TENANT = "TENANT"
@@ -32,7 +32,7 @@ class Identity:
 
     Every field is read from the verified token ONLY (the foundation rule);
     no request body, query param, or unverified header contributes. ``user_type``
-    is EXPLICIT (Slice 17b): a required claim, validated at verification. A TENANT
+    is EXPLICIT: a required claim, validated at verification. A TENANT
     identity always carries a ``tenant_id``; a PLATFORM identity carries none
     (see-all) and names any acted-for tenant per-request on the write path, gated on
     the verified PLATFORM posture — never from a token claim.

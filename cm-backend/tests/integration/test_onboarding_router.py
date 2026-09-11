@@ -1,4 +1,4 @@
-"""Integration tests for the client-onboarding wizard (Slice 2).
+"""Integration tests for the client-onboarding wizard.
 
 Covers the four section resources (legal profile, tax registrations,
 billing profile, contacts), the onboarding-state resource, the
@@ -40,7 +40,7 @@ _ONBOARDING_TABLES = (
     "tenant_contacts",
     "tenant_documents",
     "tenant_onboarding",
-    # Slice 6: seed_completion_facts inserts an invited tenant_users row;
+    # Seed_completion_facts inserts an invited tenant_users row;
     # clear it before the make_tenant teardown deletes the tenant (FK
     # ON DELETE RESTRICT).
     "tenant_users",
@@ -136,7 +136,7 @@ _CONTACT_BODY = {"items": [{"contact_type": "PRIMARY", "name": "Dana Ops"}]}
 async def _seed_sections_only(
     app_client: TestClient, jwt: str, tenant_id: UUID
 ) -> None:
-    """PUT legal + billing + one contact (the Slice-2 section rows)."""
+    """PUT legal + billing + one contact (the onboarding section rows)."""
     assert app_client.put(
         f"/api/v1/tenants/{tenant_id}/legal-profile",
         json=_LEGAL_BODY,
@@ -157,9 +157,9 @@ async def _seed_sections_only(
 async def _seed_required_sections(
     app_client: TestClient, jwt: str, tenant_id: UUID
 ) -> None:
-    """Make a tenant fully completable under the Slice-6 gate: the section
-    rows (legal + billing + contact) via the API, plus the three DB-only
-    facts (Auth0 org, invited admin, verified document) via
+    """Make a tenant fully completable under the complete-onboarding gate:
+    the section rows (legal + billing + contact) via the API, plus the
+    three DB-only facts (Auth0 org, invited admin, verified document) via
     seed_completion_facts."""
     await _seed_sections_only(app_client, jwt, tenant_id)
     await seed_completion_facts(app_client, tenant_id)
@@ -475,7 +475,7 @@ async def test_ob1_get_shape_and_auth0_false_until_provisioned(
     app_client, super_admin_jwt, make_tenant
 ) -> None:
     """LOAD-BEARING: onboarding-state shape; auth0_organization is FALSE for
-    a fresh tenant (Slice 5 option a: derived from tenants.auth0_org_id,
+    a fresh tenant (derived from tenants.auth0_org_id,
     which is NULL until provision-auth0 stamps it)."""
     tenant = await make_tenant(name="OB1")
     resp = app_client.get(
@@ -493,7 +493,7 @@ async def test_ob1_get_shape_and_auth0_false_until_provisioned(
     assert body["sections_present"] == {
         "legal": False, "tax": False, "billing": False,
         "contacts": False,
-        # Slice 3: documents is a verification-status counts block.
+        # Documents is a verification-status counts block.
         "documents": {
             "total": 0, "pending_review": 0, "verified": 0,
             "rejected": 0, "all_verified": False,
@@ -507,7 +507,7 @@ async def test_ob1b_auth0_organization_true_when_org_id_stamped(
     app_client, super_admin_jwt, make_tenant,
     session_factory, platform_auth,
 ) -> None:
-    """LOAD-BEARING (Slice 5 option a): auth0_organization derives TRUE once
+    """LOAD-BEARING: auth0_organization derives TRUE once
     tenants.auth0_org_id is set (what provision-auth0 stamps)."""
     tenant = await make_tenant(name="OB1B")
     schema = get_settings().db_schema
@@ -640,7 +640,7 @@ async def test_ob7_patch_emits_audit(
 
 
 # ===========================================================================
-# complete-onboarding section gating (CO) -- Slice 2 item 6 + refinement 2
+# complete-onboarding section gating (CO)
 # ===========================================================================
 
 
@@ -684,7 +684,7 @@ async def test_co2_missing_contact_still_409(
 async def test_co3_all_gates_satisfied_completes(
     app_client, super_admin_jwt, make_tenant, cleanup_onboarding
 ) -> None:
-    """LOAD-BEARING (Slice 6): all six gates satisfied (legal + billing +
+    """LOAD-BEARING: all six gates satisfied (legal + billing +
     contact + Auth0 org + invited admin + docs all-verified) -> 200 TRIAL."""
     tenant = await make_tenant(name="CO3", status=TenantStatus.ONBOARDING)
     cleanup_onboarding.append(tenant.id)
@@ -788,7 +788,7 @@ async def _co_missing_fact_returns_409(
 ) -> None:
     """Seed sections + all completion facts EXCEPT one, then assert
     complete-onboarding is 409 ONBOARDING_INCOMPLETE naming the omitted
-    fact (Slice 6 gate: each added fact is individually required)."""
+    fact."""
     await _seed_sections_only(app_client, jwt, tenant_id)
     await seed_completion_facts(
         app_client, tenant_id, auth0=auth0, invited=invited, docs=docs
@@ -805,7 +805,7 @@ async def _co_missing_fact_returns_409(
 async def test_co8_missing_auth0_org_returns_409(
     app_client, super_admin_jwt, make_tenant, cleanup_onboarding
 ) -> None:
-    """LOAD-BEARING (Slice 6): sections + admin + docs but no Auth0 org
+    """LOAD-BEARING: sections + admin + docs but no Auth0 org
     -> 409 naming auth0_organization."""
     tenant = await make_tenant(name="CO8", status=TenantStatus.ONBOARDING)
     cleanup_onboarding.append(tenant.id)
@@ -819,7 +819,7 @@ async def test_co8_missing_auth0_org_returns_409(
 async def test_co9_missing_admin_invited_returns_409(
     app_client, super_admin_jwt, make_tenant, cleanup_onboarding
 ) -> None:
-    """LOAD-BEARING (Slice 6): sections + Auth0 org + docs but no invited
+    """LOAD-BEARING: sections + Auth0 org + docs but no invited
     admin -> 409 naming admin_invited."""
     tenant = await make_tenant(name="CO9", status=TenantStatus.ONBOARDING)
     cleanup_onboarding.append(tenant.id)
@@ -833,7 +833,7 @@ async def test_co9_missing_admin_invited_returns_409(
 async def test_co10_documents_not_all_verified_returns_409(
     app_client, super_admin_jwt, make_tenant, cleanup_onboarding
 ) -> None:
-    """LOAD-BEARING (Slice 6): sections + Auth0 org + admin but no verified
+    """LOAD-BEARING: sections + Auth0 org + admin but no verified
     document -> 409 naming documents."""
     tenant = await make_tenant(name="CO10", status=TenantStatus.ONBOARDING)
     cleanup_onboarding.append(tenant.id)

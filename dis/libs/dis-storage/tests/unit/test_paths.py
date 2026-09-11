@@ -1,11 +1,11 @@
 """Canonical object-path scheme: frozen shape, UUID tenant segment, no trace_id minting.
 
-Slice 9a AC1/AC2. Q1 finding recorded here: the hand-authored contract `gcs_uri`
-char-class (`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`) exactly
-matches what ``build_object_path`` emits for a UUID tenant (Python's ``str(UUID)`` is
-lowercase 8-4-4-4-12) — no divergence, so the committed contracts stand unchanged and
-the builder coerces its tenant input so a string caller cannot emit a non-matching
-segment.
+The hand-authored contract `gcs_uri` char-class
+(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`) exactly
+matches what ``build_object_path`` emits for a UUID tenant (Python's ``str(UUID)``
+is lowercase 8-4-4-4-12) — no divergence, so the committed contracts stand
+unchanged and the builder coerces its tenant input so a string caller cannot
+emit a non-matching segment.
 """
 
 from __future__ import annotations
@@ -85,7 +85,7 @@ def test_uppercase_tenant_string_normalises_to_canonical_lowercase() -> None:
 
 
 def test_paths_nonuuid_tenant_rejected() -> None:
-    # Named check (Slice 9a): a non-UUID tenant_id is a StorageError, never a path
+    # Named check: a non-UUID tenant_id is a StorageError, never a path
     # the contract gcs_uri regex would reject downstream.
     with pytest.raises(StorageError, match="not a UUID"):
         build_object_path(
@@ -247,7 +247,7 @@ def test_malformed_uris_fail_each_contract_gcs_uri_regex(schema_name: str, bad_u
 
 
 # ---------------------------------------------------------------------------
-# split_object_uri: gs://bucket/key -> (bucket, key) (Slice 9b, additive).
+# split_object_uri: gs://bucket/key -> (bucket, key).
 # ---------------------------------------------------------------------------
 
 

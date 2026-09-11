@@ -6,7 +6,7 @@
 # `synapse.resolvers` rather than a prefixed variant.
 name = "thalamus-synapse"
 version = "0.0.0"
-description = "Synapse — the Thalamus analytics + actions plane. A PEER of DIS, not part of it: it reads canonical read-only and (later) emits actions. Today: three resolvers (current_state, daily_series, last_sale_at), the shared D33 correction-collapse, the capability/signal/analysis contracts, and a data-driven registry where a caller declares what it needs — thresholds and policy included — and gets one of three honest answers about whether this tenant can supply it."
+description = "Synapse — the Thalamus analytics + actions plane. A PEER of DIS, not part of it: it reads canonical read-only and appends to its own action log. Resolvers over canonical, a shared read-time correction collapse, the capability/signal/analysis contracts, and a data-driven registry where a caller declares what it needs — thresholds and policy included — and gets one of three honest answers about whether this tenant can supply it."
 requires-python = ">=3.12"
 dependencies = [
   # Canonical ROW SHAPES (Pydantic, not an ORM — dis-canonical says so itself:
@@ -16,8 +16,8 @@ dependencies = [
   "dis-canonical",
   # The two-GUC RLS session discipline + the wrong-database / bypassing-role guard.
   # Reused rather than reimplemented ON PURPOSE: duplicating a safety-critical
-  # session dance across two planes is the same mistake as the duplicated Pub/Sub
-  # poll loop, which is already a HIGH ledger item in this repo. The line that
+  # session dance across two planes invites the drift already seen in the
+  # duplicated Pub/Sub poll loop elsewhere in this repo. The line that
   # matters is LIBRARY vs DEPLOYABLE SERVICE — depending on dis-rls is fine;
   # depending on a service would not be.
   "dis-rls",
@@ -32,20 +32,18 @@ dependencies = [
   "pydantic>=2.9",
   # THE MIGRATION ENTRYPOINT, and it is a runtime dependency rather than a dev one ON PURPOSE.
   #
-  # Synapse's chain has no way to reach staging: no job, no script, no Makefile target, and how
-  # 0001-0003 were applied is recorded nowhere in this repository. migrate-synapse fixes that by
-  # MIRRORING migrate-cm — the same image as the workload, with `command = ["alembic"]`
-  # overriding the entrypoint.
+  # The migrate-synapse Cloud Run job applies this package's Alembic chain using the SAME image
+  # as the workload, with `command = ["alembic"]` overriding the entrypoint.
   #
-  # ONE IMAGE, NOT TWO, which is migrate-cm's own argument (D6: "a second pin would let the
-  # migration run a different build"). A migration must run the code it ships with; a separately
-  # pinned migration image can silently sit a revision behind the service it migrates for.
+  # ONE IMAGE, NOT TWO: a second image pin would let the migration run a different build. A
+  # migration must run the code it ships with; a separately pinned migration image can silently
+  # sit a revision behind the service it migrates for.
   #
-  # THE IMAGE ALREADY CARRIES THE FILES — synapse/Dockerfile does `COPY synapse /synapse`, so
-  # alembic.ini, alembic/ and schemas/ are all present. Only the CLI was missing:
+  # THE IMAGE CARRIES THE FILES — synapse/Dockerfile does `COPY synapse /synapse`, so
+  # alembic.ini, alembic/ and schemas/ are all present. This line supplies the CLI:
   # `uv sync --no-dev --package thalamus-synapse` installs this package's closure, and alembic
-  # lives in the ithina-dis ROOT project's dependencies, which that closure excludes. Verified
-  # with `uv tree --package thalamus-synapse --no-dev` before and after this line.
+  # otherwise lives in the ithina-dis ROOT project's dependencies, which that closure excludes.
+  # Verifiable with `uv tree --package thalamus-synapse --no-dev`.
   "alembic>=1.14",
 ]
 
@@ -57,17 +55,15 @@ build-backend = "hatchling.build"
 packages = ["src/synapse"]
 
 [tool.pytest.ini_options]
-# THE SUITE MUST RUN STANDALONE. Before this section existed there was no pytest config here
-# at all, so `asyncio_mode` and the `integration` marker came only from dis/pyproject.toml and
-# the Makefile's `-c` was load-bearing rather than a convenience. Measured cost of its absence:
-# `pytest tests/unit` from this directory gave 12 failed / 91 passed — every async test, because
-# the coroutines were never awaited — and the failures read as assertion errors rather than as
-# "no asyncio plugin configured", so the natural response was to distrust the tests.
+# THE SUITE MUST RUN STANDALONE. Without this section, `asyncio_mode` and the `integration`
+# marker come only from dis/pyproject.toml and the Makefile's `-c` is load-bearing rather than
+# a convenience: a bare `pytest tests/unit` from this directory fails every async test (the
+# coroutines are never awaited), and the failures read as assertion errors rather than as
+# "no asyncio plugin configured", which invites distrusting the tests.
 #
-# BOTH INVOCATION PATHS STILL WORK. `make test` passes `-c ../dis/pyproject.toml`, and an
+# BOTH INVOCATION PATHS WORK. `make test` passes `-c ../dis/pyproject.toml`, and an
 # explicit -c wins outright: pytest loads that file as THE config and never merges this one. So
-# the Makefile path is byte-identical to before, and this section governs only direct
-# invocation from synapse/.
+# this section governs only direct invocation from synapse/.
 asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [

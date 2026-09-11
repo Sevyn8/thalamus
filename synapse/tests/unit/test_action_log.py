@@ -4,7 +4,7 @@ WHY PARAMETERISED. ``InMemoryActionLog`` appears in BOTH sets, which is what tur
 convenience into a CONFORMANCE FIXTURE: every property a durable implementation must have, the
 in-memory one is held to as well, and neither can quietly drift from the other's promises.
 
-WHY TWO SETS AND NOT ONE. The protocol split in slice 5 because a single ``ActionLog`` forced a
+WHY TWO SETS AND NOT ONE. The protocol split because a single ``ActionLog`` forced a
 durable writer to carry an ``events()`` it could never implement — ``synapse_writer`` holds
 INSERT and no SELECT. A ``NotImplementedError`` there would have been the symptom of a broken
 protocol, so the types now match the posture: appenders append, readers read, and the in-memory
@@ -154,7 +154,7 @@ async def test_events_returns_a_copy_so_the_log_cannot_be_appended_through_it() 
 
 
 async def test_a_correction_is_a_new_event_naming_what_it_supersedes() -> None:
-    """D33's shape one layer up: an append-only log replays to any point in time, and an edited
+    """An append-only log replays to any point in time, and an edited
     row destroys the history that makes a study possible."""
     log = InMemoryActionLog()
     original = _event(1)
@@ -190,7 +190,7 @@ async def test_the_in_memory_log_does_not_deduplicate_and_that_is_deliberate() -
 
 
 # ---------------------------------------------------------------------------
-# The payload_hash allow-list, and what it implies for the slice-10 columns
+# The payload_hash allow-list, and what it implies for the observation columns
 # ---------------------------------------------------------------------------
 
 

@@ -1,4 +1,4 @@
-"""Readiness healthz for the pull-loop consumer (slice 40a, Cloud Run Service mode).
+"""Readiness healthz for the pull-loop consumer.
 
 ``Heartbeat`` is the shared liveness marker: the pull loop beats once per cycle
 UNCONDITIONALLY (all modes — only the SERVER is toggled, so the loop never

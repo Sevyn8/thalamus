@@ -59,7 +59,7 @@
 #   - No invoker binding. A job has no IAM policy in this project; executions are
 #     operator-run via `gcloud run jobs execute` under the caller's own credentials.
 #     No scheduler fires THIS job. That was once true project-wide and stopped being
-#     true in slice 6b, when the Synapse orchestrator got a Cloud Scheduler job — so
+#     true when the Synapse orchestrator got a Cloud Scheduler job — so
 #     the deferral now applies to mirror-sync specifically rather than to the
 #     project. It is still deliberate here: what cadence an identity mirror should
 #     sync at is an open question, and Synapse's answer does not transfer (that is a

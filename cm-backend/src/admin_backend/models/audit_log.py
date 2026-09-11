@@ -1,7 +1,7 @@
 """Audit log ORM models for the two-table audit subsystem.
 
 Both tables share a symmetric 16-column shape per the design at
-`docs/architecture_audit_logs.md` (Step 6.16.0). They differ only in:
+`docs/architecture_audit_logs.md`. They differ only in:
 
   * `tenant_id` and `tenant_name` are NOT NULL on
     `TenantActivityAuditLog` and NULLABLE on `PlatformActivityAuditLog`
@@ -10,7 +10,7 @@ Both tables share a symmetric 16-column shape per the design at
     NULL).
   * `TenantActivityAuditLog` has RLS+FORCE with the D-29 unconditional
     OR-branch policy. `PlatformActivityAuditLog` has no RLS; access is
-    gated at the API layer (Step 6.16.3 onward).
+    gated at the API layer.
 
 The `AuditResultType` Python enum mirrors the SQL enum
 `audit_result_type_enum` created in migration `c530346032dd` (6 stable
@@ -107,9 +107,9 @@ class TenantActivityAuditLog(Base):
     resource_type: Mapped[str] = mapped_column(Text, nullable=False)
     resource_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
     resource_label: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Step 6.16.7 LD1: populated only on ORG_NODE rows with the
+    # Populated only on ORG_NODE rows with the
     # ``org_nodes.node_type`` enum value frozen at write time; NULL for
-    # non-ORG_NODE rows and pre-6.16.7 historical rows.
+    # non-ORG_NODE rows and historical rows predating this column.
     resource_subtype: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ---------- Action ----------
@@ -129,7 +129,7 @@ class TenantActivityAuditLog(Base):
     )
     result_label: Mapped[str] = mapped_column(Text, nullable=False)
 
-    # ---------- Actor enrichment (Step 6.16.7 LD1, frozen snapshot per LD4) ----------
+    # ---------- Actor enrichment (frozen snapshot per LD4) ----------
     # Tenant name for tenant actors, literal ``'Platform-Ithina'`` for
     # platform actors. Resolved at audit emission time per LD6.
     actor_organization_name: Mapped[str] = mapped_column(Text, nullable=False)
@@ -192,9 +192,9 @@ class PlatformActivityAuditLog(Base):
     resource_type: Mapped[str] = mapped_column(Text, nullable=False)
     resource_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
     resource_label: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Step 6.16.7 LD1: populated only on ORG_NODE rows with the
+    # Populated only on ORG_NODE rows with the
     # ``org_nodes.node_type`` enum value frozen at write time; NULL for
-    # non-ORG_NODE rows and pre-6.16.7 historical rows.
+    # non-ORG_NODE rows and historical rows predating this column.
     resource_subtype: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ---------- Action ----------
@@ -214,7 +214,7 @@ class PlatformActivityAuditLog(Base):
     )
     result_label: Mapped[str] = mapped_column(Text, nullable=False)
 
-    # ---------- Actor enrichment (Step 6.16.7 LD1, frozen snapshot per LD4) ----------
+    # ---------- Actor enrichment (frozen snapshot per LD4) ----------
     # Literal ``'Platform-Ithina'`` for every platform-table row (the
     # actor is operating with platform authority on this table).
     actor_organization_name: Mapped[str] = mapped_column(Text, nullable=False)

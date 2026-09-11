@@ -1,7 +1,6 @@
 """Error class hierarchy for admin-backend.
 
-Step 2.1 introduced bare exception types. Step 2.3 refactors them into
-a two-tier structured hierarchy with HTTP-response mapping:
+Two-tier structured hierarchy with HTTP-response mapping:
 
   AdminBackendError
     ClientError    (4xx; subclass-specific public_message is fine)
@@ -12,11 +11,12 @@ a two-tier structured hierarchy with HTTP-response mapping:
                    response to clients; specifics go to the log only)
       AppRolePrivilegeError  (was in db/engine.py)
 
-The refactor is backwards-compatible: existing code that does
-``raise AuthMissingError("...")`` still works because the constructor
-keeps the same signature (a single positional internal_message + **context
-kwargs). FastAPI's exception handler in main.py reads ``http_status``,
-``public_message``, and ``code`` off the class to build the JSON response.
+Every subclass keeps the same constructor signature (a single
+positional internal_message + **context kwargs), so ``raise
+AuthMissingError("...")``-style call sites work uniformly across the
+hierarchy. FastAPI's exception handler in main.py reads
+``http_status``, ``public_message``, and ``code`` off the class to
+build the JSON response.
 
 ServerError subclasses MUST NOT override ``public_message`` or ``code``.
 This is anti-information-disclosure: an attacker probing the auth or DB
@@ -112,10 +112,10 @@ class InvalidTenantIdError(ClientError):
 class TenantNotFoundError(ClientError):
     """Tenant id either does not exist or is RLS-filtered from caller.
 
-    Per D-17, RLS-filtered rows surface as 404 not 403: returning 403
-    leaks that the resource exists. The handler can't (and shouldn't)
-    distinguish "no such tenant" from "you can't see this tenant" —
-    both produce the same 404.
+    RLS-filtered rows surface as 404 not 403: returning 403 leaks that
+    the resource exists. The handler can't (and shouldn't) distinguish
+    "no such tenant" from "you can't see this tenant" — both produce
+    the same 404.
     """
 
     public_message = "Tenant not found"
@@ -126,10 +126,10 @@ class TenantNotFoundError(ClientError):
 class TenantUserNotFoundError(ClientError):
     """Tenant user id either does not exist or is RLS-filtered from caller.
 
-    Same RLS-as-404 framing as ``TenantNotFoundError`` per D-17. Moved
-    from ``routers/v1/tenant_users.py`` to the shared module at Step
-    6.9.3.2 so anchor deps in ``auth/`` can raise it without backward
-    layering violation (``auth/`` → ``routers/v1/``).
+    Same RLS-as-404 framing as ``TenantNotFoundError``. Lives in the
+    shared errors module (not ``routers/v1/tenant_users.py``) so
+    anchor deps in ``auth/`` can raise it without a backward layering
+    violation (``auth/`` → ``routers/v1/``).
     """
 
     public_message = "Tenant user not found"
@@ -140,10 +140,10 @@ class TenantUserNotFoundError(ClientError):
 class OrgNodeNotFoundError(ClientError):
     """Org node id either does not exist or is RLS-filtered from caller.
 
-    Same RLS-as-404 framing as ``TenantNotFoundError`` per D-17. Moved
-    from ``routers/v1/org_tree.py`` to the shared module at Step
-    6.9.3.2 so anchor deps in ``auth/`` can raise it without backward
-    layering violation.
+    Same RLS-as-404 framing as ``TenantNotFoundError``. Lives in the
+    shared errors module (not ``routers/v1/org_tree.py``) so anchor
+    deps in ``auth/`` can raise it without a backward layering
+    violation.
     """
 
     public_message = "Org node not found"
@@ -154,11 +154,11 @@ class OrgNodeNotFoundError(ClientError):
 class StoreNotFoundError(ClientError):
     """Store id either does not exist or is RLS-filtered from caller.
 
-    Same RLS-as-404 framing as ``TenantNotFoundError`` per D-17. Raised
-    by ``get_store_anchor`` on lookup miss (the anchor dep fires
-    before the gate body per F-THREADING-4, so cross-tenant probes by
-    TENANT JWTs surface as 404 here rather than 403) and by the detail
-    router when the Repo returns ``None``.
+    Same RLS-as-404 framing as ``TenantNotFoundError``. Raised by
+    ``get_store_anchor`` on lookup miss (the anchor dep fires before
+    the gate body, so cross-tenant probes by TENANT JWTs surface as
+    404 here rather than 403) and by the detail router when the Repo
+    returns ``None``.
     """
 
     public_message = "Store not found"
@@ -172,10 +172,8 @@ class InvalidSortKeyClientError(ClientError):
     Wraps the Repo-layer ``InvalidSortKeyError`` (a ValueError) so
     unknown sort values surface as 400 ``INVALID_SORT_KEY`` instead
     of 500 ``INTERNAL_ERROR``. Shared across resources — sort-key
-    validation is the same concern for every Repo. Introduced at
-    Step 5.1 inside the platform_users router; promoted to shared
-    location at Step 5.2 so tenant_users (and future routers) reuse
-    the same class.
+    validation is the same concern for every Repo, so tenant_users
+    and other routers reuse this same class.
     """
 
     public_message = "Invalid sort key"
@@ -186,15 +184,15 @@ class InvalidSortKeyClientError(ClientError):
 class PermissionDeniedError(ClientError):
     """Raised by the ``require(...)`` gate when ``has_permission()`` denies.
 
-    Step 6.9.2 introduces this. Structured fields (``module``, ``resource``,
-    ``action``, ``scope``, ``target_anchor``, ``reason_code``) attach via
-    the inherited ``**context`` kwargs mechanism on ``AdminBackendError``
-    and reach the error log via ``exc.context``; they do NOT populate the
-    response envelope's ``details`` field per the Step 6.9.2 Q7 design.
+    Structured fields (``module``, ``resource``, ``action``, ``scope``,
+    ``target_anchor``, ``reason_code``) attach via the inherited
+    ``**context`` kwargs mechanism on ``AdminBackendError`` and reach
+    the error log via ``exc.context``; they do NOT populate the
+    response envelope's ``details`` field.
 
-    Lives in ``errors.py`` (shared) rather than in the me router, mirroring
-    ``InvalidSortKeyClientError`` (Step 5.2). Every router that retrofits
-    the gate in Step 6.9.3 will raise this same class.
+    Lives in ``errors.py`` (shared) rather than in a single router,
+    mirroring ``InvalidSortKeyClientError`` — every router that gates
+    on ``require(...)`` raises this same class.
     """
 
     public_message = "Permission denied"
@@ -207,8 +205,7 @@ class PlatformAudienceRequiredError(ClientError):
     a route declares ``audience="PLATFORM"`` and the JWT's ``user_type``
     is not ``PLATFORM``.
 
-    Step 6.11.1 introduces this alongside the ``audience`` kwarg on
-    ``require()``. Defense-in-depth ahead of ``has_permission`` against
+    Defense-in-depth ahead of ``has_permission`` against
     catalogue drift: a future seed that grants a ``.GLOBAL`` tuple to a
     TENANT-audience role would still be refused by Layer 1 on
     platform-only routes.
@@ -224,9 +221,9 @@ class DuplicateTenantNameError(ClientError):
     a tenant with the supplied ``name`` already exists.
 
     App-layer uniqueness check: ``core.tenants.name`` has no DB-level
-    UNIQUE constraint in v0 (see the matching FN-AB on tenant name
-    UNIQUE). The check is SELECT-then-INSERT/UPDATE in the same
-    transaction; race window non-zero under concurrent writers.
+    UNIQUE constraint in v0. The check is SELECT-then-INSERT/UPDATE in
+    the same transaction; race window non-zero under concurrent
+    writers.
     """
 
     public_message = "A tenant with this name already exists."
@@ -236,12 +233,12 @@ class DuplicateTenantNameError(ClientError):
 
 class InvalidTenantFieldError(ClientError):
     """Raised by ``TenantsRepo.create`` / ``.update`` when a DB constraint
-    on a tenant field is violated (Slice 7): a numeric-range overflow or a
-    CHECK violation (monthly-revenue nonnegative / the revenue and
-    stores as-of-date both-or-neither consistency). Maps the DB error to a
-    422 in the standard envelope naming the offending field, instead of an
-    unhandled 500. The caller supplied the value, so naming the field is
-    not disclosure; ``field`` is also in ``exc.context``.
+    on a tenant field is violated: a numeric-range overflow or a CHECK
+    violation (monthly-revenue nonnegative / the revenue and stores
+    as-of-date both-or-neither consistency). Maps the DB error to a
+    422 in the standard envelope naming the offending field, instead
+    of an unhandled 500. The caller supplied the value, so naming the
+    field is not disclosure; ``field`` is also in ``exc.context``.
     """
 
     http_status = 422
@@ -257,8 +254,8 @@ class InvalidTenantFieldError(ClientError):
 
 
 class InvalidTenantNameForSlugError(ClientError):
-    """Raised by ``slug_for_tenant_root`` (Step 6.20.1) when the input
-    name (or display_code) slugifies to an empty string.
+    """Raised by ``slug_for_tenant_root`` when the input name (or
+    display_code) slugifies to an empty string.
 
     The slug rule strips diacritics, collapses non-alphanumeric runs to
     hyphens, trims, and truncates at 64 chars. Inputs like ``!!!`` or
@@ -267,7 +264,7 @@ class InvalidTenantNameForSlugError(ClientError):
 
     Constructor accepts ``field`` ('name' or 'display_code') to identify
     which request field produced the empty slug; the value is placed in
-    ``exc.context`` for log paths only per the Q7 envelope convention.
+    ``exc.context`` for log paths only.
     """
 
     public_message = (
@@ -282,10 +279,10 @@ class InvalidStateTransitionError(ClientError):
     """Raised by the suspend/activate handlers when the current
     tenant ``status`` doesn't permit the requested transition.
 
-    Lifecycle (Step 6.11): create -> TRIAL; TRIAL/ACTIVE -> SUSPENDED on
-    suspend; TRIAL/SUSPENDED -> ACTIVE on activate. SUSPENDED -> ACTIVE
-    never re-enters TRIAL. Any other source state for the requested
-    target raises this error.
+    Lifecycle: create -> TRIAL; TRIAL/ACTIVE -> SUSPENDED on suspend;
+    TRIAL/SUSPENDED -> ACTIVE on activate. SUSPENDED -> ACTIVE never
+    re-enters TRIAL. Any other source state for the requested target
+    raises this error.
     """
 
     public_message = "Tenant cannot transition to the requested state."
@@ -294,15 +291,15 @@ class InvalidStateTransitionError(ClientError):
 
 
 class InvalidLookupCodeError(ClientError):
-    """Raised by the onboarding section writes (Slice 2) when a
-    lookups-coded field (entity_type, registration_type, payment_terms,
-    currency, contact_type) carries a value not present as an ACTIVE row
-    in the corresponding ``core.lookups`` list.
+    """Raised by the onboarding section writes when a lookups-coded
+    field (entity_type, registration_type, payment_terms, currency,
+    contact_type) carries a value not present as an ACTIVE row in the
+    corresponding ``core.lookups`` list.
 
     The offending field name is in ``public_message`` (the caller sent
     it, so naming it is not disclosure per the ClientError contract);
-    ``field``, ``value``, and ``list_name`` are placed in ``exc.context``
-    for log paths per the Q7 envelope convention.
+    ``field``, ``value``, and ``list_name`` are placed in
+    ``exc.context`` for log paths.
     """
 
     http_status = 422
@@ -327,14 +324,14 @@ class InvalidLookupCodeError(ClientError):
 
 
 class InvalidSectionKeyError(ClientError):
-    """Raised by ``PATCH /tenants/{id}/onboarding`` (Slice 2) when
+    """Raised by ``PATCH /tenants/{id}/onboarding`` when
     ``current_step`` or a ``section_status`` key is not in the fixed
     wizard-section set (company, legal, billing, contacts, documents,
     access, review).
 
     Names the offending field ('current_step' or 'section_status') and
     the invalid key(s) in ``public_message``; details go to
-    ``exc.context`` per the Q7 envelope convention.
+    ``exc.context``.
     """
 
     http_status = 422
@@ -354,9 +351,8 @@ class InvalidSectionKeyError(ClientError):
 
 class OnboardingIncompleteError(ClientError):
     """Raised by ``POST /tenants/{id}/complete-onboarding`` when the
-    required facts are not all present. Slice 6 (option a) extends the
-    Slice-2 set (legal profile, billing profile, >=1 contact) with three
-    more pure-DB gates: the Auth0 organization provisioned
+    required facts are not all present: legal profile, billing
+    profile, >=1 contact, the Auth0 organization provisioned
     (``auth0_organization``), at least one invited admin user
     (``admin_invited``), and documents all-verified (``documents``).
 
@@ -381,7 +377,7 @@ class OnboardingIncompleteError(ClientError):
 
 
 class OnboardingAlreadyCompletedError(ClientError):
-    """Raised by ``PATCH /tenants/{id}/onboarding`` (Slice 2) once
+    """Raised by ``PATCH /tenants/{id}/onboarding`` once
     ``tenant_onboarding.completed_at`` is set: the wizard resume-state is
     frozen after completion.
 
@@ -396,9 +392,9 @@ class OnboardingAlreadyCompletedError(ClientError):
 
 
 class OnboardingSectionNotFoundError(ClientError):
-    """Raised by the 1:1 section GETs (legal-profile, billing-profile,
-    Slice 2) when the tenant is visible but the section row has not been
-    saved yet. Distinct from ``TENANT_NOT_FOUND`` (tenant missing /
+    """Raised by the 1:1 section GETs (legal-profile, billing-profile)
+    when the tenant is visible but the section row has not been saved
+    yet. Distinct from ``TENANT_NOT_FOUND`` (tenant missing /
     RLS-filtered) so the wizard can tell "no such tenant" from "section
     not filled in yet". The section name is in ``exc.context``.
     """
@@ -415,10 +411,10 @@ class OnboardingSectionNotFoundError(ClientError):
 
 
 class DuplicateSectionRowError(ClientError):
-    """Raised by the 1:N section full-replace writes (Slice 2 refinement
-    3) when the request payload contains duplicate rows before any DB
-    write: duplicate (registration_type, registration_number) tuples for
-    tax registrations, or exact-duplicate contact rows. Names the
+    """Raised by the 1:N section full-replace writes when the request
+    payload contains duplicate rows before any DB write: duplicate
+    (registration_type, registration_number) tuples for tax
+    registrations, or exact-duplicate contact rows. Names the
     duplicate in ``public_message``; ``field`` + ``value`` in
     ``exc.context``.
     """
@@ -436,10 +432,10 @@ class DuplicateSectionRowError(ClientError):
 
 
 class InvalidContentTypeError(ClientError):
-    """Raised by ``POST /documents/upload-url`` (Slice 3) when the
-    requested ``content_type`` is not in the upload allowlist
-    (application/pdf, image/png, image/jpeg). The caller sent it, so the
-    value + allowed set are named; also placed in ``exc.context``.
+    """Raised by ``POST /documents/upload-url`` when the requested
+    ``content_type`` is not in the upload allowlist (application/pdf,
+    image/png, image/jpeg). The caller sent it, so the value + allowed
+    set are named; also placed in ``exc.context``.
     """
 
     http_status = 422
@@ -459,9 +455,9 @@ class InvalidContentTypeError(ClientError):
 
 
 class FileTooLargeError(ClientError):
-    """Raised by ``POST /documents/upload-url`` (Slice 3) when the
-    requested ``file_size_bytes`` exceeds the maximum. The size + limit
-    are named (the caller sent them); also in ``exc.context``.
+    """Raised by ``POST /documents/upload-url`` when the requested
+    ``file_size_bytes`` exceeds the maximum. The size + limit are
+    named (the caller sent them); also in ``exc.context``.
     """
 
     http_status = 422
@@ -480,10 +476,10 @@ class FileTooLargeError(ClientError):
 
 
 class DocumentNotFoundError(ClientError):
-    """Raised by the per-document endpoints (Slice 3) when the document
-    id is not visible for this tenant (missing or RLS-filtered, or the
-    id belongs to another tenant). 404 per D-17 (RLS-as-404): does not
-    disclose existence across the tenant boundary. ``document_id`` +
+    """Raised by the per-document endpoints when the document id is
+    not visible for this tenant (missing or RLS-filtered, or the id
+    belongs to another tenant). 404 (RLS-as-404): does not disclose
+    existence across the tenant boundary. ``document_id`` +
     ``tenant_id`` in ``exc.context``.
     """
 
@@ -500,11 +496,11 @@ class DocumentNotFoundError(ClientError):
 
 
 class InvalidDocumentStateError(ClientError):
-    """Raised by verify / reject / delete (Slice 3) when the document's
-    current ``verification_status`` does not permit the requested action
-    (e.g. verify on an already-VERIFIED row, delete on a non-PENDING_REVIEW
-    row). 409, mirroring ``InvalidStateTransitionError``. Current status +
-    action are named; also in ``exc.context``.
+    """Raised by verify / reject / delete when the document's current
+    ``verification_status`` does not permit the requested action (e.g.
+    verify on an already-VERIFIED row, delete on a non-PENDING_REVIEW
+    row). 409, mirroring ``InvalidStateTransitionError``. Current status
+    + action are named; also in ``exc.context``.
     """
 
     http_status = 409
@@ -540,8 +536,8 @@ class SelfEditForbiddenError(ClientError):
     """Raised when a TENANT-audience caller targets themselves on a
     tenant-user write endpoint (PATCH / suspend / activate).
 
-    Step 6.10.1. PLATFORM callers cannot self-edit by construction
-    (PLATFORM users live in a separate table). The guard fires inside
+    PLATFORM callers cannot self-edit by construction (PLATFORM users
+    live in a separate table). The guard fires inside
     the handler for the three path-bound endpoints; POST /tenant-users
     has no path user_id so the case isn't expressible there.
     """
@@ -554,7 +550,7 @@ class SelfEditForbiddenError(ClientError):
 class EmailAlreadyExistsError(ClientError):
     """Raised by ``TenantUsersRepo.create`` / ``.update`` (on email
     change) when the supplied email is already in use anywhere on the
-    platform (Slice 9: one email = one identity).
+    platform: one email = one identity.
 
     An email may belong to exactly ONE entity platform-wide: one
     platform user OR one tenant user of exactly one tenant. The
@@ -588,17 +584,16 @@ class EmailAlreadyExistsError(ClientError):
 
 class InvalidRoleAudienceError(ClientError):
     """Raised when ``roles[]`` contains a role_id whose audience is not
-    'TENANT' (Step 6.10.1 Option X pre-check).
+    'TENANT'.
 
     The audience-check trigger ``enforce_tenant_role_audience`` rejects
     mismatched audience at INSERT time with a plpgsql exception that
     would otherwise surface as 500. The handler-side pre-check converts
     that into a domain-shaped 422 ahead of the DB write.
 
-    Per the Q7 lock (Step 6.9.2), structured detail surfaces in
-    ``exc.context`` for logs; the response envelope ``details`` field
-    stays ``null``. Callers pass ``invalid_role_ids=[...]`` via the
-    ``**context`` kwarg mechanism.
+    Structured detail surfaces in ``exc.context`` for logs; the
+    response envelope ``details`` field stays ``null``. Callers pass
+    ``invalid_role_ids=[...]`` via the ``**context`` kwarg mechanism.
     """
 
     public_message = "One or more roles cannot be assigned to a tenant user."
@@ -608,9 +603,9 @@ class InvalidRoleAudienceError(ClientError):
 
 class InvalidRoleError(ClientError):
     """Raised when ``roles[]`` references a role_id that doesn't exist
-    in the catalogue (Step 6.10.1 Option X pre-check).
+    in the catalogue.
 
-    Same Q7 posture as ``InvalidRoleAudienceError``: structured detail
+    Same posture as ``InvalidRoleAudienceError``: structured detail
     (``unknown_role_ids``) lives in ``exc.context``; response envelope
     ``details`` stays ``null``.
     """
@@ -623,7 +618,7 @@ class InvalidRoleError(ClientError):
 class InvalidOrgNodeError(ClientError):
     """Raised when ``roles[]`` references an ``org_node_id`` that is
     missing from the catalogue, archived, or belongs to a different
-    tenant (Step 6.14).
+    tenant.
 
     Aggregates all three failure modes into one 422 code so the
     response is deterministic regardless of which specific defect the
@@ -632,7 +627,7 @@ class InvalidOrgNodeError(ClientError):
     catch the cross-tenant case at INSERT time too; the pre-check
     surfaces it as a clean 422 ahead of the write.
 
-    Q7 posture: structured detail (``invalid_org_node_ids``) lives in
+    Structured detail (``invalid_org_node_ids``) lives in
     ``exc.context``; response envelope ``details`` stays ``null``.
     """
 
@@ -646,7 +641,7 @@ class InvalidOrgNodeError(ClientError):
 
 class DuplicateRoleAssignmentInRequestError(ClientError):
     """Raised when the submitted ``roles[]`` list contains the same
-    ``(role_id, org_node_id)`` tuple more than once (Step 6.14).
+    ``(role_id, org_node_id)`` tuple more than once.
 
     Handler-side pre-check ahead of the repo so the duplicate-detection
     response envelope is uniform with the rest of the
@@ -655,9 +650,9 @@ class DuplicateRoleAssignmentInRequestError(ClientError):
     ``uq_tenant_user_role_assignments_active`` and be misclassified as
     a 409 conflict rather than a 422 client bug.
 
-    Q7 posture: structured detail (``duplicate_pairs`` — list of
-    ``{role_id, org_node_id}`` dicts) lives in ``exc.context``;
-    response envelope ``details`` stays ``null``.
+    Structured detail (``duplicate_pairs`` — list of ``{role_id,
+    org_node_id}`` dicts) lives in ``exc.context``; response envelope
+    ``details`` stays ``null``.
     """
 
     public_message = (
@@ -670,8 +665,7 @@ class DuplicateRoleAssignmentInRequestError(ClientError):
 class RoleAssignmentConflictError(ClientError):
     """Raised when a concurrent transaction has inserted a duplicate
     ACTIVE ``(tenant_user_id, role_id, org_node_id)`` row between this
-    transaction's SELECT FOR UPDATE and the matching INSERT (Step
-    6.14).
+    transaction's SELECT FOR UPDATE and the matching INSERT.
 
     Mapped from ``IntegrityError`` on
     ``uq_tenant_user_role_assignments_active`` ONLY. Other constraint
@@ -683,9 +677,9 @@ class RoleAssignmentConflictError(ClientError):
     tenant_user are a real conflict the caller should be made aware of,
     not papered over.
 
-    Q7 posture: structured detail (``conflicting_triple`` —
-    ``{tenant_user_id, role_id, org_node_id}``) lives in
-    ``exc.context``; response envelope ``details`` stays ``null``.
+    Structured detail (``conflicting_triple`` — ``{tenant_user_id,
+    role_id, org_node_id}``) lives in ``exc.context``; response
+    envelope ``details`` stays ``null``.
     """
 
     public_message = (
@@ -699,15 +693,14 @@ class RoleAssignmentConflictError(ClientError):
 
 class InvalidParentNodeTypeError(ClientError):
     """Raised when an org-tree write proposes a parent whose ``node_type``
-    does not sit higher than the child's in the canonical hierarchy
-    (Step 6.13).
+    does not sit higher than the child's in the canonical hierarchy.
 
     Canonical sequence: TENANT(0) -> BUSINESS_UNIT(1) -> HQ(2) ->
     COUNTRY(3) -> REGION(4) -> STORE(5) -> DEPARTMENT(6). Level skipping
     is allowed (STORE under TENANT is fine); level reversal is not
     (HQ under REGION rejected).
 
-    Q7 posture: structured detail (``child_type``, ``parent_type``,
+    Structured detail (``child_type``, ``parent_type``,
     ``attempted_ordinal_child``, ``attempted_ordinal_parent``) lives in
     ``exc.context``; response envelope ``details`` stays ``null``.
     """
@@ -722,7 +715,7 @@ class InvalidParentNodeTypeError(ClientError):
 
 class TenantRootNotReparentableError(ClientError):
     """Raised when PATCH attempts to set ``parent_id`` on a TENANT-type
-    org_node (Step 6.13).
+    org_node.
 
     The tenant root is created by tenant provisioning and is structurally
     pinned by ``ck_org_nodes_root_parent_consistency`` (TENANT-type rows
@@ -739,16 +732,15 @@ class TenantRootNotReparentableError(ClientError):
 
 class CycleDetectedError(ClientError):
     """Raised when PATCH attempts to reparent a node under itself or one
-    of its descendants (Step 6.13).
+    of its descendants.
 
     Detection uses ltree's ``@>`` operator on the target's path: the
     new parent must NOT be a descendant of the target. Self-parent is
     the degenerate case (target.path @> target.path is true) and surfaces
     here too.
 
-    Q7 posture: structured detail (``target_id``, ``attempted_parent_id``)
-    lives in ``exc.context``; response envelope ``details`` stays
-    ``null``.
+    Structured detail (``target_id``, ``attempted_parent_id``) lives
+    in ``exc.context``; response envelope ``details`` stays ``null``.
     """
 
     public_message = (
@@ -760,14 +752,14 @@ class CycleDetectedError(ClientError):
 
 class DuplicateOrgNodeCodeError(ClientError):
     """Raised when an org-tree write produces a ``code`` value that
-    collides with an existing row in the same tenant (Step 6.13).
+    collides with an existing row in the same tenant.
 
     Tenant-wide case-insensitive uniqueness is enforced by the DDL UNIQUE
     index ``uq_org_nodes_tenant_code_lower`` on ``(tenant_id,
     lower(code))``. App-layer maps the ``IntegrityError`` scoped to that
     constraint name into a domain-shaped 409.
 
-    Q7 posture: structured detail (``code``, ``tenant_id``) lives in
+    Structured detail (``code``, ``tenant_id``) lives in
     ``exc.context``; response envelope ``details`` stays ``null``.
     """
 
@@ -780,14 +772,14 @@ class DuplicateOrgNodeCodeError(ClientError):
 
 class ParentNodeNotFoundError(ClientError):
     """Raised when an org-tree write references a ``parent_id`` that
-    does not exist in the same tenant or is RLS-filtered (Step 6.13).
+    does not exist in the same tenant or is RLS-filtered.
 
     Distinct from ``OrgNodeNotFoundError`` (which targets the operand
     node on PATCH); this surfaces when the proposed parent is the missing
     row. The wire code disambiguates the two; both are 404.
 
-    Q7 posture: structured detail (``parent_id``, ``tenant_id``) lives
-    in ``exc.context``; response envelope ``details`` stays ``null``.
+    Structured detail (``parent_id``, ``tenant_id``) lives in
+    ``exc.context``; response envelope ``details`` stays ``null``.
     """
 
     public_message = "Parent org node not found."
@@ -798,7 +790,7 @@ class ParentNodeNotFoundError(ClientError):
 class DuplicateStoreCodeError(ClientError):
     """Raised when a write to ``core.stores`` would produce a
     ``(tenant_id, store_code)`` value that already exists in the
-    same tenant (Step 6.17.3).
+    same tenant.
 
     Case-insensitive uniqueness is enforced at the DDL layer by the
     partial unique index ``uq_stores_tenant_store_code_lower`` on
@@ -811,8 +803,8 @@ class DuplicateStoreCodeError(ClientError):
     Pre-check excludes self on rename (``id != :store_id``) so
     PATCH that keeps ``store_code`` unchanged is a no-op 200.
 
-    Q7 posture: structured detail (``tenant_id``, ``store_code``) lives
-    in ``exc.context``; response envelope ``details`` stays ``null``.
+    Structured detail (``tenant_id``, ``store_code``) lives in
+    ``exc.context``; response envelope ``details`` stays ``null``.
     """
 
     public_message = (
@@ -824,7 +816,7 @@ class DuplicateStoreCodeError(ClientError):
 
 class OrgNodeFieldNotAllowedForTypeError(ClientError):
     """Raised when PATCH /org-tree on a STORE-type target attempts to
-    modify a shared field owned by the /stores endpoints (Step 6.21.2).
+    modify a shared field owned by the /stores endpoints.
 
     The two-table-one-entity coupling between ``stores`` and the paired
     STORE-type ``org_nodes`` row (architecture.md A.4 / A.5) makes
@@ -833,7 +825,7 @@ class OrgNodeFieldNotAllowedForTypeError(ClientError):
     the caller is directed to the resource-specific endpoint. Reparent
     (``parent_id``) remains allowed on STORE-type targets.
 
-    Q7 posture: structured detail (``fields``, ``node_type``) lives in
+    Structured detail (``fields``, ``node_type``) lives in
     ``exc.context`` for log paths; response envelope ``details`` stays
     ``null``.
     """
@@ -849,16 +841,16 @@ class OrgNodeFieldNotAllowedForTypeError(ClientError):
 class ModuleAccessNotFoundError(ClientError):
     """Raised by ``POST /api/v1/module-access/{tenant_id}/{module_code}/disable``
     when no ``tenant_module_access`` row exists for the supplied
-    ``(tenant_id, module)`` pair (Step 6.15).
+    ``(tenant_id, module)`` pair.
 
     Only the disable path raises this. The enable path upserts (creates
     on missing) so it can never produce this error. Cross-tenant probes
     surface as the upstream ``TenantNotFoundError`` (404) from the
     anchor dep before reaching the repo.
 
-    Q7 posture: structured detail (``tenant_id``, ``module_code``)
-    lives in ``exc.context`` for log paths; response envelope
-    ``details`` stays ``null``.
+    Structured detail (``tenant_id``, ``module_code``) lives in
+    ``exc.context`` for log paths; response envelope ``details`` stays
+    ``null``.
     """
 
     public_message = (
@@ -869,14 +861,14 @@ class ModuleAccessNotFoundError(ClientError):
 
 
 class RoleArchivedError(ClientError):
-    """PATCH refused on an ARCHIVED role (Step 6.18.3).
+    """PATCH refused on an ARCHIVED role.
 
     Status transitions on roles (activate / deactivate) belong to a
     separate (not-yet-shipped) endpoint. PATCH is for content edits
     (name / description / permissions) only.
 
-    Q7 posture: structured detail (``role_id``) lives in ``exc.context``
-    for log paths; response envelope ``details`` stays ``null``.
+    Structured detail (``role_id``) lives in ``exc.context`` for log
+    paths; response envelope ``details`` stays ``null``.
     """
 
     public_message = "Cannot edit an archived role."
@@ -886,13 +878,12 @@ class RoleArchivedError(ClientError):
 
 class InvalidPermissionError(ClientError):
     """Raised when ``permission_ids[]`` in a role PATCH body references
-    one or more UUIDs that don't exist in ``core.permissions`` (Step
-    6.18.3 LD11).
+    one or more UUIDs that don't exist in ``core.permissions``.
 
-    Mirrors ``InvalidRoleError`` / ``InvalidOrgNodeError`` (Step 6.10.1
-    / 6.14) naming convention. Detection runs as a SELECT count pre-
-    check before the diff is computed; the missing ids surface in
-    ``exc.context.missing_ids`` for log paths only per Q7.
+    Mirrors ``InvalidRoleError`` / ``InvalidOrgNodeError`` naming
+    convention. Detection runs as a SELECT count pre-check before the
+    diff is computed; the missing ids surface in
+    ``exc.context.missing_ids`` for log paths only.
     """
 
     public_message = "One or more permission IDs do not exist."
@@ -902,18 +893,18 @@ class InvalidPermissionError(ClientError):
 
 class AudienceScopeMismatchError(ClientError):
     """TENANT-audience role attempted to add a ``scope='GLOBAL'``
-    permission (Step 6.18.3 LD10).
+    permission.
 
-    Per LD2 audience-scope coherence rule: TENANT-audience roles cannot
-    hold GLOBAL-scope permissions structurally. The pre-check is
-    lenient: only the diff ``new - current`` (additions) is inspected,
-    not the full current set. A pre-existing GLOBAL-scope grant on a
-    TENANT role (catalogue drift) does not block the edit; only NEW
-    GLOBAL additions are rejected.
+    Audience-scope coherence rule: TENANT-audience roles cannot hold
+    GLOBAL-scope permissions structurally. The pre-check is lenient:
+    only the diff ``new - current`` (additions) is inspected, not the
+    full current set. A pre-existing GLOBAL-scope grant on a TENANT
+    role (catalogue drift) does not block the edit; only NEW GLOBAL
+    additions are rejected.
 
-    Q7 posture: structured detail (``role_audience``,
-    ``offending_permission_ids``) lives in ``exc.context`` for log
-    paths; response envelope ``details`` stays ``null``.
+    Structured detail (``role_audience``, ``offending_permission_ids``)
+    lives in ``exc.context`` for log paths; response envelope
+    ``details`` stays ``null``.
     """
 
     public_message = (
@@ -925,22 +916,21 @@ class AudienceScopeMismatchError(ClientError):
 
 class LastOverrideHolderError(ClientError):
     """Raised when an edit would zero out the active holder count of
-    ADMIN.ROLES.OVERRIDE.GLOBAL (Step 6.18.3 LD6 Layer 1).
+    ADMIN.ROLES.OVERRIDE.GLOBAL (Layer 1).
 
-    Platform-wide invariant: at least one ACTIVE user (with status='ACTIVE'
-    on BOTH the assignment row and the user row per LD7) must hold the
-    OVERRIDE.GLOBAL permission through some role at all times. Without
-    a holder, no one can edit role grants and the platform locks itself
-    out.
+    Platform-wide invariant: at least one ACTIVE user (with
+    status='ACTIVE' on BOTH the assignment row and the user row) must
+    hold the OVERRIDE.GLOBAL permission through some role at all
+    times. Without a holder, no one can edit role grants and the
+    platform locks itself out.
 
     The check runs as a pre-write SELECT (Layer 1) and a post-write
     tripwire (Layer 2). Layer 1 raises THIS error; Layer 2 raises
     ``InternalInvariantViolationError`` (500 INTERNAL_ERROR on the
     wire) because Layer 2 firing indicates a bug in Layer 1.
 
-    Q7 posture: structured detail (``role_id``) lives in
-    ``exc.context`` for log paths; response envelope ``details`` stays
-    ``null``.
+    Structured detail (``role_id``) lives in ``exc.context`` for log
+    paths; response envelope ``details`` stays ``null``.
     """
 
     public_message = (
@@ -952,21 +942,21 @@ class LastOverrideHolderError(ClientError):
 
 
 class SuperAdminProtectedError(ClientError):
-    """PATCH refused on the SUPER_ADMIN role (Step 6.18.3 LD12).
+    """PATCH refused on the SUPER_ADMIN role.
 
     v0 lockout: name, description, and permission set on SUPER_ADMIN
     are not editable via the API. Operator workflow for SUPER_ADMIN
     edits is direct SQL on ``core.roles`` / ``core.role_permissions``
     via Cloud SQL Studio (operator-only path; not exposed to
     application code). v1 promotion of SUPER_ADMIN editability is
-    deferred per FN-AB.
+    deferred.
 
-    Check fires BEFORE the status check per LD18: an ARCHIVED
-    SUPER_ADMIN would still be protected (defensive — SUPER_ADMIN is
-    never expected ARCHIVED in v0).
+    Check fires BEFORE the status check: an ARCHIVED SUPER_ADMIN would
+    still be protected (defensive — SUPER_ADMIN is never expected
+    ARCHIVED in v0).
 
-    Q7 posture: structured detail (``role_id``, ``role_code``) lives
-    in ``exc.context``; response envelope ``details`` stays ``null``.
+    Structured detail (``role_id``, ``role_code``) lives in
+    ``exc.context``; response envelope ``details`` stays ``null``.
     """
 
     public_message = (
@@ -979,8 +969,8 @@ class SuperAdminProtectedError(ClientError):
 class AuditEventNotFoundError(ClientError):
     """Audit row either does not exist or is RLS-filtered from caller.
 
-    Same RLS-as-404 framing as ``TenantNotFoundError`` per D-17. Raised
-    by ``GET /api/v1/audit/activities/{audit_row_id}`` (Step 6.16.3) when
+    Same RLS-as-404 framing as ``TenantNotFoundError``. Raised by
+    ``GET /api/v1/audit/activities/{audit_row_id}`` when
     ``AuditLogsRepo.get_by_id`` returns ``None`` from probing both
     audit tables. For a TENANT JWT this covers:
 
@@ -995,9 +985,8 @@ class AuditEventNotFoundError(ClientError):
     PLATFORM callers also see this when probing a non-existent UUID;
     the platform branch has no RLS but the missing row is still a 404.
 
-    Q7 posture: structured detail (``audit_row_id``) lives in
-    ``exc.context`` for log paths; response envelope ``details`` stays
-    ``null``.
+    Structured detail (``audit_row_id``) lives in ``exc.context`` for
+    log paths; response envelope ``details`` stays ``null``.
     """
 
     public_message = "Audit event not found"
@@ -1006,9 +995,8 @@ class AuditEventNotFoundError(ClientError):
 
 
 class InvalidCursorError(ClientError):
-    """Raised by ``AuditLogsRepo._decode_cursor`` (Step 6.16.3) when the
-    opaque ``cursor`` query parameter on the list endpoint cannot be
-    decoded.
+    """Raised by ``AuditLogsRepo._decode_cursor`` when the opaque
+    ``cursor`` query parameter on the list endpoint cannot be decoded.
 
     Failure categories collapsed under one code:
       - Malformed base64 / padding error.
@@ -1017,8 +1005,8 @@ class InvalidCursorError(ClientError):
       - ``ts`` value cannot be parsed as ISO-8601 datetime.
       - ``id`` value cannot be parsed as UUID.
 
-    Q7 posture: structured detail (``reason``, a server-side category
-    string) lives in ``exc.context`` for log paths; response envelope
+    Structured detail (``reason``, a server-side category string)
+    lives in ``exc.context`` for log paths; response envelope
     ``details`` stays ``null``. ``reason`` is diagnostic, not a stable
     machine-parseable contract.
     """
@@ -1029,7 +1017,7 @@ class InvalidCursorError(ClientError):
 
 
 class InternalInvariantViolationError(ServerError):
-    """Layer 2 OVERRIDE.GLOBAL tripwire (Step 6.18.3 LD6).
+    """Layer 2 OVERRIDE.GLOBAL tripwire.
 
     Layer 1 (pre-check) said the edit was safe; Layer 2 (post-write,
     pre-commit) found the platform-wide invariant violated. Indicates
@@ -1068,7 +1056,7 @@ class Auth0ManagementError(ServerError):
     credentials. Inheriting ServerError keeps the client-facing shape
     generic (INTERNAL_ERROR / generic message) while the specific
     failure (operation, status, upstream body summary) is captured in
-    ``internal_message`` + ``context`` for the log line. Per D-39, every
+    ``internal_message`` + ``context`` for the log line. Every
     Management / token failure maps here, never a raw unhandled 500.
     """
 
@@ -1093,7 +1081,7 @@ class ProvisioningUnavailableError(AdminBackendError):
 
 class DocumentStorageUnavailableError(AdminBackendError):
     """A document endpoint that mints a signed GCS URL was invoked but
-    document storage is not configured in this process (Slice 3).
+    document storage is not configured in this process.
 
     Raised when the GCS signer was not constructed (``gcs_documents_bucket``
     unset), so upload-url / download-url cannot mint a signed URL. Mirrors
@@ -1148,7 +1136,7 @@ class UserNotProvisionedError(AdminBackendError):
     """Send-invitation was requested for a user that has no Auth0 identity yet.
 
     Distinct from ProvisioningUnavailableError: the deployment IS configured,
-    but this specific user was never provisioned in Auth0 (Slice 2c), so there
+    but this specific user was never provisioned in Auth0, so there
     is no user_id to generate a password-change ticket for. It is a precondition
     failure (provision-before-send), not a caller-input error and not a server
     fault, so it carries its own 409 + specific code. Direct AdminBackendError
@@ -1166,7 +1154,7 @@ class EmailSendError(ServerError):
     ServerError so the client sees the generic INTERNAL_ERROR / 500; the
     specific failure (status, provider) is captured in ``internal_message`` +
     ``context`` for the log line. Mirrors Auth0ManagementError for upstream
-    faults; per D-41 an email failure never surfaces as a raw unhandled 500.
+    faults; an email failure never surfaces as a raw unhandled 500.
     """
 
 

@@ -5,7 +5,7 @@ tenant-scoped through ``read_session`` for two distinct tenants. Counts depend o
 so the HTTP tests assert the SHAPE, the types, newest-first ordering, and the bound rather
 than fragile exact numbers.
 
-The audit-specific guard (the two-GUC OUTLIER, D91): ``audit.events`` RLS is USING-only and
+The audit-specific guard (the two-GUC OUTLIER): ``audit.events`` RLS is USING-only and
 its USING branch admits ``tenant_id IS NULL`` system rows to EVERY tenant. The read must NOT
 surface those to a TENANT - the repo's defense-in-depth ``tenant_id = :tenant`` predicate is
 what strips them. That is unobservable at the wire (tenant_id is not on the wire), so it is
@@ -13,7 +13,7 @@ pinned here against live data via the sanctioned ``dis-rls`` sessions: under a T
 the RLS-admitted set may include NULL rows, but the predicate path returns only the tenant's;
 under a PLATFORM session the set is widened (all tenants + system rows).
 
-Loud-error posture (the Slice 4/7/8 lesson): a missing stack env var ERRORS, never skips.
+Loud-error posture: a missing stack env var ERRORS, never skips.
 """
 
 from __future__ import annotations

@@ -119,7 +119,7 @@ for dir in services libs schemas contracts infra tools alembic dbt tests docs; d
     if [[ -d "$dir" ]]; then
         pass "directory exists: $dir"
     else
-        fail "directory missing: $dir" "check git status or re-run local-setup.md §A.4"
+        fail "directory missing: $dir" "check git status"
     fi
 done
 
@@ -151,7 +151,7 @@ fi
 if [[ -f "tools/local/create_topics.py" ]]; then
     pass "tools/local/create_topics.py present"
 else
-    fail "tools/local/create_topics.py missing" "see local-setup.md §A.6"
+    fail "tools/local/create_topics.py missing" "expected by make topics-create"
 fi
 
 # ----------------------------------------------------------------------------
@@ -166,7 +166,7 @@ else
     fail "Docker daemon not running" "run: sudo systemctl start docker"
 fi
 
-# Each container in the DIS stack (core infra + Slice 2 fakes)
+# Each container in the DIS stack (core infra + local fakes)
 for container in ithina-dis-postgres-1 ithina-dis-pubsub-1 ithina-dis-gcs-1 ithina-dis-redis-1 \
                  ithina-dis-customer-master-1 ithina-dis-identity-service-fake-1; do
     if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$container"; then
@@ -409,7 +409,7 @@ if [[ -f "dbt/dbt_project.yml" ]]; then
     if [[ -f "$HOME/.dbt/profiles.yml" ]]; then
         pass "~/.dbt/profiles.yml present"
     else
-        fail "~/.dbt/profiles.yml missing" "see local-setup.md §A.8"
+        fail "~/.dbt/profiles.yml missing" "needed for dbt targets"
     fi
 else
     fail "dbt/dbt_project.yml missing" "run: uv run dbt init"

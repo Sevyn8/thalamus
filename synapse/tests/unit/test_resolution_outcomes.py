@@ -122,14 +122,14 @@ def test_a_report_carries_the_requirement_and_the_population() -> None:
 
 def test_a_report_carries_no_verdict() -> None:
     """FACTS ONLY. A `met` property on the report would put policy where it looks like a
-    fact, and the policy is a slice-1 placeholder that must stay visible as one."""
+    fact, and the policy is a caller's choice that must stay visible as one."""
     fields = set(PreconditionReport.__dataclass_fields__)
     assert fields == {"name", "required", "pairs_measured", "pairs_qualifying", "measured_at"}
     assert not hasattr(_report(qualifying=0), "met")
 
 
 def test_any_series_is_one_qualifying_series() -> None:
-    """ANY_SERIES is what the slice-1 placeholder's BODY was: pairs_qualifying > 0.
+    """ANY_SERIES's BODY is pairs_qualifying > 0.
 
     THE DISTINCTION THAT MATTERS. "The placeholder is gone" is true; "ANY stops working" is
     false. Deleting it promoted this rule from an unowned default to a declared choice, and
@@ -177,10 +177,10 @@ def test_precondition_unmet_refuses_an_empty_report_tuple() -> None:
 
 
 def test_precondition_unmet_no_longer_second_guesses_the_verdict() -> None:
-    """DELIBERATELY WEAKER THAN SLICE 1, by exactly the amount the caller gained.
+    """DELIBERATELY WEAKER THAN A BLANKET RE-CHECK, by exactly the amount the caller gained.
 
-    Slice 1 re-checked every report against the module-level placeholder and raised if one
-    looked satisfied. That check cannot exist now: `qualifying=3 of 66` is UNMET under
+    An earlier version re-checked every report against a module-level default policy and
+    raised if one looked satisfied. That check cannot exist now: `qualifying=3 of 66` is UNMET under
     ALL_SERIES and SATISFIED under ANY_SERIES, so there is no policy-free notion of "carries a
     satisfied report" left to assert. The engine's filter is the single place policy is applied,
     and it is the only place that knows which policy was asked for.
@@ -206,7 +206,7 @@ def test_an_observation_carries_no_requirement_and_no_reduced_scalar() -> None:
     them is policy. An `observed: int` here would have forced that policy into the probe,
     which is where it is least visible and hardest to replace.
 
-    ``qualifying`` ARRIVED IN SLICE 7 AND BREACHES NEITHER RULE. It is identities, not a
+    ``qualifying`` BREACHES NEITHER RULE. It is identities, not a
     threshold and not a reduction — the same measurement the counts describe, itemised. The
     field set is asserted exactly rather than by ``issubset`` so that a future ``required`` or
     ``observed`` still fails here, which is the whole point of the test.

@@ -1,4 +1,4 @@
-"""Drift guard tests — slice-05 criterion 6.
+"""Drift guard tests.
 
 The proof ERRORS, it never skips: every input is imported directly (an absent
 model or registry entry raises at import/lookup, not ``pytest.skip``), there is no
@@ -7,7 +7,7 @@ exercised in both directions via mutated registry copies — adding an unclassif
 model column and carrying a stale registry column must both go red.
 
 The chain back to the live schema: ``model_fields`` is reconciled against the
-live ``ithina_dis_db`` columns both directions by the Slice 3 integration test
+live ``ithina_dis_db`` columns both directions by the integration test
 (libs/dis-canonical/tests/integration/test_schema_reconciliation.py), so
 live schema <-> model <-> provenance <-> suite is closed without this pure lib
 touching the DB.
@@ -44,8 +44,7 @@ MAPPING_FED_MODELS: list[type[BaseModel]] = [
 @pytest.mark.parametrize("model", MAPPING_FED_MODELS)
 def test_provenance_partitions_every_mapping_fed_model_exactly(model: type[BaseModel]) -> None:
     # Errors-not-skips: assert_no_drift raises on ANY mismatch; a clean pass means
-    # the FIVE sets partition model_fields exactly, both directions
-    # (enrichment_produced added in slice-5b, D95).
+    # the FIVE sets partition model_fields exactly, both directions.
     assert_no_drift(model)
     provenance = PROVENANCE[model]
     union = (
@@ -67,7 +66,7 @@ def test_provenance_partitions_every_mapping_fed_model_exactly(model: type[BaseM
 
 
 def test_consumer_injected_set_carries_the_full_injected_line() -> None:
-    # The framing the whole slice rests on (OQ9): identity, trace, version stamp,
+    # The framing the partial-contribution model rests on: identity, trace, version stamp,
     # channel, and lineage metadata are consumer-injected on every mapping-fed model.
     for model in MAPPING_FED_MODELS:
         injected = PROVENANCE[model].consumer_injected
@@ -82,8 +81,8 @@ def test_consumer_injected_set_carries_the_full_injected_line() -> None:
 
 
 def test_mapping_produced_counts_match_the_introspected_line() -> None:
-    # Drawn from the live schema (slice-05 OQ9, corrected by the adversarial pass's
-    # full-comment re-introspection): 28 / 20 / 15. The corrections: tax_treatment
+    # Drawn from the live schema (full-comment introspection): 28 / 20 / 15.
+    # Notable classifications: tax_treatment
     # is "Denormalized from store" (hot + sale -> consumer-injected) and the
     # numeric_value_* shortcuts are "Populated by the streaming consumer"
     # (change -> consumer-injected).
@@ -93,11 +92,11 @@ def test_mapping_produced_counts_match_the_introspected_line() -> None:
 
 
 def test_store_denormalized_and_consumer_shortcut_columns_are_not_mapping_produced() -> None:
-    # The adversarial-pass reclassifications, pinned by name so they cannot silently
-    # revert (evidence: live column comments, cited in provenance.py). slice-5b (D98):
-    # tax_treatment on the HOT model migrated consumer_injected -> enrichment_produced
-    # (the lib writes it from the store, and it is canonical-shape-validated); the SALE
-    # model KEEPS it consumer_injected (event path out of scope) — the D98 asymmetry.
+    # These classifications are pinned by name so they cannot silently revert
+    # (evidence: live column comments, cited in provenance.py). tax_treatment on
+    # the HOT model is enrichment_produced (the lib writes it from the store, and
+    # it is canonical-shape-validated); the SALE model KEEPS it consumer_injected
+    # — a deliberate asymmetry (enrichment does not touch the event path).
     assert "tax_treatment" in PROVENANCE[StoreSkuCurrentPosition].enrichment_produced
     assert "tax_treatment" not in PROVENANCE[StoreSkuCurrentPosition].consumer_injected
     assert "tax_treatment" not in mapping_produced_columns(StoreSkuCurrentPosition)
@@ -107,20 +106,20 @@ def test_store_denormalized_and_consumer_shortcut_columns_are_not_mapping_produc
 
 
 def test_event_date_is_mapping_produced_on_both_event_models() -> None:
-    # Operator-confirmed judgment call (owning slice 10), marked in provenance.py.
+    # Operator-confirmed judgment call, marked in provenance.py.
     assert "event_date" in mapping_produced_columns(StoreSkuSaleEvent)
     assert "event_date" in mapping_produced_columns(StoreSkuChangeEvent)
 
 
 def test_yesterday_retail_price_is_compute_owned() -> None:
-    # Operator-confirmed judgment call (owning slice 18), marked in provenance.py.
+    # Operator-confirmed judgment call, marked in provenance.py.
     assert "yesterday_retail_price" in PROVENANCE[StoreSkuCurrentPosition].compute_owned
     assert "yesterday_retail_price" not in mapping_produced_columns(StoreSkuCurrentPosition)
 
 
 def test_change_signal_columns_are_compute_owned_not_mapping_produced() -> None:
-    # Slice 50a: the two per-attribute change-signal columns are compute-owned
-    # (consumer-maintained at write in 50b, NOT daily-compute) and MUST NOT be
+    # The two per-attribute change-signal columns are compute-owned
+    # (consumer-maintained at write, NOT daily-compute) and MUST NOT be
     # mapping-produced — else they enter the write-time completeness required-set
     # and could flip routing. Pinned by name so classification cannot silently drift.
     compute_owned = PROVENANCE[StoreSkuCurrentPosition].compute_owned
@@ -134,7 +133,7 @@ def test_change_signal_columns_are_compute_owned_not_mapping_produced() -> None:
 
 
 def test_signal_history_raises_by_design() -> None:
-    # D22/D31/D32: daily-compute output, no mapping_version_id, no mapping-time suite.
+    # Daily-compute output: no mapping_version_id, no mapping-time suite.
     with pytest.raises(SuiteDriftError, match="daily-compute output"):
         mapping_produced_columns(StoreSkuSignalHistory)
     with pytest.raises(SuiteDriftError):

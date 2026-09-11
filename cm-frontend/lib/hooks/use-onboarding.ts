@@ -15,7 +15,7 @@ import type {
 
 // Onboarding wizard hooks. Server-wait mutations (no optimistic UI),
 // matching the tenants convention. Query keys carry userId to prevent
-// cross-persona cache bleed (Phase 5h.1.1 precedent). Section writes
+// cross-persona cache bleed. Section writes
 // invalidate BOTH the section query and the onboarding-state query,
 // because the step rail reads presence flags + section_status from state.
 
@@ -134,7 +134,7 @@ export function usePatchOnboardingState(tenantId: string) {
   });
 }
 
-// Slice 6: complete onboarding (ONBOARDING -> TRIAL). Invalidates the
+// Complete onboarding (ONBOARDING -> TRIAL). Invalidates the
 // tenant list + detail + onboarding-state so the drawer/list reflect TRIAL.
 export function useCompleteOnboarding(tenantId: string) {
   const qc = useQueryClient();
@@ -142,7 +142,7 @@ export function useCompleteOnboarding(tenantId: string) {
     mutationFn: () => tenantsApi.completeOnboarding(tenantId),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["tenants"] });
-      // Slice 7 item 5: ["tenant"] prefix (not ["tenant", tenantId]) so the
+      // ["tenant"] prefix (not ["tenant", tenantId]) so the
       // per-user detail key ["tenant", userId, id] is matched -> drawer
       // shows TRIAL immediately after complete-onboarding.
       void qc.invalidateQueries({ queryKey: ["tenant"] });

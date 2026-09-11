@@ -1,16 +1,16 @@
 [project]
 name = "dis-validation"
 version = "0.0.0"
-description = "DIS validation suites: Pandera source-shape (pre-mapping) and canonical-shape (post-mapping) suites over Polars frames, plus the column-provenance registry and drift guard (slice-05; D4a, D18, D21)."
+description = "DIS validation suites: Pandera source-shape (pre-mapping) and canonical-shape (post-mapping) suites over Polars frames, plus the column-provenance registry and drift guard."
 requires-python = ">=3.12"
 dependencies = [
   # Errors (DisError root), structured logging adapter.
   "dis-core",
   # The canonical models the canonical-shape suite derives from (single source of
-  # canonical shape; slice-05 OQ7).
+  # canonical shape).
   "dis-canonical",
-  # Validation engine (D4a / D21). PINNED: do NOT upgrade without re-testing all
-  # tenant suites (lib CLAUDE.md rule); lockfile resolves 0.31.1.
+  # Validation engine. PINNED: do NOT upgrade without re-testing all
+  # tenant suites; lockfile resolves 0.31.1.
   "pandera[polars]>=0.31,<0.32",
   # SAME pin as dis-mapping (compatible range around the lockfile-resolved 1.41.2)
   # so the two libs cannot resolve to different Polars versions; dtype behaviour

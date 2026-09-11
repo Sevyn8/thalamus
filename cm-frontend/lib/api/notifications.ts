@@ -8,11 +8,10 @@ export type NotificationListParams = {
   offset?: number;
 };
 
-// Phase 5n.1: routes through lib/api/client.ts, whose base URL is
-// resolved at runtime via runtime-config (/api/config).
-// Sanjeev's backend has no /notifications endpoint yet — consumers
-// will see empty/404 responses until that ships. See BUILD_PLAN
-// Finding #31.
+// Routes through lib/api/client.ts, whose base URL is resolved at
+// runtime via runtime-config (/api/config).
+// The backend has no /notifications endpoint yet — consumers will
+// see empty/404 responses until that ships.
 export const notificationsApi = {
   list: (params?: NotificationListParams) =>
     apiFetch<ListResponse<Notification>>(

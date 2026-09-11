@@ -4,8 +4,8 @@ DELIBERATELY NOT RUNNABLE UNDER ithina_dis_user. That role holds full DML on
 canonical; pointing a read-only analytics plane at it is the same mistake as pointing
 mirror-sync at cm-database-url instead of dis_mirror_reader, which this project
 rejected on exactly those grounds. The identity is `synapse_reader`: USAGE on
-canonical, SELECT on the two canonical tables the resolvers name (plus synapse.actions since
-slice 5, which is read-only too), NOSUPERUSER NOBYPASSRLS — the dis_mirror_reader pattern,
+canonical, SELECT on the two canonical tables the resolvers name (plus synapse.actions,
+which is read-only too), NOSUPERUSER NOBYPASSRLS — the dis_mirror_reader pattern,
 mirrored resource for resource. Writing is a SEPARATE role.
 
 THE ROLE IS PROVISIONED. Terraform's google_sql_user in cloud,

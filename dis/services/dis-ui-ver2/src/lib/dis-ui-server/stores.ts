@@ -4,7 +4,7 @@ import type { AuthSnapshot } from '../../auth/AuthSnapshot'
 import { getJson } from './client'
 import { isRealMode } from './mode'
 
-// Onboarded-stores endpoint (slice 14b, D70). Shaped EXACTLY to the real contract
+// Onboarded-stores endpoint. Shaped EXACTLY to the real contract
 // (services/dis-ui-server/.../schemas/stores.py:OnboardedStore), served as a bare array at
 // GET /api/v1/stores-onboarded, tenant-scoped (in-query predicate, identity_mirror RLS-off).
 // Mode-aware (T10): real mode calls the live endpoint; fixture mode (default) returns the
@@ -17,7 +17,7 @@ export type StoreTaxTreatment = 'inclusive' | 'exclusive'
 export type OnboardedStore = {
   store_id: string // internal UUID, lowercase string (opaque to the UI)
   name: string
-  store_code: string | null // nullable at source (D55), served as-is
+  store_code: string | null // nullable at source, served as-is
   status: StoreStatus
   country: string
   timezone: string

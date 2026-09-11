@@ -29,11 +29,6 @@
 # Exit codes:
 #   0  — all calls returned the expected status.
 #   1  — at least one call mismatched, or pre-flight bailed.
-#
-# History:
-#   - Initial: Steps 3.3, 5.1, 5.2 endpoints (tenants, *_users, lookups).
-#   - Step 6.1: added 4 RBAC endpoints (roles, role-permissions sub-resource,
-#     permissions catalogue, permission-matrix).
 
 set -uo pipefail
 # Deliberately NOT `set -e`: individual curl calls are allowed to return
@@ -311,7 +306,7 @@ curl -s -H "Authorization: Bearer $(cat "$P1_JWT")" \
     "${API}/tenant-users?limit=200" -o "$setup_tenant_users"
 curl -s -H "Authorization: Bearer $(cat "$P1_JWT")" \
     "${API}/platform-users?limit=10" -o "$setup_platform_users"
-# Step 6.1: also fetch roles list to discover a sample role_id for E3.
+# Also fetch roles list to discover a sample role_id for E3.
 # Pick a TENANT-audience role (Owner) so both PLATFORM and TENANT callers
 # can reference it; PLATFORM-audience roles would 404 for TENANT callers.
 curl -s -H "Authorization: Bearer $(cat "$P1_JWT")" \
@@ -331,7 +326,7 @@ T2_USER_ID=$(jq -r --arg e "$TENANT_EMAIL_2" \
     < "$setup_tenant_users" | head -1)
 ANY_PLATFORM_USER_ID=$(jq -r '.items[0].id' < "$setup_platform_users")
 
-# Step 5.3: discover an HQ-level org-node per tenant for the children endpoint.
+# Discover an HQ-level org-node per tenant for the children endpoint.
 # We fetch each tenant's org-tree with P1 (PLATFORM sees all under D-29) and
 # pick .tree[0].id — the first top-level node. node_type doesn't matter for
 # status-code coverage; we just need a real node id rooted in each tenant so
@@ -353,7 +348,7 @@ if [[ -z "$T2_HQ_NODE_ID" || "$T2_HQ_NODE_ID" == "null" ]]; then
 ${T2_TENANT_ID} — seed first"
 fi
 
-# Step 6.1: discover role IDs for both audiences.
+# Discover role IDs for both audiences.
 # OWNER is a TENANT-audience role (visible to all callers).
 # SUPER_ADMIN is a PLATFORM-audience role (visible only to PLATFORM callers;
 #   TENANT callers requesting it MUST 404 per RP3 invariant).
@@ -412,7 +407,7 @@ fi
 #     OTHER_USER_ID   = T1_USER_ID
 #     Same expectations as T1 with the tenant pair swapped.
 #
-# RBAC AUDIENCE-FILTER (Step 6.1):
+# RBAC AUDIENCE-FILTER:
 #   /roles, /permission-matrix, and /roles/{id}/permissions apply an
 #   APP-LAYER audience filter when the caller is TENANT — only roles
 #   with audience='TENANT' are visible. PLATFORM callers see both
@@ -428,7 +423,7 @@ req "public__health"            200 ""        GET "${API}/health"
 req "public__ready"             200 ""        GET "${API}/ready"
 req "public__openapi"           200 ""        GET "${API}/openapi.json"
 req "noauth__tenants_401"       401 ""        GET "${API}/tenants"
-# Step 5.3 / 6.5 / 6.8.3 endpoints — one no-auth probe each.
+# org-tree / dashboard / role-assignments endpoints — one no-auth probe each.
 req "noauth__org_tree_401"      401 ""        GET "${API}/tenants/${T1_TENANT_ID}/org-tree"
 req "noauth__org_children_401"  401 ""        GET "${API}/tenants/${T1_TENANT_ID}/org-nodes/${T1_HQ_NODE_ID}/children"
 req "noauth__dashboard_fleet_401" 401 ""      GET "${API}/dashboard/fleet-stats"
@@ -439,7 +434,7 @@ req "noauth__role_assignments_401" 401 ""     GET "${API}/role-assignments"
 # Args: caller_label  jwt_path  caller_kind  own_tenant  own_user  other_tenant  other_user  own_hq  other_hq
 #   caller_kind: "PLATFORM" or "TENANT"
 #   own_hq / other_hq: HQ-level org-node id rooted in own_tenant / other_tenant
-#     respectively. Used by the /org-nodes/{node_id}/children cells (Step 5.3)
+#     respectively. Used by the /org-nodes/{node_id}/children cells
 #     where the router's node_exists check filters by both tenant_id AND
 #     node_id — pairing a node id with the wrong tenant produces 404
 #     regardless of session type.
@@ -457,7 +452,7 @@ run_matrix_for_caller() {
     req "${label}__lookups__unknown_list" 200 "$jwt" GET "${API}/lookups?lists=does_not_exist"
 
     # --- /tenants list + filters + stats ---
-    # NOTE: /tenants list accepts `sort` as of Step 6.4 — aggregate keys
+    # NOTE: /tenants list accepts `sort` — aggregate keys
     # (num_users_active_{asc,desc}, num_stores_{asc,desc}) plus the
     # original created_at/name/tier asc+desc.
     req "${label}__tenants__list"          200 "$jwt" GET "${API}/tenants"
@@ -518,7 +513,7 @@ run_matrix_for_caller() {
     fi
     req "${label}__tu__detail_unknown"      404 "$jwt" GET "${API}/tenant-users/${UNKNOWN_UUID}"
 
-    # --- /roles list (Step 6.1: multi-user-type with app-layer audience filter) ---
+    # --- /roles list (multi-user-type with app-layer audience filter) ---
     # E1: pre-grouped response {platform_roles, tenant_roles}. TENANT JWT
     # gets platform_roles.total=0; PLATFORM gets all 15 roles.
     req "${label}__roles__list"             200 "$jwt" GET "${API}/roles"
@@ -529,7 +524,7 @@ run_matrix_for_caller() {
     req "${label}__roles__pagination"       200 "$jwt" GET "${API}/roles?limit=5&offset=0"
     req "${label}__roles__invalid_sort"     400 "$jwt" GET "${API}/roles?sort=nope"
 
-    # --- /roles/{id}/permissions (Step 6.1: E3, parent-echo response shape) ---
+    # --- /roles/{id}/permissions (E3, parent-echo response shape) ---
     # E3: TENANT-audience role visible to all callers.
     req "${label}__role_perms__tenant_role" 200 "$jwt" GET "${API}/roles/${TENANT_ROLE_ID}/permissions"
     # E3: PLATFORM-audience role; TENANT caller MUST 404 (RP3 invariant —
@@ -541,7 +536,7 @@ run_matrix_for_caller() {
     fi
     req "${label}__role_perms__unknown"     404 "$jwt" GET "${API}/roles/${UNKNOWN_UUID}/permissions"
 
-    # --- /permissions catalogue (Step 6.1: E2, no audience filter) ---
+    # --- /permissions catalogue (E2, no audience filter) ---
     # Both PLATFORM and TENANT see the full catalogue (catalogue is
     # reference data; the matrix UI needs every row regardless of who
     # can be assigned them).
@@ -552,13 +547,13 @@ run_matrix_for_caller() {
     req "${label}__perms__pagination"       200 "$jwt" GET "${API}/permissions?limit=10&offset=0"
     req "${label}__perms__invalid_sort"     400 "$jwt" GET "${API}/permissions?sort=nope"
 
-    # --- /permission-matrix (Step 6.1: E6, render-ready grid) ---
+    # --- /permission-matrix (E6, render-ready grid) ---
     # E6: TENANT caller's response has fewer columns than PLATFORM (audience
     # filter on the roles[] array). Body assertion would verify col count
     # but smoke just confirms 200; full assertions are in pytest.
     req "${label}__matrix"                  200 "$jwt" GET "${API}/permission-matrix"
 
-# --- /module-access (Step 6.7: multi-user-type with RLS scoping) ---
+# --- /module-access (multi-user-type with RLS scoping) ---
     # /modules: 6 cards under PLATFORM, 6 cards collapsed under TENANT (all
     # total_active_trial_tenants=1, enabled_count is 0 or 1 per card).
     # /matrix: N rows under PLATFORM, exactly 1 row under TENANT (own only).
@@ -572,7 +567,7 @@ run_matrix_for_caller() {
     req "${label}__ma__matrix_search"          200 "$jwt" GET "${API}/module-access/matrix?q=buc"
     req "${label}__ma__matrix_invalid_sort"    400 "$jwt" GET "${API}/module-access/matrix?sort=nope"
 
-    # --- /tenants/{tenant_id}/org-tree (Step 5.3: multi-user-type with RLS) ---
+    # --- /tenants/{tenant_id}/org-tree (multi-user-type with RLS) ---
     # PLATFORM sees any tenant (D-29 OR on tenants_self_access); TENANT
     # gets 404 on cross-tenant (RLS hides the tenant row at resolution).
     # depth=99 trips Pydantic's le=MAX_DEPTH=6 (Query constraint at
@@ -587,7 +582,7 @@ run_matrix_for_caller() {
     req "${label}__org_tree__depth_2"       200 "$jwt" GET "${API}/tenants/${own_tenant}/org-tree?depth=2"
     req "${label}__org_tree__depth_99"      422 "$jwt" GET "${API}/tenants/${own_tenant}/org-tree?depth=99"
 
-    # --- /tenants/{tenant_id}/org-nodes/{node_id}/children (Step 5.3) ---
+    # --- /tenants/{tenant_id}/org-nodes/{node_id}/children ---
     # node_exists() filters WHERE tenant_id=:tenant_id AND id=:node_id at
     # src/admin_backend/repositories/org_nodes.py:236-244 — the tenant_id
     # filter is in the WHERE clause itself; RLS doesn't bypass it. So:
@@ -608,16 +603,16 @@ run_matrix_for_caller() {
     fi
     req "${label}__children__cross_node"    404 "$jwt" GET "${API}/tenants/${own_tenant}/org-nodes/${other_hq}/children"
 
-    # --- /dashboard/fleet-stats (Step 6.5: multi-user-type, RLS scopes) ---
+    # --- /dashboard/fleet-stats (multi-user-type, RLS scopes) ---
     # Status-code only. RLS persona projection (PLATFORM sees fleet totals;
     # TENANT sees own-tenant projection) is real but verified in pytest, not
     # here.
     req "${label}__dashboard__fleet_stats"  200 "$jwt" GET "${API}/dashboard/fleet-stats"
 
-    # --- /dashboard/governance-stats (Step 6.5) ---
+    # --- /dashboard/governance-stats ---
     req "${label}__dashboard__governance"   200 "$jwt" GET "${API}/dashboard/governance-stats"
 
-    # --- /role-assignments (Step 6.8.3: grouped envelope) ---
+    # --- /role-assignments (grouped envelope) ---
     # Multi-user-type with a security-load-bearing twist: TENANT JWTs cause
     # the platform-side query to be SHORT-CIRCUITED at the router (not RLS;
     # platform_user_role_assignments has no RLS) per locked decision 12 at

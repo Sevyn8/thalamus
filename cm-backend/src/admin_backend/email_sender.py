@@ -1,4 +1,4 @@
-"""Outbound email (SendGrid) — CM's first email integration (Slice 2d-send, D-41).
+"""Outbound email (SendGrid) — CM's first email integration.
 
 Raw httpx behind a thin sender + a runtime_checkable ``EmailSender`` Protocol, so
 the send-invitation action and its tests inject a fake, mirroring the

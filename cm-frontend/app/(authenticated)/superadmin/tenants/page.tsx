@@ -43,7 +43,7 @@ function TenantsPageInner() {
   const searchParams = useSearchParams();
   const snapshot = useAuthSnapshot();
 
-  // Phase 5g.1: tenant-list surface requires ADMIN.TENANTS.VIEW.GLOBAL.
+  // Tenant-list surface requires ADMIN.TENANTS.VIEW.GLOBAL.
   // TENANT-OWNER personas redirect to their dashboard rather than land
   // on a 403-fetching page (cleaner than a soft-403 message; their
   // dashboard already shows tenant-scoped stats).
@@ -76,12 +76,10 @@ function TenantsPageInner() {
   const [search, setSearch] = useState(urlSearch);
   const debouncedSearch = useDebouncedValue(search, 300);
 
-  // Phase 5f.W.2: eager /me/can-do pre-flight on the provision-tenant
-  // tuple. Cache populates on mount; the click handler reads from
-  // cache. Tuple is ADMIN.TENANTS.CONFIGURE.GLOBAL because v0 enum
-  // has CONFIGURE but not SUSPEND/PROVISION — Sanjeev queue tracks
-  // an ask for PermissionAction enum granularity. Anjali's grant
-  // set in mocks/handlers/me.ts includes this tuple → allowed:true.
+  // Eager /me/can-do pre-flight on the provision-tenant tuple. Cache
+  // populates on mount; the click handler reads from cache. Tuple is
+  // ADMIN.TENANTS.CONFIGURE.GLOBAL because the v0 enum has CONFIGURE
+  // but not SUSPEND/PROVISION.
   const canProvisionTenant = useCanDo(
     "ADMIN",
     "TENANTS",
@@ -89,7 +87,7 @@ function TenantsPageInner() {
     "GLOBAL",
   );
 
-  // Slice 6: the "+ Provision tenant" modal is retired in favour of the
+  // The "+ Provision tenant" modal is retired in favour of the
   // onboarding wizard. Same CONFIGURE.GLOBAL pre-check; on allow, route to
   // the new-tenant wizard entry rather than opening the modal.
   function onOnboardClick() {

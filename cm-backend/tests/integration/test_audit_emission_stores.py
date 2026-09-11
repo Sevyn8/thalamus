@@ -1,4 +1,4 @@
-"""Step 6.16.5 : audit emission for stores POST / PATCH / set-status.
+"""Audit emission for stores POST / PATCH / set-status.
 
 Per-endpoint success + failure coverage of the stores write surface.
 
@@ -358,7 +358,7 @@ async def _create_active_store(
     parent_id: UUID,
 ) -> UUID:
     """Create a store and return its id. Initial status is ACTIVE
-    (the DDL default in v0 per Step 6.17.3 LD8 / FN-AB-51).
+    (the DDL default per LD8 / FN-AB-51).
     """
     code = f"SS-{uuid.uuid4().hex[:6]}"
     resp = app_client.post(
@@ -749,7 +749,7 @@ async def test_sf_set_status_invalid_transition_emits_conflict(
     conflict = [r for r in rows if r["result_type"] == "CONFLICT"]
     assert len(conflict) == 1
     assert conflict[0]["action"] == "SET_STATUS"
-    # Step 6.16.7 LD8 : SET_STATUS label changed "Status change" -> "Set status".
+    # LD8 : SET_STATUS label is "Set status", not "Status change".
     assert conflict[0]["action_label"] == "Set status"
 
 

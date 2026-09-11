@@ -1,14 +1,14 @@
-"""Fixtures for the Slice 10 consumer integration tests.
+"""Fixtures for the consumer integration tests.
 
-These tests WRITE the DIS database and use the Pub/Sub + GCS emulators, so — the
-Slice 4/7 lesson — they must NOT skip silently when the stack is absent: a missing
+These tests WRITE the DIS database and use the Pub/Sub + GCS emulators, so
+they must NOT skip silently when the stack is absent: a missing
 env or unreachable emulator is a loud ERROR (``StackRequiredError``), never a skip.
 Everything runs against ``ithina_dis_db`` on 5433; Customer Master (5432) is never
 touched.
 
-Date robustness (M-D38/D64 gate finding, RESOLVED by migration 0009): the event
-tables are PLAIN for beta (D77's scope clause revised — partitioning returns at
-Slice 21 with automation), so any event date lands and the suite needs no
+Date robustness (resolved by migration 0009): the event
+tables are PLAIN for beta (partitioning is deferred until it can be automated),
+so any event date lands and the suite needs no
 partition provisioning. The former ``event_partitions`` fixture (which created
 the daily partitions the tests' dates needed) is retired with the partitions.
 
@@ -63,7 +63,7 @@ SALE_SOURCE_ID = "sc_pos_v1"
 CHANGE_SOURCE_ID = "sc_inv_v1"
 BAD_SUBTYPE_SOURCE_ID = "sc_pos_badsub_v1"
 CATALOGUE_SOURCE_ID = "sc_cat_v1"
-# A snapshot that maps NEITHER product_category NOR unit_cost (Slice 16j): both are
+# A snapshot that maps NEITHER product_category NOR unit_cost: both are
 # nullable now, so this still classifies COMPLETE and lands a hot row with both NULL.
 CATALOGUE_MINIMAL_SOURCE_ID = "sc_cat_min_v1"
 
@@ -75,7 +75,7 @@ _MAPPING_FILES = {
     CATALOGUE_MINIMAL_SOURCE_ID: "catalogue_snapshot_minimal_v1.json",
 }
 
-# The stored template_type per consumer-test source (Slice 14d): the consumer
+# The stored template_type per consumer-test source: the consumer
 # routes by this column. Backfill set the same values for the pre-existing rows.
 _TEMPLATE_TYPES = {
     SALE_SOURCE_ID: "sales",
@@ -85,7 +85,7 @@ _TEMPLATE_TYPES = {
     CATALOGUE_MINIMAL_SOURCE_ID: "snapshot",
 }
 
-# Pinned per-source template ids (Slice 14a grain): the rekeyed
+# Pinned per-source template ids: the rekeyed
 # uq_csm_seq_per_source conflict target includes template_id, so the upsert
 # only lands on the same row across runs when the id is deterministic. Used
 # only when the (tenant, source) carries no 'default' template yet — a DB that
@@ -109,7 +109,7 @@ def _require_env(name: str) -> str:
     value = os.environ.get(name)
     if not value:
         raise StackRequiredError(
-            f"{name} is not set — the Slice 10 consumer integration tests refuse to skip "
+            f"{name} is not set — these load-bearing integration tests refuse to skip "
             "silently. Bring up the stack (make run-local) and load .env."
         )
     return value
@@ -212,7 +212,7 @@ def consumer_mappings(admin_engine_session: Engine, seeded: None) -> Iterator[di
 
 @pytest.fixture
 async def engine(stack_env: dict[str, str], seeded: None) -> AsyncIterator[AsyncEngine]:
-    """The consumer's RLS engine (loop-scoped per test, the Slice 6 pattern)."""
+    """The consumer's RLS engine (loop-scoped per test)."""
     from dis_rls import create_rls_engine
 
     eng = create_rls_engine(stack_env["POSTGRES_URL"])
@@ -344,13 +344,13 @@ def seed_chunk(
 
     ``event_store_uuid`` overrides the ENVELOPE's store only (the bronze row
     keeps a mirror-valid store — bronze carries its own composite store FK):
-    the malformed-producer construction the canonical no-orphan FK (D39) is the
+    the malformed-producer construction the canonical no-orphan FK is the
     last line of defense against.
 
     ``template_id`` overrides the envelope's template (the unknown-template
     negative path, or a second-template chunk). When omitted, the source's real
-    ACTIVE 'default' template is resolved from the DB — since Slice 8a the
-    lookup is template-KEYED (D71), so the happy path must name the template
+    ACTIVE 'default' template is resolved from the DB — the
+    lookup is template-KEYED, so the happy path must name the template
     the ``consumer_mappings`` fixture actually seeded; a source with none (a
     negative-path tenant/source) gets a minted id, immaterial because such a
     chunk fails before or at the mapping load anyway.
@@ -415,13 +415,12 @@ def seed_chunk(
         tenant_id=tenant,
         store_id=event_store_uuid or store,
         source_id=source_id,
-        # Consumed since Slice 8a (D71): keys the active-mapping lookup —
-        # resolved/overridden above.
+        # Keys the active-mapping lookup — resolved/overridden above.
         template_id=template_id,
         bronze_ref=bronze_ref,
         gcs_uri=gcs_uri,
         # The envelope's ingest clock (the catalogue path's event-time gate + the
-        # Slice 50b change-stamp clock). Defaults to BASE_TS; a caller varies it to
+        # per-attribute change-stamp clock). Defaults to BASE_TS; a caller varies it to
         # drive ordered/out-of-order ingestions. The object-path event_ts stays
         # BASE_TS above, so cross_check_path's date segment is unaffected.
         received_ts=received_ts or BASE_TS,
@@ -440,7 +439,7 @@ def seed_hot_row(
     sku_variant: str | None = None,
     sku_lot_batch: str | None = None,
 ) -> UUID:
-    """Pre-seed the hot row a sale chunk merges into (D63: catalogue-before-sales)."""
+    """Pre-seed the hot row a sale chunk merges into."""
     from dis_testing.fixtures import PRIMARY_STORE, PRIMARY_TENANT
 
     row_id = new_uuid7()
@@ -484,13 +483,13 @@ def change_csv(rows: list[tuple[str, str, str]]) -> bytes:
 
 
 def catalogue_csv(rows: list[tuple[str, str, str, str, str, str]]) -> bytes:
-    """code, name, category, price, cost, qty (the snapshot/catalogue shape, Slice 14d)."""
+    """code, name, category, price, cost, qty (the snapshot/catalogue shape)."""
     body = "\n".join(",".join(row) for row in rows)
     return f"code,name,category,price,cost,qty\n{body}\n".encode()
 
 
 def catalogue_minimal_csv(rows: list[tuple[str, str, str, str]]) -> bytes:
-    """code, name, price, qty — the Slice 16j minimal snapshot: NO category, NO cost,
+    """code, name, price, qty — the minimal snapshot: NO category, NO cost,
     so the landed hot row carries product_category and unit_cost as NULL."""
     body = "\n".join(",".join(row) for row in rows)
     return f"code,name,price,qty\n{body}\n".encode()

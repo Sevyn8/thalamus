@@ -1,4 +1,4 @@
-"""AUTH0-mode (RS256/JWKS) verifier: the real Auth0 path (13b / D25).
+"""AUTH0-mode (RS256/JWKS) verifier: the real Auth0 path.
 
 Sibling to test_auth.py (which pins the STUB HS256 path). These drive the app
 with DIS_AUTH_MODE=AUTH0 and a local test RSA keypair (the verifier's JWKS
@@ -59,33 +59,25 @@ def test_valid_ops_token_passes_require_ops(
 # -- token / signature refusals (reason=invalid or expired) ---------------------
 
 
-def test_expired_token_rejected(
-    auth0_client: TestClient, auth0_mint_token: Callable[..., str]
-) -> None:
+def test_expired_token_rejected(auth0_client: TestClient, auth0_mint_token: Callable[..., str]) -> None:
     token = auth0_mint_token(expires_in=-60)
     response = auth0_client.get("/api/v1/probe/tenant", headers=_bearer(token))
     assert response.status_code == 401
 
 
-def test_wrong_issuer_rejected(
-    auth0_client: TestClient, auth0_mint_token: Callable[..., str]
-) -> None:
+def test_wrong_issuer_rejected(auth0_client: TestClient, auth0_mint_token: Callable[..., str]) -> None:
     token = auth0_mint_token(issuer="https://evil.example.com/")
     response = auth0_client.get("/api/v1/probe/tenant", headers=_bearer(token))
     assert response.status_code == 401
 
 
-def test_wrong_audience_rejected(
-    auth0_client: TestClient, auth0_mint_token: Callable[..., str]
-) -> None:
+def test_wrong_audience_rejected(auth0_client: TestClient, auth0_mint_token: Callable[..., str]) -> None:
     token = auth0_mint_token(audience="https://api.sevyn8.com")  # CM's audience, not DIS's
     response = auth0_client.get("/api/v1/probe/tenant", headers=_bearer(token))
     assert response.status_code == 401
 
 
-def test_bad_signature_rejected(
-    auth0_client: TestClient, auth0_mint_token: Callable[..., str]
-) -> None:
+def test_bad_signature_rejected(auth0_client: TestClient, auth0_mint_token: Callable[..., str]) -> None:
     # Sign with a foreign key; the verifier holds the fixture's public key.
     from cryptography.hazmat.primitives.asymmetric import rsa
 

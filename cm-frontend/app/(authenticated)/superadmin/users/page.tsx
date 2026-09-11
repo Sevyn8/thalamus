@@ -37,8 +37,8 @@ function UsersPageInner() {
   const searchParams = useSearchParams();
   const snapshot = useAuthSnapshot();
 
-  // Phase 5g.1: per-tab visibility on backend grants. Platform tab
-  // requires ADMIN.USERS.VIEW.GLOBAL (cross-tenant); Tenant tab needs
+  // Per-tab visibility on backend grants. Platform tab requires
+  // ADMIN.USERS.VIEW.GLOBAL (cross-tenant); Tenant tab needs
   // ADMIN.USERS.VIEW.TENANT (own-tenant) or GLOBAL (cascade). Each
   // gate fail-closes during boot, then resolves once the snapshot
   // populates. TENANT-OWNER sees Tenant tab only; PLATFORM sees both.
@@ -282,10 +282,10 @@ function UsersPageInner() {
       <CreateTenantUserModal
         open={createOpen}
         onOpenChange={setCreateOpen}
-        // Phase 5g.1.5: TENANT-OWNER persona has exactly one tenant —
-        // auto-bind from JWT claims so the modal hides the picker.
-        // PLATFORM falls back to the URL tenant filter (if set) or
-        // shows the picker (preselected=undefined).
+        // TENANT-OWNER persona has exactly one tenant — auto-bind from
+        // JWT claims so the modal hides the picker. PLATFORM falls back
+        // to the URL tenant filter (if set) or shows the picker
+        // (preselected=undefined).
         preselectedTenantId={
           snapshot?.user?.userType === "TENANT"
             ? snapshot.user.tenantId ?? undefined

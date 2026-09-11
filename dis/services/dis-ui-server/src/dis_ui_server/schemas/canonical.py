@@ -25,7 +25,7 @@ from pydantic import BaseModel
 
 class StoreSkuPositionRow(BaseModel):
     """One canonical position — the FULL live column set of store_sku_current_position EXCEPT
-    tenant_id (scope) and ingest_metadata (operator-excluded), plus store_name (Slice 52a).
+    tenant_id (scope) and ingest_metadata (operator-excluded), plus store_name.
 
     Additive over the original 11-field shape: every prior key keeps its name, type, and rendered
     value. NUMERIC columns are carried as money-safe strings (exact scale preserved; no binary-float
@@ -38,7 +38,7 @@ class StoreSkuPositionRow(BaseModel):
 
     id: str
     store_id: str  # Store (the store UUID)
-    store_name: str | None  # identity_mirror.stores.name; null when the store is unmirrored (Slice 52a)
+    store_name: str | None  # identity_mirror.stores.name; null when the store is unmirrored
     sku_id: str  # SKU
     sku_variant: str | None
     sku_lot_batch: str | None

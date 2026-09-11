@@ -1,43 +1,44 @@
-"""The atomic dual-write (D30): hot upsert + event insert, one transaction per batch.
+"""The atomic dual-write: hot upsert + event insert, one transaction per batch.
 
-**Transaction grain** (architecture 4.6, Slice 10 plan §3): the rollback unit is a
-per-tenant batch of ≤ ``BATCH_SIZE_ROW_PAIRS`` row-pairs. One chunk carries one
-tenant, so batches are chunk-sequential; beta chunks usually fit one transaction.
-Each batch opens ONE ``rls_session`` transaction (``SET LOCAL app.tenant_id``
-covers both writes, hard rules 1/12) and performs, in order:
+**Transaction grain**: the rollback unit is a per-tenant batch of
+≤ ``BATCH_SIZE_ROW_PAIRS`` row-pairs. One chunk carries one tenant, so batches
+are chunk-sequential; beta chunks usually fit one transaction. Each batch opens
+ONE ``rls_session`` transaction (``SET LOCAL app.tenant_id`` covers both writes)
+and performs, in order:
 
-1. **Duplicate detect** (a read; as of migration 0019 it IS a write gate for one
-   verdict — see step 2): the latest prior event row per dedup key among the batch's
-   keys, via the D33 window's ``DISTINCT ON`` form over ``ix_*_dedup_key``.
+1. **Duplicate detect** (a read that IS a write gate for one verdict — see
+   step 2): the latest prior event row per dedup key among the batch's keys,
+   via a ``DISTINCT ON`` window over ``ix_*_dedup_key``.
    Deliberately all-partition (a prior event may sit in any partition — correction
    lookback); the bounded per-partition index lookup is the accepted beta posture.
    Within-batch repeats of one dedup key are not flagged — see the limit note below.
-2. **Event insert** (append-only per D33/hard rule 7, with ONE uniqueness constraint
-   as of 0019): executemany of the model's full column set (``last_updated_at`` left
+2. **Event insert** (append-only, with ONE uniqueness constraint):
+   executemany of the model's full column set (``last_updated_at`` left
    to its DB default), preceded by ``_partition_redeliveries`` and carrying
    ``ON CONFLICT (dedup key, row_hash) DO NOTHING``.
 
-   WHY: without this, a nacked chunk that later succeeded appended a COMPLETE
-   duplicate set, and the retry policy repeated that up to 100 times. Observed live:
-   328 rows became 1640 unattended. The duplicate was already being DETECTED here and
-   then inserted anyway — step 1 computed the verdict and step 2 ignored it.
+   WHY: without this suppression, a nacked chunk that later succeeds appends a
+   COMPLETE duplicate set, and the retry policy repeats that up to 100 times
+   (observed live: 328 rows became 1640 unattended). Step 1 computes the
+   verdict; step 2 must act on it.
 
-   It does not repeal D33. Only a ``DUPLICATE_NOOP`` (identical payload hash under the
-   same dedup key) is suppressed; a ``DUPLICATE_OVERWRITTEN`` is a correction and is
-   still appended for read-time latest-wins to resolve. The filter is the primary
-   mechanism (auditable, index-independent); the unique index is the backstop that
-   holds under concurrency the read-then-write cannot cover.
+   The event log stays append-only. Only a ``DUPLICATE_NOOP`` (identical payload
+   hash under the same dedup key) is suppressed; a ``DUPLICATE_OVERWRITTEN`` is a
+   correction and is still appended for read-time latest-wins to resolve. The
+   filter is the primary mechanism (auditable, index-independent); the unique
+   index is the backstop that holds under concurrency the read-then-write
+   cannot cover.
 
-   TWO LIMITS, both real. (a) Within-batch repeats of one dedup key are still not
+   TWO LIMITS, both real. (a) Within-batch repeats of one dedup key are not
    flagged, so a single source FILE containing the same line twice inserts twice
-   through the filter — the unique index now catches that, silently, via DO NOTHING.
+   through the filter — the unique index catches that, silently, via DO NOTHING.
    (b) ``row_hash`` covers the mapping-produced payload only, so a change to
    ``tax_treatment`` (denormalized from the store) or ``mapping_version_id`` alone does
    not make a redelivery distinct.
-3. **Hot merge** (column-scoped + event-time-wins, D63/D64): per natural-key
+3. **Hot merge** (column-scoped + event-time-wins): per natural-key
    group of THIS batch — groups SORTED by the COALESCE'd natural-key tuple
    (the deterministic total order that removes the deadlock hazard between
-   overlapping batches on autoscaled instances, Part 3 §4) — dispatched by
+   overlapping batches on autoscaled instances) — dispatched by
    projection type (the TWO-PATH comment below; PG validates NOT NULL on the
    INSERT candidate BEFORE arbitration, so event projections cannot ride an
    ON CONFLICT statement at all):
@@ -45,35 +46,30 @@ covers both writes, hard rules 1/12) and performs, in order:
      ``UPDATE … WHERE <COALESCE-key> AND (last_source_event_at IS NULL OR
      :incoming >= last_source_event_at)``; rowcount 0 → one READ-ONLY
      existence check → present = older-event no-op, absent = LOUD raise
-     (D63: catalogue-before-sales). No INSERT exists on this path.
-   - CATALOGUE-COMPLETE projections (future onboarding path): the proven
+     (catalogue-before-sales). No INSERT exists on this path.
+   - CATALOGUE-COMPLETE projections (future onboarding path): the
      atomic ``INSERT … ON CONFLICT (COALESCE list) DO UPDATE … WHERE``;
-     arbiter ``uq_sscp_natural_key`` (M-HOTKEY/0004).
-   Concurrency-safe under N instances (D58 split) on BOTH paths: the row lock
+     arbiter ``uq_sscp_natural_key``.
+   Concurrency-safe under N instances on BOTH paths: the row lock
    + EvalPlanQual re-evaluation of the WHERE against the locked current row
    means an older event never overwrites a newer one in either arrival order;
    ``>=`` so an exact-tie redelivery rewrites identical values (idempotent in
    effect). A missing event_date partition errors loudly (no DEFAULT
-   partition exists — introspected); failures roll the batch back,
-   either-or-neither.
+   partition exists); failures roll the batch back, either-or-neither.
 
 Either-or-neither holds at the batch grain: a mid-batch failure rolls back that
 batch's hot AND event writes; the message is nacked; earlier committed batches
-stay and redelivery converges — the event insert now SUPPRESSES the repeat (0019)
-rather than appending it, and the ``>=`` upsert re-applies.
+stay and redelivery converges — the event insert SUPPRESSES the repeat
+rather than appending it, and the ``>=`` upsert re-applies. Transactional
+idempotency is not the mechanism — a unique index plus an in-transaction
+filter is.
 
-The previous sentence here read "event re-appends dedup at read", which assumed a
-read-time collapse that DOES NOT EXIST: no consumer-facing ``ROW_NUMBER``/``DISTINCT
-ON`` dedup view or query was ever built, so re-appended rows were simply counted twice
-by every reader. That is why redelivery showed up as a growing row count rather than as
-duplicates something later resolved. Transactional idempotency is still not the
-mechanism (D30) — a unique index plus an in-transaction filter is.
-
-**Consumers must still not read these tables raw.** 0019 makes a REDELIVERY
-non-duplicating; it deliberately leaves a CORRECTION as two rows, because that is what
-D33 asks for. Any aggregate over these tables — ``SUM(quantity) GROUP BY date`` being
-the first real case — needs the latest-wins collapse applied, either by a platform-owned
-view or by the reader itself.
+**Consumers must still not read these tables raw.** Redelivery suppression makes
+a REDELIVERY non-duplicating; a CORRECTION is deliberately left as two rows in
+the append-only log. Any aggregate over these tables — ``SUM(quantity) GROUP BY
+date`` being the first real case — needs the latest-wins collapse applied,
+either by a platform-owned view or by the reader itself (synapse's read-time
+collapse resolver is one such reader-side implementation).
 """
 
 from __future__ import annotations
@@ -110,7 +106,7 @@ _EVENT_TABLES: dict[type[BaseModel], tuple[str, str]] = {
 }
 
 # Columns whose bind values are pre-serialized JSON text (CAST(:p AS JSONB)).
-# attribute_staleness_map joins for the catalogue write (Slice 14d); inert for the
+# attribute_staleness_map is used by the catalogue write; inert for the
 # event paths, which never place it in their projection.
 _JSONB_COLUMNS = frozenset(
     {"ingest_metadata", "value_before", "value_after", "change_context", "attribute_staleness_map"}
@@ -120,7 +116,7 @@ _JSONB_COLUMNS = frozenset(
 # catalogue projection must exclude them or they would appear twice in the INSERT.
 _HOT_NATURAL_KEY_COLS = frozenset({"sku_id", "sku_variant", "sku_lot_batch"})
 
-# Per-attribute change-signal stamps (Slice 50b, D113): each maps a watched hot
+# Per-attribute change-signal stamps: each maps a watched hot
 # VALUE column to its *_changed_at stamp column. The stamp advances only when its
 # value column actually changes on the catalogue upsert (IS DISTINCT FROM, inside
 # the event-time gate). Additive — a future watched attribute is ONE more entry.
@@ -137,7 +133,7 @@ DuplicateKind = Literal["DUPLICATE_NOOP", "DUPLICATE_OVERWRITTEN"]
 
 @dataclass(frozen=True)
 class DuplicateHit:
-    """One dedup-key hit, for the D42 audit detail (never a write gate)."""
+    """One dedup-key hit: audit detail, and the NOOP verdict gates the event insert."""
 
     source_event_id: str
     prior_trace_id: UUID
@@ -155,10 +151,10 @@ class WriteReport:
     batches: int
     duplicates: tuple[DuplicateHit, ...]
     written_to_table: str
-    # Older-event no-ops on the incomplete path (D64 event-time-wins declines),
+    # Older-event no-ops on the incomplete path (event-time-wins declines),
     # surfaced for the CANONICAL_WRITTEN audit detail.
     hot_noops: int = 0
-    # Byte-identical redeliveries suppressed before the insert (migration 0019).
+    # Byte-identical redeliveries suppressed before the insert.
     # Distinct from hot_noops: that is the hot merge declining an OLDER event, this is
     # the event insert refusing a REPEAT of one. Non-zero here means a retry happened.
     event_rows_suppressed: int = 0
@@ -168,12 +164,12 @@ def _event_insert_sql(model: type[BaseModel], table: str) -> tuple[str, tuple[st
     """INSERT SQL over the model's full column set (DB-defaulted columns omitted).
 
     Columns derive from ``model_fields`` (hand-aligned to live, enforced by the
-    Slice 3 reconciliation test) so a schema/model change cannot silently leave a
-    column behind here — which is how ``row_hash`` joins with no change needed here.
+    schema/model reconciliation test) so a schema/model change cannot silently leave a
+    column behind here.
 
-    ON CONFLICT DO NOTHING (migration 0019) arbitrates on
+    ON CONFLICT DO NOTHING arbitrates on
     ``uq_*_redelivery (tenant_id, store_id, source_id, source_event_id, row_hash)``.
-    DO NOTHING, never DO UPDATE (D3): a sale line is immutable, so a second arrival of
+    DO NOTHING, never DO UPDATE: a sale line is immutable, so a second arrival of
     the identical payload is a duplicate and never a correction. This is the BACKSTOP —
     ``_partition_redeliveries`` below filters the common case out before it gets here so
     the suppression is auditable rather than silent. The conflict target is named
@@ -198,12 +194,10 @@ def _partition_redeliveries(
 ) -> tuple[list[EventRow], list[DuplicateHit]]:
     """Split a batch into (rows to insert, suppressed redeliveries).
 
-    THE ACTUAL FIX for the observed bug, and it needs no new query: ``_detect_duplicates``
-    already ran in this transaction and already compared each row's payload hash against
-    the latest prior row under the same dedup key. A ``DUPLICATE_NOOP`` hit means "an
-    identical row is already committed" — which is precisely a redelivery. Until now that
-    verdict was computed, audited, and then discarded while the insert proceeded
-    unconditionally.
+    Needs no new query: ``_detect_duplicates`` already ran in this transaction and
+    compared each row's payload hash against the latest prior row under the same
+    dedup key. A ``DUPLICATE_NOOP`` hit means "an identical row is already
+    committed" — which is precisely a redelivery.
 
     Suppressing here rather than relying solely on the unique index buys two things: the
     row never reaches conflict arbitration (so ``rows_succeeded`` and the audit record can
@@ -211,7 +205,7 @@ def _partition_redeliveries(
     behaviour is identical whether or not the index has been applied yet.
 
     ``DUPLICATE_OVERWRITTEN`` hits are NOT suppressed — a different payload under the same
-    dedup key is a correction, and D33 wants it appended.
+    dedup key is a correction, and the append-only event log retains it.
     """
     suppressed_keys = {hit.source_event_id: hit for hit in hits if hit.kind == "DUPLICATE_NOOP"}
     to_insert: list[EventRow] = []
@@ -277,12 +271,13 @@ async def _detect_duplicates(
     table: str,
     event_ts_column: str,
 ) -> list[DuplicateHit]:
-    """The latest prior row per dedup key (the D33 window, DISTINCT ON form).
+    """The latest prior row per dedup key (DISTINCT ON form of the read-time window).
 
     Runs BEFORE this batch's insert, inside the same transaction. Compares the
     canonical payload (the mapping's target columns) by the shared row hash:
     equal → DUPLICATE_NOOP (typical redelivery), different → DUPLICATE_OVERWRITTEN
-    (a correction). Audit detail only — the insert below is unconditional.
+    (a correction). The hits feed the duplicate audit detail AND
+    ``_partition_redeliveries``' NOOP suppression of the insert.
     """
     payload_columns = list(loaded.source.target_columns)
     select_list = ", ".join(["source_event_id", "trace_id", *payload_columns])
@@ -325,7 +320,7 @@ async def _detect_duplicates(
     return hits
 
 
-# THE COMPLETENESS-GATED TWO-PATH HOT MERGE (REVISED D63, operator-ratified):
+# THE COMPLETENESS-GATED TWO-PATH HOT MERGE:
 # hot-row CREATION is gated by candidate COMPLETENESS, resolved PER MAPPING at
 # load (``LoadedMapping.hot_complete``; the partition derived from the live
 # NOT NULL + CHECK set lives in pipeline/mapping.py) — not by event type and
@@ -333,24 +328,24 @@ async def _detect_duplicates(
 # conflict arbitration (verified live, role-independent), which is why an
 # incomplete mapping can never ride an INSERT ... ON CONFLICT statement.
 #
-# - COMPLETE mapping (no production mapping today; the future catalogue
-#   slice): the proven single INSERT ... ON CONFLICT (COALESCE list)
-#   DO UPDATE ... WHERE statement (M-HOTKEY/0004; 3a/3b proven). Creates or
+# - COMPLETE mapping (no production mapping today; the catalogue onboarding
+#   path): the single INSERT ... ON CONFLICT (COALESCE list)
+#   DO UPDATE ... WHERE statement. Creates or
 #   updates; the ONLY path that inserts.
 #
 # - INCOMPLETE mapping (every current production path): ONE conditional UPDATE
-#   over the COALESCE'd key with the D64 event-time-wins predicate. rowcount=0
+#   over the COALESCE'd key with the event-time-wins predicate. rowcount=0
 #   → one READ-ONLY existence check → present = older-event no-op (counted,
-#   audited); absent = a D63 MISS. The miss does NOT abort the batch
+#   audited); absent = a hot-position MISS. The miss does NOT abort the batch
 #   transaction: the event rows ALREADY appended in this transaction COMMIT
-#   (history retained — revised D63), and write_chunk raises LOUDLY after the
-#   commit so the chunk nacks toward quarantine (Slice 11). NO INSERT exists
+#   (history retained), and write_chunk raises LOUDLY after the
+#   commit so the chunk nacks toward quarantine. NO INSERT exists
 #   on this path under any concurrency — the create-race cannot occur. The
 #   UPDATE's row lock + EvalPlanQual re-evaluation of its WHERE against the
 #   locked current row gives the same older-cannot-overwrite guarantee as the
 #   DO UPDATE arm (proven by the two-writer tests on this path).
 #
-# Both paths run inside the per-batch rls_session transaction (D30) and in
+# Both paths run inside the per-batch rls_session transaction and in
 # the deterministic sorted-key order (deadlock avoidance).
 _HOT_CONFLICT_TARGET = "(tenant_id, store_id, sku_id, COALESCE(sku_variant, ''), COALESCE(sku_lot_batch, ''))"
 
@@ -368,7 +363,7 @@ def hot_sort_key(group: _HotGroup) -> tuple[str, str, str]:
 
     A total order shared by every instance — overlapping batches then acquire
     hot-row locks in the same sequence, which removes the deadlock hazard
-    (proven: opposite-order interleave deadlocks, total-order commits; Part 3 §4).
+    (proven: opposite-order interleave deadlocks, total-order commits).
     """
     sku_id, sku_variant, sku_lot_batch = group.natural_key
     return (sku_id, sku_variant or "", sku_lot_batch or "")
@@ -386,7 +381,7 @@ def _hot_params(
 
     ``tax_treatment`` is the EVENT-path fixed injection (consumer-injected there).
     On the catalogue path it is enrichment-produced and arrives via ``projected``
-    (slice-5b, D98) — ``**projected`` overrides this default — so the catalogue caller
+    — ``**projected`` overrides this default — so the catalogue caller
     passes nothing; the event path still passes it explicitly."""
     sku_id, sku_variant, sku_lot_batch = group.natural_key
     projected = dict(group.projected)
@@ -404,8 +399,8 @@ def _hot_params(
         "dis_channel": dis_channel,
         "ingest_metadata": jsonb_param(
             {
-                # Write-shape aligned to the live hot ingest_metadata comment's key
-                # vocabulary (execute-time item 5): the hot table has no first-class
+                # Keys follow the live hot ingest_metadata column comment's
+                # vocabulary: the hot table has no first-class
                 # source_event_id column, so lineage carries it here.
                 "source_id": event.source_id,
                 "source_event_id": group.source_event_id,
@@ -428,7 +423,7 @@ async def _update_hot_incomplete_path(
 
     rowcount >= 1 → ``written`` (the event-time-wins update applied).
     rowcount = 0 → ONE READ-ONLY existence check: present → ``noop_older`` (an
-    older event lost to a newer row, D64); absent → ``missing`` (a D63 miss —
+    older event lost to a newer row); absent → ``missing`` (a hot-position miss —
     the CALLER commits the batch first so the event rows are retained, then
     raises loudly). This function performs no write after rowcount = 0.
     """
@@ -467,7 +462,7 @@ async def _update_hot_incomplete_path(
 
 def _stamp_set_clause(value_col: str, stamp_col: str) -> str:
     """The conditional (change-gated) stamp assignment for the catalogue DO UPDATE
-    arm (Slice 50b, D113).
+    arm.
 
     Advances ``stamp_col`` to ``EXCLUDED.last_source_event_at`` (the catalogue
     path's ``received_ts`` — the SAME clock the event-time gate compares on, so no
@@ -491,14 +486,14 @@ def _stamp_set_clause(value_col: str, stamp_col: str) -> str:
 
 def _staleness_merge_clause() -> str:
     """The per-column MERGE assignment for ``attribute_staleness_map`` on the catalogue
-    DO UPDATE arm (Slice 50d).
+    DO UPDATE arm.
 
     Merges the freshly-built map (``EXCLUDED``, carrying the tracked columns THIS write
     set, each stamped to ``received_ts``) INTO the stored map with jsonb ``||`` — a
     shallow, right-wins concat. Stored keys the write did not carry are PRESERVED at their
-    prior timestamp; carried keys advance; never-written keys stay absent. This is the
-    core Slice 50d change from the old wholesale ``= EXCLUDED`` replace (which dropped any
-    key a later, narrower write omitted). ``COALESCE(…, '{}'::jsonb)`` guards the NULLABLE
+    prior timestamp; carried keys advance; never-written keys stay absent. A wholesale
+    ``= EXCLUDED`` replace would drop any key a later, narrower write omitted.
+    ``COALESCE(…, '{}'::jsonb)`` guards the NULLABLE
     stored column so ``NULL || X`` cannot wipe the map. Values are scalar ISO strings, so
     the shallow merge is exactly right. It reads the OLD row value
     (``store_sku_current_position.attribute_staleness_map``) and ``EXCLUDED``; Postgres
@@ -527,7 +522,7 @@ async def _insert_on_conflict_hot_complete_path(
     real); the candidate satisfies the hot NOT NULL + CHECK shape by the
     load-time classification (``classify_hot_completeness``).
 
-    Slice 50b (D113): the per-attribute change stamps are maintained here. The
+    The per-attribute change stamps are maintained here. The
     watched value columns present in this write get their ``*_changed_at`` stamp
     (1) set to the ingest time on first INSERT and (2) advanced on the DO UPDATE
     arm only when the value actually changes (``_stamp_set_clause``). The value
@@ -541,7 +536,7 @@ async def _insert_on_conflict_hot_complete_path(
         for value_col, stamp_col in _CHANGE_STAMP_COLUMNS.items()
         if value_col in projected
     ]
-    # Slice 50d: attribute_staleness_map is present only on the catalogue path (built by
+    # Attribute_staleness_map is present only on the catalogue path (built by
     # _catalogue_groups). When present it is MERGED per-column on the DO UPDATE arm
     # (below), not wholesale-replaced; the INSERT arm still builds it plainly via
     # projected.keys(). Absent on the event complete path → the merge is a no-op there.
@@ -554,7 +549,7 @@ async def _insert_on_conflict_hot_complete_path(
         "sku_variant",
         "sku_lot_batch",
         *projected.keys(),
-        # tax_treatment exactly once (slice-5b): on the catalogue path it is
+        # tax_treatment exactly once: on the catalogue path it is
         # enrichment-produced and ALREADY in projected; on the (event-driven) complete
         # path it is the fixed store-injected param and NOT in projected. Listing it
         # unconditionally alongside projected would duplicate the column.
@@ -586,7 +581,7 @@ async def _insert_on_conflict_hot_complete_path(
     # lineage column updates uniformly from EXCLUDED; the change stamps (NOT in
     # update_columns) then advance conditionally via _stamp_set_clause.
     set_clauses = [f"{c} = EXCLUDED.{c}" for c in update_columns]
-    # Slice 50d: merge the staleness map per-column (preserve omitted keys' prior
+    # Merge the staleness map per-column (preserve omitted keys' prior
     # timestamps) instead of the old wholesale "= EXCLUDED". Catalogue path only.
     if has_staleness:
         set_clauses.append(_staleness_merge_clause())
@@ -609,7 +604,7 @@ async def _insert_on_conflict_hot_complete_path(
         ),
         exec_params,
     )
-    # Slice 50f (Fix 2): distinguish an effective write from a gate-rejected no-op, mirroring the
+    # Distinguish an effective write from a gate-rejected no-op, mirroring the
     # incomplete path's outcome. rowcount > 0 → the INSERT landed or the DO UPDATE applied
     # (``written``); rowcount == 0 → a conflict occurred AND the event-time-wins WHERE evaluated
     # false, i.e. an older snapshot was declined (``noop_older``). ``missing`` cannot occur on this
@@ -626,7 +621,7 @@ async def _upsert_hot(
     dis_channel: str,
     tax_treatment: str | None,
 ) -> HotMergeOutcome:
-    """One column-scoped hot merge (D63 projection, D64 event-time-wins),
+    """One column-scoped hot merge,
     dispatched by the mapping's load-time completeness classification
     (REVISED D63 — the two-path comment above)."""
     params, projected = _hot_params(
@@ -638,7 +633,7 @@ async def _upsert_hot(
 
 
 # ---------------------------------------------------------------------------
-# Catalogue (snapshot) write — the SIBLING of write_chunk (Slice 14d). It REUSES
+# Catalogue (snapshot) write — the SIBLING of write_chunk. It REUSES
 # the proven complete-path hot upsert + event-time-wins arbiter and _hot_params,
 # but writes NO event table, runs NO dedup, and does NO event projection. The
 # event path above is unchanged. Bootstrap-only: it CREATEs the hot row; collision
@@ -647,11 +642,11 @@ async def _upsert_hot(
 
 
 def _staleness_stamp_keys(projected: dict[str, Any], staleness_cols: frozenset[str]) -> list[str]:
-    """The tracked columns THIS catalogue write stamps in ``attribute_staleness_map`` (Slice 50f).
+    """The tracked columns THIS catalogue write stamps in ``attribute_staleness_map``.
 
     A tracked column is stamped only when it carries a NON-NULL VALUE in this write — staleness
-    records when a column was last confirmed WITH DATA, and a blank confirms nothing (Slice 50f
-    Fix 1). This replaces the old projected-MEMBERSHIP trigger, under which the identity mapping
+    records when a column was last confirmed WITH DATA, and a blank confirms nothing.
+    This replaces the old projected-MEMBERSHIP trigger, under which the identity mapping
     (always projecting all columns) stamped a blank/NULL tracked column with a fresh timestamp — a
     false freshness signal. A blank/NULL/absent tracked column is NOT stamped; via the per-column
     merge (``_staleness_merge_clause``) any prior timestamp is preserved and a never-valued column
@@ -671,12 +666,12 @@ def _catalogue_groups(event: IngressReadyEvent, result: MappingResult) -> list[_
 
     ``projected`` is the mapping-produced hot columns this row sets MINUS the
     natural key (carried as fixed params), plus ``attribute_staleness_map`` stamped
-    for the contendable attributes the row sets (Slice 14d) — value = the snapshot's
+    for the contendable attributes the row sets — value = the snapshot's
     event-time, which is the envelope ``received_ts`` (the only NOT-NULL-safe time;
     the catalogue file has no per-row timestamp and last_source_event_at is
     consumer-injected). It is upload-time, not capture-time; nothing arbitrates on
     it in this slice (bootstrap-only) — the collision slice's inherited limit."""
-    # slice-5b: include the enrichment-produced fields (tax_treatment) so the lib's
+    # Include the enrichment-produced fields (tax_treatment) so the lib's
     # values reach the hot row via ``projected`` (currency is already mapping-produced;
     # the lib overwrote its value in the contribution upstream).
     produced = mapping_produced_columns(StoreSkuCurrentPosition) | frozenset(
@@ -722,12 +717,12 @@ async def write_catalogue_chunk(
 ) -> WriteReport:
     """Catalogue bootstrap-CREATE: the complete-path hot upsert per ≤batch group.
 
-    No event-table insert, no dedup. Groups are upserted in the same sorted
-    natural-key order as write_chunk (deadlock avoidance), each inside the batch's
-    rls_session transaction. ``tax_treatment`` AND ``currency`` are enrichment-produced
-    (slice-5b, D95/D98): dis-enrichment wrote them into ``result.contribution`` before
-    this sink ran, so they arrive via ``projected`` — there is no fixed-param injection
-    on this path anymore."""
+        No event-table insert, no dedup. Groups are upserted in the same sorted
+        natural-key order as write_chunk (deadlock avoidance), each inside the batch's
+        rls_session transaction. ``tax_treatment`` AND ``currency`` are enrichment-produced
+    : dis-enrichment wrote them into ``result.contribution`` before
+        this sink ran, so they arrive via ``projected`` — there is no fixed-param injection
+        on this path anymore."""
     groups = _catalogue_groups(event, result)
     batches = [groups[i : i + batch_size] for i in range(0, len(groups), batch_size)]
     hot_written = 0
@@ -736,7 +731,7 @@ async def write_catalogue_chunk(
         async with rls_session(engine, event.tenant_id) as conn:
             for group in sorted(batch, key=hot_sort_key):
                 params, projected = _hot_params(event, loaded, group, dis_channel=dis_channel)
-                # Slice 50f (Fix 2): count effective writes vs gate-rejected no-ops from the returned
+                # Count effective writes vs gate-rejected no-ops from the returned
                 # outcome (mirrors write_chunk's loop). ``missing`` cannot arise on the complete path.
                 outcome = await _insert_on_conflict_hot_complete_path(conn, params, projected)
                 if outcome == "noop_older":
@@ -808,12 +803,12 @@ async def write_chunk(
                     misses.append(group)
         # The batch transaction has COMMITTED here: the event rows (history)
         # and every successful hot merge are retained (REVISED D63). A miss
-        # then raises LOUDLY so the chunk nacks toward quarantine (Slice 11);
+        # then raises LOUDLY so the chunk nacks toward quarantine;
         # redelivery re-appends events (read-time dedup absorbs) and retries
         # the merge once catalogue/position has onboarded.
         if misses:
             keys = sorted(str(m.natural_key) for m in misses)[:20]
-            # A dedicated class (Slice 30b) so the FAILURE audit maps to the stable
+            # A dedicated class so the FAILURE audit maps to the stable
             # FailureCode.HOT_POSITION_MISSING instead of the INFRA_FAILURE bucket.
             raise HotPositionMissingError(
                 f"{len(misses)} first-seen SKU(s) on an INCOMPLETE-mapping chunk: no "

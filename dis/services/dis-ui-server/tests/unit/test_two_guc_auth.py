@@ -1,9 +1,9 @@
-"""Slice 17b auth-gate unit tests (pure; no DB, no HTTP).
+"""Auth-gate unit tests (pure; no DB, no HTTP).
 
-Covers the verifier's reject-on-ambiguous contract (criterion 6), the read-scope
-conjunction gate (criteria 3/4), and the impersonation write resolver (criteria 5/9).
+Covers the verifier's reject-on-ambiguous contract, the read-scope
+conjunction gate, and the impersonation write resolver.
 The live-RLS row behaviour (a TENANT denied another tenant's row, PLATFORM see-all,
-WITH CHECK write-nothing/impersonation) is proven in tests/integration/test_migration_0011.py.
+WITH CHECK write-nothing/impersonation) is proven in dis/tests/integration/test_migration_0011.py.
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 """The connector run trigger: identity, trace_id, and connector_run_id are READ here.
 
-The trigger is the trust boundary (D54, hard rule 4). Identity (``tenant_id`` /
+The trigger is the trust boundary. Identity (``tenant_id`` /
 ``store_id``), ``trace_id``, and ``connector_run_id`` are carried on it and trusted; the
 receiver mints none of them and never imports ``dis_core.identity``. ``connector_run_id``
 is the dedup ``source_payload_id`` component; its minting authority is the trigger
@@ -25,7 +25,7 @@ class ConnectorTrigger(BaseModel):
     schema_version: int = Field(default=1)
     trace_id: UUID  # READ, never minted (hard rule 4)
     connector_run_id: str = Field(min_length=1)  # dedup source_payload_id
-    tenant_id: UUID  # trust boundary (D54)
+    tenant_id: UUID  # trust boundary
     store_id: UUID
     source_id: str = Field(min_length=1)
     template_id: UUID

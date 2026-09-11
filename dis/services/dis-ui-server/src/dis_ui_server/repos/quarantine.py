@@ -1,12 +1,11 @@
-"""``quarantine.*`` reads - the quarantine console's data access (slice 15a).
+"""``quarantine.*`` reads - the quarantine console's data access.
 
 Both ``quarantined_rows`` and ``quarantined_chunks`` are RLS ON + FORCE with the
 single-GUC ``tenant_isolation`` policy, so the per-tenant scope is the DATABASE's
 guarantee, applied by ``rls_session(engine, tenant_id)``. The explicit ``WHERE
-tenant_id`` predicate on every statement here is defense-in-depth (the 14b D41
-pattern), not the sole isolation - but it is cheap and the tenant-A/tenant-B test
-pins it either way. Reads execute CORE-STYLE on the ``rls_session`` connection
-(service CLAUDE.md durable invariant); never an ``AsyncSession``.
+tenant_id`` predicate on every statement here is defense-in-depth, not the sole
+isolation - but it is cheap and the tenant-A/tenant-B test pins it either way.
+Reads execute CORE-STYLE on the ``rls_session`` connection; never an ``AsyncSession``.
 
 This module speaks DB vocabulary only - wire<->DB translation (stage/status
 crosswalk, the type-tagged id, window->cutoff) lives in the handler. The list is a
@@ -51,7 +50,7 @@ _DETAIL_COLUMNS = (*_LIST_COLUMNS, "failure_context", "mapping_version_id")
 def _tenant_term(
     model: type[QuarantinedRow] | type[QuarantinedChunk], scope: ReadScope
 ) -> list[ColumnElement[bool]]:
-    """The in-query tenant predicate (Slice 17b): applied for a pinned (TENANT) scope,
+    """The in-query tenant predicate: applied for a pinned (TENANT) scope,
     OMITTED for PLATFORM see-all (the RLS USING branch is the see-all isolation).
 
     Conditioned on ``scope.is_platform``, NEVER on ``tenant_id`` being absent — so a
@@ -91,17 +90,17 @@ def _list_filters(
 def _name_joins(stmt: Select[Any], model: type[QuarantinedRow] | type[QuarantinedChunk]) -> Select[Any]:
     """Attach store_name + tenant_name via inline identity_mirror outerjoins.
 
-    Copies the runs repo pattern (repos/runs.py): identity_mirror.stores is RLS-OFF
-    (D41), so the explicit tenant predicate in the store join condition
-    (``StoreRow.tenant_id == model.tenant_id``) is the SOLE isolation and is kept
-    unconditionally regardless of scope. LEFT join → store_name is NULL when store_id
-    is NULL/unmirrored. (Third inline copy — the rule-of-three helper extraction across
-    the three surfaces is a deferred cleanup, D126 note, not this slice.)
+        Copies the runs repo pattern (repos/runs.py): identity_mirror.stores is RLS-OFF
+    , so the explicit tenant predicate in the store join condition
+        (``StoreRow.tenant_id == model.tenant_id``) is the SOLE isolation and is kept
+        unconditionally regardless of scope. LEFT join → store_name is NULL when store_id
+        is NULL/unmirrored. (Third inline copy — the rule-of-three helper extraction across
+        the three surfaces is a deferred cleanup, D126 note, not this slice.)
 
-    Chunk 9 adds the tenant_name LEFT JOIN, keyed on the tenant PK
-    (``TenantRow.tenant_id == model.tenant_id``) → ≤1 match, no row fan-out; RLS-OFF
-    table, read under the existing read_session. LEFT so a tenant with no mirror row →
-    NULL tenant_name, row still returned.
+        Chunk 9 adds the tenant_name LEFT JOIN, keyed on the tenant PK
+        (``TenantRow.tenant_id == model.tenant_id``) → ≤1 match, no row fan-out; RLS-OFF
+        table, read under the existing read_session. LEFT so a tenant with no mirror row →
+        NULL tenant_name, row still returned.
     """
     return (
         stmt.select_from(model)

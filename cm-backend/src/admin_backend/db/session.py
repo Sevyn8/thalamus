@@ -20,9 +20,9 @@ transaction; the `async with session.begin()` context manager
 provides one. The vars are transaction-scoped: when the transaction
 ends they reset, so there is no leakage between requests.
 
-Wiring into FastAPI happens at Step 2.3 (middleware populates
-request.state.auth; a Depends() provider returns the current
-AuthContext and the session_factory). This module's signature takes
+Wiring into FastAPI: middleware populates request.state.auth, and a
+Depends() provider returns the current AuthContext and the
+session_factory. This module's signature takes
 the dependencies as direct args so the bootstrap is unit-testable
 without FastAPI machinery.
 """
@@ -49,8 +49,7 @@ async def get_tenant_session(
         4. set_config app.user_type (always non-NULL).
         5. set_config app.request_id (NULL outside a request context,
            e.g. in unit tests; non-NULL when wired through the FastAPI
-           dependency at Step 2.3 for audit-trigger correlation at
-           Step 6.2).
+           dependency for audit-trigger correlation).
         6. Yield the session to the caller.
         7. On clean exit: commit. On exception: rollback.
 
@@ -58,7 +57,7 @@ async def get_tenant_session(
     it.
 
     The `request_id` kwarg has a default of None so existing callers
-    (Step 2.2a tests, smoke test) continue to work without change.
+    (unit tests, smoke test) continue to work without change.
     """
     async with session_factory() as session:
         async with session.begin():

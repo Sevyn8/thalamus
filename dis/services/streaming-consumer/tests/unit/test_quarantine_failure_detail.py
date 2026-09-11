@@ -1,4 +1,4 @@
-"""Slice 52b write side: per-failure detail → failure_context.failures[], value-free audit.
+"""Per-failure detail write side: → failure_context.failures[], value-free audit.
 
 AC1 (persist what the failure carried, OMIT what it did not) is pinned at the element
 builder across ALL THREE failure shapes:

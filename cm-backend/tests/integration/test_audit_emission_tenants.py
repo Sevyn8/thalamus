@@ -1,4 +1,4 @@
-"""Step 6.16.2 : success-path audit emission for the 4 tenant endpoints.
+"""Success-path audit emission for the 4 tenant endpoints.
 
 Per-endpoint coverage of the SUCCESS audit row that POST / PATCH /
 suspend / activate produce. Each test does the data write through
@@ -86,9 +86,9 @@ def _valid_create_body(name: str) -> dict[str, Any]:
 
 
 async def _seed_required_sections(app_client: Any, jwt: str, tenant_id: UUID) -> None:
-    """Make a tenant fully completable under the Slice-6 gate: section rows
-    via the API plus the three DB-only facts (Auth0 org, invited admin,
-    verified document) via seed_completion_facts."""
+    """Make a tenant fully completable under the complete-onboarding gate:
+    section rows via the API plus the three DB-only facts (Auth0 org,
+    invited admin, verified document) via seed_completion_facts."""
     for path, body in (
         ("legal-profile",
          {"legal_entity_name": "Acme Retail Private Limited",
@@ -373,10 +373,10 @@ async def test_as5_suspend_success_emits_suspend_action_with_status_diff(
     tenant_id = UUID(create_resp.json()["id"])
     cleanup_tenants_for_audit.append(tenant_id)
 
-    # Slice 1: tenants land ONBOARDING at create; reach TRIAL before
+    # Tenants land ONBOARDING at create; reach TRIAL before
     # suspend. complete-onboarding emits no audit row (out of scope), so
     # the suspend-row assertions below are unaffected.
-    # Slice 2: complete-onboarding requires legal + billing + >=1 contact.
+    # Complete-onboarding requires legal + billing + >=1 contact.
     await _seed_required_sections(app_client, super_admin_jwt, tenant_id)
     complete = app_client.post(
         f"/api/v1/tenants/{tenant_id}/complete-onboarding",
@@ -425,8 +425,8 @@ async def test_as6_activate_success_emits_activate_action_with_status_diff(
     tenant_id = UUID(create_resp.json()["id"])
     cleanup_tenants_for_audit.append(tenant_id)
 
-    # Slice 1: reach TRIAL (via complete-onboarding) before suspend.
-    # Slice 2: complete-onboarding requires legal + billing + >=1 contact.
+    # Reach TRIAL (via complete-onboarding) before suspend.
+    # Complete-onboarding requires legal + billing + >=1 contact.
     await _seed_required_sections(app_client, super_admin_jwt, tenant_id)
     complete = app_client.post(
         f"/api/v1/tenants/{tenant_id}/complete-onboarding",
@@ -600,9 +600,9 @@ async def test_as10_audit_row_request_id_matches_response_header(
 
 
 # ---------------------------------------------------------------------------
-# AS_N1 : Step 6.16.7 LD13 — actor enrichment populated on success path
-# (LOAD-BEARING: the new NOT NULL columns must be populated on every
-# emission; missing one is a silent data-integrity failure post-migration.)
+# AS_N1 : actor enrichment populated on success path
+# (LOAD-BEARING: the NOT NULL columns must be populated on every
+# emission; missing one is a silent data-integrity failure.)
 # ---------------------------------------------------------------------------
 
 
@@ -613,7 +613,7 @@ async def _fetch_audit_rows_full(
     table: str,
     tenant_id: UUID,
 ) -> list[dict[str, Any]]:
-    """Step 6.16.7 helper: SELECT * variant to project the new columns.
+    """SELECT * variant to project the audit-enrichment columns.
 
     Used by AS_N tests that assert on actor_organization_name,
     actor_roles, resource_subtype.
@@ -639,7 +639,7 @@ async def test_as_n1_post_tenants_success_carries_actor_enrichment(
     session_factory,
     platform_auth,
 ) -> None:
-    """LOAD-BEARING (Step 6.16.7 LD13): tenant-creation success row
+    """LOAD-BEARING — tenant-creation success row
     carries ``actor_organization_name``, ``actor_roles``, and
     ``resource_subtype`` correctly. SUPER_ADMIN actor under
     ``super_admin_jwt`` is the seeded Anjali (PLATFORM, single active

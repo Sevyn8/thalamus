@@ -1,12 +1,12 @@
-"""Spine provisioning: register the api source + the ACTIVE snapshot template (D88).
+"""Spine provisioning: register the api source + the ACTIVE snapshot template.
 
 Direct-DB provisioning for the backend spine (steps 1-2). It is NOT the ver2 path (steps
-6-7 exercise the real POST /sources + POST /mapping-templates). Create-as-ACTIVE (D88): the
+6-7 exercise the real POST /sources + POST /mapping-templates). Create-as-ACTIVE: the
 template is written ACTIVE directly, no staged-to-activate step. Idempotent: an existing
 source or ACTIVE snapshot template for the (tenant, source) is reused, so re-provisioning is
 a no-op and returns the same template_id.
 
-RLS: config.sources and config.source_mappings are RLS ON (two-GUC, D91); the seeding role
+RLS: config.sources and config.source_mappings are RLS ON (two-GUC); the seeding role
 is NOBYPASSRLS, so the inserts set the transaction-local app.tenant_id / app.user_type GUCs
 first (mirrors dis_testing.seed). The template's mapping_rules is derived from the
 connector's own SNAPSHOT_HEADER so it cannot drift from the CSV the connector writes: an
@@ -51,7 +51,7 @@ def snapshot_mapping_rules() -> dict[str, object]:
     The `tests/unit/test_provisioning_equivalence.py` drift guard asserts this equality.
 
     currency is renamed through but its value is enrichment-owned (the store's), so the
-    streaming consumer overwrites it (D95); tax_treatment is enrichment-only and not mapped.
+    streaming consumer overwrites it; tax_treatment is enrichment-only and not mapped.
     """
     rename = {column: column for column in SNAPSHOT_HEADER}
     normalize = {

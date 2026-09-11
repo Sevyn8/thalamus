@@ -1,6 +1,6 @@
 """SQLAlchemy ORM model for the ``tenant_legal_profile`` table.
 
-Client onboarding, Slice 1. 1:1 with ``tenants`` (``UNIQUE(tenant_id)``).
+1:1 with ``tenants`` (``UNIQUE(tenant_id)``).
 Mirrors the ``tenants`` conventions: ``uuidv7()`` PK via
 ``FetchedValue()``, ``created_at`` / ``updated_at`` server defaults,
 Pattern (a) nullable audit-actor FK columns to ``platform_users``

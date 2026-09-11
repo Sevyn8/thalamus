@@ -21,12 +21,10 @@ test:
 conformance:
 	cd ../dis && uv run python ../contracts/synapse/validate.py
 
-# FORMATTING IS PART OF THE GATE, and was not until 2026-08-04. `make lint` ran ruff
-# check and mypy, neither of which looks at formatting, so synapse drifted to 16
-# non-conforming files without anything going red. The cost is not aesthetic: the
-# formatter is repo-wide, so the next contributor to run it reformats sixteen files
-# they never edited, and their diff stops being reviewable. Same shape as the
-# import-linter finding — a gate that did not cover what everyone assumed it covered.
+# FORMATTING IS PART OF THE GATE. `ruff check` and mypy do not look at formatting,
+# so without the `ruff format --check` line unformatted files accumulate silently.
+# The cost is not aesthetic: the formatter is repo-wide, so the next contributor to
+# run it reformats files they never edited, and their diff stops being reviewable.
 #
 # --check rather than --diff so it fails without printing the whole reflow; run
 # `make format` to fix.
@@ -37,9 +35,7 @@ lint:
 	cd ../dis && uv run lint-imports
 
 # SYNAPSE ONLY, deliberately. dis/Makefile's `format` target spans `. ../connectors
-# ../synapse`, so running it from there also reformats dis and connectors — which
-# still carry 18 and 4 drifted files respectively, and are not this package's to
-# touch. Closing that trap for them needs its own chore commit and its own
-# `ruff format --check` in their gates.
+# ../synapse`, so running it from there also reformats dis and connectors, which are
+# not this package's to touch.
 format:
 	cd ../dis && uv run ruff format --config pyproject.toml ../synapse

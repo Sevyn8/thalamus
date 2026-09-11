@@ -21,16 +21,11 @@ export type TenantUserCreatePayload = components["schemas"]["TenantUserCreateReq
 export type TenantUserPatchPayload = components["schemas"]["TenantUserPatchRequest"];
 export type RoleAssignmentItem = components["schemas"]["RoleAssignmentItem"];
 
-// Phase 5n.1 (reads) + Phase 5n.8.1 (writes scaffold; 5n.8.2 + 5n.8.3
-// consume create + patch).
-//
-// All four writes gate on the same multi-audience tuple
-// `ADMIN.USERS.CONFIGURE.TENANT` per
-// src/admin_backend/routers/v1/tenant_users.py:391-394 (create),
-// 454-457 (patch), 519-522 (suspend), 575-578 (activate). PLATFORM
-// passes via GLOBAL→TENANT cascade; OWNER passes via direct TENANT
-// grant. No tuple split needed — same posture as Stores (Finding #32)
-// and Org Nodes (Finding #35).
+// All four writes (create, patch, suspend, activate) gate on the same
+// multi-audience tuple `ADMIN.USERS.CONFIGURE.TENANT` in
+// src/admin_backend/routers/v1/tenant_users.py. PLATFORM passes via
+// GLOBAL→TENANT cascade; OWNER passes via direct TENANT grant. No
+// tuple split needed — same posture as Stores and Org Nodes.
 export const tenantUsersApi = {
   list: (params?: TenantUserListParams) =>
     apiFetch<TenantUserListResponse>(
@@ -73,7 +68,7 @@ export const tenantUsersApi = {
       },
     }),
 
-  // Slice 5: provision the user's Auth0 identity (idempotent, Auth0-side;
+  // Provision the user's Auth0 identity (idempotent, Auth0-side;
   // writes nothing to CM). 503 when mgmt client / db-connection unset.
   provisionAuth0: (id: string) =>
     apiFetch<components["schemas"]["TenantUserProvisionResult"]>(
@@ -81,7 +76,7 @@ export const tenantUsersApi = {
       { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() } },
     ),
 
-  // Slice 5: send the invitation email (sets invited_at). 409
+  // Send the invitation email (sets invited_at). 409
   // USER_NOT_PROVISIONED if no Auth0 identity yet; 503 if email/ticket
   // unconfigured. The wizard sequence always provisions first, so 409
   // should be unreachable through the UI.

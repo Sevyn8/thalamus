@@ -1,4 +1,4 @@
-// Phase 5g.1.4: shared role-list formatter for users tables.
+// Shared role-list formatter for users tables.
 // Filters to ACTIVE assignments + dedupes by role_name so a user with
 // multiple anchors under the same role doesn't display the role twice.
 // Returns:

@@ -36,7 +36,7 @@ dependencies = [
   # the envelope and a Publisher Protocol with no Pub/Sub import, so a library consumer that does
   # not publish does not grow a gRPC stack. Same split, same reason, as dis-ui-server.
   "google-cloud-pubsub>=2.23",
-  # THE DELIVERY PLANE (Axon slice 1). This service is Axon's FIRST PRODUCER: the enable route
+  # THE DELIVERY PLANE. This service is an Axon PRODUCER: the enable route
   # hands the provisioning event to Axon after recording it, and Axon carries it to the on-call
   # inbox and writes its own ledger row.
   #

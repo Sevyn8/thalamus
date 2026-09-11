@@ -1,14 +1,14 @@
-"""StubAuthClient: build-phase JWT verifier.
+"""StubAuthClient: local-development JWT verifier.
 
 Verifies tokens signed with the local RS256 private key (paired with
 keys/jwt_public.pem). Rejects expired, malformed, wrong-audience,
 wrong-issuer, wrong-signature, and malformed-claim tokens.
 
-Production swap is config-only via AUTH_CLIENT_MODE=AUTH0 (handled at
-Step 2.3 middleware): the same verify(jwt_string) -> AuthContext
-contract works for both clients. No handler-code change required.
+Production swap is config-only via AUTH_CLIENT_MODE=AUTH0: the same
+verify(jwt_string) -> AuthContext contract works for both clients.
+No handler-code change required.
 
-Custom claim namespaces per D-24:
+Custom claim namespaces:
     https://ithina.com/tenant_id
     https://ithina.com/user_type
     https://ithina.com/user_id

@@ -1,11 +1,10 @@
 import { cn } from "@/lib/utils";
 
-// Phase 5d.7: shared Ithina brandmark. Two live consumers —
-// Sidebar (32px) and My Sevyn8 launcher (48px). Constrained
-// literal-union size prop resists over-generalization; if a 4th
-// size lands, widen here.
+// Shared Ithina brandmark. Two live consumers — Sidebar (32px) and
+// My Sevyn8 launcher (48px). Constrained literal-union size prop
+// resists over-generalization; if a 4th size lands, widen here.
 //
-// Slice 7b (item 1): renders the completed animated Sevyn8 mark
+// Renders the completed animated Sevyn8 mark
 // (/public/sevyn8-mark-motion.svg, the convergence-loop brand
 // asset with a self-contained CSS comet animation; spectrum
 // gradient and geometry are the brand asset's verbatim, and it

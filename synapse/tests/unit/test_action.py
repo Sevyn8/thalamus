@@ -323,7 +323,7 @@ def test_the_action_fixture_matches_what_the_proposer_produces() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Actionability (slice 10). A FLAG, never a filter.
+# Actionability. A FLAG, never a filter.
 # ---------------------------------------------------------------------------
 
 
@@ -373,8 +373,9 @@ def test_unknown_and_zero_stay_distinguishable_in_the_data() -> None:
 
 
 def test_actionability_is_not_a_filter_on_the_proposers() -> None:
-    """D1 IS STRUCTURAL AND THIS PINS IT. A low-value action is still a recorded action: the
-    denominator attribution needs is destroyed by any filter applied before recording.
+    """ACTIONABILITY MUST STAY STRUCTURAL, AND THIS PINS IT. A low-value action is
+    still a recorded action: the denominator attribution needs is destroyed by any
+    filter applied before recording.
 
     Asserted by counting the proposer's output over a universe containing a zero-stock dead
     position — the one this slice flags as not actionable. If a future edit ever routes
@@ -396,7 +397,7 @@ def test_actionability_is_not_a_filter_on_the_proposers() -> None:
 
 
 # ---------------------------------------------------------------------------
-# The observation columns (slice 10). Not scores.
+# The observation columns. Not scores.
 # ---------------------------------------------------------------------------
 
 

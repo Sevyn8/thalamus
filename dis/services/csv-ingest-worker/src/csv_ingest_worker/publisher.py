@@ -1,18 +1,18 @@
-"""The ``ingress.ready`` envelope (frozen contract, hard rule 10) and the publisher seam.
+"""The ``ingress.ready`` envelope (frozen contract) and the publisher seam.
 
 The envelope model is field-for-field the committed
 ``contracts/pubsub/ingress.ready.schema.json``; the unit drift guard reconciles both
 directions. The worker POPULATES the contract, never changes its shape: identity is
 the event's UUIDs, the external codes ride as the optional fields (producer-required
-when present, D52 — the worker propagates them verbatim and never fabricates one),
+when present — the worker propagates them verbatim and never fabricates one),
 ``bronze_ref`` is the bronze row id, and ``received_ts`` is when DIS durably
 accepted the chunk (the bronze row's ``received_at``) — deliberately DISTINCT from
-the producer's ``csv.received.received_ts`` (see the service README / D59 note).
+the producer's ``csv.received.received_ts``.
 
 ``Publisher`` is the seam tests inject against (``dis-testing``'s
 ``InMemoryPublisher`` satisfies it structurally; production code does not import
 dis-testing). ``PubsubPublisher`` is the runtime implementation,
-emulator-or-ambient (slice 40a): the emulator when ``PUBSUB_EMULATOR_HOST`` is set
+emulator-or-ambient: the emulator when ``PUBSUB_EMULATOR_HOST`` is set
 (the ``pubsub_v1`` client honours it natively), real Pub/Sub via ambient
 service-account credentials when it is not.
 """
@@ -55,8 +55,8 @@ class IngressReadyEnvelope(BaseModel):
     bronze_ref: UUID
     gcs_uri: str = Field(min_length=1)
     received_ts: datetime
-    # The delimiter the worker's preflight detected (Slice 16f); the consumer parses
-    # with it. Single-char, default "," (backward-compat for any reader of a pre-16f
+    # The delimiter the worker's preflight detected; the consumer parses with it.
+    # Single-char, default "," (backward-compat for any reader of an older
     # message). The worker POPULATES it on every publish path (fresh + resume).
     delimiter: str = Field(default=",", min_length=1, max_length=1)
     tenant_display_code: str | None = None
@@ -82,19 +82,19 @@ def build_ingress_ready(
     """Populate the frozen envelope from the event + the landed bronze row.
 
     ``trace_id`` is passed explicitly (not read from ``event``) because the
-    resume-and-mark path (D59) publishes under the PRIOR ingest's ``trace_id``;
+    resume-and-mark path publishes under the PRIOR ingest's ``trace_id``;
     the fresh path passes the event's. Either way it is a READ trace_id — the
-    worker mints none (hard rule 4, D54).
+    worker mints none.
 
-    ``template_id`` always comes off the INCOMING event (contract-required since
-    Slice 8), never the bronze row — deliberately, so the resume-and-mark path
-    cannot wedge on a pre-Slice-8 bronze row whose ``template_id`` column is NULL
+    ``template_id`` always comes off the INCOMING event (contract-required),
+    never the bronze row — deliberately, so the resume-and-mark path
+    cannot wedge on a legacy bronze row whose ``template_id`` column is NULL
     (the publish needs no bronze read for it).
 
-    ``delimiter`` is the separator the worker's preflight sniff detected (Slice
-    16f); it is passed explicitly because BOTH publish paths supply it — the fresh
+    ``delimiter`` is the separator the worker's preflight sniff detected; it is
+    passed explicitly because BOTH publish paths supply it — the fresh
     path from this run's preflight, the resume path from a re-derive over the same
-    bytes (D59). The worker is the single detector; it never reads a delimiter off
+    bytes. The worker is the single detector; it never reads a delimiter off
     the incoming ``csv.received`` event.
     """
     return IngressReadyEnvelope(
@@ -115,7 +115,7 @@ def build_ingress_ready(
 
 
 class PubsubPublisher:
-    """Runtime publisher, emulator-or-ambient (the dis-storage pattern, slice 40a).
+    """Runtime publisher, emulator-or-ambient (the dis-storage pattern).
 
     ``pubsub_v1.PublisherClient`` honours ``PUBSUB_EMULATOR_HOST`` natively: set →
     the emulator (local, unchanged); unset → real Pub/Sub via ambient

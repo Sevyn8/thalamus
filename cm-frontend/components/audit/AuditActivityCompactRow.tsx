@@ -7,13 +7,13 @@ import { resourceTypeTone, resultTone } from "./AuditActivityRow";
 import { cn } from "@/lib/utils";
 import type { AuditActivityListItem } from "@/lib/api/audit";
 
-// Phase 5i.1: compact `<li>` companion to AuditActivityRow. Used in
+// Compact `<li>` companion to AuditActivityRow. Used in
 // non-table contexts — RecentActivityPanel on the dashboard and the
 // "Recent activity" sub-section inside user detail drawers. Renders
-// the `what` field (a one-line backend-localized summary added in
-// Step 6.16.7) as the row's primary label and pairs it with the
-// resource-type and result chips. Click routes to the consumer's
-// chosen handler (e.g. open audit detail drawer, or `router.push`).
+// the `what` field (a one-line backend-localized summary) as the
+// row's primary label and pairs it with the resource-type and result
+// chips. Click routes to the consumer's chosen handler (e.g. open
+// audit detail drawer, or `router.push`).
 //
 // Separate component (not a `variant` prop on AuditActivityRow)
 // because the two surfaces return structurally different DOM —

@@ -8,13 +8,13 @@ M-D38/D64 migration were absent, every test here ERRORS on the missing columns.
   bronze object with a LATER source timestamp — yields two append-only rows
   (no UNIQUE, hard rule 7), and the window returns the correction as the
   survivor.
-- ``test_idless_correction_documented`` (D65, the accepted-behavior proof): an
+- ``test_idless_correction_documented``: an
   id-less source (change events; the fallback ``bronze_ref:row_index`` key)
   re-uploads a correction as a GENUINELY NEW bronze object (distinct
   ``bronze_ref`` — execute-time item 2: NOT the same object re-published, which
   is the redelivery case and would correctly collapse). The two rows do NOT
   collapse at read (distinct dedup keys — the documented D65 limitation), while
-  the hot table still converges to the later event via event-time-wins (D64).
+  the hot table still converges to the later event via event-time-wins.
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.integration
 
-# The D33 window, mapped to the live columns (D38 resolution): event-time DESC,
+# The D33 window, mapped to the live columns: event-time DESC,
 # then write-time, then the uuidv7 id as the deterministic final tie-break.
 _SALE_WINDOW = text(
     "SELECT source_event_id, quantity, trace_id FROM ("
@@ -113,7 +113,7 @@ async def test_correction_is_latest_wins_survivor(
             },
         ).all()
 
-    assert all_rows == 2  # append-only: the correction did NOT overwrite (D33)
+    assert all_rows == 2  # append-only: the correction did NOT overwrite
     assert len(survivors) == 1  # the window collapses the key to one survivor
     assert survivors[0].quantity == Decimal("3.000")  # ...the correction
     assert str(survivors[0].trace_id) == str(correction.trace_id)
@@ -181,5 +181,5 @@ async def test_idless_correction_documented(
     assert len(keys) == 2
     expected = {f"{original.bronze_ref}:0", f"{correction.bronze_ref}:0"}
     assert {k.source_event_id for k in keys} == expected
-    # ...while current truth still converges via event-time-wins (D64).
+    # ...while current truth still converges via event-time-wins.
     assert hot_stock == Decimal("12")

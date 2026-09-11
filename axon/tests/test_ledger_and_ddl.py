@@ -37,15 +37,15 @@ def test_the_artifacts_are_where_this_test_thinks_they_are() -> None:
 
 
 def test_the_insert_has_no_on_conflict_and_no_returning() -> None:
-    """SLICE 5e IN ADVANCE. Both need SELECT, and axon_sender holds none.
+    """ON CONFLICT AND RETURNING BOTH NEED SELECT, and axon_sender holds none.
 
     ON CONFLICT must read the arbiter index to detect the conflict. RETURNING must read the row
     it returns. The role has neither privilege, deliberately, because the send path performs zero
     reads and a credential that cannot read cannot leak a ledger of who was contacted about what.
 
-    5e shipped ON CONFLICT against a role with no SELECT and every enable in production failed
-    with `permission denied for table provision` from deploy until it was found. This is that
-    defect refused before it can be written.
+    This defect has already shipped once in this estate: ON CONFLICT against a role with no
+    SELECT, and every enable in production failed with `permission denied for table provision`
+    from deploy until it was found. This is that defect refused before it can be written.
     """
     sql = str(ledger_module._INSERT_PLATFORM).upper()
     assert "ON CONFLICT" not in sql, (
@@ -196,18 +196,18 @@ def test_the_grant_file_gives_the_sender_insert_and_nothing_else() -> None:
 @pytest.mark.parametrize("forbidden", ["UPDATE", "DELETE", "TRUNCATE"])
 def test_the_grant_file_gives_the_sender_no_way_to_edit_a_record(forbidden: str) -> None:
     """A ledger that can be rewritten is not evidence of anything. This also means the inbound
-    receipt slice cannot move a row from `accepted` to `delivered` with THIS role, which is
-    correct: that slice brings its own grant and argues for it in the open."""
+    receipt path cannot move a row from `accepted` to `delivered` with THIS role, which is
+    correct: whatever builds it brings its own grant and argues for it in the open."""
     grant = _GRANT.read_text(encoding="utf-8")
     assert f"GRANT {forbidden}" not in grant
 
 
 # ---------------------------------------------------------------------------
-# IDEMPOTENCY (slice 2): the queue made redelivery real
+# IDEMPOTENCY: the queue makes redelivery real
 # ---------------------------------------------------------------------------
 #
 # The mechanism is the constraint that already existed. pk_platform_deliveries is on delivery_id,
-# and the producer now mints that id and puts it in the envelope, so a redelivered message reaches
+# and the producer mints that id and puts it in the envelope, so a redelivered message reaches
 # the same primary key. No new constraint, no migration, and no grant change: catching a violation
 # is server side, and only ON CONFLICT needs to READ the arbiter index.
 
@@ -275,8 +275,9 @@ def test_the_statement_still_has_no_on_conflict_after_gaining_idempotency() -> N
 
     Having decided to be idempotent, the obvious next edit is ON CONFLICT DO NOTHING, which is
     shorter and reads better. IT WOULD FAIL: ON CONFLICT must read the arbiter index, that read
-    needs SELECT, and axon_sender holds none. Slice 5e shipped exactly that and every enable in
-    production failed with `permission denied for table provision` behind a green apply.
+    needs SELECT, and axon_sender holds none. That exact defect has shipped once already, and
+    every enable in production failed with `permission denied for table provision` behind a
+    green apply.
     """
     sql = str(ledger_module._INSERT_PLATFORM).upper()
     assert "ON CONFLICT" not in sql

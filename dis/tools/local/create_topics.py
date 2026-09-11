@@ -1,7 +1,7 @@
 """Create the DIS Pub/Sub topics and worker subscriptions on the local emulator.
 
 Idempotent: existing topics/subscriptions are skipped. Refuses to run against real
-GCP. This is the ONE local provisioning place (Slice 9b): worker runtime code never
+GCP. This is the ONE local provisioning place: worker runtime code never
 creates its own subscription — an absent subscription is a loud startup error in
 the worker, not a silent auto-repair.
 

@@ -39,9 +39,9 @@ CREATE TABLE identity_mirror.tenants (
     display_code        TEXT COLLATE "C"                    NULL,
         -- Customer Master's authoritative external code for the tenant
         -- (core.tenants.display_code, e.g. 'buc-ees'). Copied as-is by
-        -- Mirror Sync; nullable because the source column is nullable
-        -- (decisions.md D55). Readability only — never a translation bridge;
-        -- the load-bearing identity is tenant_id (D37).
+        -- Mirror Sync; nullable because the source column is nullable.
+        -- Readability only — never a translation bridge;
+        -- the load-bearing identity is tenant_id.
     status              TEXT COLLATE "C"                    NOT NULL,
         -- Tenant lifecycle status. Mirrors CM core.tenant_status_enum:
         -- ONBOARDING, TRIAL, ACTIVE, SUSPENDED, TERMINATED.

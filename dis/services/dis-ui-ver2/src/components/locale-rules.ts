@@ -3,7 +3,7 @@ import type { FieldDatatype } from '../lib/dis-ui-server/mapping-fields'
 // Locale / format rules (T3). A mapping is two concerns: the FIELD mapping (column ->
 // canonical field) and the FORMAT rules (how a value is normalized: date format, decimal
 // separator). The locale rules are MANDATORY by the mapped field's datatype and NEVER
-// inferred (D49 "asserted, never defaulted"; libs/dis-mapping validates required args and
+// inferred ("asserted, never defaulted"; libs/dis-mapping validates required args and
 // raises if missing). This module is the single source of: which rule a datatype requires,
 // the human choices (with visual examples), and how a declaration builds the REAL
 // mapping_rules.normalize shape the shipped normalizer consumes.

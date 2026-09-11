@@ -1,6 +1,6 @@
 """OrgNodesRepo — read-only data access for ``org_nodes``.
 
-Backs the Organization Tree page (Step 5.3, E2 + E3). Owns SELECT
+Backs the Organization Tree page (E2 + E3). Owns SELECT
 queries against ``org_nodes``; does NOT set session GUCs, NOT begin
 transactions, NOT handle commits/rollbacks. Visibility flows from the
 session's ``app.tenant_id`` / ``app.user_type`` GUCs (RLS-bound):
@@ -88,7 +88,7 @@ from admin_backend.models.org_node import OrgNode, OrgNodeStatus, OrgNodeType
 from admin_backend.models.tenant_user import ActorUserType
 
 
-# ---- Step 6.13 cascade-order rule ------------------------------------------
+# ---- Cascade-order rule ------------------------------------------
 #
 # Canonical org-tree ordinal. A parent's node_type must have an ordinal
 # STRICTLY LOWER than the child's; equal ordinals (e.g., STORE under
@@ -151,7 +151,7 @@ def _path_label(code: str) -> str:
 class _NodeRow:
     """Minimal row shape used by repo write helpers.
 
-    Step 6.16.5 extension: ``name`` and ``code`` carry the pre-write
+    ``name`` and ``code`` carry the pre-write
     values so ``edit_node`` can build a before/after diff for the audit
     row without a second SELECT against the target.
     """
@@ -166,7 +166,7 @@ class _NodeRow:
 
 
 class OrgNodesRepo:
-    """Repository for ``org_nodes`` — reads (Step 5.3) and writes (Step 6.13)."""
+    """Repository for ``org_nodes`` — reads and writes."""
 
     async def count_active_by_tenant(
         self,
@@ -340,7 +340,7 @@ class OrgNodesRepo:
         result = await session.execute(stmt)
         return result.scalar_one_or_none() is not None
 
-    # ---- Step 6.13 writes --------------------------------------------------
+    # ---- Writes --------------------------------------------------
 
     async def add_node(
         self,
@@ -356,7 +356,7 @@ class OrgNodesRepo:
     ) -> OrgNode:
         """Insert a new org_node under ``parent_id``.
 
-        ``parent_id=None`` (Slice 8) resolves the parent to the tenant's
+        ``parent_id=None`` resolves the parent to the tenant's
         TENANT root, so the first node of a root-only tenant can be added
         without the caller knowing the root id. HQ-under-TENANT is legal
         by the cascade order (TENANT ordinal 0 < HQ ordinal 2).
@@ -384,7 +384,7 @@ class OrgNodesRepo:
         Returns the freshly-inserted row via a SELECT-by-id refetch so
         the OrgNode ORM object has all server defaults populated.
 
-        Step 6.16.5 audit emission: ``request_id`` is the optional
+        Audit emission: ``request_id`` is the optional
         emission trigger. ``auth`` stays mandatory (load-bearing for
         the INSERT's audit-actor pair). When ``request_id is not None``
         a SUCCESS row is emitted with the new node's snapshot frozen
@@ -394,7 +394,7 @@ class OrgNodesRepo:
 
         # 0/1. Resolve + lock the parent.
         if parent_id is None:
-            # Slice 8: omitted parent resolves to the tenant root. See the
+            # Omitted parent resolves to the tenant root. See the
             # docstring for why the missing-root branch is repo-only.
             parent = await self._select_tenant_root_for_update(
                 session, tenant_id=tenant_id
@@ -479,7 +479,7 @@ class OrgNodesRepo:
                 node_id=str(new_id),
             )
 
-        # Step 6.16.5 success audit emission.
+        # Success audit emission.
         if request_id is not None:
             tenant_name = await self._lookup_tenant_name(
                 session, tenant_id
@@ -501,7 +501,7 @@ class OrgNodesRepo:
                 resource_type="ORG_NODE",
                 resource_id=row.id,
                 resource_label=row.name,
-                # Step 6.16.7 LD7 : populate resource_subtype with the
+                # LD7: populate resource_subtype with the
                 # row's ``node_type`` enum value frozen at write time.
                 resource_subtype=row.node_type.value,
                 result_type=AuditResultType.SUCCESS,
@@ -704,7 +704,7 @@ class OrgNodesRepo:
                 node_id=str(node_id),
             )
 
-        # Step 6.16.5 success audit emission. LD4: action is always
+        # Success audit emission. LD4: action is always
         # "UPDATE" regardless of which fields changed. LD5: diff
         # carries only fields that actually changed; if parent_id
         # changed, both before/after halves carry
@@ -744,7 +744,7 @@ class OrgNodesRepo:
                     resource_type="ORG_NODE",
                     resource_id=row.id,
                     resource_label=row.name,
-                    # Step 6.16.7 LD7 : populate resource_subtype with
+                    # LD7: populate resource_subtype with
                     # the row's ``node_type`` enum value (post-update;
                     # node_type is immutable on PATCH so before==after).
                     resource_subtype=row.node_type.value,
@@ -772,7 +772,7 @@ class OrgNodesRepo:
     ) -> OrgNode | None:
         """Set the status of one ``org_nodes`` row + archived_* triplet.
 
-        Step 6.21.2 cascade target. The two-table-one-entity coupling
+        Cascade target from ``StoresRepo.transition``. The two-table-one-entity coupling
         between ``stores`` and the paired STORE-type ``org_nodes`` row
         (architecture.md A.5) makes the store status the owner; this
         method receives the projected target_status from
@@ -786,8 +786,10 @@ class OrgNodesRepo:
             ``archived_by_user_id``, ``archived_by_user_type`` atomically
             with the status flip.
           - **Out-of-ARCHIVED**: null the triplet atomically with the
-            status flip. Historical archive metadata is lost on the row;
-            Step 6.2 audit_log preserves the history when shipped.
+            status flip. Historical archive metadata (who archived it
+            and when) is lost on the row; the caller's audit event
+            (``StoresRepo.transition``) records only the store/org_node
+            status before/after, not the archived_* values.
           - **Between non-ARCHIVED** (ACTIVE <-> INACTIVE):
             ``archived_*`` columns untouched (already NULL by invariant).
 
@@ -1081,7 +1083,7 @@ def _actor_user_type_from_auth(auth: AuthContext) -> ActorUserType:
 
     Pattern (b) audit-actor pairing per D-13: every INSERT / UPDATE writes
     both the actor_id and the actor_type discriminator. The DB-side
-    audience-check trigger (Step 6.8.1) only fires on role-assignment
+    audience-check trigger only fires on role-assignment
     tables, not org_nodes, so we trust the JWT-derived value.
     """
     return ActorUserType(auth.user_type)

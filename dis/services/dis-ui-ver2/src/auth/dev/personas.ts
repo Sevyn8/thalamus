@@ -1,6 +1,6 @@
 // DEV ONLY. The personas offered at /dev/login. Each models the Customer Master
-// token claim set Sanjeev's slice-2 fakes pin (sub, tenant_id, store_id, roles -
-// PROVISIONAL pending decisions.md D25). The name/email/roleLabel/tenantName fields
+// token claim set (sub, tenant_id, store_id, roles -
+// a PROVISIONAL shape). The name/email/roleLabel/tenantName fields
 // below are DEV-ONLY presentation data for the login cards, NOT token claims.
 
 import type { UserType } from '../AuthSnapshot'
@@ -10,12 +10,12 @@ export type StubPersona = {
   label: string
   sub: string
   // null for ops (cross-tenant). tenant_id/store_id carry the INTERNAL UUIDs the
-  // backend RLS keys on (app.tenant_id, D91): the TENANT persona uses the real
+  // backend RLS keys on (app.tenant_id): the TENANT persona uses the real
   // seeded Żabka / W-001 UUIDs so a runtime-minted token authorizes against the
   // rows the spine provisioned. sub stays the external u_* login id.
   tenant_id: string | null
   store_id: string | null
-  // The token's user_type claim (D91): the backend's tenant-vs-ops discriminator, and
+  // The token's user_type claim: the backend's tenant-vs-ops discriminator, and
   // what isOps() keys on. Matches CM coherence — PLATFORM carries no tenant_id, TENANT does.
   user_type: UserType
   roles: string[]

@@ -57,7 +57,7 @@ PUBSUB_TOPICS: tuple[str, ...] = (
 )
 
 # subscription id -> topic. The csv-ingest-worker pulls csv.received from here
-# (slice-9b) and the streaming consumer pulls ingress.ready (slice-10); each
+# and the streaming consumer pulls ingress.ready; each
 # service's config pins its own name as a frozen constant.
 PUBSUB_SUBSCRIPTIONS: dict[str, str] = {
     "csv-ingest-worker.csv.received": "csv.received",

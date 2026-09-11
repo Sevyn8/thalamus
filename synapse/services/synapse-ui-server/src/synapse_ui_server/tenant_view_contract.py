@@ -1,9 +1,10 @@
-"""THE TENANT-FACING CONSTRAINT. Not built in 8a; recorded here so 8b cannot miss it.
+"""THE TENANT-FACING CONSTRAINT, recorded here before the tenant view is built so it cannot be
+missed.
 
-This module deliberately contains no endpoint. Slice 8a serves PLATFORM only, and the
-tenant-facing shadow view (T1) is 8b's, together with the Customer Master module grant it
-depends on. What is here is the design that was accepted before either existed, because it is
-the item most likely to be got wrong under time pressure and the failure is silent.
+This module deliberately contains no endpoint. This service serves PLATFORM only; the
+tenant-facing shadow view (T1) does not exist yet, and depends on a Customer Master module grant
+that does not exist yet either. What is here is the design accepted before either exists, because
+it is the item most likely to be got wrong under time pressure and the failure is silent.
 
 ==============================================================================
 THE CONSTRAINT
@@ -57,7 +58,7 @@ a client ever sees from Synapse is its least interesting finding.
 
 ``synapse.core.holdout`` and the ``stockout_risk`` declaration both carry the same trigger for
 the related contamination question: THE FIRST ANALYSIS TO LEAVE SHADOW. None of this fires while
-everything is at shadow, which is the state 8a preserves.
+everything is at shadow, which is the current state.
 """
 
 from __future__ import annotations
@@ -66,9 +67,9 @@ from typing import Final
 
 __all__ = ["FORBIDDEN_TENANT_FIELDS", "TENANT_READ_MODULE"]
 
-# Field names that must never appear on a tenant-facing response model. Exported as data so 8b's
-# test asserts against THIS list rather than restating it — a restated list is a second source of
-# truth, and the copy that drifts is always the one nobody is looking at.
+# Field names that must never appear on a tenant-facing response model. Exported as data so the
+# tenant view's test can assert against THIS list rather than restating it — a restated list is a
+# second source of truth, and the copy that drifts is always the one nobody is looking at.
 FORBIDDEN_TENANT_FIELDS: Final[frozenset[str]] = frozenset(
     {
         "sku_id",

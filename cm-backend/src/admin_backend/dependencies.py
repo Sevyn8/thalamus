@@ -3,13 +3,13 @@
 Bridges the request-scoped state populated by middleware (AuthContext,
 request_id) and the app-scoped state populated by lifespan
 (session_factory) into FastAPI's `Depends()` machinery. The bridge is
-why this module exists: Step 2.2a's `get_tenant_session(auth,
-session_factory, request_id)` is a plain async generator that doesn't
-know about request.state or app.state; this module wraps it.
+why this module exists: `get_tenant_session(auth, session_factory,
+request_id)` is a plain async generator that doesn't know about
+request.state or app.state; this module wraps it.
 
-Per D-17, RLS-blocked / missing-row reads from handlers must surface as
-404, not 403. That's handler-layer logic; this dependency does not
-enforce it. Handlers landing at Step 3.x onward implement the contract.
+RLS-blocked / missing-row reads from handlers must surface as 404,
+not 403. That's handler-layer logic; this dependency does not
+enforce it.
 """
 from typing import AsyncIterator
 
@@ -62,9 +62,9 @@ async def get_tenant_session_dep(
 ) -> AsyncIterator[AsyncSession]:
     """FastAPI-shaped wrapper around get_tenant_session.
 
-    Bridges the dependency-injection layer to Step 2.2a's
-    get_tenant_session. Passes request_id through so the dependency
-    sets app.request_id for audit triggers (Step 6.2).
+    Bridges the dependency-injection layer to get_tenant_session.
+    Passes request_id through so the dependency sets the
+    app.request_id GUC for audit correlation.
     """
     async for session in get_tenant_session(
         auth, session_factory, request_id=request_id

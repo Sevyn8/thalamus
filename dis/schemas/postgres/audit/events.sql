@@ -5,9 +5,9 @@
 -- pipeline. Emitted by every DIS service at each pipeline stage. Joins all
 -- telemetry for a given trace_id across services.
 --
--- Cloud SQL is the Phase 1 home for audit events. BigQuery archival of this
--- table is the Phase 3 deliverable (see build-guide.md Slice 16); the BQ
--- schema lives at schemas/bigquery/audit_events.sql and mirrors this one.
+-- Audit events live in Cloud SQL. BigQuery archival is planned but not
+-- built; the BQ schema lives at schemas/bigquery/audit_events.sql and
+-- mirrors this one.
 --
 -- Written by:
 --   - services/csv-ingest-worker, receiver-api, receiver-csv-erp,
@@ -16,9 +16,10 @@
 --   - services/streaming-consumer (MAPPING_LOOKED_UP, IDENTITY_VALIDATED,
 --     PRE_MAPPING_VALIDATED, MAPPING_EXECUTED, POST_MAPPING_VALIDATED,
 --     CANONICAL_WRITTEN, QUARANTINED).
---   - services/daily-compute (SIGNAL_COMPUTED).
---   - services/quarantine-drainer, dis-ui-server, mirror-sync-consumer.
---   - services/nightly-batch (BQ_EXPORTED, PARTITION_DROPPED) — Phase 3.
+--   - services/dis-ui-server, mirror-sync-consumer.
+--   - PLANNED writers (these services do not exist yet): daily-compute
+--     (SIGNAL_COMPUTED), quarantine-drainer, nightly-batch (BQ_EXPORTED,
+--     PARTITION_DROPPED).
 --
 -- Read by:
 --   - services/dis-ui-server audit handler (tenant-facing trace lookup).
@@ -49,7 +50,7 @@
 -- Volume scales with failure rate, not row count.
 --
 -- ----------------------------------------------------------------------------
--- Phase 0 migration order
+-- Migration order (required for this DDL to succeed)
 -- ----------------------------------------------------------------------------
 --
 -- 1. Schemas exist: audit, identity_mirror.
@@ -80,8 +81,8 @@ CREATE TABLE audit.events (
     prior_trace_id              UUID                                NULL,
         -- The PRIOR delivery's trace when this row records a duplicate/dedup
         -- hit (outcome DUPLICATE_NOOP / DUPLICATE_OVERWRITTEN, or the worker's
-        -- dedup no-op). Promoted from event_data JSONB by Slice 30c — the D42
-        -- REVISION: the audit/quarantine consoles query "what redelivered from
+        -- dedup no-op). First-class column (promoted from event_data JSONB) so
+        -- the audit/quarantine consoles can query "what redelivered from
         -- what". NULL on non-duplicate rows.
 
     -- ---------- Identity ----------
@@ -104,9 +105,9 @@ CREATE TABLE audit.events (
     -- ---------- Outcome ----------
     outcome                     VARCHAR(32)  COLLATE "C"            NOT NULL,
         -- SUCCESS, FAILURE, SKIPPED, RETRIED, DUPLICATE_NOOP,
-        -- DUPLICATE_OVERWRITTEN. The DUPLICATE_* pair (Slice 30c, the D42
-        -- revision) REFINES SUCCESS: the append-only insert genuinely landed
-        -- (D33); the distinction is queryable rather than buried in event_data.
+        -- DUPLICATE_OVERWRITTEN. The DUPLICATE_* pair REFINES SUCCESS: the
+        -- append-only insert genuinely landed; the distinction is queryable
+        -- rather than buried in event_data.
 
     -- ---------- Per-event metrics ----------
     row_count                   INTEGER                             NULL,
@@ -170,23 +171,23 @@ CREATE TABLE audit.events (
         CHECK (event_date = (event_timestamp AT TIME ZONE 'UTC')::DATE)
         -- Not a partition-routing artifact: this CHECK defines event_date's
         -- semantics (the UTC date of event_timestamp). The dis-audit model
-        -- derives event_date the same way; Slice 21 re-partitions on it.
+        -- derives event_date the same way; a future re-partition keys on it.
 );
 
 
 -- ----------------------------------------------------------------------------
--- Partitioning: none for beta (Slice 30a)
+-- Partitioning: none for beta
 -- ----------------------------------------------------------------------------
 -- audit.events is a PLAIN table. It was PARTITION BY RANGE (event_date) with a
 -- fixed bootstrap-created daily window and no automation, so once the calendar
 -- passed the last partition every write hit "no partition found" — which the
--- audit writer's fire-and-forget swallows (decisions.md D45: silent loss).
+-- audit writer's fire-and-forget swallows (silent loss).
 -- De-partitioned for beta to remove that cliff; ~150K events/day sits
 -- comfortably in a plain table.
 --
--- Partitioning returns at Slice 21 (BQ archive + eviction), WITH automation,
--- as a coherent piece: nightly-batch archives to BigQuery, then drops Cloud
--- SQL partitions older than the 35-day rolling buffer (decisions.md D29/D34).
+-- Partitioning is planned to return with BQ archive + eviction, WITH
+-- automation, as a coherent piece: nightly-batch archives to BigQuery, then
+-- drops Cloud SQL partitions older than the 35-day rolling buffer.
 -- event_date stays NOT NULL + CHECK-consistent so that re-partition is safe.
 -- ----------------------------------------------------------------------------
 

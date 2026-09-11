@@ -5,7 +5,7 @@ RLS-aware session (``dis-rls``), inheriting the target-safety guard
 (``current_database()`` must be ``ithina_dis_db``; the role must not bypass RLS)
 and the tenant scope the live FORCE-RLS ``tenant_isolation`` policies require.
 
-**Fail-loud (Slice 11a posture, the deliberate asymmetry with dis-audit):** audit
+**Fail-loud:** audit
 is the RECORD of what happened (fire-and-forget, hard rule 11); quarantine is the
 HELD THING itself — the data path. A failed quarantine write therefore RAISES
 :class:`~dis_core.errors.QuarantineWriteError` so the caller keeps the message

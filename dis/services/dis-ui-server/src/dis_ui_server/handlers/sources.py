@@ -85,7 +85,7 @@ async def create_registered_source(
     write_scope: Annotated[WriteScope, Depends(require_write_scope)],
     body: SourceCreate,
 ) -> SourceRow:
-    """Register a source. Acted-for tenant discriminated by the VERIFIED user_type (Slice 17b):
+    """Register a source. Acted-for tenant discriminated by the VERIFIED user_type:
     TENANT pins to its token tenant (a body acting_for is 403); PLATFORM+dis:ops writes the
     body's acted-for tenant; a duplicate (tenant_id, source_id) is 409."""
     engine: AsyncEngine = request.app.state.engine

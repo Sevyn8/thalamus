@@ -2,9 +2,8 @@
 
 This is the standard pyjwt + JWKS recipe a DIS consumer (the receiver auth
 middleware, not yet built) will mirror: fetch the JWKS, select the key by ``kid``,
-verify signature + ``aud`` + ``iss`` + ``exp``. Slice 2 uses it to satisfy
-acceptance criterion 2 ("verifies using the same verification path consuming code
-will use").
+verify signature + ``aud`` + ``iss`` + ``exp`` — the same verification path
+consuming code will use.
 
 Lives in dis-testing because no consumer exists yet; when the receiver lands it
 should verify the same way (and this helper can move/consolidate into shared code).

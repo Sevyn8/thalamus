@@ -1,17 +1,16 @@
 """The ``axon.send.requested`` envelope, and the publisher seam.
 
 ONE MESSAGE IS ONE DELIVERY. The producer mints ``delivery_id`` and puts it here, which is the
-single change that makes the whole slice idempotent: that id is already
+single choice that makes the ledger write idempotent: that id is already
 ``pk_platform_deliveries``, so a redelivered message reaches the same primary key and the INSERT
 refuses it. Nothing else needs a constraint, a dedup table or a grant.
 
 =================================================================================================
 WHY THE ID IS MINTED BY THE PRODUCER AND NOT BY THE CONSUMER
 =================================================================================================
-Slice 1 minted it inside ``send_platform``, which was correct while the call was in-process and
-once per producer event. Under a queue it would mint a NEW id on every redelivery, so the same
-intent would reach the ledger as N distinct rows and the primary key would refuse none of them.
-Moving the mint to the producer is what turns "the same message" into "the same row".
+Minted inside ``send_platform`` it would be a NEW id on every redelivery, so the same intent
+would reach the ledger as N distinct rows and the primary key would refuse none of them.
+Minting at the producer is what turns "the same message" into "the same row".
 
 It is a UUIDv7, so it also carries the instant the intent was formed rather than the instant the
 provider answered. Those differ by however long the message sat in the queue, and the ledger's
@@ -59,7 +58,7 @@ class SendRequested:
     An envelope assembled by keyword cannot silently omit the recipient.
 
     IT CARRIES THE RENDERED SUBJECT AND BODY, not a template id and a parameter bag. There is no
-    template registry and this slice does not build one, so the producer renders and the sender
+    template registry, so the producer renders and the sender
     delivers. When templates land, a ``template_version_id`` joins this shape and the rendering
     moves; that is a version bump, and the field on the ledger already exists for it.
 

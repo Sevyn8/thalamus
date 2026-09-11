@@ -23,7 +23,7 @@ Layers (the 0007 migration-test conventions, generalized from one parent to six)
   * **Plain shape at head, all six.** No partkey, zero pg_inherits children,
     PK (id), the event_date/as_of_date derivation CHECKs and signal_history
     natural keys present, FORCE RLS intact, app-role grants intact.
-  * **Reversible cycle against an ephemeral scratch DB (Slice 51c, D122).**
+  * **Reversible cycle against an ephemeral scratch DB.**
     ``upgrade head`` leaves the six plain; ``downgrade 0008`` recreates the
     frozen partitioned forms (RANGE keys, composite PKs, 7 fresh CURRENT_DATE-
     relative children each); ``upgrade head`` returns to shapes identical to
@@ -37,8 +37,6 @@ Layers (the 0007 migration-test conventions, generalized from one parent to six)
     the plain DDL files build the plain shape; 0009 re-applies the same files)
     must carry the six shapes the delta path (resident migrated reference)
     carries.
-
-See: decisions.md D77 (revised), D29/D34, hard rule 7.
 """
 
 from __future__ import annotations
@@ -75,9 +73,9 @@ _PARENTS: dict[str, tuple[str, str]] = {
     "staging.store_sku_signal_history": ("pk_st_sssh", "RANGE (as_of_date)"),
 }
 
-# Constraints whose PRESENCE is load-bearing for Slice 21's re-partition (the
-# derivation CHECKs define the date columns' semantics) and for the daily
-# grain (the signal_history natural keys keep as_of_date).
+# Constraints whose PRESENCE is load-bearing for the eventual re-partitioning of
+# these tables (the derivation CHECKs define the date columns' semantics) and for
+# the daily grain (the signal_history natural keys keep as_of_date).
 _KEPT_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "canonical.store_sku_sale_events": ("ck_ssse_event_date_matches_sale_timestamp",),
     "canonical.store_sku_change_events": ("ck_ssce_event_date_matches_source_ts",),
@@ -88,7 +86,7 @@ _KEPT_CONSTRAINTS: dict[str, tuple[str, ...]] = {
 }
 
 # The inverted scope boundary: this slice converts the six ONLY. audit.events
-# stays plain (D77/0007); the hot tables and bronze stay plain and present.
+# stays plain; the hot tables and bronze stay plain and present.
 _MUST_STAY_PLAIN = (
     "audit.events",
     "canonical.store_sku_current_position",
@@ -326,8 +324,8 @@ def _assert_plain_shape(engine: Engine) -> None:
         assert isinstance(constraints, dict)
         for name in _KEPT_CONSTRAINTS[relation]:
             assert name in constraints, (
-                f"constraint {name} missing on plain {relation} — a Slice 21 "
-                f"re-partition invariant was dropped"
+                f"constraint {name} missing on plain {relation} — an invariant needed "
+                f"for the eventual re-partitioning of this table was dropped"
             )
         rls = shape["rls"]
         assert isinstance(rls, dict)
@@ -432,7 +430,7 @@ async def test_any_date_lands_change_events_both_schemas(
 ) -> None:
     """Far-future AND pre-window event dates land in canonical and staging
     change events — no partition window exists to miss. Pre-0009 either date
-    raised "no partition of relation" and nacked the batch (D77 Scope).
+    raised "no partition of relation" and nacked the batch.
     Read against the resident DB (at head via make run-local, read-only)."""
     tenant = str(fx.PRIMARY_TENANT.uuid)
     cases = [
@@ -611,7 +609,7 @@ def test_scope_boundary_nothing_else_moved(admin_engine: Engine) -> None:
 def test_migration_cycle_departition_and_back(scratch_db: ScratchDB) -> None:
     # apply-to-head stays covered by test_all_six_plain_at_head / test_scope_boundary_nothing_else_moved
     # + test_fresh_bootstrap_converges_with_delta_path. The downgrade-to-0008 leg traverses 0010's
-    # view-dropping downgrade and left config.source_mappings_v comment-less (D99 gap; case 3).
+    # view-dropping downgrade and left config.source_mappings_v comment-less.
     # scratch_db is already at head: the plain shapes.
     _assert_plain_shape(scratch_db.engine)
     plain_shapes = _all_shapes(scratch_db.engine)

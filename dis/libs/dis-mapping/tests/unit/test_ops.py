@@ -1,4 +1,4 @@
-"""Per-op behaviour of the bounded normalize vocabulary (slice-05 OQ3).
+"""Per-op behaviour of the bounded normalize vocabulary.
 
 Every op is atomic and single-purpose; every op passes null through untouched
 (that null-passthrough is what makes "a failed cell skips the remaining steps"

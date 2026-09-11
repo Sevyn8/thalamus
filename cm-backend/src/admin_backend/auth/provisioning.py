@@ -1,15 +1,15 @@
-"""Auth0 provisioning service (Slice 2c, per D-39).
+"""Auth0 provisioning service.
 
 Composes the Auth0ManagementClient into DB-first, idempotent get-or-create
 against COMMITTED CM rows. This module writes NOTHING to the CM DB: it takes
 primitives already read from the committed row (under RLS/PLATFORM context by
 the caller) and calls Auth0 only. Persisting auth0_sub / invited_at / status is
-Slice 2d's job.
+the caller's job.
 
 Idempotency (D-39): natural-key lookup-before-create. The Organization is keyed
 by a deterministic name derived from the CM tenant_id; the user by email.
 
-Invitation-send and accept are out of scope here (2d); this does create org +
+Invitation-send and accept are out of scope here; this does create org +
 user + membership + app_metadata only.
 """
 from __future__ import annotations

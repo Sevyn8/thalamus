@@ -47,14 +47,13 @@ function ModulesPageInner() {
   const searchParams = useSearchParams();
   const snapshot = useAuthSnapshot();
 
-  // Phase 5h.5 (2026-05-23): Module Access has no use for TENANT
-  // personas (single-tenant matrix shows one row; aggregate cards
-  // are platform-wide). Sidebar nav already hides the entry under
-  // 5g.1's permission gate, but direct URL navigation still resolves
-  // here without a redirect. Mirror /superadmin/tenants pattern:
-  // gate on the PLATFORM-only tuple (ADMIN.TENANTS.OVERRIDE.GLOBAL —
-  // the same one that authorizes the toggle endpoints behind the
-  // matrix) and bounce to dashboard.
+  // Module Access has no use for TENANT personas (single-tenant matrix
+  // shows one row; aggregate cards are platform-wide). Sidebar nav
+  // already hides the entry behind its own permission gate, but direct
+  // URL navigation still resolves here without a redirect. Mirror the
+  // /superadmin/tenants pattern: gate on the PLATFORM-only tuple
+  // (ADMIN.TENANTS.OVERRIDE.GLOBAL — the same one that authorizes the
+  // toggle endpoints behind the matrix) and bounce to dashboard.
   //
   // grantsLoaded guard prevents a boot-transient redirect while
   // /me/permissions is in flight (snapshot.permissions is null until

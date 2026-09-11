@@ -12,9 +12,9 @@ import type {
   TaxRegistrationsReplaceRequest,
 } from "@/types/api";
 
-// Client-onboarding wizard data layer (Slice 4), wired against the backend
-// section + state endpoints (Slices 1-2). All tenant-scoped under
-// /tenants/{tenant_id}; every route is PLATFORM-audience-gated server-side.
+// Client-onboarding wizard data layer over the backend section + state
+// endpoints. All tenant-scoped under /tenants/{tenant_id}; every route
+// is PLATFORM-audience-gated server-side.
 //
 // The 1:1 section GETs (legal-profile, billing-profile) return 404
 // SECTION_NOT_FOUND when the section has not been saved yet (distinct from

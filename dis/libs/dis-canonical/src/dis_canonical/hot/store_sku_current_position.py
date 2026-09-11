@@ -1,21 +1,20 @@
 """``canonical.store_sku_current_position`` — the hot table (one row per SKU instance).
 
-Field shapes derived by introspecting the live ithina_dis_db schema (plan mode).
+Field shapes derived by introspecting the live ithina_dis_db schema.
 Key load-bearing facts:
 - PK ``(id)``; natural key ``uq_sscp_natural_key``: a unique COALESCE-sentinel
   expression index on ``(tenant_id, store_id, sku_id, COALESCE(sku_variant,''),
-  COALESCE(sku_lot_batch,''))`` — the ON CONFLICT arbiter (M-HOTKEY/0004; ''
+  COALESCE(sku_lot_batch,''))`` — the ON CONFLICT arbiter (''
   is engine-impossible via the sentinel CHECKs). Not partitioned.
 - FKs: ``(tenant_id) -> identity_mirror.tenants``; composite
-  ``(tenant_id, store_id) -> identity_mirror.stores`` (post-D36 store keying);
+  ``(tenant_id, store_id) -> identity_mirror.stores``;
   ``(mapping_version_id) -> config.source_mappings``.
-- ``mapping_version_id bigint NOT NULL`` (D22), ``trace_id uuid NOT NULL``.
+- ``mapping_version_id bigint NOT NULL``, ``trace_id uuid NOT NULL``.
 - Enums: ``tax_treatment`` NOT NULL; ``expiry_source`` nullable.
 
 DB-generated columns (``id`` default ``uuidv7()``; ``last_updated_at`` default
 ``now()``; ``regulatory_flag`` default ``false``) are Optional here: correct
-pre-insert, and acceptable for readers. See libs/dis-canonical/CLAUDE.md for the
-recorded read/write tension.
+pre-insert, and acceptable for readers.
 """
 
 from __future__ import annotations
@@ -59,7 +58,7 @@ class StoreSkuCurrentPosition(CanonicalModel):
     barcode: Str128 | None = None
     product_name: Str128  # NOT NULL
     product_description: Str128 | None = None
-    product_category: Str128 | None = None  # varchar(128) NULL (16j; was NOT NULL)
+    product_category: Str128 | None = None  # varchar(128) NULL
     product_sub_category: Str128 | None = None
     product_department: Str128 | None = None
     supplier_id: Str128 | None = None
@@ -69,7 +68,7 @@ class StoreSkuCurrentPosition(CanonicalModel):
 
     # Pricing / cost
     current_retail_price: Numeric12_4  # numeric(12,4) NOT NULL
-    unit_cost: Numeric12_4 | None = None  # numeric(12,4) NULL (16j; was NOT NULL)
+    unit_cost: Numeric12_4 | None = None  # numeric(12,4) NULL
     promo_price: Numeric12_4 | None = None
     promo_identifier: Str128 | None = None
     yesterday_retail_price: Numeric12_4 | None = None
@@ -88,22 +87,22 @@ class StoreSkuCurrentPosition(CanonicalModel):
     reorder_point: Numeric14_3 | None = None
     sku_status: Str32 | None = None
 
-    # Daily-computed derived signals (refreshed by daily-compute; D31)
+    # Daily-computed derived signals (refreshed by daily-compute)
     velocity_7day: Numeric10_4 | None = None  # numeric(10,4)
     stock_age_days: int | None = None  # smallint
     unit_cost_trend_30day: Numeric12_4 | None = None
     attribute_staleness_map: dict[str, Any] | None = None  # jsonb
 
-    # Per-attribute change signal (Slice 50a; compute-owned, consumer-maintained at
-    # write in 50b — NOT daily-compute). Nullable, empty until 50b maintains them.
+    # Per-attribute change signals (compute-owned, consumer-maintained at
+    # write — NOT daily-compute). Nullable.
     current_retail_price_changed_at: datetime | None = None  # timestamptz NULL
     product_name_changed_at: datetime | None = None  # timestamptz NULL
 
-    # Event-time-wins reference (D64, migration 0003)
+    # Event-time-wins reference
     last_source_event_at: datetime | None = None  # timestamptz NULL: NULL = never event-written
 
     # Provenance
-    mapping_version_id: MappingVersionId  # bigint NOT NULL (D22)
+    mapping_version_id: MappingVersionId  # bigint NOT NULL
     trace_id: TraceId  # uuid NOT NULL
     dis_channel: Str32  # varchar(32) NOT NULL
     last_updated_at: datetime | None = None  # timestamptz NOT NULL DEFAULT now()

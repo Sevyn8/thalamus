@@ -4,12 +4,11 @@
   data path: the chunk still lands (logged, never raised — hard rule 11).
 - The duplicate path (a redelivered chunk) emits ROW-scoped CANONICAL_WRITTEN
   events whose OUTCOME is the kind — ``DUPLICATE_NOOP``/``DUPLICATE_OVERWRITTEN``
-  (refining SUCCESS: the append-only insert landed, D33) — with
+  (refining SUCCESS: the append-only insert landed) — with
   ``prior_trace_id`` as a COLUMN; ``row_hash`` and the dedup key stay in
-  ``event_data``. This is Slice 30c's D42 REVISION (the Slice-10 JSONB shape
-  superseded for console queryability) — the flipped assertions here are the
-  deliberate change, not a regression.
-- Duplicate audit rows are tolerated (D44): the second delivery re-emits the
+  ``event_data``. The COLUMN representation (not a nested JSONB shape) is the
+  current shape, chosen for console queryability.
+- Duplicate audit rows are tolerated: the second delivery re-emits the
   same stages under the same trace; both sets exist.
 """
 
@@ -81,8 +80,8 @@ async def test_duplicate_path_sets_outcome_and_prior_trace_columns(
     stack_env: dict[str, str],
     consumer_mappings: dict[str, int],
 ) -> None:
-    """FLIPPED by Slice 30c (the D42 revision): formerly asserted the Slice-10
-    event_data-JSONB shape; now asserts the column promotion."""
+    """Asserts the column promotion: ``outcome`` and ``prior_trace_id`` land as
+    COLUMNs on ``audit.events``, not nested in the ``event_data`` JSONB."""
     sku = f"AU-{new_uuid7().hex[:10]}"
     txn = f"T-{new_uuid7().hex[:8]}"
     seed_hot_row(dis_admin, cleanup, sku_id=sku, mapping_version_id=consumer_mappings[SALE_SOURCE_ID])
@@ -162,7 +161,7 @@ async def test_redelivery_intake_is_retried_and_durations_populated(
     stack_env: dict[str, str],
     consumer_mappings: dict[str, int],
 ) -> None:
-    """Slice 30b: a redelivered chunk's intake is legible as RETRIED (best-effort
+    """A redelivered chunk's intake is legible as RETRIED (best-effort
     audit readback), and every consumer-emitted row carries a non-negative
     duration_ms (the lap-timer seam)."""
     sku = f"AU-{new_uuid7().hex[:10]}"
@@ -224,7 +223,7 @@ async def test_broken_readback_degrades_to_success_and_never_blocks_processing(
     consumer_mappings: dict[str, int],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Slice 30b RETRIED degradation + non-interference, at the PIPELINE level.
+    """RETRIED degradation + non-interference, at the PIPELINE level.
 
     ``rls_session`` is imported into orchestrate.py for exactly one call site —
     the ``_seen_before`` readback — so breaking THAT import breaks only the

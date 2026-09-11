@@ -32,7 +32,7 @@ SELECT count(*) AS org_nodes_count FROM core.org_nodes;
 SELECT count(*) AS module_access_rows FROM core.tenant_module_access;
 
 -- user_role_assignments — both tenant-scoped AND PLATFORM-audience (NULL tenant_id)
--- expect 22 total (3 PLATFORM-audience + 19 TENANT-scoped per Step 3.5 docstring)
+-- expect 22 total (3 PLATFORM-audience + 19 TENANT-scoped)
 SELECT
     count(*) FILTER (WHERE tenant_id IS NULL) AS platform_audience,
     count(*) FILTER (WHERE tenant_id IS NOT NULL) AS tenant_scoped,

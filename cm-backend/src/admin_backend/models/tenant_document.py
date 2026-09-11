@@ -1,12 +1,11 @@
 """SQLAlchemy ORM model for the ``tenant_documents`` table.
 
-Client onboarding, Slice 1. 1:N with ``tenants``. Holds GCS object
-references only; no upload logic in this slice.
+1:N with ``tenants``. Holds GCS object references only; the row stores
+metadata, not object content.
 
 ``document_type`` is TEXT validated app-side against the
 ``document_type`` ``lookups`` list. ``gcs_object_uri`` is the storage
-reference (non-empty CHECK in the DDL); the object itself is written by
-a later slice.
+reference (non-empty CHECK in the DDL).
 """
 from datetime import datetime
 from uuid import UUID
@@ -34,7 +33,7 @@ class TenantDocument(Base):
     file_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     content_type: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # Slice 3: verification state + upload metadata. verification_status
+    # Verification state + upload metadata. verification_status
     # is TEXT validated app-side against the document_verification_status
     # lookups list; the ck_tenant_documents_verification_consistency CHECK
     # ties VERIFIED/REJECTED to verified_by/verified_at and REJECTED to

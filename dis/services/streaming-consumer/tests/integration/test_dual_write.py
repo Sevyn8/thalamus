@@ -5,7 +5,7 @@ absent):
 
 - a valid sale chunk lands the event rows AND the hot upsert (pre-seeded hot row,
   D63: catalogue-before-sales), all stamped with the loaded mapping's
-  ``mapping_version_id`` (D22) and the event's ``trace_id`` (hard rule 4);
+  ``mapping_version_id`` and the event's ``trace_id`` (hard rule 4);
 - a valid CHANGE chunk lands its event rows in ``store_sku_change_events`` (and
   nothing in the sale table — routing), UPDATES the pre-seeded hot row IN PLACE
   (the incomplete-mapping hot path has no INSERT; event-time-wins picks the
@@ -108,7 +108,7 @@ async def test_atomic_dual_write_and_version_stamp(
         ).one()
 
     # Both sides landed; every produced row carries the loaded mapping's version
-    # (D22) and the event's trace_id (read, never minted).
+    # and the event's trace_id (read, never minted).
     assert len(events) == 2
     expected_version = consumer_mappings[SALE_SOURCE_ID]
     assert all(e.mapping_version_id == expected_version for e in events)
@@ -173,8 +173,8 @@ async def test_change_event_chunk_writes_canonical_updates_hot_in_place_and_acks
             {"tenant": str(PRIMARY_TENANT.uuid), "sku": sku},
         ).all()
 
-    # Event side: both rows, version-stamped (D22), the event's trace (hard rule 4),
-    # the change-path id-less dedup fallback bronze_ref:row_index (D65).
+    # Event side: both rows, version-stamped, the event's trace (hard rule 4),
+    # the change-path id-less dedup fallback bronze_ref:row_index.
     expected_version = consumer_mappings[CHANGE_SOURCE_ID]
     assert len(events) == 2
     assert all(e.mapping_version_id == expected_version for e in events)
@@ -296,7 +296,7 @@ async def test_first_seen_sku_quarantines_loud_event_history_retained(
             ),
             {"tenant": str(PRIMARY_TENANT.uuid), "sku": sku},
         ).scalar_one()
-        # Slice 30b failure-audit shape: the D63 miss lands as a stable,
+        # The failure-audit shape: a HOT_POSITION_MISSING miss lands as a stable,
         # correlated FAILURE — code HOT_POSITION_MISSING (not an exception class
         # name), with BOTH correlation ids the catch-all knows at the write stage.
         d63_failure = conn.execute(
@@ -322,7 +322,7 @@ async def test_genuine_hot_failure_rolls_back_both_direction_two(
     stack_env: dict[str, str],
     consumer_mappings: dict[str, int],
 ) -> None:
-    """Direction-2 either-or-neither (D30): a GENUINE in-transaction hot-side
+    """Direction-2 either-or-neither: a GENUINE in-transaction hot-side
     failure AFTER the event rows landed rolls back BOTH sides.
 
     The inducement: a change chunk counting stock at -5. It passes the

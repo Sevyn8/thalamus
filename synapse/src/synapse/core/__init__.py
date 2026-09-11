@@ -8,14 +8,13 @@ the pure layer database-aware. A ``layers`` contract additionally forbids this p
 from importing ``synapse.resolvers`` or ``synapse.registry``, which is the transitive
 route a "just this once" helper import would take.
 
-THE CONTRACTS COVER ``synapse.core``, NOT "everything but resolvers". This docstring
-previously described the wider rule; the wider rule is now real, but as the layers
-contract rather than as these two — see dis/pyproject.toml.
+THE FORBIDDEN-IMPORT CONTRACTS COVER ``synapse.core``, NOT "everything but resolvers";
+the wider rule is real, but it is the layers contract that carries it — see
+dis/pyproject.toml.
 
-WHERE THE GATE SPLIT LANDS, and it is now THREE-WAY rather than two. ``core.capability``
-declares which gate KINDS a capability can be measured on; ``core.analysis`` carries the
-THRESHOLD and the POLICY, because those belong to whoever is asking; and the MEASUREMENT is
-a database read that names a canonical table, so it lives in ``synapse.resolvers`` — a probe
-placed here would fail the lint above, which is why that third part is a mechanism rather
-than a convention. Slice 1 had the threshold on the descriptor and no policy anywhere.
+THE GATE SPLIT IS THREE-WAY. ``core.capability`` declares which gate KINDS a capability
+can be measured on; ``core.analysis`` carries the THRESHOLD and the POLICY, because those
+belong to whoever is asking; and the MEASUREMENT is a database read that names a canonical
+table, so it lives in ``synapse.resolvers`` — a probe placed here would fail the lint
+above, which is why that third part is a mechanism rather than a convention.
 """

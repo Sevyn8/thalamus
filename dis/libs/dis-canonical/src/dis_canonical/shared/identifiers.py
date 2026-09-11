@@ -2,9 +2,7 @@
 
 The canonical tables key by the **internal UUID** (``identity_mirror`` /
 ``canonical.*`` PKs), so models reuse the single dis-core definition rather than
-redefining it. See the dis-core ``identifiers`` module (and dis-core CLAUDE.md)
-for the name-collision warning with the identity contract's external ``t_*``/``s_*``
-string aliases (D37, OPEN).
+redefining it.
 """
 
 from __future__ import annotations

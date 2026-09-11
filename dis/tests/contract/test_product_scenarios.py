@@ -1,8 +1,8 @@
-"""Product-rule-to-mechanism traces across both pipeline libs (slice-05 adversarial pass).
+"""Product-rule-to-mechanism traces across both pipeline libs.
 
 The two gates carry OPPOSITE column postures BY DESIGN and must not be confused:
 the source-shape gate is permissive about extra columns (real tenant files carry
-them; D13), while the canonical-shape gate is strict (an off-universe column in a
+them), while the canonical-shape gate is strict (an off-universe column in a
 contribution fails loud). Each scenario here is a product rule traced end-to-end,
 not a unit assertion on one function.
 
@@ -86,7 +86,7 @@ def _real_csv() -> pl.DataFrame:
 
 def test_real_csv_with_extra_and_empty_optional_columns_passes_source_shape() -> None:
     # Product rule: real files carry unmapped columns and empty optionals; the
-    # pre-mapping gate must tolerate them (permissive posture, D13).
+    # pre-mapping gate must tolerate them (permissive posture).
     definition = SourceShapeSuiteDef.from_rename(_MAPPING.rename)
     assert run_source_shape(definition, _real_csv()).passed
 

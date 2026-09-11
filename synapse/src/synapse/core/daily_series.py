@@ -4,14 +4,14 @@ PURE, like its ``current_state`` sibling and enforced the same way: import-linte
 dis_canonical, dis_rls and sqlalchemy to ``synapse.core``, so the aggregate SQL and the
 canonical row shapes stay one layer up in ``synapse.resolvers.daily_series``.
 
-ONE ROW IS ONE (tenant, store, sku, UTC DAY), AFTER THE D33 COLLAPSE. What that means
+ONE ROW IS ONE (tenant, store, sku, UTC DAY), AFTER THE READ-TIME COLLAPSE. What that means
 precisely, because a daily quantity that is quietly double-counted is worse than no
 daily quantity at all:
 
 - Redeliveries do not appear. Migration 0019's unique index suppresses byte-identical
   repeats at write time, and the read-time collapse removes any that predate it.
 - A CORRECTION under the same dedup key appears ONCE, as the corrected value.
-- A correction from a source with no transaction id does NOT collapse (D65): its
+- A correction from a source with no transaction id does NOT collapse: its
   fallback dedup key embeds the bronze object it arrived in, so the original and the
   correction are different keys and BOTH are counted. This is a real limitation of the
   key, not of the query, and the resolver's docstring carries it in full.

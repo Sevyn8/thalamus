@@ -1,7 +1,5 @@
 """Integration tests for the /me/* router and the require() gate factory.
 
-Step 6.9.2.
-
 Real Postgres, real schema, real RLS, real ltree. Uses the existing
 ``app_client`` pattern from sibling test files (mirrors
 ``test_role_assignments_router.py``). Each test mints JWTs via
@@ -19,7 +17,7 @@ Four tests are LOAD-BEARING:
   ``details: null`` (envelope contract per F-ERR-3).
 - ``T_GF3`` — Gate allows → handler body runs to completion.
 - ``T_GF4`` — Gate denies → handler body's Repo call is NEVER fired
-  (mirrors Step 6.8.3 R2's no-call invariant via patch + AsyncMock).
+  (verified via patch + AsyncMock).
 """
 from __future__ import annotations
 
@@ -816,7 +814,7 @@ async def test_gf4_gate_denies_before_repo_call(
 ):
     """T_GF4 (LOAD-BEARING): denied request never reaches the handler body.
 
-    Mirrors Step 6.8.3 R2. Patches the module-level ``_test_repo``'s
+    Patches the module-level ``_test_repo``'s
     ``list_with_aggregates`` to AsyncMock and asserts call_count == 0
     after a denied request. Proves the gate raises before the handler
     body's Repo call fires.
@@ -862,7 +860,7 @@ async def test_xt1_tenant_a_user_denied_at_tenant_b_anchor(
     """T_XT1: TENANT-A user calling /me/can-do with TENANT-B's anchor → denied.
 
     End-to-end check: HTTP → middleware → AuthContext → require/has_permission.
-    Mirrors Step 6.9.1's T_X1 but through the HTTP path.
+    Mirrors T_X1 but through the HTTP path.
     """
     tenant_a = await make_tenant(name="XT1-TenantA")
     tenant_b = await make_tenant(name="XT1-TenantB")
@@ -920,14 +918,14 @@ async def test_xt1_tenant_a_user_denied_at_tenant_b_anchor(
 
 
 # ---------------------------------------------------------------------------
-# Step 6.20.2 — /me/can-do target_anchor pattern validation (MC8)
+# /me/can-do target_anchor pattern validation (MC8)
 # ---------------------------------------------------------------------------
 
 
 def test_mc8_malformed_target_anchor_returns_422(app_client, settings):
     """T_MC8: malformed target_anchor rejected at Pydantic layer with 422.
 
-    Step 6.20.2 closes FN-AB-61. Pre-fix, target_anchor was a bare
+    Closes FN-AB-61. Pre-fix, target_anchor was a bare
     ``str | None`` Query param passed verbatim to ``has_permission``,
     where ``CAST(:target_anchor AS ltree)`` raised
     ``psycopg.errors.SyntaxError`` that bubbled to the generic 500

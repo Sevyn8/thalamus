@@ -32,11 +32,10 @@ export type OrgTreeRowProps = {
   selectedId: string | null;
   onToggle: (id: string) => void;
   onClick: (node: OrgNodeTreeItem) => void;
-  // Optional in Phase 5c.2b1 onward. When omitted (e.g. picker-mode
-  // consumers like OrgNodePicker), the per-row kebab dropdown is not
-  // rendered — picker users should not see edit/move/delete affordances.
-  // Existing /superadmin/org consumer (OrgTreePane) passes a handler
-  // and gets unchanged behavior.
+  // Optional. When omitted (e.g. picker-mode consumers like OrgNodePicker),
+  // the per-row kebab dropdown is not rendered — picker users should not
+  // see edit/move/delete affordances. The /superadmin/org consumer
+  // (OrgTreePane) passes a handler and gets the full dropdown.
   onAction?: (nodeId: string, action: OrgNodeAction) => void;
 };
 
@@ -158,8 +157,8 @@ export function OrgTreeRow({
         ) : null}
 
         {onAction && node.node_type !== "TENANT" ? (
-          // Phase 5g.1.4: synthetic TENANT root row is selectable but
-          // not editable via this surface — tenant lifecycle lives on
+          // The synthetic TENANT root row is selectable but not editable
+          // via this surface — tenant lifecycle lives on
           // /superadmin/tenants. Kebab hidden to avoid actions that
           // would 4xx against the org-tree write API.
           <div className="opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-within:opacity-100">

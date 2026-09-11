@@ -8,11 +8,11 @@ import {
   type LauncherTileId,
 } from "./tiles";
 
-// Phase 5d.1: My Sevyn8 launcher tile-visibility resolution.
-// Phase 5g.1: TENANT Admin carve-out removed; the launcher now
-// trusts the backend's module-access matrix as the sole signal for
-// Admin tile visibility (Finding #17 closed). When matrix has
-// ADMIN: ENABLED for the tenant, Admin tile renders for TENANT same
+// My Sevyn8 launcher tile-visibility resolution.
+// The launcher trusts the backend's module-access matrix as the sole
+// signal for Admin tile visibility (no TENANT Admin carve-out). When
+// the matrix has ADMIN: ENABLED for the tenant, the Admin tile
+// renders for TENANT same
 // as for PLATFORM. Surface-level access control inside Admin remains
 // enforced by per-page hasPermission gates + backend RLS.
 //
@@ -37,16 +37,15 @@ import {
 // useAuthSnapshot + (TENANT) useMyModules.
 //
 // =========================================================================
-// AXON SLICE 4: A MODULE WITH NO TILE MUST FAIL VISIBLY
+// A MODULE WITH NO TILE MUST FAIL VISIBLY
 // =========================================================================
-// This function used to return an empty array for an enabled module it had no
-// tile for. A module granted to a tenant and missing from tiles.ts rendered
-// nothing at all, and nothing anywhere said so. That is the same defect class as
-// a defaulted environment variable the build check cannot see, which this
-// repository has paid for three times.
+// Without the unmapped-tile fallback below, a module granted to a tenant and
+// missing from tiles.ts would render nothing at all, and nothing anywhere
+// would say so — the same defect class as a defaulted environment variable a
+// build check cannot see.
 //
 // WHY THE COMPILER CANNOT COVER THIS ON ITS OWN, and it is not belt and braces.
-// tiles.ts now keys its registry by `Record<ModuleCode, ...>`, so a module code
+// tiles.ts keys its registry by `Record<ModuleCode, ...>`, so a module code
 // in the union with no tile is a build failure. But MODULE ACCESS IS DATA: the
 // set below is built at runtime from GET /module-access/me, and `ModuleCode` is
 // a hand-maintained union in types/api.ts. The server can return a module_code
@@ -56,8 +55,8 @@ import {
 // value actually arrives.
 //
 // THIS IS NOT AN ALERT AND IS NOT WIRED TO ONE. The tenant sees it; Sevyn8 does
-// not. Inventing a reporting path was deliberately left out of this slice, and
-// the gap is stated rather than implied.
+// not. A reporting path was deliberately left out, and the gap is stated
+// rather than implied.
 
 export type TileState = "available" | "coming-soon" | "unmapped";
 
@@ -68,7 +67,7 @@ export type ResolvedTile = LauncherTileConfig & {
 export function getVisibleTiles(
   persona: Persona,
   // The set of module codes ENABLED for the TENANT persona's own tenant
-  // (Slice 8: sourced from GET /module-access/me). Ignored for PLATFORM
+  // (sourced from GET /module-access/me). Ignored for PLATFORM
   // personas, whose tiles are static. Empty while the query loads.
   //
   // TYPED AS ModuleCode AND NOT TRUSTED AS ONE. See the header: this is

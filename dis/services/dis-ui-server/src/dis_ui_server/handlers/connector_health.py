@@ -6,7 +6,7 @@ which drives from ``config.sources`` and LEFT JOINs the worker-written ``telemet
 plus a bronze last-arrival. Wire translation lives HERE (mirroring ``runs``): the ``last_seen_at``
 COALESCE, the ISO rendering, and the derived-on-read ``status`` (``schemas.connector_health``).
 
-READ-ONLY: this surface never writes the health table (D116; the workers are its sole writers).
+READ-ONLY: this surface never writes the health table.
 LIST-ONLY: the tenant's connector registry is bounded (one row per config.sources entry), no paging.
 """
 
@@ -37,7 +37,7 @@ def _iso(value: datetime | None) -> str | None:
 
 
 def _to_row(row: Row[Any], *, now: datetime) -> ConnectorHealthRow:
-    # COALESCE the worker's last_seen with the bronze last-arrival (D116): an active connector
+    # COALESCE the worker's last_seen with the bronze last-arrival: an active connector
     # shows freshness even before the worker has emitted a health row.
     effective_last_seen: datetime | None = row.health_last_seen_at or row.bronze_last_seen
     status = derive_status(

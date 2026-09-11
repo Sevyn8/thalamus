@@ -21,10 +21,8 @@ function dateLabel(iso: string | null): string {
   return formatDistanceToNow(new Date(iso), { addSuffix: true });
 }
 
-// Phase 5i.1 (2026-05-25): per-user Activity section restored using
-// the `actor_user_id` filter shipped in Step 6.16.6. Closes the
-// 5h.4 deferral. The compact row variant fits the drawer's denser
-// vertical layout.
+// Per-user Activity section is scoped via the `actor_user_id` filter.
+// The compact row variant fits the drawer's denser vertical layout.
 
 function Body({ user }: { user: PlatformUser }) {
   const activity = useAuditActivities({

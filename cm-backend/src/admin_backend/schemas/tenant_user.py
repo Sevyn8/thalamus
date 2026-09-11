@@ -1,7 +1,6 @@
 """Pydantic v2 read schemas for the TenantUser resource.
 
-Mirrors ``schemas/platform_user.py`` (just shipped at Step 5.1) with
-two additions:
+Mirrors ``schemas/platform_user.py`` with two additions:
 
   - ``tenant_id`` is exposed (it's load-bearing for the frontend —
     every consumer of a tenant_user wants to know which tenant it
@@ -23,7 +22,7 @@ The list shape and the single-resource shape are identical at v0.
 cannot drift; if a future trim-down for list responses is needed,
 split into a separate class then.
 
-Step 6.8.3 — A1/A2 augmentation. ``UserRoleAssignmentItem`` lands
+``UserRoleAssignmentItem`` lands
 here as the canonical home (re-exported from
 ``schemas/platform_user.py``). Both ``TenantUserRead`` and
 ``PlatformUserRead`` gain a ``roles: list[UserRoleAssignmentItem]``
@@ -115,7 +114,7 @@ class TenantUserListResponse(BaseModel):
 
 
 # =============================================================================
-# Step 6.10.1 write schemas: TenantUserCreateRequest, TenantUserPatchRequest.
+# Write schemas: TenantUserCreateRequest, TenantUserPatchRequest.
 #
 # Both ``extra="forbid"``. Server-managed and lifecycle-managed fields
 # (``id``, ``status``, ``auth0_sub``, ``invited_at``,

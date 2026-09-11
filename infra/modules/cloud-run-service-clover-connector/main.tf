@@ -189,7 +189,7 @@ resource "google_cloud_run_v2_job" "clover_connector" {
   location = var.region
 
   template {
-    # Job-level: one task per execution, no parallelism. The D58 query-based dedup
+    # Job-level: one task per execution, no parallelism. The query-based dedup
     # is single-instance only, and one trigger is one task. It matters more here
     # than on Square: Clover refresh tokens are single-use, so two concurrent
     # rotations for one merchant produce two chains and one of them is dead.

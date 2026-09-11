@@ -18,13 +18,13 @@ function OrgPageInner() {
   const searchParams = useSearchParams();
   const snapshot = useAuthSnapshot();
 
-  // Phase 5g.1.1 hotfix: cross-tenant tenant picker requires
-  // ADMIN.TENANTS.VIEW.GLOBAL. TENANT-OWNER personas (no GLOBAL grant)
-  // hit a 403 on `/api/v1/tenants`, which surfaced as a "Could not
-  // load tenants" error panel in the picker, blocking the whole
-  // surface — even though they can only ever see their own tenant's
-  // tree anyway. Fix: skip the fetch for TENANT, auto-select their
-  // tenant from JWT claims, hide the picker entirely (single-tenant
+  // Cross-tenant tenant picker requires ADMIN.TENANTS.VIEW.GLOBAL.
+  // TENANT-OWNER personas (no GLOBAL grant) would hit a 403 on
+  // `/api/v1/tenants` — which would surface as a "Could not load
+  // tenants" error panel in the picker, blocking the whole surface —
+  // even though they can only ever see their own tenant's tree anyway.
+  // So the fetch is skipped for TENANT: their tenant is auto-selected
+  // from JWT claims and the picker is hidden entirely (single-tenant
   // tree is full-width).
   const canListAllTenants = hasPermission(
     snapshot,
@@ -44,12 +44,12 @@ function OrgPageInner() {
     ? urlTenant ?? tenants[0]?.id ?? null
     : snapshot?.user?.tenantId ?? null;
 
-  // Node selection is component-local state, not URL-driven, after
-  // Phase 4e. Reason: lazy-loaded grandchildren live in TQ cache via
-  // useInfiniteQuery (not in tree.data.tree), so URL-driven findNode
-  // lookup couldn't resolve them on a fresh page load. Click-driven
-  // selection passes the full OrgNodeTreeItem object up; URL keeps
-  // only `?tenant=` for shareable tenant links.
+  // Node selection is component-local state, not URL-driven: lazy-loaded
+  // grandchildren live in TQ cache via useInfiniteQuery (not in
+  // tree.data.tree), so a URL-driven findNode lookup couldn't resolve
+  // them on a fresh page load. Click-driven selection passes the full
+  // OrgNodeTreeItem object up; URL keeps only `?tenant=` for shareable
+  // tenant links.
   const [selectedNode, setSelectedNode] = useState<OrgNodeTreeItem | null>(
     null,
   );

@@ -1,12 +1,12 @@
 """``bronze.data_ingress_events`` - the ingress-run metadata (READ-ONLY here).
 
 A faithful read mirror of the columns the ``GET /runs`` list serves. dis-ui-server reads
-bronze read-only for the runs surface (D111); the STREAMING CONSUMER + RECEIVERS remain
-bronze's SOLE writers (service CLAUDE.md: "NEVER bronze tables (the worker owns bronze)" — a
-WRITE prohibition). This model is typed read metadata only; the runs repo builds SELECT-only
-statements and never an INSERT/UPDATE/DELETE.
+bronze read-only for the runs surface; the STREAMING CONSUMER + RECEIVERS remain
+bronze's SOLE writers — dis-ui-server must never write bronze tables. This model is
+typed read metadata only; the runs repo builds SELECT-only statements and never an
+INSERT/UPDATE/DELETE.
 
-RLS is the standard two-GUC policy (D91): ``tenant_isolation`` = ``USING (tenant_id =
+RLS is the standard two-GUC policy: ``tenant_isolation`` = ``USING (tenant_id =
 app.tenant_id OR app.user_type='PLATFORM')`` + ``WITH CHECK`` tenant-pin — the same READ
 behaviour as ``quarantine.*`` (a TENANT sees its own, PLATFORM sees all). The per-tenant scope
 rides ``read_session``; the explicit ``WHERE tenant_id`` predicate in ``repos/runs.py`` is
@@ -48,15 +48,16 @@ class DataIngressEvent(Base):
     source_payload_id: Mapped[str | None] = mapped_column(String(256))  # File/event ref
     row_count: Mapped[int | None] = mapped_column(Integer)  # total rows (worker DuckDB preflight)
     mapping_version_id: Mapped[int | None] = mapped_column(BigInteger)
-    template_id: Mapped[UUID | None] = mapped_column(Uuid)  # replay-lineage; NULL pre-Slice-8 (D71)
-    # The uploaded file's original name (Slice 51a / D120); NULL on pre-51a runs (no backfill).
+    # replay-lineage; NULL on older runs predating this column
+    template_id: Mapped[UUID | None] = mapped_column(Uuid)
+    # The uploaded file's original name; NULL on pre-51a runs (no backfill).
     original_filename: Mapped[str | None] = mapped_column(String(512))
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # CHECK ck_bdie_processing_status_vocab (5 members). INGRESS-ONLY signal since Slice 51a
-    # (D117): the runs surface derives its verdict from audit.events, NOT from this column (the
+    # CHECK ck_bdie_processing_status_vocab (5 members). INGRESS-ONLY signal —
+    # the runs surface derives its verdict from audit.events, NOT from this column (the
     # declared "consumer advances it to PROCESSED/QUARANTINED/FAILED" design is superseded).
     processing_status: Mapped[str] = mapped_column(String(32))
-    # last_updated_at is intentionally NOT mirrored (Slice 51b, D125): it was an ingress-only
+    # last_updated_at is intentionally NOT mirrored: it was an ingress-only
     # signal dropped from the runs response; nothing else reads it, so the read must not select
     # it. completed_at (the terminal audit event) is the meaningful "finished" timestamp.

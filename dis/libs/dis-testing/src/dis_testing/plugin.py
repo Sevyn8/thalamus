@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from dis_testing.migration_harness import ScratchDB
 
 
-# Resident-DB fingerprint captured at true session start (Slice 51c, D122). None when no stack
+# Resident-DB fingerprint captured at true session start. None when no stack
 # is configured (POSTGRES_ADMIN_URL unset) so a bare ``pytest`` run stays green.
 _RESIDENT_FINGERPRINT: tuple[str, str] | None = None
 
@@ -56,7 +56,7 @@ def dis_engine(dis_postgres_url: str) -> Iterator[Engine]:
 
 
 # ---------------------------------------------------------------------------
-# Migration-test harness (Slice 51c, D122): ephemeral scratch DBs + a read-only
+# Migration-test harness: ephemeral scratch DBs + a read-only
 # resident reference. These fixtures live in the plugin (not a repo-root
 # tests/integration/conftest.py, which collides with service conftests on the
 # pytest module name — see _dis_identity_synced below). Migration tests are
@@ -124,7 +124,7 @@ def scratch_db(request: pytest.FixtureRequest, admin_url: str) -> Iterator[Scrat
 def _dis_identity_synced() -> None:
     """Populate identity_mirror once per session via the REAL mirror-sync path.
 
-    identity_mirror is owned by mirror-sync (Slice 7); the seeder no longer writes
+    identity_mirror is owned by mirror-sync; the seeder no longer writes
     it. Many tests assume a mirrored tenant/store exists as an FK target (the
     mapping seed, the migration FK tests, the 3 NOBYPASSRLS user-role tests). This
     autouse SESSION fixture runs the sync once, before any module/function fixture
@@ -158,10 +158,11 @@ def _dis_identity_synced() -> None:
     sync_identity_mirror(admin_url, user_url)
 
 
-# D100 post-suite clean-state guard: the prototype assertion was removed when resident workers
-# could write rows no test owned (shared Pub/Sub subscriptions); the emulator-project isolation
-# below (pytest_configure + _dis_pubsub_provisioned) closed that. The guard is RE-ENABLED below as
-# ``pytest_sessionfinish`` — see ``_assert_clean_shared_db_after_suite`` and decisions.md D100.
+# Post-suite clean-state guard: resident workers could otherwise write rows no
+# test owned (shared Pub/Sub subscriptions); the emulator-project isolation
+# below (pytest_configure + _dis_pubsub_provisioned) closes that, and this guard
+# (``pytest_sessionfinish`` / ``_assert_clean_shared_db_after_suite``) asserts
+# the shared DB ends the suite unchanged.
 # ``identity_mirror`` is EXCLUDED from the guard: the resident mirror-sync co-populates it from the
 # REAL Customer Master (a variable, non-test baseline — 7 tenants / 25 stores locally), so it has
 # no test-vs-baseline discriminator. The standing rule holds: a test that mutates the shared DB
@@ -169,7 +170,7 @@ def _dis_identity_synced() -> None:
 
 
 def pytest_configure() -> None:
-    """Route the pytest process onto the test-scoped Pub/Sub project (D100 isolation).
+    """Route the pytest process onto the test-scoped Pub/Sub project.
 
     Runs before any test module is imported, so module-level project reads and every
     in-process service config (dis-ui-server's ``create_app``) resolve the test project
@@ -192,7 +193,7 @@ def pytest_configure() -> None:
 
 def pytest_sessionstart(session: pytest.Session) -> None:
     """Snapshot the resident DB (alembic_version + schema fingerprint) at TRUE session start,
-    before any test/fixture touches it (Slice 51c, D122, AC1).
+    before any test/fixture touches it.
 
     Fail-loud, never skip: when the stack is configured (``POSTGRES_ADMIN_URL`` set) the snapshot
     MUST capture — if the resident DB is unreachable or has no ``alembic_version``, the error
@@ -217,8 +218,8 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 
 def _assert_resident_untouched(admin_url: str) -> None:
     """Assert the resident DB's schema/version is byte-identical to the session-start snapshot
-    (Slice 51c, D122, AC1). Any migration test that targeted the resident DB (5433) instead of a
-    scratch DB shows up here as a schema/version drift."""
+    . Any migration test that targeted the resident DB (5433) instead of a
+        scratch DB shows up here as a schema/version drift."""
     from sqlalchemy import create_engine
 
     from dis_testing.migration_harness import resident_fingerprint
@@ -240,7 +241,7 @@ def _assert_resident_untouched(admin_url: str) -> None:
 
 @pytest.fixture(scope="session", autouse=True)
 def _dis_pubsub_provisioned() -> None:
-    """Provision the test-scoped project's topics + standing subscriptions (D100).
+    """Provision the test-scoped project's topics + standing subscriptions.
 
     The same name set tools/local/create_topics.py provisions on local-dis, but on the
     test project, so the in-process subscribers' startup existence check finds their
@@ -261,7 +262,7 @@ def _dis_pubsub_provisioned() -> None:
 # Tables whose post-suite baseline is EMPTY on a freshly-reset stack: any row is
 # residue. All carry ``trace_id`` NOT NULL — the per-ingress discriminator the guard
 # reports so a failure names the leaking flow. ``signal_history`` is daily-compute
-# output with no cleanup fixture (D31/D32); it is intentionally in this set, so the
+# output with no cleanup fixture; it is intentionally in this set, so the
 # guard fires if a future compute-path test ever writes it unreverted. The four
 # ``staging.*`` tables mirror ``canonical.*`` (migration 0009) and are test-writable
 # (the 0009 de-partition tests write ``staging.store_sku_change_events``); they carry
@@ -283,11 +284,11 @@ _D100_EMPTY_TABLES: tuple[str, ...] = (
 
 
 class SuiteResidueError(AssertionError):
-    """A test left residue in the shared dev DB (D100 post-suite clean-state guard)."""
+    """A test left residue in the shared dev DB."""
 
 
 def _assert_clean_shared_db_after_suite(admin_url: str) -> None:
-    """Fail loud if the test SUITE left residue in the shared DB (D100, post-suite).
+    """Fail loud if the test SUITE left residue in the shared DB.
 
     Contract: this asserts the SUITE leaves no residue *starting from a clean reset*
     (``make reset-local`` -> ``make run-local`` -> ``make test``). It does NOT police
@@ -377,10 +378,10 @@ def _assert_clean_shared_db_after_suite(admin_url: str) -> None:
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    """After the whole suite (post-teardown), assert the suite left no shared-DB residue (D100).
+    """After the whole suite (post-teardown), assert the suite left no shared-DB residue.
 
     Two independent post-suite guards run here:
-      * Resident-untouched (Slice 51c, D122, AC1): fires whenever ``POSTGRES_ADMIN_URL`` is set
+      * Resident-untouched: fires whenever ``POSTGRES_ADMIN_URL`` is set
         and a start-snapshot was captured — independent of the pubsub gate.
       * D100 post-suite clean-state: gated on ``PUBSUB_EMULATOR_HOST`` (the isolation gate).
 
@@ -440,8 +441,8 @@ def customer_master_url() -> str:
 async def identity_client(identity_service_url: str) -> AsyncIterator[HttpIdentityClient]:
     """An ``HttpIdentityClient`` pointed at the running Identity Service fake.
 
-    This is the same client real consumers use; the Slice 13 service is a drop-in
-    behind the same ``IDENTITY_SERVICE_URL`` (acceptance criterion 8).
+    This is the same client real consumers use; a real Identity Service is a
+    drop-in behind the same ``IDENTITY_SERVICE_URL``.
     """
 
     from dis_core.identity import HttpIdentityClient

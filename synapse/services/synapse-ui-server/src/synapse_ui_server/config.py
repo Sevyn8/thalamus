@@ -22,27 +22,24 @@ CLAIM_NAMESPACE: Final[str] = "https://sevyn8.com/"
 class Config:
     """What the service needs to serve a request. Frozen: nothing rereads the environment.
 
-    THIS SERVICE WAS READ-ONLY UNTIL SLICE 5d, AND EACH WRITE PATH HAS BEEN A DELIBERATE ACT,
-    which is exactly what the old comment here demanded ("Slice 8b adds one deliberately"). Two
-    have now arrived, 5d and 5e, and each cost an edit to this file. The contract was never
-    "never write"; it was "cannot write by accident", and it is still that.
+    EVERY WRITE PATH IS A DELIBERATE ACT: each one costs an edit to this file. The contract
+    is not "never write"; it is "cannot write by accident".
 
-    WHAT KEEPS IT NARROW IS THE GRANT, NOT THE CODE. There are now TWO write credentials and
+    WHAT KEEPS IT NARROW IS THE GRANT, NOT THE CODE. There are TWO write credentials and
     each is one verb on one table:
 
       ``lifecycle_url``    ``synapse_lifecycle``: INSERT on ``synapse.action_events``. Alert
-                           decisions. Slice 5d.
+                           decisions.
       ``provision_url``    ``synapse_provisioner``: INSERT on ``synapse.provision``, plus the two
                            SELECTs its pre-flight cannot run without (identity_mirror.tenants and
-                           canonical.store_sku_current_position). Enablement. Slice 5e.
+                           canonical.store_sku_current_position). Enablement.
 
     AND ONE AXON CREDENTIAL, WHICH IS THE READ HALF ONLY. ``axon_reader_url`` holds SELECT on
     both delivery ledgers and no write verb anywhere.
 
-    THE SENDER'S DSN USED TO BE HERE AND IS NOT ANY MORE. Until slice 2 this service also held
-    ``axon_sender_url`` (INSERT on ``axon.platform_deliveries``), because the enable route wrote
-    the ledger row in-process. It now publishes to a queue and writes nothing, so the credential
-    moved to axon-sender, which is the only process that writes. The SendGrid key and
+    THE SENDER'S DSN IS DELIBERATELY NOT HERE. The enable route publishes to a queue and
+    writes no ledger row; ``axon_sender_url`` (INSERT on ``axon.platform_deliveries``)
+    belongs to axon-sender, which is the only process that writes. The SendGrid key and
     from-address moved with it for the same reason: this service no longer talks to a provider.
     What is left is a console that can read the ledger and cannot alter it.
 
@@ -69,16 +66,16 @@ class Config:
     jwt_issuer: str
     jwt_audience: str
     expected_database: str
-    # AXON (slice 1). Four values, and each is REQUIRED for the same reason the DSNs are: a
+    # AXON. Four values, and each is REQUIRED for the same reason the DSNs are: a
     # revision missing any of them has a delivery plane that silently carries nothing, and a
     # delivery plane nobody can tell is dead is worse than no delivery plane.
     #
-    # Slice 5d is why this is not an optional block. It shipped an env var this module required
-    # and the Terraform module never wired, and the service refused to start behind a green
-    # apply for two days while staging kept serving the previous revision. The fix was the
-    # wiring, not a softer requirement.
+    # This is not an optional block: an env var this module requires but Terraform never
+    # wires makes the service refuse to start behind a green apply while staging keeps
+    # serving the previous revision. The fix for that failure is the wiring, not a softer
+    # requirement.
     axon_platform_oncall_email: str
-    # AXON slice 3. The delivery ledger's READ credential, and the pair completes the design:
+    # The delivery ledger's READ credential, and the pair completes the design:
     # ``axon_sender_url`` can write one table and read nothing; this one can read both ledgers
     # and write nothing. Neither can do the other's job, and that is a fact about the GRANT.
     #
@@ -87,8 +84,8 @@ class Config:
     # it SELECT, which would hand the send path the ability to read a ledger of who was
     # contacted about what. The console needs the read; the sender must not have it.
     axon_reader_url: str
-    # AXON slice 2. The GCP project holding axon-send-requested. The 5e enable route no longer
-    # sends in-process; it PUBLISHES, and the send happens in axon-sender behind the queue.
+    # The GCP project holding axon-send-requested. The enable route does not send
+    # in-process; it PUBLISHES, and the send happens in axon-sender behind the queue.
     #
     # A PROJECT ID RATHER THAN A TOPIC NAME. The topic's name lives in axon.envelope, because
     # both the producer and the consumer need it and a name configured twice is a name that can
@@ -146,16 +143,12 @@ def load_config() -> Config:
         )
 
     if os.environ.get("SYNAPSE_WRITER_URL"):
-        # STILL REFUSED, AND THE REASON SHARPENS EACH TIME A WRITE PATH ARRIVES. This is the
-        # orchestrator's credential: INSERT on synapse.actions. Slice 5d gave this service a
-        # write path and slice 5e gave it a second, but both are SMALL and NAMED:
-        # synapse_lifecycle on synapse.action_events, synapse_provisioner on synapse.provision.
-        # A console holding the orchestrator's identity could append to the action log itself,
-        # and every row would stop being attributable to the process that caused it.
-        #
-        # THE NUMBER OF WRITE CREDENTIALS GOING FROM ONE TO TWO IS NOT AN ARGUMENT FOR RELAXING
-        # THIS. It is the argument for keeping it: each credential is one verb on one table, and
-        # the writer is neither.
+        # REFUSED. This is the orchestrator's credential: INSERT on synapse.actions. This
+        # service's own write paths are SMALL and NAMED: synapse_lifecycle on
+        # synapse.action_events, synapse_provisioner on synapse.provision. A console holding
+        # the orchestrator's identity could append to the action log itself, and every row
+        # would stop being attributable to the process that caused it. Each credential is one
+        # verb on one table, and the writer is neither.
         #
         # Kept as a startup refusal rather than left to the grant because it is cheap and it
         # names the mistake. The grant is the wall; this is the sign on it.

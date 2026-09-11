@@ -1,4 +1,4 @@
-"""Integration tests for AuditLogsRepo (Step 6.16.3).
+"""Integration tests for AuditLogsRepo.
 
 Real Postgres, real schema, real RLS. No FastAPI machinery. Sessions
 come from ``get_tenant_session`` via ``platform_session`` and
@@ -294,8 +294,8 @@ async def test_r8_get_by_id_falls_back_to_platform_table(
 
 
 # ---------------------------------------------------------------------------
-# R_N1 / R_N2 / R_N3 : Step 6.16.7 LD10 + LD11 — new columns SELECT-able
-# and ``what`` composed correctly across resource_type x subtype combos.
+# R_N1 / R_N2 / R_N3 : new audit columns are SELECT-able and ``what``
+# composes correctly across resource_type x subtype combos.
 # ---------------------------------------------------------------------------
 
 
@@ -305,8 +305,8 @@ async def test_r_n1_repo_select_returns_new_audit_columns(
     make_tenant_activity_audit_log,
     platform_session,
 ) -> None:
-    """LOAD-BEARING (Step 6.16.7 LD10): the repo's SELECT projection
-    includes ``actor_organization_name``, ``actor_roles``, and
+    """LOAD-BEARING — the repo's SELECT projection includes
+    ``actor_organization_name``, ``actor_roles``, and
     ``resource_subtype``. Each surfaces on ``AuditActivityDetailRow``.
     """
     tenant = await make_tenant(name="RN1-Cols")
@@ -328,8 +328,8 @@ async def test_r_n1_repo_select_returns_new_audit_columns(
 
 
 async def test_r_n2_what_composition_via_router_mapper() -> None:
-    """LOAD-BEARING (Step 6.16.7 LD11): ``what`` composes per the LD12
-    type-label mapping across each resource_type / subtype combination.
+    """LOAD-BEARING — ``what`` composes per the type-label mapping
+    across each resource_type / subtype combination.
     """
     from admin_backend.repositories.audit_logs import AuditActivityDetailRow
     from admin_backend.routers.v1.audit import _list_item_from_row

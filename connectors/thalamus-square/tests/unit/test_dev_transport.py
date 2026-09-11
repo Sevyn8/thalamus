@@ -54,7 +54,7 @@ def test_trigger_is_valid_and_carries_the_producer_run_id() -> None:
 
 
 def test_receiver_does_not_derive_the_run_id() -> None:
-    # D54: the receiver reads trigger.connector_run_id; only the producer (this module)
+    # The receiver reads trigger.connector_run_id; only the producer (this module)
     # derives it. The SDK pipeline must not reference the minting function.
     import thalamus_connector_sdk.pipeline as receiver
 

@@ -1,4 +1,4 @@
-"""Pydantic v2 schemas for the Module Access read endpoints (Step 6.7).
+"""Pydantic v2 schemas for the Module Access read endpoints.
 
 Two endpoints back the Module Access governance console
 (Frontend spec — sidebar entry "Module Access" under "ACCESS CONTROL"):
@@ -8,12 +8,12 @@ Two endpoints back the Module Access governance console
   - E2 ``GET /api/v1/module-access/matrix``  — paginated tenant ×
     module grid.
 
-**Label-handling convention (locked at this step).** Every enum-coded
-field carries a sibling ``<field>_label`` resolved server-side via
-LEFT JOIN against ``lookups`` with COALESCE(display_name, code) fallback.
-Always present, never null. Applies to **new endpoints from Step 6.7
-forward**; older endpoints (`/tenants`, `/tenant-users`, `/platform-users`,
-`/roles`, `/org-tree`, `/dashboard/*`) stay bare-enum.
+**Label-handling convention.** Every enum-coded field carries a
+sibling ``<field>_label`` resolved server-side via LEFT JOIN against
+``lookups`` with COALESCE(display_name, code) fallback. Always
+present, never null. Applies to these endpoints; older endpoints
+(`/tenants`, `/tenant-users`, `/platform-users`, `/roles`, `/org-tree`,
+`/dashboard/*`) stay bare-enum.
 
 Both responses use ``ConfigDict(extra="forbid")`` so undocumented fields
 fail Pydantic validation immediately rather than silently shipping.
@@ -200,7 +200,7 @@ class MatrixResponse(BaseModel):
 
 
 # =============================================================================
-# E4 (Slice 8): GET /module-access/me — caller-state tenant module read
+# E4: GET /module-access/me — caller-state tenant module read
 # =============================================================================
 
 
@@ -249,7 +249,7 @@ class MyModulesResponse(BaseModel):
 
 
 # =============================================================================
-# Step 6.15 write surface: ModuleAccessRead
+# Write surface: ModuleAccessRead
 # =============================================================================
 #
 # Returned by the enable / disable transition endpoints. Reflects the

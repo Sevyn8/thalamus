@@ -2,10 +2,10 @@
 
 Each test works under a scratch ``source_id`` unique to the run; teardown
 deletes those rows via the admin role (BYPASSRLS — cleanup only, never the path
-under test). Create now writes ACTIVE directly (Slice 16c, single state); the
+under test). Create writes ACTIVE directly (single state); the
 remaining lifecycle states the create path does NOT produce (STAGED, DEPRECATED,
-multi-version heads) are still staged by direct admin UPDATE / seed, simulating
-the future promote slice's output.
+multi-version heads) are staged by direct admin UPDATE / seed, simulating
+a promote flow that is not built.
 """
 
 from __future__ import annotations
@@ -98,7 +98,7 @@ def scratch_source(admin_engine: Engine) -> Iterator[str]:
 
 
 def _snapshot_columns() -> list[dict[str, Any]]:
-    """A complete valid SNAPSHOT create body (columns contract, Slice 16a/c): exactly the
+    """A complete valid SNAPSHOT create body (columns contract): exactly the
     mandatory mapping-produced snapshot columns, so the gate passes with no derive (the
     columns contract expresses none). No promo/expiry column, so no presence pairing fires."""
     return [
@@ -221,7 +221,7 @@ def _force_status(admin_engine: Engine, mapping_version_id: int, status: str) ->
         )
 
 
-# -- create (d) — Slice 16c: translate -> validate -> ACTIVE write -------------------
+# -- create (d): translate -> validate -> ACTIVE write -------------------------------
 
 
 def test_create_writes_a_valid_active_row_with_a_minted_uuid7(
@@ -237,9 +237,9 @@ def test_create_writes_a_valid_active_row_with_a_minted_uuid7(
     assert UUID(body["template_id"]).version == 7  # minted server-side, UUIDv7 (hard rule 3)
     assert body["source_id"] == scratch_source
     assert body["template_name"] == "catalogue"
-    assert body["template_type"] == "snapshot"  # captured + surfaced (Slice 14d)
+    assert body["template_type"] == "snapshot"  # captured + surfaced
     assert body["latest_version"] == 1  # trigger-assigned, lineage starts at 1
-    # Single state (Slice 16c): create is ACTIVE, not DRAFT.
+    # Single state: create is ACTIVE, not DRAFT.
     assert body["active_version"] == 1
     assert body["draft_version"] is None and body["staged_version"] is None
     assert body["versions_count"] == 1
@@ -269,7 +269,7 @@ def test_create_writes_a_valid_active_row_with_a_minted_uuid7(
     assert row.activated_at is not None  # satisfies ck_csm_activated_at
     assert row.version_seq_per_source == 1
     assert row.predecessor_version_id is None
-    assert row.template_type == "snapshot"  # stored, not inferred (Slice 14d)
+    assert row.template_type == "snapshot"  # stored, not inferred
 
 
 def test_duplicate_template_name_is_a_clean_409(
@@ -282,7 +282,8 @@ def test_duplicate_template_name_is_a_clean_409(
     assert envelope["code"] == "mapping_template_name_conflict"
     assert envelope["details"]["source_id"] == scratch_source
     assert envelope["details"]["template_name"] == "catalogue"
-    # A second template under the SAME source with a DIFFERENT name is fine (D68 grain)...
+    # A second template under the SAME source with a DIFFERENT name is fine (uniqueness
+    # is per (source, name))...
     assert _create(live_client, mint_token, scratch_source, template_name="inventory").status_code == 201
 
 
@@ -310,8 +311,8 @@ def test_create_persists_nothing_on_a_rejected_request(
     scratch_source: str,
     admin_engine: Engine,
 ) -> None:
-    """The Slice 16c no-write-on-failure guarantee, asserted DIRECTLY against the live DB
-    (the inverse of the old 16a no-write test): a request the semantic gate REJECTS — here
+    """The no-write-on-failure guarantee, asserted DIRECTLY against the live DB:
+    a request the semantic gate REJECTS — here
     an incomplete snapshot missing mandatory mapping-produced columns — is a 4xx and writes
     ZERO rows. The gate runs before any ``rls_session``, so nothing reaches the DB."""
     response = live_client.post(
@@ -424,7 +425,7 @@ def test_non_uuid_token_sub_creates_active_with_null_created_by(
 ) -> None:
     """A verified token whose ``sub`` is not a UUID still creates an ACTIVE row (201); the
     authorship column is NULL by design (handlers/mapping_templates.py ``_created_by_uuid``
-    — the claim vocabulary is unsigned, D56/Blocker 5), on the wire AND on the written row."""
+    — the claim vocabulary is unsigned), on the wire AND on the written row."""
     response = live_client.post(
         "/api/v1/mapping-templates",
         headers=_bearer(mint_token(tenant_id=TENANT_A, sub="svc-account-7")),  # not a UUID
@@ -448,7 +449,7 @@ def test_non_uuid_token_sub_creates_active_with_null_created_by(
     assert stored.status == "ACTIVE"
 
 
-# -- edit (e) — the D17 lifecycle ------------------------------------------------------
+# -- edit (e) — the versioned lifecycle ------------------------------------------------
 
 
 def test_patch_edits_a_draft_in_place(
@@ -504,7 +505,7 @@ def test_patch_on_an_active_head_chains_a_new_draft(
     assert draft["status"] == "draft" and draft["version"] == 2
     assert draft["predecessor_version_id"] == active_mvid
     assert draft["mapping_rules"]["derive"]["currency"][0]["args"]["value"] == "GBP"
-    # The ACTIVE version is byte-unchanged (D17 immutability) — and still the only ACTIVE.
+    # The ACTIVE version is byte-unchanged (ACTIVE versions are immutable) — and still the only ACTIVE.
     assert active["mapping_version_id"] == active_mvid
     assert active["status"] == "active"
     assert active["mapping_rules"] == _canonical(_sale_rules())
@@ -772,9 +773,9 @@ def test_no_endpoint_can_mint_active_or_staged(
     scratch_source: str,
     admin_engine: Engine,
 ) -> None:
-    # The 14a consumer `.first()` hazard guard: across a seeded DRAFT + an in-place
+    # The consumer `.first()` hazard guard: across a seeded DRAFT + an in-place
     # edit + a rename, every stored row is still DRAFT (the PATCH/rename paths never
-    # change a row's status; create-as-ACTIVE (Slice 16c) is a separate path, not
+    # change a row's status; create-as-ACTIVE is a separate path, not
     # exercised here — STAGED and the promote/deprecate transitions remain unbuilt).
     headers = _bearer(mint_token(tenant_id=TENANT_A))
     template_id = _seed_draft(admin_engine, scratch_source)["template_id"]
@@ -787,7 +788,7 @@ def test_no_endpoint_can_mint_active_or_staged(
     assert {v["status"] for v in detail["versions"]} == {"draft"}
 
 
-# -- Slice 17b: PLATFORM impersonation write + the reject paths, over the real HTTP path ---
+# -- PLATFORM impersonation write + the reject paths, over the real HTTP path --------------
 
 
 def _impersonation_body(source_id: str, *, acting_for: str | None = None) -> dict[str, Any]:

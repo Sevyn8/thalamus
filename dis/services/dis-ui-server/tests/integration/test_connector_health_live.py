@@ -1,10 +1,10 @@
-"""``GET /connector-health`` against the LIVE stack (D116) — read isolation, coalesce, derivation.
+"""``GET /connector-health`` against the LIVE stack — read isolation, coalesce, derivation.
 
 Proves the BFF READ over the worker-written table: a TENANT sees only its own connectors and a
 PLATFORM+ops actor sees cross-tenant (RLS two-GUC), the last_seen COALESCE surfaces a source with
 bronze activity but NO health row, and the read-derived status classifies real rows
 (healthy/stale/pending). All seeded rows (config.sources, telemetry.connector_health, bronze) are
-removed afterwards (D100). Loud-error posture: a missing stack env var ERRORS, never skips.
+removed afterwards. Loud-error posture: a missing stack env var ERRORS, never skips.
 """
 
 from __future__ import annotations

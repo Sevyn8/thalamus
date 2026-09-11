@@ -1,4 +1,4 @@
-"""Lookups batch endpoint (Step 3.6).
+"""Lookups batch endpoint.
 
 ``GET /api/v1/lookups?lists=...`` returns a map of
 ``{list_name: [item, ...]}``. Single batch endpoint so the frontend
@@ -25,8 +25,7 @@ Unknown list_names: requesting a ``list_name`` not seeded in the DB
 returns an empty array for that key (predictable shape — frontend
 iterates without nullchecks). The endpoint is country-tolerant in
 this way: ``?lists=country`` returns ``{"lookups": {"country": []}}``
-until the country lookup design lands (deferred per Step 3.6's
-known follow-up).
+until the country lookup design lands.
 """
 from __future__ import annotations
 

@@ -1,12 +1,12 @@
 """Structured logging convention for DIS.
 
 Every log line is JSON (Cloud Logging-friendly) and carries the load-bearing
-context fields: ``service``, ``stage``, ``tenant_id``, ``trace_id`` (root CLAUDE.md
-logging rule). Helpers here bind that context once and inject it into every record,
-structlog-style, so call sites don't repeat it.
+context fields: ``service``, ``stage``, ``tenant_id``, ``trace_id``. Helpers
+here bind that context once and inject it into every record, structlog-style,
+so call sites don't repeat it.
 
-NEVER log PII or raw receiver payloads (CLAUDE.md). These helpers cannot enforce
-that — it is a call-site discipline.
+NEVER log PII or raw receiver payloads. These helpers cannot enforce that — it
+is a call-site discipline.
 
 ``configure_logging`` installs the JSON formatter (call once at process start).
 ``get_logger`` returns an adapter pre-bound with context; ``.bind(**more)`` returns
@@ -34,7 +34,7 @@ _CONTEXT_KEYS = ("service", "stage", "tenant_id", "trace_id")
 
 @dataclass(frozen=True)
 class LogContext:
-    """Optional caller-supplied log-binding context for pure libs (slice-05).
+    """Optional caller-supplied log-binding context for pure libs.
 
     The pure pipeline libs (dis-mapping, dis-validation) take this to bind
     ``tenant_id``/``trace_id`` on their log lines; it never enters their data

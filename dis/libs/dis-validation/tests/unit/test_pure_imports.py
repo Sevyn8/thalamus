@@ -1,9 +1,9 @@
-"""dis-validation is pure and decoupled (slice-05 criterion 1): importing it must
+"""dis-validation is pure and decoupled: importing it must
 not pull in the sibling pipeline lib, the I/O-bearing DIS libs, or any DB/GCP
 client. (dis-canonical IS an allowed dependency — the canonical-shape suite
 derives from it.)
 
-Checked in a FRESH interpreter (subprocess; pattern from dis-pii).
+Checked in a FRESH interpreter (subprocess; same pattern as dis-pii).
 """
 
 from __future__ import annotations

@@ -1,7 +1,7 @@
-"""Migration 0011 (two-GUC PLATFORM/TENANT RLS policy rewrite — Slice 17b).
+"""Migration 0011 (two-GUC PLATFORM/TENANT RLS policy rewrite).
 
 Proves, against the resident DIS database (5433 / ithina_dis_db, read-only
-reference) and an ephemeral scratch DB (Slice 51c, D122):
+reference) and an ephemeral scratch DB:
 
   * **Target-safety guard** (pure, always-run): refuses Customer Master and any
     non-DIS database; passes the DIS database.
@@ -23,7 +23,6 @@ reference) and an ephemeral scratch DB (Slice 51c, D122):
     session reads across tenants but its WITH CHECK writes NOTHING; a PLATFORM
     impersonation session (tenant=T) writes ONLY T and is refused for any other.
 
-See: docs/slices/slice-17b-two-guc-platform-rls.md, decisions.md D76 (realized).
 """
 
 from __future__ import annotations

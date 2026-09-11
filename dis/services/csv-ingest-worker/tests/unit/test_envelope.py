@@ -45,17 +45,17 @@ def test_contract_example_parses() -> None:
     assert event.tenant_id == UUID(_EXAMPLE["tenant_id"])
     assert event.store_id == UUID(_EXAMPLE["store_id"])
     assert event.source_id == _EXAMPLE["source_id"]
-    assert event.template_id == UUID(_EXAMPLE["template_id"])  # Slice 8 carry (D71)
+    assert event.template_id == UUID(_EXAMPLE["template_id"])  # required envelope carry
     assert event.upload_session_id == _EXAMPLE["upload_session_id"]
     assert event.gcs_uri == _EXAMPLE["gcs_uri"]
     assert event.tenant_display_code == _EXAMPLE["tenant_display_code"]
     assert event.store_code == _EXAMPLE["store_code"]
-    assert event.file_name == _EXAMPLE["file_name"]  # Slice 51a / D120: carried, persisted to bronze
+    assert event.file_name == _EXAMPLE["file_name"]  # carried, persisted to bronze
     assert event.received_ts.tzinfo is not None  # aware, normalised UTC
 
 
 def test_optional_codes_may_be_absent() -> None:
-    # Optional in the schema (producer-required is the PRODUCER's obligation, D52);
+    # Optional in the schema (producer-required is the PRODUCER's obligation);
     # the worker must still consume an envelope without them.
     payload = _example()
     del payload["tenant_display_code"]
@@ -66,7 +66,7 @@ def test_optional_codes_may_be_absent() -> None:
 
 
 def test_file_name_may_be_absent() -> None:
-    # Additive/optional (Slice 51a / D120): a pre-51a producer omits it -> None -> NULL in bronze.
+    # Optional: a producer may omit it -> None -> NULL in bronze.
     payload = _example()
     del payload["file_name"]
     assert parse_csv_received(_as_bytes(payload)).file_name is None
@@ -93,7 +93,7 @@ def test_missing_required_field_raises_with_field_name(field: str) -> None:
         ("trace_id", "not-a-uuid"),
         ("tenant_id", "t_acme9k2l1mn4"),  # the retired invented form
         ("store_id", ""),
-        ("template_id", "not-a-uuid"),  # Slice 8 carry: required, format uuid
+        ("template_id", "not-a-uuid"),  # required, format uuid
         ("schema_version", 2),  # const: 1
         ("upload_session_id", "sess-12345"),  # violates ^us_[a-z0-9]{12}$
         ("upload_session_id", ""),  # the idempotency key is a required value

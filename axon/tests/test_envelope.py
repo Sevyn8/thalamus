@@ -49,7 +49,7 @@ def test_the_optional_actor_survives_being_absent() -> None:
 
 
 def test_the_delivery_id_is_the_idempotency_key_and_survives_the_wire() -> None:
-    """THE ONE FIELD THE WHOLE SLICE TURNS ON. It is pk_platform_deliveries, so if it did not
+    """THE ONE FIELD THE IDEMPOTENCY TURNS ON. It is pk_platform_deliveries, so if it did not
     survive serialisation intact a redelivery would reach a different row and the primary key
     would refuse nothing."""
     parsed = SendRequested.from_json(_envelope().to_json())

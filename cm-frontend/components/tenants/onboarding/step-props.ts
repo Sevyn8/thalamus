@@ -6,8 +6,8 @@
 // from an unsaved step. The company step has its own (create-or-edit)
 // contract in CompanyProfileStep.
 //
-// Slice 7 item 2: `mode` distinguishes the two surfaces the wizard now
-// serves. In "onboarding" mode onSaved advances to the next step (the
+// `mode` distinguishes the two surfaces the wizard serves. In "onboarding"
+// mode onSaved advances to the next step (the
 // existing linear flow). In "edit" mode (the retired EditTenantModal's
 // replacement) each section is a standalone edit surface: onSaved is a
 // server-wait save that only toasts and stays put, the footer reads

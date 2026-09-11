@@ -23,9 +23,9 @@ delivery receipt, and that plane does not exist. An adapter that returned someth
 WHAT CORRELATING A FUTURE RECEIPT WILL NEED, stated as unknown rather than guessed: a receipt
 webhook has to be matched back to a ledger row, which needs an identifier both sides share.
 SendGrid returns one on the response, and CM's client does not read it. This adapter does not
-either, because inventing a column for a value whose name and shape I have not verified against
-the provider would be exactly the kind of guess this repository does not make. The webhook slice
-establishes it and adds the column then.
+either, because inventing a column for a value whose name and shape has not been verified against
+the provider would be exactly the kind of guess this repository does not make. Whatever builds
+receipt webhooks establishes it and adds the column then.
 """
 
 from __future__ import annotations

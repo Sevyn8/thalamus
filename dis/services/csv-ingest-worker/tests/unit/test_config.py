@@ -28,7 +28,7 @@ def _set_all(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_resolves_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The LOCAL-UNCHANGED guarantee (slice 40a): today's exact env profile resolves
+    # The LOCAL-UNCHANGED guarantee: the local env profile resolves
     # with NO new required vars — toggle defaults off, PORT never demanded.
     _set_all(monkeypatch)
     cfg = WorkerConfig.from_env()
@@ -58,7 +58,7 @@ def test_empty_required_value_raises(monkeypatch: pytest.MonkeyPatch, empty: str
         WorkerConfig.from_env()
 
 
-# -- the slice-40a healthz toggle ---------------------------------------------------
+# -- the healthz toggle ---------------------------------------------------------------
 
 
 @pytest.mark.parametrize("truthy", ["true", "TRUE", "1"])

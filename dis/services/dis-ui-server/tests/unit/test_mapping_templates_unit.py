@@ -27,7 +27,7 @@ def _bearer(token: str) -> dict[str, str]:
 
 
 def _valid_create_body() -> dict[str, Any]:
-    """The Slice 16a create shape: semantic intent per column, no engine ops."""
+    """A valid create body: semantic intent per column, no engine ops."""
     return {
         "source_id": "manual_csv_upload",
         "template_name": "sales",
@@ -58,10 +58,10 @@ def test_endpoints_require_a_token(client: TestClient) -> None:
 def test_platform_token_is_refused_where_it_must_be(
     client: TestClient, mint_token: Callable[..., str]
 ) -> None:
-    # Slice 17b: GET /mapping-templates now SERVES a PLATFORM+dis:ops token (see-all,
-    # proven in the integration suite). What STILL refuses a PLATFORM token, both a clean
-    # 403 tenant_scope: /stores-onboarded (identity_mirror stays tenant-pinned — D70 not
-    # reopened, decision 1) and POST /mapping-templates with NO acting_for_tenant_id (a
+    # GET /mapping-templates SERVES a PLATFORM+dis:ops token (see-all,
+    # proven in the integration suite). What refuses a PLATFORM token, both a clean
+    # 403 tenant_scope: /stores-onboarded (identity_mirror reads stay tenant-pinned)
+    # and POST /mapping-templates with NO acting_for_tenant_id (a
     # platform write must name its acted-for tenant).
     ops = _bearer(mint_token(tenant_id=None, roles=("dis:ops",), user_type="PLATFORM"))
     for response in (
@@ -276,9 +276,7 @@ def test_validate_valid_body_is_200_and_touches_no_db(
     assert response.json() == {"valid": True}
 
 
-def test_validate_duplicate_rename_target_is_400(
-    client: TestClient, mint_token: Callable[..., str]
-) -> None:
+def test_validate_duplicate_rename_target_is_400(client: TestClient, mint_token: Callable[..., str]) -> None:
     # Two source columns -> one canonical target: SourceMapping's uniqueness rule -> 400.
     body = _make_create(_snapshot_columns(({"src_key": "dup", "dest_key": "sku_id"},))).model_dump()
     response = client.post("/api/v1/mapping-templates/validate", headers=_bearer(mint_token()), json=body)
@@ -286,18 +284,14 @@ def test_validate_duplicate_rename_target_is_400(
     assert response.json()["error"]["code"] == "mapping_config"
 
 
-def test_validate_missing_mandatory_field_is_400(
-    client: TestClient, mint_token: Callable[..., str]
-) -> None:
+def test_validate_missing_mandatory_field_is_400(client: TestClient, mint_token: Callable[..., str]) -> None:
     body = _make_create([{"src_key": "x", "dest_key": "sku_id"}]).model_dump()  # legal but incomplete
     response = client.post("/api/v1/mapping-templates/validate", headers=_bearer(mint_token()), json=body)
     assert response.status_code == 400, response.text
     assert response.json()["error"]["code"] == "mapping_config"
 
 
-def test_validate_broken_expiry_triple_is_400(
-    client: TestClient, mint_token: Callable[..., str]
-) -> None:
+def test_validate_broken_expiry_triple_is_400(client: TestClient, mint_token: Callable[..., str]) -> None:
     # expiry_date alone (no expiry_source / expiry_confidence): the all-or-none triple -> 400.
     expiry = {"src_key": "scad", "dest_key": "expiry_date", "src_datetime_format": "DD-MM-YYYY"}
     body = _make_create(_snapshot_columns((expiry,))).model_dump()
@@ -306,9 +300,7 @@ def test_validate_broken_expiry_triple_is_400(
     assert response.json()["error"]["code"] == "mapping_config"
 
 
-def test_validate_unknown_date_token_is_400(
-    client: TestClient, mint_token: Callable[..., str]
-) -> None:
+def test_validate_unknown_date_token_is_400(client: TestClient, mint_token: Callable[..., str]) -> None:
     bad_token = {"src_key": "rec", "dest_key": "receipt_date", "src_datetime_format": "YYYY/MM/DD"}
     body = _make_create(_snapshot_columns((bad_token,))).model_dump()
     response = client.post("/api/v1/mapping-templates/validate", headers=_bearer(mint_token()), json=body)
@@ -369,7 +361,7 @@ def test_malformed_declaration_is_422(client: TestClient, mint_token: Callable[.
 def test_eu_thousands_separator_is_accepted_at_shape_and_non_member_is_422(
     client: TestClient, mint_token: Callable[..., str]
 ) -> None:
-    # Slice 16b widens src_thousand_separator to include "." so EU-format numbers
+    # src_thousand_separator includes "." so EU-format numbers
     # (1.234,56) are declarable. The "." is accepted at the SHAPE layer (no 422); the
     # request then reaches the semantic gate — here an incomplete snapshot, so a clean 400
     # (not a 422), proving the declaration itself passed. A genuine non-member ";" is a 422.

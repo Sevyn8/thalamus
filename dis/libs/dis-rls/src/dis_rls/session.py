@@ -2,7 +2,7 @@
 run the caller's statements under that scope, commit or roll back.
 
 Why ``AsyncConnection`` (not ``AsyncSession``): ``dis-canonical`` is pure Pydantic,
-not ORM, and the streaming consumer (Slice 10) and CSV worker (Slice 9) write via
+not ORM, and the streaming consumer and CSV worker write via
 core SQL. The connection is the minimal surface matching the policy expression
 ``tenant_id = current_setting('app.tenant_id', true)::uuid``.
 
@@ -11,12 +11,12 @@ value must be parameterised (it is a tenant UUID), and ``SET LOCAL`` cannot bind
 parameter. ``set_config(name, value, is_local => true)`` is the parameterisable,
 transaction-local equivalent.
 
-Role posture is **explicit, not assumed** (slice constraint): RLS is silently void
+Role posture is **explicit, not assumed**: RLS is silently void
 for a SUPERUSER or BYPASSRLS role, so the first session opened on an engine verifies
 that the connection reached ``ithina_dis_db`` and that the connected role can NOT
 bypass RLS, raising :class:`RlsContextError` otherwise.
 
-Two session modes (Slice 17b, two-GUC ``app.user_type`` + ``app.tenant_id``):
+Two session modes (two transaction-local GUCs, ``app.user_type`` + ``app.tenant_id``):
 :func:`rls_session` is the TENANT path — it sets ``app.user_type='TENANT'``
 (positively, never absent-by-default) plus the tenant scope. :func:`rls_platform_session`
 is the PLATFORM path — ``app.user_type='PLATFORM'`` with an empty (no-tenant, see-all) or
@@ -62,8 +62,8 @@ def create_rls_engine(url: str | None = None) -> AsyncEngine:
     """Create an async engine for the DIS database, connecting as the service role.
 
     ``url`` defaults to ``POSTGRES_URL`` (the NOSUPERUSER/NOBYPASSRLS
-    ``ithina_dis_user`` role). No silent default for a missing required value
-    (root CLAUDE.md code-quality rule 4): a missing URL raises.
+    ``ithina_dis_user`` role). No silent default for a missing required value:
+    a missing URL raises.
     """
     resolved = url or os.environ.get("POSTGRES_URL")
     if not resolved:
@@ -147,7 +147,7 @@ async def rls_session(engine: AsyncEngine, tenant_id: UUID | str) -> AsyncIterat
     the transaction commits on clean exit and rolls back on exception.
 
     The caller supplies ``tenant_id`` from authenticated upstream context, never
-    from a request body (lib CLAUDE.md rule).
+    from a request body.
     """
     tid = str(tenant_id)
     log = _log.bind(stage="rls_session", tenant_id=tid)
@@ -165,7 +165,7 @@ async def rls_session(engine: AsyncEngine, tenant_id: UUID | str) -> AsyncIterat
 async def rls_platform_session(
     engine: AsyncEngine, tenant_id: UUID | None = None
 ) -> AsyncIterator[AsyncConnection]:
-    """Open a PLATFORM-scoped transaction and yield the connection (Slice 17b).
+    """Open a PLATFORM-scoped transaction and yield the connection.
 
     Sets ``app.user_type='PLATFORM'`` (reads widen to all tenants via the policy USING
     branch). The acted-for tenant determines write scope, NOT read scope:

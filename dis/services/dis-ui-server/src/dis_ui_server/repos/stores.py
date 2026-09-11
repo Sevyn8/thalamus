@@ -1,6 +1,6 @@
 """``identity_mirror.stores`` reads — THE chokepoint for the in-query tenant predicate.
 
-``identity_mirror`` is RLS-OFF (D41), so the explicit ``WHERE tenant_id = <token
+``identity_mirror`` is RLS-OFF, so the explicit ``WHERE tenant_id = <token
 tenant>`` below is the ONLY isolation on the store list — there is no database
 backstop; a missing predicate is a cross-tenant leak. That is exactly why this
 query lives in one function in one module (the registered 14b weak link, with
@@ -32,7 +32,7 @@ async def list_onboarded_stores(engine: AsyncEngine, tenant_id: UUID) -> Sequenc
     """
     statement = (
         select(StoreRow)
-        .where(StoreRow.tenant_id == tenant_id)  # the in-query scoping (D41) — do not remove
+        .where(StoreRow.tenant_id == tenant_id)  # the in-query scoping — do not remove
         .order_by(StoreRow.name, StoreRow.store_id)
     )
     async with rls_session(engine, tenant_id) as conn:
@@ -41,7 +41,7 @@ async def list_onboarded_stores(engine: AsyncEngine, tenant_id: UUID) -> Sequenc
 
 
 async def resolve_store_by_code(engine: AsyncEngine, tenant_id: UUID, store_code: str) -> Row[Any]:
-    """The token tenant's store with this external ``store_code`` (Slice 8, D37/D58).
+    """The token tenant's store with this external ``store_code``.
 
     Pure resolution — lifecycle gating (the upload's ACTIVE-only rule) is the
     endpoint's policy, applied AFTER this resolve so a cross-tenant or unknown
@@ -54,7 +54,7 @@ async def resolve_store_by_code(engine: AsyncEngine, tenant_id: UUID, store_code
     error (it is the caller's own input identifier, not payload content).
     """
     statement = select(StoreRow).where(
-        StoreRow.tenant_id == tenant_id,  # the in-query scoping (D41) — do not remove
+        StoreRow.tenant_id == tenant_id,  # the in-query scoping — do not remove
         StoreRow.store_code == store_code,
     )
     async with rls_session(engine, tenant_id) as conn:

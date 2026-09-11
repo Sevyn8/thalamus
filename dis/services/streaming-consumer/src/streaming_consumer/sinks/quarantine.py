@@ -17,8 +17,8 @@ envelope's ``bronze_ref``, cross-checked by fetch); records carry ``trace_id`` +
 the rows table — row-grain failures only exist post-lookup). ``failure_context``
 carries the per-failure detail the gate computed — column/check/reason plus, where
 the failure carried them, the offending ``value`` and the mapping cell fields
-(``source_column``/``expected_format``/``transform_index``) (Slice 52b, the
-``failures[]`` grain). The raw ROW/payload still never lands here — it stays in GCS,
+(``source_column``/``expected_format``/``transform_index``, the ``failures[]``
+grain). The raw ROW/payload still never lands here — it stays in GCS,
 located by ``gcs_uri`` + ``row_offset``. The SAME failures list feeds the audit
 projection, which stays value-free by construction (it never reads ``value``).
 """
@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class GateFailure:
-    """One gate failure as the orchestrator carries it to the sink (Slice 52b).
+    """One gate failure as the orchestrator carries it to the sink.
 
     ``check`` + ``reason`` are always present; every other field is conditional on the
     failure type (Pandera source/canonical shape vs mapping cell-normalization) and is
@@ -65,7 +65,7 @@ class GateFailure:
 
 
 def _failure_element(f: GateFailure, *, include_row_index: bool) -> dict[str, object]:
-    """One ``failure_context.failures[]`` element (Slice 52b) — the element shape, once.
+    """One ``failure_context.failures[]`` element — the element shape, once.
 
     ``check`` + ``reason`` are always written; every other field is appended ONLY when
     the failure object actually carried it (AC1: absent fields are OMITTED, never
@@ -125,7 +125,7 @@ class ConsumerQuarantine:
         if exception_class is not None:
             context["exception_class"] = exception_class
         if failures is not None:
-            # Per-failure detail (Slice 52b): the row-less shape routed here keeps
+            # Per-failure detail: the row-less shape routed here keeps
             # row_index in the element (no row_offset column on the chunk table);
             # value + mapping detail are appended only where the failure carried them.
             context["failures"] = [_failure_element(f, include_row_index=True) for f in failures]
@@ -159,7 +159,7 @@ class ConsumerQuarantine:
         One record per DISTINCT failing row (a row with several failed checks is
         one held row); ``failure_context.failures`` aggregates that row's per-failure
         detail (column/check/reason plus value + mapping fields where the failure
-        carried them, Slice 52b). Returns the number of rows held. Every failure
+        carried them). Returns the number of rows held. Every failure
         must carry a ``row_index`` (the row-less shape routes to the chunk table at
         the call site) and the mapping must be loaded (``mapping_version_id`` is
         NOT NULL on the live rows table).

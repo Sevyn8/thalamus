@@ -1,7 +1,7 @@
-"""Integration tests for the stores router (Step 6.17.2).
+"""Integration tests for the stores router.
 
 Real Postgres, real schema, real RLS, real router via FastAPI's
-TestClient. JWTs minted via Step 2.1's ``make_test_jwt``. Mirrors the
+TestClient. JWTs minted via ``make_test_jwt``. Mirrors the
 shape used by ``test_tenant_users_router.py`` and
 ``test_tenants_router.py``.
 

@@ -57,9 +57,7 @@ def test_for_tenant_tenant_caller_is_403(client: TestClient, mint_token: Callabl
     assert resp.json()["error"]["code"] == "tenant_scope"
 
 
-def test_for_tenant_platform_without_ops_is_403(
-    client: TestClient, mint_token: Callable[..., str]
-) -> None:
+def test_for_tenant_platform_without_ops_is_403(client: TestClient, mint_token: Callable[..., str]) -> None:
     # PLATFORM see-all requires dis:ops (require_read_scope): a PLATFORM token without it is 403.
     resp = client.get(
         f"/api/v1/stores-onboarded/for-tenant/{TENANT_A}",
@@ -69,9 +67,7 @@ def test_for_tenant_platform_without_ops_is_403(
     assert resp.json()["error"]["code"] == "ops_role_required"
 
 
-def test_for_tenant_rejects_malformed_tenant_id(
-    client: TestClient, mint_token: Callable[..., str]
-) -> None:
+def test_for_tenant_rejects_malformed_tenant_id(client: TestClient, mint_token: Callable[..., str]) -> None:
     # The path param is a UUID: a non-UUID is a 422 before the handler runs.
     resp = client.get(
         "/api/v1/stores-onboarded/for-tenant/not-a-uuid",
@@ -98,7 +94,7 @@ def test_for_tenant_platform_ops_serves_the_path_tenants_stores(
         headers=_bearer(mint_token(user_type="PLATFORM", tenant_id=None, roles=("dis:ops", "dis:read"))),
     )
     assert resp.status_code == 200
-    # The acted-for tenant from the PATH is exactly what reaches the chokepoint (D41 predicate).
+    # The acted-for tenant from the PATH is exactly what reaches the chokepoint predicate.
     assert str(seen["tenant_id"]) == TENANT_B
     body = resp.json()
     assert len(body) == 1

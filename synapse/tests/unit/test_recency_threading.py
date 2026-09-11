@@ -1,8 +1,8 @@
 """days_since_last_sale, from the sale date to the stored Action. The whole chain, offline.
 
-WHY THIS FILE EXISTS, AND WHAT IT IS NOT. It adds no behaviour. Slice 10 (a38f5c9, "the urgency
-inputs stop being discarded") already made dead_stock emit per-store recency and already threaded
-it through the proposer; the chain was verified end to end by running the real evaluator and the
+WHY THIS FILE EXISTS, AND WHAT IT IS NOT. It adds no behaviour. A prior change already made
+dead_stock emit per-store recency and already threaded it through the proposer ("the urgency
+inputs stop being discarded"); the chain was verified end to end by running the real evaluator and the
 real proposer before a line of this was written. What was missing was any assertion that it STAYS
 that way — every existing proposer test drives findings that carry recency and then asserts
 something else (verb, arm, provenance, is_actionable), so all four could pass against a proposer

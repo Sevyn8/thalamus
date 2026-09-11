@@ -64,7 +64,7 @@ async def _run(config: Config) -> None:
     # axon.platform_deliveries and nothing else: no SELECT anywhere, nothing on the tenant ledger.
     # create_rls_engine carries dis-rls's first-use posture guard, which verifies on the first use
     # that this is the expected database and that the role is NOSUPERUSER NOBYPASSRLS. The table
-    # this service writes has no RLS today; the tenant ledger it will write one slice from now
+    # this service writes has no RLS today; the tenant ledger it will eventually write
     # does, and a bypassing role would defeat that isolation invisibly.
     engine = create_rls_engine(config.sender_url)
     # CONSTRUCTED ONCE, HERE, and guarded on its credential inside the constructor. An adapter

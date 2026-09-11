@@ -1,19 +1,17 @@
-"""Smoke test for Ithina admin-backend schema invariants. Steps 1.5 + 2.2b
-+ Step 6.8.1.
+"""Smoke test for Ithina admin-backend schema invariants.
 
 Self-contained Python script using psycopg3 sync API. Connects to local
 Postgres via DATABASE_URL + DB_SCHEMA env vars (fails if either unset),
 sets search_path explicitly per transaction, and runs assertions covering
 tenant isolation under FORCE RLS, composite-FK same-tenant integrity on
-tenant_user_role_assignments (post-Step-6.8.1 split — both
-(tenant_id, tenant_user_id) and (tenant_id, org_node_id) composite FKs),
-audience-check trigger rejection on the two new role-assignment tables
-(Step 6.8.1), no-RLS structural assertion on
+tenant_user_role_assignments (both (tenant_id, tenant_user_id) and
+(tenant_id, org_node_id) composite FKs), audience-check trigger rejection
+on the two role-assignment tables, no-RLS structural assertion on
 platform_user_role_assignments, status-consistency CHECK constraints,
 domain CHECK constraints, the 6-table multi-tenant unconditional-OR
-truth table (Step 3.0/3.4.5/6.8.1), the bootstrap platform_user pattern,
-the UUIDv7 DEFAULT generation on metadata-table PKs, and a meta-
-assertion that every multi-tenant table has RLS+FORCE+at-least-one-policy.
+truth table, the bootstrap platform_user pattern, the UUIDv7 DEFAULT
+generation on metadata-table PKs, and a meta-assertion that every
+multi-tenant table has RLS+FORCE+at-least-one-policy.
 
 Each assertion (or tightly-coupled group) runs in its own
 force_rollback transaction, so the DB returns to its starting state
@@ -67,7 +65,7 @@ TENANT_C_USER      = "00000000-0000-0000-0000-00000000ccc1"
 TENANT_C_ORG       = "00000000-0000-0000-0000-00000000c0c0"
 TENANT_C_STORE     = "00000000-0000-0000-0000-00000000c5c5"
 
-# tenant_module_access rows (Step 3.4.5). One per tenant in the truth-
+# tenant_module_access rows. One per tenant in the truth-
 # table setup; one for Tenant C in test_16's INSERT assertion.
 TENANT_A_TMA       = "00000000-0000-0000-0000-00000000a4a4"
 TENANT_B_TMA       = "00000000-0000-0000-0000-00000000b4b4"
@@ -265,7 +263,7 @@ def insert_role(cur, role_id, name, code, audience):
 
 
 def insert_tenant_module_access(cur, tma_id, tenant_id, module='GOAL_CONSOLE'):
-    """A tenant_module_access row (Step 3.4.5).
+    """A tenant_module_access row.
 
     Pattern (a) audit-actors: typed FK direct to platform_users
     (BOOTSTRAP_USER); no *_by_user_type discriminator. Status is
@@ -404,8 +402,6 @@ def test_3_default_deny(conn, db_schema, R, database_url):
     true NULL. Verified empirically in pre-script probes. Only a fresh
     connection that has never SET app.tenant_id yields a genuinely
     unregistered GUC where current_setting('app.tenant_id', TRUE) IS NULL.
-    The Step 1.5 prompt (FORCE RLS gotcha section) calls out that the
-    pre-verification of NULL is what makes the assertion meaningful.
     """
     label = "3: default-deny — MT SELECTs return 0 rows on unset session"
     fresh_conn = None
@@ -433,7 +429,7 @@ def test_3_default_deny(conn, db_schema, R, database_url):
             R.add("3 pre-check: app.tenant_id IS NULL on fresh connection", True)
 
             # SELECT each MT table; all should return 0 (default-deny).
-            # Step 6.8.1: user_role_assignments split into
+            # user_role_assignments split into
             # tenant_user_role_assignments (RLS+FORCE) and
             # platform_user_role_assignments (no RLS, omitted from this
             # default-deny check).
@@ -776,7 +772,7 @@ def test_10_currency_check(conn, db_schema, R):
 
 def test_11_role_assignment_split_invariants(conn, db_schema, R):
     """Assertions 11.a-11.d: structural invariants on the split
-    role-assignment tables (Step 6.8.1).
+    role-assignment tables.
 
     Pre-split this slot held a 9-row truth table on user_role_assignments
     documenting the FN-AB-14 IS-NULL-gated visibility behaviour. The
@@ -998,9 +994,9 @@ def test_15_multi_tenant_or_clause_truth_tables(conn, db_schema, R):
     """Assertions 15.<table>.<cell>: 9-row truth table on each of the
     four multi-tenant tables (tenants, tenant_users, org_nodes, stores).
 
-    Step 3.0 lands the unconditional PLATFORM OR-clause on these four
-    policies. Two rows are inserted per table (TENANT-A, TENANT-B) and
-    9 (app.tenant_id, app.user_type) combinations are queried for
+    The unconditional PLATFORM OR-clause on these four policies means
+    two rows are inserted per table (TENANT-A, TENANT-B) and 9
+    (app.tenant_id, app.user_type) combinations are queried for
     visibility against the truth table:
 
     | tenant_id | user_type | A row | B row | total |
@@ -1016,8 +1012,9 @@ def test_15_multi_tenant_or_clause_truth_tables(conn, db_schema, R):
     | unset     | unset     | no    | no    | 0     |
 
     PLATFORM rows 4-6 see BOTH tenants regardless of app.tenant_id.
-    This is the new behaviour Step 3.0 unlocks; under the pre-3.0
-    policy, rows 4 and 5 saw 1 (tenant_id-clause only) and row 6 saw 0.
+    This is the unconditional-OR behaviour; under the prior
+    tenant_id-only policy, rows 4 and 5 saw 1 (tenant_id-clause only)
+    and row 6 saw 0.
 
     The PLATFORM-row class from test_11 doesn't apply here: tenant_id
     (or in `tenants` case `id`) is NOT NULL on these four tables, so
@@ -1035,12 +1032,12 @@ def test_15_multi_tenant_or_clause_truth_tables(conn, db_schema, R):
         (TENANT_B, None,       1, "B/unset"),
         (None,     None,       0, "unset/unset"),
     ]
-    # tenant_module_access (added at Step 3.4.5) follows the same
+    # tenant_module_access follows the same
     # NOT-NULL-tenant_id, unconditional D-29 OR-clause pattern as the
     # original four. Its truth table is structurally identical: A row
     # + B row, no PLATFORM-audience row class.
     #
-    # tenant_user_role_assignments (added at Step 6.8.1; replaces the
+    # tenant_user_role_assignments (replaces the
     # split user_role_assignments' TENANT-side rows) joins this set:
     # NOT-NULL tenant_id, unconditional D-29 OR-branch policy. Same
     # truth-table shape as the other 5.
@@ -1145,22 +1142,23 @@ def test_16_platform_can_insert_into_multi_tenant_tables(conn, db_schema, R):
     """Assertions 16.<table>: a PLATFORM session can INSERT into each
     of the multi-tenant tables.
 
-    Step 3.0's WITH CHECK predicate matters: pre-3.0, a PLATFORM session
+    The WITH CHECK predicate matters here: without the unconditional
+    `OR app.user_type = 'PLATFORM'` branch, a PLATFORM session
     (app.tenant_id = NULL, app.user_type = 'PLATFORM') could not INSERT
     rows where tenant_id is set, because the WITH CHECK predicate
-    `tenant_id = NULLIF(NULL, '')::uuid` evaluated to UNKNOWN. Step 3.0
-    adds the unconditional `OR app.user_type = 'PLATFORM'` branch, which
-    short-circuits to TRUE and lets the INSERT through.
+    `tenant_id = NULLIF(NULL, '')::uuid` evaluates to UNKNOWN. The
+    unconditional branch short-circuits to TRUE and lets the INSERT
+    through.
 
-    Without this, test fixtures (Step 3.2 conftest factories) and seed
-    scripts (Step 6.3) would have no way to insert tenant rows from the
-    NOSUPERUSER NOBYPASSRLS application role. Inserting via a privileged
-    role is exactly what the project rejected.
+    Without this, test fixtures and seed scripts would have no way to
+    insert tenant rows from the NOSUPERUSER NOBYPASSRLS application
+    role. Inserting via a privileged role is exactly what the project
+    rejected.
 
-    Step 3.4.5 added tenant_module_access — same D-29 unconditional
-    OR-clause, same INSERT-side property under PLATFORM context.
+    tenant_module_access uses the same D-29 unconditional OR-clause,
+    same INSERT-side property under PLATFORM context.
 
-    Step 6.8.1 added two new tables:
+    Two more tables share this property:
       * platform_user_role_assignments — no RLS; INSERT trivially works
         from any session.
       * tenant_user_role_assignments — D-29 unconditional OR-branch;
@@ -1247,7 +1245,7 @@ def test_16_platform_can_insert_into_multi_tenant_tables(conn, db_schema, R):
             except Exception as e:
                 R.add("16.stores: PLATFORM session can INSERT", False, e)
 
-            # tenant_module_access (Step 3.4.5). Audit-actor FK is
+            # tenant_module_access. Audit-actor FK is
             # BOOTSTRAP_USER (a real platform_user already inserted at
             # the top of the test).
             try:
@@ -1263,7 +1261,7 @@ def test_16_platform_can_insert_into_multi_tenant_tables(conn, db_schema, R):
                     False, e,
                 )
 
-            # platform_user_role_assignments (Step 6.8.1). No RLS;
+            # platform_user_role_assignments. No RLS;
             # PLATFORM session inserts trivially. The audience-check
             # trigger requires role.audience='PLATFORM' — insert a
             # PLATFORM-audience role first.
@@ -1294,7 +1292,7 @@ def test_16_platform_can_insert_into_multi_tenant_tables(conn, db_schema, R):
                     False, e,
                 )
 
-            # tenant_user_role_assignments (Step 6.8.1). RLS+FORCE
+            # tenant_user_role_assignments. RLS+FORCE
             # with unconditional OR-branch; PLATFORM session writes
             # under the OR-branch without impersonation. Composite
             # FKs to (tenant_id, tenant_user_id) -> tenant_users and

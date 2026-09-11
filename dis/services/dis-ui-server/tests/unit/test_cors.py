@@ -1,4 +1,4 @@
-"""CORS for the browser-served dis-ui SPA (slice 14c).
+"""CORS for the browser-served dis-ui SPA.
 
 All over the unreachable-DB client (CORS never touches the database). The
 allowed origin is the confirmed dis-ui dev origin; the posture under test:
@@ -116,7 +116,7 @@ def test_env_override_displaces_the_default(monkeypatch: pytest.MonkeyPatch) -> 
     # and an audience; these tests want the HS256 stub, and the URL above is loopback, which
     # is what the stub guard requires.
     monkeypatch.setenv("DIS_AUTH_MODE", "STUB")
-    # Slice 8 required config (lazy construction; nothing is reached in this test).
+    # Required config (lazy construction; nothing is reached in this test).
     monkeypatch.setenv("GCS_BUCKET_BRONZE", "ithina-bronze-raw")
     monkeypatch.setenv("PUBSUB_PROJECT_ID", "local-dis")
     monkeypatch.setenv("PUBSUB_EMULATOR_HOST", "127.0.0.1:9")

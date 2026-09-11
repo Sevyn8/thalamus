@@ -1,4 +1,4 @@
-"""The SECOND write path in this service. One INSERT, one table, one credential (slice 5e).
+"""The SECOND write path in this service. One INSERT, one table, one credential.
 
 THIS MODULE IS A PORT, NOT A NEW PROCEDURE. ``infra/db-setup/sql/provision_analysis.sql`` is the
 procedure an operator has run by hand until now, and its value is almost entirely in the two
@@ -96,8 +96,8 @@ Granting SELECT to keep the clause would have falsified the property
 
 WHAT THE EXCEPTION STILL CANNOT SAY IS WHICH STATE THE EXISTING ROW IS IN. An ACTIVE pair and a
 DISABLED one raise the identical error. The console answers "what is true now" through
-``synapse_reader``, before and after, which is the same division 5d uses for the alert it is about
-to act on.
+``synapse_reader``, before and after, which is the same division lifecycle.py uses for the alert
+it is about to act on.
 """
 
 from __future__ import annotations

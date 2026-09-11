@@ -1,4 +1,4 @@
-"""Slice 1 unit tests for Auth0Client (local JWKS verify, D-37).
+"""Unit tests for Auth0Client (local JWKS verify).
 
 Parallel to test_stub_auth.py. Mints RS256 tokens with a TEST key carrying the
 sevyn8 namespace and the real Auth0 iss / aud, exposes that key via a fake JWKS

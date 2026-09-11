@@ -58,10 +58,10 @@ async def test_resolve_from_token_returns_identity() -> None:
     await client.aclose()
 
     assert isinstance(identity, Identity)
-    # The load-bearing identity is the internal UUID, typed (D37/D52).
+    # The load-bearing identity is the internal UUID, typed.
     assert identity.tenant_id == UUID(_TENANT_UUID)
     assert identity.store_id == UUID(_STORE_UUID)
-    # The authoritative external codes ride alongside (D55).
+    # The authoritative external codes ride alongside.
     assert identity.display_code == "buc-ees"
     assert identity.store_code == "TX-101"
     assert captured["url"].endswith("/v1/resolve_from_token")

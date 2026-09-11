@@ -1,14 +1,16 @@
 """V4 signed-URL issuance for tenant-direct uploads.
 
-A receiver issues a signed PUT URL scoped to exactly one object path (Slice 8: a
-15-minute URL from ``dis-ui-server``); the tenant PUTs the bytes directly to GCS. The
-URL is scoped to the single issued path — never a wildcard (lib CLAUDE.md rule).
+Issues a signed PUT URL scoped to exactly one object path so a tenant can PUT
+bytes directly to GCS. The URL is scoped to the single issued path — never a
+wildcard. There is currently no caller: the receiver upload path uses
+synchronous stream-through instead, so this issuance capability sits unused
+until something needs tenant-direct upload.
 
 Signing is **deterministic and offline**: V4 signing uses the signer credential's
 private key locally, with no network round-trip, so issuance is unit-testable without
 the emulator. A well-formed URL is *not* proof that real GCS accepts the signature —
-that is unverified until a real-GCS slice (first use: Slice 8). Tests pass a throwaway
-test signer credential only, never a real service account.
+that remains unverified until a real caller exercises it against real GCS. Tests
+pass a throwaway test signer credential only, never a real service account.
 """
 
 from __future__ import annotations

@@ -34,8 +34,7 @@ import type { TenantUser } from "@/types/api";
 // `roles[]` is gone in v0). When backend extends the schema, this
 // check tightens to platform-AND-target-is-not-admin.
 //
-// Phase 5i.1 (2026-05-25): per-user Activity section restored via the
-// actor_user_id filter shipped in Step 6.16.6. Closes 5h.4 deferral.
+// Per-user Activity section is scoped via the actor_user_id filter.
 
 function dateLabel(iso: string | null): string {
   if (!iso) return "—";

@@ -1,4 +1,4 @@
-"""Integration tests for the stores write endpoints (Step 6.17.3).
+"""Integration tests for the stores write endpoints.
 
 Coverage shape:
 
@@ -71,7 +71,7 @@ async def cleanup_stores_router(
     """Tracks store IDs created via the router or pre-existing rows
     PATCHed during a test; DELETEs at teardown.
 
-    Step 6.21.2: each repo-created store has a paired STORE-type
+    Each repo-created store has a paired STORE-type
     org_node. Cleanup captures the paired ``org_node_id`` from the
     stores row BEFORE deleting and DELETEs both in sequence.
 
@@ -135,8 +135,8 @@ def _valid_create_body(
 ) -> dict[str, Any]:
     """Minimal valid POST /stores body.
 
-    Step 6.21.2: ``parent_org_node_id`` is REQUIRED (replaces the
-    pre-6.21.2 optional ``org_node_id``). The server provisions the
+    ``parent_org_node_id`` is REQUIRED (replaces the
+    previously-optional ``org_node_id``). The server provisions the
     paired STORE-type org_node under ``parent_org_node_id``.
     """
     return {
@@ -458,9 +458,8 @@ async def test_rc9_cross_tenant_parent_returns_404(
 ):
     """parent_org_node_id from another tenant -> 404 PARENT_NODE_NOT_FOUND.
 
-    Step 6.21.2 supersedes the pre-6.21.2 RC9 (which expected 409
-    ORG_NODE_NOT_FOR_STORE). The retired ``OrgNodeNotForStoreError``
-    collapsed three causes; the new ``_check_parent_node_for_store``
+    The retired ``OrgNodeNotForStoreError``
+    collapsed three causes; ``_check_parent_node_for_store``
     surfaces cross-tenant or missing parents as
     ``ParentNodeNotFoundError`` (404 per RLS-as-404 / D-17 framing).
     """
@@ -493,7 +492,7 @@ async def test_rc9_cross_tenant_parent_returns_404(
     assert resp.json()["code"] == "PARENT_NODE_NOT_FOUND"
 
 
-# Step 6.21.2: test_rc10_already_linked_org_node_returns_409 deleted.
+# test_rc10_already_linked_org_node_returns_409 deleted.
 # The "already linked" failure mode is structurally unreachable under
 # the new atomic-pair architecture (the server creates the paired
 # STORE-type org_node fresh inside the same transaction). The DDL
@@ -511,7 +510,7 @@ async def test_rc11_happy_path_with_all_optionals(
 ):
     """All optional fields populated; row inserted; coords as strings.
 
-    Step 6.21.2: ``org_node_id`` is no longer accepted in the body;
+    ``org_node_id`` is no longer accepted in the body;
     the test now passes ``parent_org_node_id`` and asserts on the
     server-allocated ``org_node_id`` being present (UUID-shaped) in
     the response.
@@ -538,7 +537,7 @@ async def test_rc11_happy_path_with_all_optionals(
     # Coords serialise as JSON strings per the field_serializer.
     assert j["latitude"] == "12.345678"
     assert j["longitude"] == "-23.456789"
-    # Step 6.21.2: server allocates org_node_id; not server-side null.
+    # Server allocates org_node_id; not server-side null.
     assert j["org_node_id"] is not None
     UUID(j["org_node_id"])  # parseable
 
@@ -553,7 +552,7 @@ async def test_rc12_happy_path_with_optionals_omitted(
 ):
     """Optional fields omitted -> nulls in response shape.
 
-    Step 6.21.2: ``org_node_id`` is server-allocated (no longer
+    ``org_node_id`` is server-allocated (no longer
     optional / nullable on the wire). The assertion shifted from
     "org_node_id is None" to "org_node_id is present, UUID-shaped".
     """
@@ -572,7 +571,7 @@ async def test_rc12_happy_path_with_optionals_omitted(
     assert j["address"] is None
     assert j["latitude"] is None
     assert j["longitude"] is None
-    # Step 6.21.2: server-allocated; never null.
+    # Server-allocated; never null.
     assert j["org_node_id"] is not None
     UUID(j["org_node_id"])  # parseable
 
@@ -695,7 +694,7 @@ async def test_rp5_status_in_body_returns_422_extra_forbid(
     make_store,
     super_admin_jwt,
 ):
-    """status rejected by extra='forbid' (lifecycle is Step 6.17.4)."""
+    """status rejected by extra='forbid' (lifecycle changes go through the set-status endpoint)."""
     t = await make_tenant(name="RP5-T", with_root=True)
     store = await make_store(tenant_id=t.id, name="RP5-Store")
     resp = app_client.patch(
@@ -865,7 +864,7 @@ def test_mg_stores_write_endpoints_carry_gate_marker() -> None:
 
 
 # ============================================================================
-# W: Step 6.21.2 paired-write router tests.
+# W: paired-write router tests.
 #
 # End-to-end via TestClient. Confirms the wire shape of the new
 # parent_org_node_id field and the response's org_node_id field that

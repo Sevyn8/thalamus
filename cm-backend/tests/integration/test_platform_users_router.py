@@ -1,7 +1,7 @@
-"""Integration tests for the platform_users router (Step 5.1).
+"""Integration tests for the platform_users router.
 
 Real Postgres, real schema, real router via FastAPI's TestClient. JWTs
-minted via Step 2.1's ``make_test_jwt``. Mirrors the shape used by
+minted via ``make_test_jwt``. Mirrors the shape used by
 ``test_tenants_router.py``.
 
 Coverage:
@@ -12,7 +12,7 @@ Coverage:
   A1-A2:  auth (no JWT; TENANT JWT -> 403 PERMISSION_DENIED —
           load-bearing for the v0 binary user_type gate).
 
-Tests use the existing ``make_platform_user`` factory (per Step 3.4.5)
+Tests use the existing ``make_platform_user`` factory
 to insert known rows. Cleanup is by the factory's teardown DELETE.
 ``platform_users`` has no RLS, so factory rows are visible to both
 PLATFORM and TENANT sessions for reads — the auth gate sits at the
@@ -126,7 +126,7 @@ async def test_l1_list_platform_returns_envelope(
         "suspended_at",
         "created_at",
         "updated_at",
-        "roles",  # Step 6.8.3 augmentation: inline role assignments.
+        "roles",  # inline role assignments.
     }
     # Hidden fields stay hidden.
     assert "auth0_sub" not in item
@@ -311,7 +311,7 @@ async def test_d1_detail_returns_user_with_hidden_fields_absent(
         "suspended_at",
         "created_at",
         "updated_at",
-        "roles",  # Step 6.8.3 augmentation: inline role assignments.
+        "roles",  # inline role assignments.
     }
 
 
@@ -373,7 +373,7 @@ def test_a2_tenant_jwt_returns_403_permission_denied(
 
 
 # =============================================================================
-# Step 6.8.3 — Half 1 (A2) inline roles[] augmentation tests for the
+# Half 1 (A2) inline roles[] augmentation tests for the
 # platform-users endpoints. Naming: U<n>_pu_<short>.
 #
 # Platform-side assignments have NO org-node anchor. The Repo's

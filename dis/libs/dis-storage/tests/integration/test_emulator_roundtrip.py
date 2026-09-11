@@ -69,9 +69,8 @@ def test_wrapper_upload_download_roundtrip(emulator_client: StorageClient) -> No
     reason="PUT/GET *through* a V4 signed URL is deferred to real GCS: fake-gcs-server "
     "does not reliably honour signed-URL signatures. Issuance correctness and "
     "wrapper object access (the two checks above/in unit tests) still hold. "
-    "NOTE: Slice 8 (the originally planned first consumer) SUPERSEDED the "
-    "signed-URL upload mechanic with synchronous stream-through, so signed URLs "
-    "currently have NO consumer — this stays deferred until a slice actually "
+    "NOTE: the upload path uses synchronous stream-through instead, so signed "
+    "URLs currently have NO consumer — this stays deferred until something "
     "issues one against real GCS.",
     strict=False,
 )

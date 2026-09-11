@@ -1,4 +1,4 @@
-"""Integration tests for the Step 6.13 org-tree write endpoints.
+"""Integration tests for the org-tree write endpoints.
 
 Coverage shape:
 
@@ -173,10 +173,10 @@ async def test_c1_super_admin_adds_region_under_business_unit(
 ) -> None:
     """LOAD-BEARING — SUPER_ADMIN happy path: add REGION under BUSINESS_UNIT.
 
-    Step 6.21.2: pre-6.21.2 C1 added a STORE; STORE-type creates via
-    POST /org-tree are now rejected (use POST /stores). REGION is a
-    non-STORE non-TENANT type that still validates the happy path
-    (parent existence, cascade-order, path build, INSERT).
+    STORE-type creates via POST /org-tree are rejected (use POST
+    /stores instead). REGION is a non-STORE non-TENANT type that
+    still validates the happy path (parent existence, cascade-order,
+    path build, INSERT).
     """
     tenant = await make_tenant(name="C1 Tenant", with_root=True)
     troot_id, troot_path = await _fetch_tenant_root(
@@ -264,10 +264,9 @@ async def test_c3_super_admin_skips_levels_region_under_tenant_root(
 ) -> None:
     """LOAD-BEARING — level-skipping: REGION under TENANT root OK.
 
-    Step 6.21.2: pre-6.21.2 C3 added a STORE; STORE-type creates via
-    POST /org-tree are now rejected (use POST /stores). REGION
-    (ordinal=4) under TENANT (ordinal=0) is the equivalent
-    level-skipping case.
+    STORE-type creates via POST /org-tree are rejected (use POST
+    /stores instead). REGION (ordinal=4) under TENANT (ordinal=0) is
+    the equivalent level-skipping case.
     """
     tenant = await make_tenant(name="C3 Tenant", with_root=True)
     troot_id, _ = await _fetch_tenant_root(
@@ -296,7 +295,7 @@ async def test_c10_parentless_first_node_resolves_under_tenant_root(
     session_factory: Any,
     platform_auth: AuthContext,
 ) -> None:
-    """LOAD-BEARING (Slice 8) — first node on a root-only tenant with the
+    """LOAD-BEARING — first node on a root-only tenant with the
     parent omitted resolves server-side to the TENANT root.
 
     This is the org page's empty-state CTA path: a wizard-created tenant
@@ -336,7 +335,7 @@ async def test_c11_parentless_null_parent_id_resolves_under_tenant_root(
     session_factory: Any,
     platform_auth: AuthContext,
 ) -> None:
-    """Slice 8 — explicit ``parent_id: null`` behaves like omission."""
+    """Explicit ``parent_id: null`` behaves like omission."""
     tenant = await make_tenant(name="C11 Tenant", with_root=True)
     troot_id, _ = await _fetch_tenant_root(
         session_factory, platform_auth, tenant.id
@@ -435,9 +434,9 @@ async def test_v3_equal_ordinal_rejected_as_same_ordinal(
 ) -> None:
     """LOAD-BEARING — equal-ord cascade reject: HQ under HQ.
 
-    Step 6.21.2 rejects ``node_type='STORE'`` on POST entirely, so the
-    pre-6.21.2 V3 ("STORE under STORE") is unreachable via the API.
-    HQ-under-HQ is the equivalent equal-ordinal case (both ordinal=2).
+    ``node_type='STORE'`` is rejected on POST entirely, so a
+    "STORE under STORE" case is unreachable via the API. HQ-under-HQ
+    is the equivalent equal-ordinal case (both ordinal=2).
     """
     tenant = await make_tenant(name="V3 Tenant", with_root=True)
     troot_id, troot_path = await _fetch_tenant_root(
@@ -1286,8 +1285,8 @@ async def test_pa2_platform_admin_patches_happy_via_global_cascade(
 
 
 # ============================================================================
-# Step 6.21.2 — POST node_type='STORE' rejection (V8) and PATCH STORE-target
-# shared-field rejection (E13, E14, E16). E15 dropped per Deviation #2:
+# POST node_type='STORE' rejection (V8) and PATCH STORE-target
+# shared-field rejection (E13, E14, E16). E15 dropped:
 # OrgNodePatchRequest has no ``status`` field, so a body with ``status``
 # is already 422'd by Pydantic's extra_forbidden; the new check only
 # fires on ``name`` and ``code``.
@@ -1301,11 +1300,11 @@ async def test_v8_node_type_store_rejected_on_post(
     session_factory: Any,
     platform_auth: AuthContext,
 ) -> None:
-    """LOAD-BEARING — Step 6.21.2: POST /org-tree with
-    ``node_type='STORE'`` returns 422. The Pydantic model_validator
-    on ``OrgNodeCreateRequest`` rejects the value before the handler
+    """LOAD-BEARING — POST /org-tree with ``node_type='STORE'``
+    returns 422. The Pydantic model_validator on
+    ``OrgNodeCreateRequest`` rejects the value before the handler
     runs. Mirrors V1's shape (generic Pydantic 422; no dedicated
-    wire code per Deviation #2 / LD10 dropped)."""
+    wire code)."""
     tenant = await make_tenant(name="V8 Tenant", with_root=True)
     troot_id, _ = await _fetch_tenant_root(
         session_factory, platform_auth, tenant.id
@@ -1331,7 +1330,7 @@ async def test_e13_patch_store_type_with_name_rejected(
     session_factory: Any,
     platform_auth: AuthContext,
 ) -> None:
-    """LOAD-BEARING — Step 6.21.2: PATCH /org-tree/{node_id} on a
+    """LOAD-BEARING — PATCH /org-tree/{node_id} on a
     STORE-type target with ``name`` in body -> 422
     ORG_NODE_FIELD_NOT_ALLOWED_FOR_TYPE. ``name`` is owned by the
     /stores endpoints per architecture.md A.5 "Field ownership".

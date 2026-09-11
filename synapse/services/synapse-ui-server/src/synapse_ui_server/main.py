@@ -195,8 +195,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # THE FOURTH ENGINE, AND IT IS AXON'S READER. axon_reader holds SELECT on both delivery
     # ledgers and no write verb anywhere; the console's /deliveries surface reads through it.
     #
-    # THE SENDER'S ENGINE IS GONE FROM THIS SERVICE, and its absence is the point. Until slice 2
-    # this process also held axon_sender (INSERT on axon.platform_deliveries), because the enable
+    # THE SENDER'S ENGINE IS GONE FROM THIS SERVICE, and its absence is the point. This process
+    # used to also hold axon_sender (INSERT on axon.platform_deliveries), because the enable
     # route wrote the ledger row itself. It now publishes and writes nothing, so it holds no Axon
     # write credential at all. The DSN moved to axon-sender, which is the only process that
     # writes. A credential mounted on a service that no longer uses it is a privilege nobody is
@@ -578,9 +578,10 @@ def create_app(config: Config | None = None) -> FastAPI:
         # applied and that column is immutable. But cm-frontend's synapsePost THROWS on any
         # non-2xx, so the server action returns {ok:false} and SKIPS BOTH revalidatePath CALLS.
         # The page would then keep rendering the Enable control for a pair that now has a row:
-        # a console asserting a state the database contradicts, which is the exact defect slice 5e
-        # exists to remove. 200 revalidates, the page re-reads through synapse_reader, and the
-        # operator sees whichever of ACTIVE or SWITCHED OFF is actually true.
+        # a console asserting a state the database contradicts, which is exactly the defect this
+        # status code exists to prevent. 200 revalidates, the page re-reads through
+        # synapse_reader, and the operator sees whichever of ACTIVE or SWITCHED OFF is actually
+        # true.
         #
         # THE BODY CARRIES BOTH HALVES. `already_provisioned` is the machine-readable fact, and
         # the warning is the sentence: nothing was written, and the timezone you chose was not
@@ -589,7 +590,7 @@ def create_app(config: Config | None = None) -> FastAPI:
             response.status_code = 200
 
         # ================================================================================
-        # THE AUDIT RECORD FOR SLICE 5e, AND IT IS A LOG LINE, WHICH IS NOT ENOUGH
+        # THE AUDIT RECORD FOR ENABLING AN ANALYSIS, AND IT IS A LOG LINE, WHICH IS NOT ENOUGH
         # ================================================================================
         # WHAT IS RECORDED: who (the Auth0 subject, the only honest identity in the session),
         # which tenant, which analysis, which timezone, and what became true. synapse.provision
@@ -650,9 +651,10 @@ def create_app(config: Config | None = None) -> FastAPI:
         # which nothing did before: enabling a monitor for a client was a fact that existed only
         # where nobody was looking.
         #
-        # SLICE 2 MADE THIS A PUBLISH. It used to call send_platform in-process, which meant a
-        # provider round trip and a ledger write inside this request. Now it puts one message on
-        # axon-send-requested and returns; axon-sender does the send and writes the ledger row.
+        # THIS IS A PUBLISH, NOT AN IN-PROCESS CALL. It used to call send_platform in-process,
+        # which meant a provider round trip and a ledger write inside this request. Now it puts
+        # one message on axon-send-requested and returns; axon-sender does the send and writes
+        # the ledger row.
         # THE DELIVERY_ID IS MINTED HERE, and that is the whole idempotency mechanism: it is
         # pk_platform_deliveries, so a redelivered message reaches the same row and the second
         # INSERT is refused. See axon/src/axon/ledger.py for why that needed no grant.
@@ -673,11 +675,11 @@ def create_app(config: Config | None = None) -> FastAPI:
         # =====================================================================================
         # THE PUBLISH WINDOW, AND THE ONLY CONSTRUCT THAT CLOSES IT
         # =====================================================================================
-        # Slice 2 shrank the hole and did not remove it. It used to be a provider round trip
-        # plus a database write between the commit and the evidence; it is now a single
-        # publish. But because a delivery failure must never fail an enable, a publish that
-        # raises is still swallowed here, and the enablement is then committed with nothing
-        # queued and only the log line below to say so.
+        # Moving the send off this request's transaction shrank the hole and did not remove it.
+        # It used to be a provider round trip plus a database write between the commit and the
+        # evidence; it is now a single publish. But because a delivery failure must never fail
+        # an enable, a publish that raises is still swallowed here, and the enablement is then
+        # committed with nothing queued and only the log line below to say so.
         #
         # A TRANSACTIONAL OUTBOX IS THE ONLY THING THAT CLOSES IT. The intent would be written
         # to a table in the SAME transaction as the synapse.provision INSERT, so it commits or
@@ -880,9 +882,9 @@ def create_app(config: Config | None = None) -> FastAPI:
     ) -> dict[str, object]:
         """Every timezone name the console may offer for an enablement.
 
-        THE INTERSECTION OF THIS SERVICE AND THIS DATABASE, computed once at startup. Slice 5e
-        populated this picker from the BROWSER, whose list resolves through CLDR/ICU and so
-        offered ``Asia/Calcutta`` while omitting ``Asia/Kolkata`` entirely: every enable was
+        THE INTERSECTION OF THIS SERVICE AND THIS DATABASE, computed once at startup. An earlier
+        version populated this picker from the BROWSER, whose list resolves through CLDR/ICU and
+        so offered ``Asia/Calcutta`` while omitting ``Asia/Kolkata`` entirely: every enable was
         refused at validation and nothing could be provisioned. An intersection cannot contain a
         name either side rejects, which turns that from a thing to be careful about into a thing
         that cannot happen.

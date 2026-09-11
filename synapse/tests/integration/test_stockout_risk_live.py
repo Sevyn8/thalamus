@@ -171,9 +171,8 @@ async def test_the_fetch_is_narrowed_to_exactly_the_qualifying_series(
 ) -> None:
     """DATA REQUIRED. THE DEFERRAL, DISCHARGED AND OBSERVED.
 
-    Before slice 7 this fetch returned every series in scope, including the ones the gate had
-    just refused. The rows must now cover exactly the qualifying set — no more, and nothing
-    outside it.
+    The fetch must not return every series in scope, including the ones the gate had just
+    refused. The rows must cover exactly the qualifying set — no more, and nothing outside it.
     """
     from dis_rls import create_rls_engine, rls_session
     from synapse.registry import resolve_declaration

@@ -1,8 +1,8 @@
 """The :class:`AuditEvent` model — one ``audit.events`` row.
 
-Hand-aligned to the **live** ``ithina_dis_db`` ``audit.events`` schema (23 columns),
-not to D14 / architecture §8 / the DDL file / the BigQuery shape. The integration
-drift guard (``tests/integration``) reconciles the field set against
+Hand-aligned to the **live** ``ithina_dis_db`` ``audit.events`` schema (24 columns),
+not to the DDL file or the BigQuery shape. The integration drift guard
+(``tests/integration``) reconciles the field set against
 ``information_schema.columns`` both directions as the guard against drift.
 
 Invariants baked in here so a malformed row never reaches the backend:
@@ -14,7 +14,7 @@ Invariants baked in here so a malformed row never reaches the backend:
   cannot be violated.
 - ``trace_id`` is a required, caller-supplied field — never minted here (hard rule 4).
 - ``tenant_id`` mirrors the nullable column for the drift guard, but the writer enforces
-  the product rule that every DIS audit event carries a known tenant (``decisions.md`` D43).
+  the product rule that every DIS audit event carries a known tenant.
 - ``id`` and ``_loaded_at`` (exposed as ``loaded_at`` with its DB alias) are server-defaulted
   (``uuidv7()`` / ``now()``); they are model fields for the exact-set drift guard but are
   omitted from the INSERT so the DB stamps them (``id`` via the sanctioned server-side
@@ -51,8 +51,8 @@ class AuditEvent(BaseModel):
 
     # ---- Correlation / identity ----
     trace_id: UUID
-    # The PRIOR delivery's trace on a duplicate/dedup row (Slice 30c, the D42
-    # revision: promoted from event_data JSONB for console queryability).
+    # The prior delivery's trace on a duplicate/dedup row (promoted from
+    # event_data JSONB for console queryability).
     prior_trace_id: UUID | None = None
     tenant_id: UUID | None = None
     data_ingress_event_id: UUID | None = None

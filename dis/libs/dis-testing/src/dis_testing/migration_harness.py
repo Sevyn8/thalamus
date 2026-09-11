@@ -1,9 +1,9 @@
-"""Reusable migration-test harness (Slice 51c, D122).
+"""Reusable migration-test harness.
 
 Importable building blocks for the migration test suite: an ephemeral scratch-DB handle and
 the resident-DB fingerprint used to prove the resident dev DB (5433 / ``ithina_dis_db``) is
-never mutated by a full test run. The pytest fixtures that wrap these live in
-``tests/integration/conftest.py``; the plain functions and the ``ScratchDB`` type live here so
+never mutated by a full test run. The pytest fixtures that wrap these live in the
+``dis_testing`` pytest plugin; the plain functions and the ``ScratchDB`` type live here so
 test modules can import the type without depending on a conftest module path.
 
 The resident DB is only ever the Postgres server on which scratch DBs are created/dropped and a

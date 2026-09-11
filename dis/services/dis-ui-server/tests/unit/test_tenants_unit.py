@@ -1,7 +1,7 @@
 """Unit tests for ``GET /tenants-actable`` — the PLATFORM ops actable-tenant list.
 
 DB-free. The endpoint's isolation is NOT an in-query predicate (``identity_mirror`` is
-RLS-OFF, D41, and the repo query is deliberately unpredicated); it is a
+RLS-OFF and the repo query is deliberately unpredicated); it is a
 ``scope.is_platform`` assertion made in TWO places. So the gate tests here are not routine
 auth coverage — they are the test of the only control there is.
 
@@ -35,9 +35,7 @@ def _bearer(token: str) -> dict[str, str]:
 
 
 def _row(tenant_id: str, name: str, *, display_code: str | None, status: str) -> Any:
-    return SimpleNamespace(
-        tenant_id=tenant_id, name=name, display_code=display_code, status=status
-    )
+    return SimpleNamespace(tenant_id=tenant_id, name=name, display_code=display_code, status=status)
 
 
 def _ops(mint_token: Callable[..., str]) -> dict[str, str]:
@@ -122,7 +120,7 @@ def test_lists_a_tenant_with_zero_sources(
         "display_code": "BNC",
         "status": "onboarding",  # DB vocab lowercased (§2.6)
     }
-    # display_code is nullable at source (D55): served as-is, never invented.
+    # display_code is nullable at source: served as-is, never invented.
     assert body[1]["display_code"] is None
 
 

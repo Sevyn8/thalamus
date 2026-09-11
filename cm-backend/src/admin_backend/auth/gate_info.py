@@ -1,4 +1,4 @@
-"""Permission gate marker dataclass (Step 6.9.3.2).
+"""Permission gate marker dataclass.
 
 Every gate function returned by ``require(...)`` carries a
 ``PermissionGateInfo`` instance via its ``__permission_gate__``
@@ -30,7 +30,7 @@ class PermissionGateInfo:
 
     Fields capture the gate's required tuple plus an optional reference
     to the per-resource anchor dependency and the optional audience
-    constraint (Step 6.11.1). The discipline meta-test only reads
+    constraint. The discipline meta-test only reads
     ``__permission_gate__`` for existence; positive verification of the
     tuple (per-route assertions) lives in
     ``tests/integration/test_gate_retrofit.py::T_RET_6``.

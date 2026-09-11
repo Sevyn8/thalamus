@@ -2,7 +2,7 @@
 
 Column set mirrors the LIVE table (introspected in 14b plan mode): 13 columns,
 PK ``(tenant_id, store_id)``, ``store_code`` nullable (faithful copy of CM's
-nullable source column, D55). The table is RLS-OFF (D41), so EVERY read of this
+nullable source column, D55). The table is RLS-OFF, so EVERY read of this
 model MUST carry an explicit ``tenant_id`` predicate — the in-query scoping is
 the only isolation (the registered 14b weak link). That predicate lives in ONE
 place, ``repos/stores.py``; do not query this model anywhere else.
@@ -42,5 +42,5 @@ class StoreRow(Base):
     pc_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     pc_closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     mirror_synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    # Nullable at source (D55); the wire shape types it nullable too.
+    # Nullable at source; the wire shape types it nullable too.
     store_code: Mapped[str | None] = mapped_column(Text)

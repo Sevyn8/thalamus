@@ -1,8 +1,8 @@
-"""Target + platform-context guards — the always-run, non-skip proofs (criteria 4 & 5).
+"""Target + platform-context guards — the always-run, non-skip proofs.
 
 These are pure functions (no DB), so they cannot skip on an absent dependency: the
-fail-loud behavior is asserted unconditionally, exactly as the slice requires for the
-zero-row-read trap and the target mix-up.
+fail-loud behavior is asserted unconditionally for the zero-row-read trap and the
+target mix-up.
 """
 
 from __future__ import annotations

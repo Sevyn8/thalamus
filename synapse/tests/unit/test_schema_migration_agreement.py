@@ -9,7 +9,7 @@ it ALTERs the table and also carries the columns in ``identity_mirror/tenants.sq
 That hand-agreement is exactly the kind that drifts silently, and the drift is invisible until a
 fresh deploy behaves differently from staging. So the two are compared here.
 
-IT COVERED ONLY synapse.actions UNTIL SLICE 5b, and the gap was real rather than theoretical: the
+IT ONCE COVERED ONLY synapse.actions, and the gap was real rather than theoretical: the
 constant was a single ``_DDL = .../actions.sql``, so migration 0005 adding ``refusals`` to
 ``synapse.run`` would have been checked against nothing at all. A guard whose scope is narrower
 than its name is worse than an absent one, because the green tick is read as coverage. All three
@@ -92,7 +92,7 @@ def _altered_columns(table: str) -> set[str]:
 
 
 def test_every_synapse_table_is_covered() -> None:
-    """THE GAP THIS TEST SHIPPED WITH. Until slice 5b it read actions.sql alone, so `run` and
+    """THE GAP THIS TEST SHIPPED WITH. It once read actions.sql alone, so `run` and
     `provision` were unguarded while the file's name and docstring implied otherwise. A new DDL
     file must be added to _TABLES or this fails."""
     on_disk = {path.name for path in _SCHEMAS.glob("*.sql")}

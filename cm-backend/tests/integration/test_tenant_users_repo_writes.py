@@ -1,4 +1,4 @@
-"""Step 6.14 integration tests for ``TenantUsersRepo`` write methods.
+"""Integration tests for ``TenantUsersRepo`` write methods.
 
 Six repo-level tests covering the diff-replace invariants and the
 race-control catch path that the router-level R-tests can't reliably

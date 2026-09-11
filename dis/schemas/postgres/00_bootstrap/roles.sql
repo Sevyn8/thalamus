@@ -33,7 +33,6 @@
 --             -f schemas/postgres/00_bootstrap/roles.sql
 --   3. Export POSTGRES_ADMIN_URL to point at the DIS database as ithina_dis_admin.
 --   4. Run `alembic upgrade head` (creates schemas, objects, grants, partitions).
--- (This order is also recorded in docs/build-guide.md under Slice 1.)
 --
 -- ----------------------------------------------------------------------------
 -- Idempotency

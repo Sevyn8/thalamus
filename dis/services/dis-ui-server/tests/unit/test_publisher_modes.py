@@ -1,8 +1,8 @@
-"""PubsubPublisher emulator-or-ambient construction (slice 40a).
+"""PubsubPublisher emulator-or-ambient construction.
 
 The pubsub_v1 client honours PUBSUB_EMULATOR_HOST natively, so BOTH branches
-construct the same bare ``PublisherClient()`` — the slice deleted the
-emulator-required guard; these tests pin that construction succeeds in both
+construct the same bare ``PublisherClient()`` with no emulator-required
+guard; these tests pin that construction succeeds in both
 modes and stays the no-kwargs ambient shape (no endpoint, no credentials —
 ambient ADC is "pass nothing", the dis-storage posture).
 """

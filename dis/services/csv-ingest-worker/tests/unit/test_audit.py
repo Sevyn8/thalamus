@@ -44,7 +44,7 @@ async def test_emit_builds_event_with_context_and_load_bearing_id() -> None:
         event_data={"pii_columns_detected": 0},
     )
     [event] = writer.events
-    assert event.tenant_id == _TENANT  # D43: every event carries a known tenant
+    assert event.tenant_id == _TENANT  # every event carries a known tenant
     assert event.trace_id == _TRACE  # read trace, propagated
     assert event.data_ingress_event_id == _BRONZE  # the load-bearing id
     assert event.service_name == "csv-ingest-worker"
@@ -89,7 +89,7 @@ async def test_writer_false_is_logged_as_error_not_raised(
 
 
 async def test_duplicate_emission_is_tolerated() -> None:
-    # D44: duplicates tolerated — emitting the same stage event twice is fine.
+    # Duplicates tolerated — emitting the same stage event twice is fine.
     writer = _RecordingWriter()
     audit = WorkerAudit(writer)
     for _ in range(2):

@@ -86,7 +86,7 @@ class TenantDetail:
     # was counting its own LIMIT-100 page and calling the result a property of the tenant.
     open_alerts: int
     analyses: tuple[AnalysisState, ...]
-    # THE THIRD STATE, ADDED BY 5e. See DisabledAnalysis: without it a disabled pair is
+    # THE THIRD STATE. See DisabledAnalysis: without it a disabled pair is
     # indistinguishable from one that was never provisioned, and the Enable control would offer
     # to do something that silently does nothing.
     disabled_analyses: tuple[DisabledAnalysis, ...]
@@ -98,12 +98,9 @@ class AnalysisState:
 
     ``outcome``, the two counts, ``detail`` and ``refusals`` all come from ``synapse.run``.
 
-    ``refusals`` IS THE ONE THAT CHANGED IN SLICE 5b. This docstring used to say detail "exists
-    and is NOT populated (outstanding item 4)", which was true: nothing threaded a breakdown onto
-    the run row, so a monitor that refused every series looked identical to one that found
-    nothing. Item 4 is closed — the plan returns its refusals and the orchestrator records them —
-    and this carries the result so the tenant page can say "12 series refused — sales data too
-    old" instead of showing a bare zero.
+    ``refusals`` carries the count of series an analysis declined to score, keyed by reason, so
+    the tenant page can say "12 series refused — sales data too old" instead of showing a bare
+    zero for a monitor that refused every series.
     """
 
     analysis_id: str
@@ -140,7 +137,8 @@ class AnalysisState:
 
 @dataclass(frozen=True)
 class DisabledAnalysis:
-    """A pair that WAS provisioned and is now switched off. The state 5e had to make visible.
+    """A pair that WAS provisioned and is now switched off — the state the console must be able
+    to show.
 
     WHY THIS EXISTS AT ALL. ``_TENANT_ANALYSES`` filters ``disabled_at IS NULL``, which was right
     while nothing could enable anything: a disabled monitor is not running, and a read-only screen
@@ -647,7 +645,7 @@ def _as_uuid(value: Any) -> UUID:
 
 
 # ---------------------------------------------------------------------------
-# Alerts: the first per-ACTION reads in this service (slice 5c)
+# Alerts: the first per-ACTION reads in this service
 # ---------------------------------------------------------------------------
 #
 # EVERYTHING ABOVE COUNTS ACTIONS; THESE TWO RETURN THEM. `synapse.actions` appeared in this
@@ -973,7 +971,7 @@ class FleetAlertRow:
 
     A SEPARATE TYPE RATHER THAN A WIDER AlertRow. tenant_name is meaningless on a tenant-scoped
     surface, and adding lifecycle_state to the shared _ALERT_COLUMNS would change AlertRow, which
-    the 5c detail tests construct field by field. Those tests are required to keep passing
+    the detail tests construct field by field. Those tests are required to keep passing
     untouched, so the fleet shape is its own.
 
     PLATFORM-ONLY, like every alert payload: sku_id, product_name, store_name and tenant_name are

@@ -1,4 +1,4 @@
-"""The schemas/postgres/*.sql RLS policy text honors the two-GUC end-state (Slice 17b).
+"""The schemas/postgres/*.sql RLS policy text honors the two-GUC end-state.
 
 Closes adversarial-pass escape #1: the DDL files are what migration 0001's manifest applies
 on a fresh build, but migration 0011 then DROP+CREATEs every policy at head from its OWN

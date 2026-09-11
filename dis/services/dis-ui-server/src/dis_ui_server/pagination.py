@@ -1,17 +1,16 @@
-"""Opaque keyset-cursor encode/decode — the house pagination helper (Slice 51b, D124).
+"""Opaque keyset-cursor encode/decode — the house pagination helper.
 
-The FIRST paginated list endpoint (``GET /runs``) establishes this pattern; later
-dis-ui-server list endpoints reuse it. A cursor is an OPAQUE token: callers echo it back,
-never construct or parse it. It carries the keyset BOUNDARY — the ``(received_at, id)`` of the
-last row on the page, over the fixed ``(received_at DESC, id DESC)`` ordering 51a established —
-plus the FILTER SET it was issued under (status + window token). A cursor replayed under a
-different filter set is REJECTED fail-loud, never silently re-based to page 1 (the
-no-silent-fallback posture; D124).
+``GET /runs`` uses this pattern; later dis-ui-server list endpoints reuse it. A cursor is an
+OPAQUE token: callers echo it back, never construct or parse it. It carries the keyset
+BOUNDARY — the ``(received_at, id)`` of the last row on the page, over the fixed
+``(received_at DESC, id DESC)`` ordering — plus the FILTER SET it was issued under (status +
+window token). A cursor replayed under a different filter set is REJECTED fail-loud, never
+silently re-based to page 1 (the no-silent-fallback posture).
 
 Encoding is ``base64url(orjson(payload))`` with a version tag; it is deliberately CHANGEABLE
 (callers depend only on round-trip), so nothing outside this module reads its internals. The
 boundary predicate itself is a ROW-VALUE comparison ``(received_at, id) < (:r, :i)`` built in
-``repos/runs.py`` — the OR-expanded form is forbidden (proven non-index-pushable, D124); this
+``repos/runs.py`` — the OR-expanded form is forbidden (proven non-index-pushable); this
 module only carries the boundary values, it does not build SQL.
 """
 
@@ -62,7 +61,7 @@ def encode_cursor(boundary: Boundary, *, status: str | None, window: str | None)
 def decode_cursor(token: str, *, status: str | None, window: str | None) -> Boundary:
     """Decode a cursor from :func:`encode_cursor`, enforcing its issuing filter set.
 
-    Fail-loud (D124): a malformed/garbage/wrong-version token ->
+    Fail-loud: a malformed/garbage/wrong-version token ->
     ``InvalidCursorError(reason='undecodable')``; a token issued under a different
     ``status``/``window`` -> ``InvalidCursorError(reason='filter_mismatch')``. Never a guessed
     boundary and never a silent restart. ``reason`` is a fixed code, never the token bytes.

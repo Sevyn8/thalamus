@@ -2,20 +2,18 @@
 
 Startup REQUIRES the subscription to exist and raises loudly if it does not —
 provisioning lives in ``tools/local/create_topics.py`` (``make topics-create``),
-NEVER in consumer runtime code. The client is emulator-or-ambient (slice 40a): the
-emulator when ``PUBSUB_EMULATOR_HOST`` is set (the ``pubsub_v1`` client honours it
+NEVER in consumer runtime code. The client is emulator-or-ambient: the emulator
+when ``PUBSUB_EMULATOR_HOST`` is set (the ``pubsub_v1`` client honours it
 natively), real Pub/Sub via ambient service-account credentials when it is not.
 
-Message routing (the Slice 10 disposition + the Slice 11a quarantine carve-out —
-see orchestrate.py):
+Message routing (audit-and-nack with a quarantine carve-out — see orchestrate.py):
 
 - ``written`` → ack.
 - ``quarantined`` → **ack**. The chunk is HELD in the quarantine store (the
   fail-loud write already succeeded) and the QUARANTINED audit emitted; the ack
-  is the storm fix — the deterministic-failure redeliver loop is broken at its
-  source.
+  breaks the deterministic-failure redeliver loop at its source.
 - any failed disposition or any raised pipeline error → **nack** (the pipeline
-  already emitted the FAILURE audit; bronze remains the recoverable source, D5).
+  already emitted the FAILURE audit; bronze remains the recoverable source).
   This includes a FAILED QUARANTINE WRITE (the pipeline falls back to raise /
   ``failed_*`` so the held data is never acked-and-lost) and the self-heal
   exclusions (``HOT_POSITION_MISSING``, the store-miss contract violation) —
@@ -23,13 +21,13 @@ see orchestrate.py):
   backstops.
 - the ONE pre-pipeline ack-on-failure: an unparseable envelope
   (``EventContractError`` at parse). Identity may be unknowable there, so a
-  D43-conformant audit row may be impossible, and a redelivery fails identically
-  (the 9b precedent). No quarantine either — the tables' ``tenant_id`` is NOT
-  NULL (unchanged in 11a).
+  tenant-stamped audit row may be impossible, and a redelivery fails
+  identically. No quarantine either — the quarantine tables' ``tenant_id`` is
+  NOT NULL.
 
-No ordering key is consumed: D60 resolved as STRIKE (canonical correctness is
-event-time-based — D33 read-time dedup + the D64 conditional upsert; an ordering
-key would defend nothing the consumer needs).
+No ordering key is consumed: canonical correctness is event-time-based
+(read-time dedup + the conditional upsert), so an ordering key would defend
+nothing the consumer needs.
 """
 
 from __future__ import annotations
@@ -116,8 +114,8 @@ async def process_message(pipeline: ConsumerPipeline, data: bytes) -> Decision:
         log.error("chunk failed (nacked; FAILURE audit emitted — audit-and-nack): %s", exc)
         return "nack"
     if outcome.disposition == "quarantined":
-        # The Slice 11a storm fix: the chunk is held (fail-loud write succeeded),
-        # so the ack breaks the redeliver loop at its source.
+        # The chunk is held (fail-loud write succeeded), so the ack breaks the
+        # deterministic-failure redeliver loop at its source.
         log.info("chunk quarantined (acked; held in quarantine.* with QUARANTINED audit)")
         return "ack"
     if outcome.disposition != "written":
@@ -134,8 +132,8 @@ class Subscriber:
     project_id: str
     pipeline: ConsumerPipeline
     max_messages: int = 10
-    # Slice 40a: beaten once per loop cycle UNCONDITIONALLY (all modes — the loop
-    # never branches on environment; only the healthz SERVER is toggled, main.py).
+    # Beaten once per loop cycle UNCONDITIONALLY (all modes — the loop never
+    # branches on environment; only the healthz SERVER is toggled, main.py).
     heartbeat: Heartbeat = field(default_factory=Heartbeat)
 
     def __post_init__(self) -> None:
@@ -182,8 +180,8 @@ class Subscriber:
                 request={"subscription": self._sub_path, "ack_ids": ack_ids},
             )
         if nack_ids:
-            # Deadline 0 = immediate redelivery (the emulator honours it); D33
-            # read-time dedup + the D64 conditional upsert absorb the replay.
+            # Deadline 0 = immediate redelivery (the emulator honours it);
+            # read-time dedup + the conditional upsert absorb the replay.
             await asyncio.to_thread(
                 self._client.modify_ack_deadline,
                 request={
@@ -198,7 +196,7 @@ class Subscriber:
         log = _log.bind(stage="subscriber")
         log.info("subscribed; pulling from %s", self._sub_path)
         while True:
-            # Slice 40a: the readiness heartbeat, written unconditionally in every
+            # The readiness heartbeat, written unconditionally in every
             # mode (local / Cloud Run Service / Worker Pools) — only the healthz
             # server that READS it is toggled. A dead/hung loop stops beating and
             # /healthz goes stale.
@@ -224,7 +222,5 @@ class Subscriber:
                 # pipeline, a 403 on the subscription, a malformed request. Still
                 # swallowed, because a dead loop is worse than a noisy one, but at
                 # ERROR with a traceback under a `bug` marker so it is findable.
-                log.bind(bug=True).exception(
-                    "BUG: poll pass raised a non-transient error; retrying"
-                )
+                log.bind(bug=True).exception("BUG: poll pass raised a non-transient error; retrying")
                 await asyncio.sleep(1)

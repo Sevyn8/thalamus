@@ -1,4 +1,4 @@
-"""Migration-shape tests for Slice 3 (tenant_documents verification).
+"""Migration-shape tests for tenant_documents verification.
 
 Asserts the migration b755e9d4081c is applied: the six new columns exist
 with the right nullability, the verification-consistency CHECK enforces the

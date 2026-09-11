@@ -1,4 +1,4 @@
-"""Slice 1: ORM round-trip tests for the client-onboarding models.
+"""ORM round-trip tests for the client-onboarding models.
 
 Each test inserts one row via the ORM model under a PLATFORM session,
 flushes + refreshes to pull the DB-side defaults (``uuidv7()`` id,
@@ -7,7 +7,7 @@ asserts the mapping, then deletes the row before the block commits so
 the ``make_tenant`` teardown's tenant DELETE (FK ON DELETE RESTRICT)
 succeeds.
 
-OM7 exercises the Slice 1 ``INDIA`` region end-to-end: a tenant created
+OM7 exercises the ``INDIA`` region end-to-end: a tenant created
 with ``TenantRegion.INDIA`` persists and reads back.
 """
 from __future__ import annotations

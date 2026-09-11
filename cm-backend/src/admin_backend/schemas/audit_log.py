@@ -1,4 +1,4 @@
-"""Pydantic v2 schemas for the audit log read endpoints (Step 6.16.3).
+"""Pydantic v2 schemas for the audit log read endpoints.
 
 Three response shapes plus the cursor pagination envelope:
 

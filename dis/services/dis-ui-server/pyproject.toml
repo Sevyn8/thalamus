@@ -1,54 +1,53 @@
 [project]
 name = "dis-ui-server"
 version = "0.0.0"
-description = "DIS UI backend-for-frontend foundation (Slice 13a, D26): deployable FastAPI skeleton with /healthz (DB-free liveness) and /readyz (proves a tenant-scoped dis-rls session opens), the auth seam (dev-stub HS256 verifier behind get_current_identity / require_tenant / require_ops — the SOLE source of tenant_id), DisError-to-envelope exception handlers (contract §2.3), structured logging, and the SQLAlchemy declarative base for later CRUD. No UI data endpoints (Slices 8/14+), no JWKS (13b), no Pub/Sub, no config.source_mappings writes."
+description = "DIS UI backend-for-frontend: FastAPI service exposing the tenant-scoped UI API (sources, stores, mapping templates, CSV uploads, runs, quarantine, canonical reads, connector onboarding/health, audit, mapping suggestions) plus /healthz (DB-free liveness) and /readyz (proves a tenant-scoped dis-rls session opens). The verified JWT is the SOLE source of tenant_id (require_tenant / require_ops), and all Postgres access goes through per-tenant dis-rls sessions."
 requires-python = ">=3.12"
 dependencies = [
-  # DisError root + the Slice-13a auth-seam errors, UUIDv7 (readiness probe
-  # tenant), trace_id contextvar (envelope), structured logging.
+  # DisError root + auth-seam errors, UUIDv7 (readiness probe tenant),
+  # trace_id contextvar (envelope), structured logging.
   "dis-core",
-  # The ONLY Postgres path (hard rules 1 & 12): create_rls_engine + the
-  # per-tenant rls_session, inheriting the current_database()=='ithina_dis_db'
-  # + NOBYPASSRLS target guard (DIS on 5433, never Customer Master).
+  # The ONLY Postgres path: create_rls_engine + the per-tenant rls_session,
+  # inheriting the current_database()=='ithina_dis_db'
+  # + NOBYPASSRLS target guard (DIS database, never Customer Master).
   "dis-rls",
   # HTTP surface; handlers are thin APIRouters mounted by main.py.
   "fastapi>=0.115",
   "uvicorn[standard]>=0.32",
-  # Dev-stub HS256 verification (contract §2.1); the 13b JWKS swap reuses it.
+  # JWT verification: Auth0 RS256 via JWKS, plus the dev-stub HS256 verifier.
   "pyjwt[crypto]>=2.8",
-  # Async engine plumbing + the declarative Base for this service's later CRUD
-  # (ORM layer choice: D-number registered at the commit gate). Executes only
+  # Async engine plumbing + the declarative Base. Executes only
   # through the dis-rls session — never a second engine.
   "sqlalchemy[asyncio]>=2.0.36",
   "psycopg[binary]>=3.2",
-  # Request/response models (later slices; FastAPI serializes them directly).
+  # Request/response models (FastAPI serializes them directly).
   "pydantic>=2.9",
-  # Slice 14b: the D49 mapping_rules contract (SourceMapping is BOTH the
+  # The mapping_rules contract (SourceMapping is BOTH the
   # create/edit validator and the wire type — one model, no drift).
   "dis-mapping",
-  # Slice 14b: the canonical event models the field catalog derives from.
+  # The canonical event models the field catalog derives from.
   "dis-canonical",
-  # Slice 14b: mapping_produced_columns — the drift-guarded provenance
+  # mapping_produced_columns — the drift-guarded provenance
   # partition shared by the catalog AND the create/edit semantic gate.
   "dis-validation",
-  # Slice 16i: enrichment_fields(CURRENT_POSITION) — the value-guaranteed columns
-  # (currency) the create gate + catalog subtract from the mandatory-to-map set
-  # (D95). Pure lib; the consumer imports it too (no purity contract governs the
+  # enrichment_fields(CURRENT_POSITION) — the value-guaranteed columns
+  # (currency) the create gate + catalog subtract from the mandatory-to-map set.
+  # Pure lib; the consumer imports it too (no purity contract governs the
   # service->lib edge). Used for the set only, never for runtime enrichment I/O.
   "dis-enrichment",
-  # Slice 8: the canonical GCS object path (D53) + the object write for the
-  # synchronous CSV upload — the ONLY sanctioned GCS path (hard rule 9).
+  # The canonical GCS object path + the object write for the
+  # synchronous CSV upload — the ONLY sanctioned GCS path.
   "dis-storage",
-  # Slice 8: fire-and-forget audit emission for the upload receiver (hard
-  # rule 11); the Postgres writer rides the same dis-rls engine.
+  # Fire-and-forget audit emission for the upload receiver;
+  # the Postgres writer rides the same dis-rls engine.
   "dis-audit",
-  # Slice 8: csv.received publish (emulator-guarded, the 9b publisher pattern).
+  # csv.received publish (emulator-guarded publisher).
   "google-cloud-pubsub>=2.23",
-  # Slice 8: the streaming multipart push parser for the 10 MB mid-stream
+  # The streaming multipart push parser for the 10 MB mid-stream
   # ceiling (upload_stream.py) — never Starlette's buffering request.form().
   "python-multipart>=0.0.18",
-  # Slice 8: the blocking GCS/Pub/Sub clients run off the event loop via
-  # anyio.to_thread (root-CLAUDE.md async pattern). Declared explicitly —
+  # The blocking GCS/Pub/Sub clients run off the event loop via
+  # anyio.to_thread. Declared explicitly —
   # imported directly, never ridden transitively off starlette.
   "anyio>=4",
   # Mapping-suggestion endpoint: the google-genai client in VERTEX AI mode
@@ -61,12 +60,12 @@ dependencies = [
   # impersonated_credentials). Imported DIRECTLY now (not just transitively off
   # google-genai), so declared explicitly.
   "google-auth>=2.53",
-  # Slice 51b: fast JSON encode/decode for keyset-cursor pagination (pagination.py).
+  # Fast JSON encode/decode for keyset-cursor pagination (pagination.py).
   "orjson>=3.10",
-  # S2: Square OAuth client + Secret Manager token vault, shared with the connector.
+  # Square OAuth client + Secret Manager token vault, shared with the connector.
   # SDK-free, so this adds no connector service graph to the BFF.
   "thalamus-square-oauth",
-  # C3: the same for Clover (handlers/connectors_clover.py). Also SDK-free.
+  # The same for Clover (handlers/connectors_clover.py). Also SDK-free.
   # DECLARING IT IS WHAT PUTS IT IN THE IMAGE. `uv sync --package dis-ui-server` installs
   # only this package's closure, so an import with no declaration builds green and dies at
   # container start with ModuleNotFoundError.

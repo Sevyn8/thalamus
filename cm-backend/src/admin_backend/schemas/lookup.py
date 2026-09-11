@@ -1,11 +1,10 @@
-"""Pydantic v2 schemas for the lookups batch endpoint (Step 3.6).
+"""Pydantic v2 schemas for the lookups batch endpoint.
 
 Response shape: ``{lookups: {list_name: [item, ...], ...}}``. The
 top-level wrapper leaves room for cross-cutting metadata
-(``cached_at``, ``version``, etc.) without breaking the contract —
-the convention captured in CLAUDE.md is "future batch-by-key
-endpoints follow this same envelope pattern; do not return a bare
-map at top level."
+(``cached_at``, ``version``, etc.) without breaking the contract:
+future batch-by-key endpoints follow this same envelope pattern; do
+not return a bare map at top level.
 """
 from __future__ import annotations
 

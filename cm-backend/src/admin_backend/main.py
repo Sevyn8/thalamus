@@ -1,10 +1,9 @@
 """FastAPI app entrypoint.
 
-Step 2.3 introduces the skeleton: lifespan that constructs engine,
-session_factory, and auth_client; create_app that registers
-middleware + exception handler. Step 2.4 builds the health endpoint
-and finalises the lifespan order with the runtime privilege check
-wired as a startup gate.
+``lifespan`` constructs the DB engine, session factory, and auth
+client; ``create_app`` registers middleware and the exception
+handler, builds the health endpoint, and orders the lifespan with
+the runtime privilege check wired as a startup gate.
 """
 import asyncio
 import logging
@@ -117,7 +116,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         auth_client = Auth0Client(settings)
     app.state.auth_client = auth_client
 
-    # Auth0 Management client (Slice 2c provisioning, D-39). Constructed ONCE
+    # Auth0 Management client. Constructed ONCE
     # here, and only in AUTH0 mode with M2M creds present; STUB mode leaves it
     # None (the provisioning endpoints then return 503 PROVISIONING_UNAVAILABLE,
     # never a raw 500). The provisioning handlers read it off app.state.
@@ -130,10 +129,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         mgmt_client = Auth0ManagementClient(settings)
     app.state.mgmt_client = mgmt_client
 
-    # SendGrid email sender (Slice 2d-send, D-41). Constructed ONCE here, only
+    # SendGrid email sender. Constructed ONCE here, only
     # when a SendGrid API key is present; STUB / unconfigured leaves it None
     # (the send-invitation endpoint then returns 503, never a raw 500).
-    # Channel credential vault (Axon slice 5). Constructed only when a project is configured;
+    # Channel credential vault. Constructed only when a project is configured;
     # absent means the channels WRITE refuses with CHANNELS_UNAVAILABLE at use time rather than
     # blocking boot, so a revision without it comes up healthy and every other surface works.
     channel_secret_writer: ChannelSecretWriter | None = None
@@ -146,7 +145,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         email_sender = SendGridEmailSender(settings)
     app.state.email_sender = email_sender
 
-    # GCS signed-URL generator (Slice 3 documents). Constructed ONCE here,
+    # GCS signed-URL generator. Constructed ONCE here,
     # only when storage is FULLY configured (both gcs_documents_bucket AND
     # gcs_signer_service_account_email; see build_gcs_signer). Unset leaves
     # it None, so the document endpoints return 503
@@ -330,16 +329,15 @@ def create_app() -> FastAPI:
         responses inline (see middleware/auth.py); both paths use the
         shared build_error_payload helper.
 
-        Step 6.16.2 hook: after the response envelope is built, if the
-        matched route is in ``AUDITED_ROUTES`` and the request has an
-        AuthContext, emit a failure-path audit row in a separate
-        transaction. The row records what was attempted and which
-        result_type fired; per the design doc Emission contract
-        refinement (LD15), this happens AFTER the data transaction
-        has rolled back, in its own new transaction. If the audit
-        emission itself fails (rare; constraint violation due to bug),
-        the helper logs CRITICAL and continues; the user-facing error
-        envelope is the visible response.
+        After the response envelope is built, if the matched route is
+        in ``AUDITED_ROUTES`` and the request has an AuthContext, emit
+        a failure-path audit row in a separate transaction. The row
+        records what was attempted and which result_type fired; this
+        happens AFTER the data transaction has rolled back, in its
+        own new transaction. If the audit emission itself fails
+        (rare; constraint violation due to bug), the helper logs
+        CRITICAL and continues; the user-facing error envelope is the
+        visible response.
         """
         request_id = getattr(request.state, "request_id", None)
 
@@ -354,7 +352,7 @@ def create_app() -> FastAPI:
                 },
             )
 
-        # Step 6.16.2 failure-path audit emission. Skip if no auth
+        # Failure-path audit emission. Skip if no auth
         # (request never authenticated) or no route match.
         await _emit_failure_audit_if_audited(request, exc)
 
@@ -367,7 +365,7 @@ def create_app() -> FastAPI:
 
 
 # ---------------------------------------------------------------------------
-# Per-route extractor mapping (Step 6.16.5 LD12; closes FN-AB-66)
+# Per-route extractor mapping (closes FN-AB-66)
 # ---------------------------------------------------------------------------
 #
 # Each AUDITED_ROUTES resource_type declares one extractor. The
@@ -474,12 +472,12 @@ RESOURCE_EXTRACTORS: dict[
 async def _emit_failure_audit_if_audited(
     request: Request, exc: AdminBackendError
 ) -> None:
-    """Hook the failure-path audit emission per Step 6.16.2 LD8.
+    """Hook the failure-path audit emission.
 
     Lookup the request's matched route in ``AUDITED_ROUTES``; if not
-    present, do nothing (the endpoint is not audited at this step).
-    If the request has no AuthContext (auth failed or was skipped),
-    do nothing (v0 deferral: unauthenticated attempts not audited).
+    present, do nothing (the endpoint is not audited). If the request
+    has no AuthContext (auth failed or was skipped), do nothing (v0
+    deferral: unauthenticated attempts not audited).
 
     Maps the exception type to ``AuditResultType`` via class shape
     (ClientError 403 -> PERMISSION_DENIED, 422 -> VALIDATION_FAILED,
@@ -489,10 +487,9 @@ async def _emit_failure_audit_if_audited(
     handler. Audit emission for the 422-from-Pydantic path is deferred
     per FN-AB-63.
 
-    Step 6.16.5 LD12: the 6.16.4 minimal path-param fallthrough is
-    replaced by the ``RESOURCE_EXTRACTORS`` sibling dict (FN-AB-66
-    closure). The failure handler consults the dict keyed by
-    resource_type and dispatches to the per-resource extractor.
+    The ``RESOURCE_EXTRACTORS`` sibling dict maps resource_type to a
+    per-resource extractor (FN-AB-66); the failure handler consults
+    the dict keyed by resource_type and dispatches accordingly.
     """
     auth = getattr(request.state, "auth", None)
     if auth is None:
@@ -537,7 +534,7 @@ async def _emit_failure_audit_if_audited(
         # emission set up the engine.
         return
 
-    # Step 6.16.7 LD9 : CONFLICT rows get a per-class qualifier-composed
+    # CONFLICT rows get a per-class qualifier-composed
     # ``result_label`` ("Blocked - <qualifier>"). Other result_types
     # fall through to the default static label resolved inside emit.
     composed_result_label: str | None = None
@@ -574,20 +571,19 @@ def _failure_result_and_details(
 
     The mapping uses class shape signals (http_status + code) rather
     than isinstance checks against every subclass; adding a new
-    subclass at 6.16.4 / 6.16.5 doesn't require updating this
-    function.
+    subclass doesn't require updating this function.
 
-    Step 6.16.4: ``auth`` is the request's resolved ``AuthContext``;
-    used to fall back ``caller_audience`` to ``auth.user_type`` when
-    the raise site didn't set it explicitly (gate raises and
-    handler-side guards typically don't).
+    ``auth`` is the request's resolved ``AuthContext``; used to fall
+    back ``caller_audience`` to ``auth.user_type`` when the raise
+    site didn't set it explicitly (gate raises and handler-side
+    guards typically don't).
     """
     code = exc.code
     http_status = exc.http_status
     context = exc.context
 
     if isinstance(exc, ServerError):
-        # Step 6.16.4 LD12: a Layer 2 invariant tripwire raise (e.g.
+        # A Layer 2 invariant tripwire raise (e.g.
         # ``InternalInvariantViolationError`` from
         # ``RolesRepo.update``) passes ``invariant=...`` via
         # ``**context`` on the ServerError constructor; surface it
@@ -604,12 +600,12 @@ def _failure_result_and_details(
         # Permission-denied family. ``code`` distinguishes:
         # PLATFORM_AUDIENCE_REQUIRED (Layer 1 audience refusal),
         # PERMISSION_DENIED (Layer 2 has_permission denial),
-        # SELF_EDIT_FORBIDDEN (handler-side guard at Step 6.10.1).
+        # SELF_EDIT_FORBIDDEN (handler-side guard).
         required = (
             context.get("required_permission")
             or _required_permission_from_code(code)
         )
-        # Step 6.16.4: caller_audience falls back to auth.user_type
+        # caller_audience falls back to auth.user_type
         # when the raise site (gate / handler-side guard) didn't set
         # it explicitly. Gate raises carry module / resource / action
         # / scope but not caller-shape info; the JWT identity is the
@@ -619,7 +615,7 @@ def _failure_result_and_details(
             caller_audience = getattr(auth, "user_type", "") or ""
         caller_audience = caller_audience or ""
         caller_roles = context.get("caller_roles") or []
-        # Step 6.16.4 LD11: handler-side guard denials carry an
+        # Handler-side guard denials carry an
         # optional ``denial_reason`` sub-key. SelfEditForbiddenError
         # has no structured context constructor (see pre-flight
         # Observation #3); dispatch by class type.

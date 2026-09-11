@@ -1,6 +1,6 @@
 -- ============================================================================
 -- user_admin_backend on axon.channel_connections: Customer Master's one reach
--- into the Axon schema (Axon slice 5).
+-- into the Axon schema.
 --
 -- THE FIRST FILE IN THIS SERIES THAT GRANTS AN EXISTING ROLE RATHER THAN A NEW
 -- ONE, and that is the whole reason this design is cheap. sql/05 through 08 each
@@ -38,11 +38,11 @@
 --   THE UPSERT'S ARBITER READ  and this is the one that is easy to miss.
 --
 -- ON CONFLICT READS THE ARBITER INDEX, WHICH IS A SELECT PRIVILEGE ON THE TABLE.
--- Slice 5e spent two days with every enable in production failing with
--- `permission denied for table provision` behind a green apply, because the
--- writing role held INSERT and no SELECT. axon.channel_connections' own DDL
--- carries that warning, naming 5e and 06_axon_sender_grant.sql, directly above
--- the primary key the upsert arbitrates on.
+-- Production once failed every enable with `permission denied for table
+-- provision` behind a green apply, because the writing role held INSERT and no
+-- SELECT. axon.channel_connections' own DDL carries that warning, naming
+-- 06_axon_sender_grant.sql, directly above the primary key the upsert
+-- arbitrates on.
 --
 -- The difference here is the ROLE, not the mechanism. axon_sender deliberately
 -- holds no SELECT anywhere and still does. user_admin_backend needs SELECT for
@@ -59,8 +59,9 @@
 --
 -- NOTHING ON axon.channel_templates. The registry ships empty and stays empty
 -- until an adapter can verify a send; a grant on it now would be a credential
--- reaching a table no code opens a session against. Same rule as slice 1's, and
--- the reason both tables were ungranted when they were created.
+-- reaching a table no code opens a session against. Same rule applied
+-- elsewhere in this grant series, and the reason both tables were ungranted
+-- when they were created.
 --
 -- ----------------------------------------------------------------------------
 -- THE SESSION POSTURE IS HALF THE MECHANISM AND IT IS NOT IN THIS FILE

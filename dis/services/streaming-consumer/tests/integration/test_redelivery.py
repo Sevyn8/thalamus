@@ -19,7 +19,7 @@ CORRECTION: D33's append-only posture exists for the second, not the first.
 
 Now: a redelivery is SUPPRESSED (identical payload hash under an existing dedup key),
 while a correction still appends. Transactional idempotency is still not the mechanism
-(D30) — ``uq_*_redelivery`` plus the in-transaction filter is. The event-time-wins
+ — ``uq_*_redelivery`` plus the in-transaction filter is. The event-time-wins
 assertions below are unchanged and still prove D64.
 """
 

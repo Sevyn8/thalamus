@@ -6,10 +6,10 @@ TENANT-SCOPED live. The HTTP tests assert shape / types / newest-first / the bou
 connection — using an EXISTING store + mapping_version per tenant so the FKs hold regardless of
 seed state — then reads them back through the repo's scoped path (``read_session`` + the
 defense-in-depth predicate) and asserts a TENANT sees only its own positions, the store filter
-narrows, and PLATFORM see-all spans both. Seeded rows are removed afterwards (D100 clean-state).
+narrows, and PLATFORM see-all spans both. Seeded rows are removed afterwards (clean-state).
 tenant_id is not on the wire, so isolation is observed via a per-tenant ``sku_id`` marker.
 
-Loud-error posture (the Slice 4/7/8 lesson): a missing stack env var ERRORS, never skips.
+Loud-error posture: a missing stack env var ERRORS, never skips.
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ _INSERT = text(
     "'INR', 42.000, :mv, uuidv7(), 'csv_upload')"
 )
 
-# A richer seed (Slice 52a): sets extra NUMERICs and a populated jsonb staleness map so the
+# A richer seed: sets extra NUMERICs and a populated jsonb staleness map so the
 # full-column-set / store_name / size test reads a realistic row (not an all-null one). expiry_date
 # is left null (the ck_sscp_expiry_triple_pairing constraint needs the date/source/confidence triple
 # all-set-or-all-null; date rendering is covered at the unit layer instead).
@@ -90,7 +90,7 @@ def _assert_well_shaped(body: dict[str, object]) -> None:
         assert isinstance(row["mapping_version"], int)
         assert isinstance(row["last_updated_at"], str) and row["last_updated_at"].endswith("Z")
         assert row["last_source_event_at"] is None or isinstance(row["last_source_event_at"], str)
-        assert "store_name" in row  # Slice 52a additive key
+        assert "store_name" in row  # additive key
         assert row["store_name"] is None or isinstance(row["store_name"], str)
         for absent in ("tenant_id", "auth_principal", "ingest_metadata", "mapping_version_id"):
             assert absent not in row
@@ -136,7 +136,7 @@ def test_canonical_full_column_set_store_name_bound_and_size(
     stack_env: dict[str, str],
     seeded_identity: Engine,
 ) -> None:
-    """Slice 52a acceptance: full live column set (minus tenant_id, ingest_metadata) + store_name,
+    """Full live column set (minus tenant_id, ingest_metadata) + store_name,
     the top-50 bound, newest-first order, and the size envelope — against real seeded rows.
 
     Seeds 55 rich rows (>50 to prove the bound clamps) for TENANT_A on a mirrored store, with a

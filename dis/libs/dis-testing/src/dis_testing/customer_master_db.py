@@ -1,6 +1,6 @@
-"""A Customer-Master-shaped test Postgres for DB-pull tests (Slice 7).
+"""A Customer-Master-shaped test Postgres for DB-pull tests.
 
-The Slice 2 Customer Master *fake* is HTTP-only (JWTs / sessions / events); it has no
+The Customer Master *fake* is HTTP-only (JWTs / sessions / events); it has no
 ``core`` schema, so it cannot serve the Mirror Sync DB-pull read, which reads CM's Postgres
 directly. The real CM (port 5432) is off-limits to tests. This module provisions a faithful
 stand-in **inside the DIS 5433 cluster** as a separate database ``ithina_platform_db``:
@@ -11,7 +11,7 @@ service role so the no-context-→-zero-rows behavior is exercised for real.
 Why this is safe for target safety: the reader connects to ``ithina_platform_db`` →
 ``current_database()`` is the expected CM database (the assertion passes); the writer connects
 to ``ithina_dis_db`` → the dis-rls guard passes. Both are on 5433; **the real CM (5432) is never
-touched**. This harness is reusable: a later CM-reading slice reuses it rather than rebuilding it.
+touched**. This harness is reusable across any DB-pull test rather than rebuilt per test.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ import dis_testing.fixtures as fx
 # the cloud read replica share it). Created here inside the 5433 cluster as the test stand-in.
 CM_TEST_DB_NAME = "ithina_platform_db"
 
-# The D55 nullable-store_code edge store. Test-CM-ONLY: it is deliberately NOT in
+# The nullable-store_code edge store. Test-CM-ONLY: it is deliberately NOT in
 # fx.STORES (the baseline is all-coded/ACTIVE) — a scoped edge inserted into the
 # stand-in by test_db_pull so the sync's code-less path runs end to end, then
 # reverted in that test's teardown (HARD REVERT RULE). Parented to buc-ees.
@@ -40,8 +40,8 @@ _READER_ROLE = "ithina_dis_user"
 
 _CORE_DDL = (
     "CREATE SCHEMA IF NOT EXISTS core",
-    # display_code / store_code are NULLABLE — matching live CM (introspected,
-    # D55 as corrected). A harness stricter than live would mask a real null path.
+    # display_code / store_code are NULLABLE — matching live CM (introspected).
+    # A harness stricter than live would mask a real null path.
     """
     CREATE TABLE IF NOT EXISTS core.tenants (
         id            uuid PRIMARY KEY,
@@ -199,7 +199,7 @@ _INSERT_CODELESS_EDGE_STORE = text(
 
 
 def insert_codeless_edge_store(engine: Engine) -> None:
-    """Insert the D55 code-less edge store into the test-CM stand-in. Idempotent.
+    """Insert the nullable-store_code (code-less) edge store into the test-CM stand-in. Idempotent.
 
     Test-CM-only (NOT in fx.STORES): an INACTIVE, store_code=NULL store under
     buc-ees so the sync's nullable-code path runs end to end. Reverted by
@@ -224,7 +224,7 @@ def insert_codeless_edge_store(engine: Engine) -> None:
 
 
 def delete_codeless_edge_store(engine: Engine) -> None:
-    """Remove the D55 code-less edge store from the test-CM stand-in (teardown)."""
+    """Remove the nullable-store_code (code-less) edge store from the test-CM stand-in (teardown)."""
     with engine.begin() as conn:
         conn.execute(
             text("DELETE FROM core.stores WHERE id = :id"),
@@ -254,7 +254,7 @@ def seed_test_cm(engine: Engine) -> None:
                     "id": str(store.uuid),
                     "tenant_id": str(fx.tenant_uuid_for(store.tenant_display_code)),
                     "name": store.name,
-                    "store_code": store.store_code,  # None for the code-less store (D55)
+                    "store_code": store.store_code,  # None for the code-less store
                     "status": store.status,
                     "country": store.country,
                     "timezone": store.timezone,

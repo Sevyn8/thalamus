@@ -1,27 +1,27 @@
 """``bronze.data_ingress_events`` + audit-derived run state — the Ingestion Runs data access.
 
-READ-ONLY (D111): dis-ui-server reads bronze for the runs surface; the streaming consumer +
+READ-ONLY: dis-ui-server reads bronze for the runs surface; the streaming consumer +
 receivers remain bronze's SOLE writers. This module builds SELECT-only statements (core-style on
-the ``read_session`` connection, service CLAUDE.md durable invariant) — never an
+the ``read_session`` connection) — never an
 INSERT/UPDATE/DELETE, never ``text()`` raw SQL, never an ``AsyncSession``.
 
-Run state derives from ``audit.events`` (Slice 51a, D117): a correlated LATERAL picks the run's
+Run state derives from ``audit.events``: a correlated LATERAL picks the run's
 top-precedence terminal-marking audit event (verdict/counts/completion), plus a ``seen_before``
 EXISTS over the recorded duplicate outcomes, plus LEFT JOINs for the store / source / template
 display names. The terminal-marking predicate, the precedence rank, and the verdict-filter CASE
 are all GENERATED from :data:`schemas.runs.TERMINAL_CROSSWALK` (the single source shared with the
-Python :func:`~schemas.runs.verdict_of`), so the SQL and the Python mapping cannot drift (D118).
+Python :func:`~schemas.runs.verdict_of`), so the SQL and the Python mapping cannot drift.
 
 TENANT SCOPING (the hard-limit posture): every tenant_id table carries an explicit predicate,
 each equating its ``tenant_id`` to the bronze row's; bronze is pinned by ``_tenant_term``
 (PLATFORM see-all omits it, the RLS USING branch is the isolation). The LOAD-BEARING predicate is
 ``config.sources``: ``source_id`` is tenant-shared, so without the predicate a run's join fans out
 to every tenant's row of that source (a cross-tenant ``display_name`` leak — proven: 1 row with the
-predicate, 2 without). On ``identity_mirror.stores`` (RLS-OFF, D41) the predicate is
+predicate, 2 without). On ``identity_mirror.stores`` (RLS-OFF) the predicate is
 defense-in-depth, NOT the sole isolation: ``store_id`` is globally unique (``uq_ims_store_id``) and
 reached through the composite ``bronze→stores`` FK, so it cannot resolve cross-tenant; likewise the
 audit LATERAL and the template LATERAL key on unique ids (bronze ``id`` / ``template_id``). All
-predicates are kept regardless (the hard-limit posture; D121). ``scope`` MUST come from the verified
+predicates are kept regardless (the hard-limit posture). ``scope`` MUST come from the verified
 token (``require_read_scope``); this module trusts its caller on that.
 """
 
@@ -46,12 +46,12 @@ from dis_ui_server.schemas.runs import PROCESSING, TERMINAL_CROSSWALK, StatusWir
 # per-row detail and must not drive the run verdict.
 _INGRESS_SCOPE = "INGRESS_EVENT"
 # The recorded duplicate outcomes (worker upload no-op + consumer row-level dedup) — the
-# seen-before signal, read from audit, never recomputed (D119, criterion 5).
+# seen-before signal, read from audit, never recomputed.
 _DUPLICATE_OUTCOMES = ("DUPLICATE_NOOP", "DUPLICATE_OVERWRITTEN")
 
 
 def _tenant_term(scope: ReadScope) -> list[ColumnElement[bool]]:
-    """The bronze tenant predicate (Slice 17b): applied for a pinned (TENANT) scope, OMITTED for
+    """The bronze tenant predicate: applied for a pinned (TENANT) scope, OMITTED for
     PLATFORM see-all (the RLS USING branch is the see-all isolation).
 
     Conditioned on ``scope.is_platform``, NEVER on ``tenant_id`` being absent — so a TENANT scope
@@ -65,7 +65,7 @@ def _tenant_term(scope: ReadScope) -> list[ColumnElement[bool]]:
 
 
 def _keyset_term(after: Boundary) -> ColumnElement[bool]:
-    """The keyset boundary as a ROW-VALUE comparison over ``(received_at DESC, id DESC)`` (D124).
+    """The keyset boundary as a ROW-VALUE comparison over ``(received_at DESC, id DESC)``.
 
     ``(received_at, id) < (:r, :i)`` — Postgres pushes this into the composite index
     ``(tenant_id, received_at DESC, id DESC)`` as a true seek (proven by live EXPLAIN: boundary
@@ -78,7 +78,7 @@ def _keyset_term(after: Boundary) -> ColumnElement[bool]:
     return tuple_(DataIngressEvent.received_at, DataIngressEvent.id) < (after.received_at, after.id)
 
 
-# ---- SQL artifacts generated from TERMINAL_CROSSWALK (the single source, D118) ----
+# ---- SQL artifacts generated from TERMINAL_CROSSWALK (the single source) ----
 
 
 def _rule_condition(stage_col: Any, outcome_col: Any, rule_stage: str | None, rule_outcome: str) -> Any:
@@ -169,7 +169,7 @@ def _build_statement(
     """Assemble the SELECT-only runs statement (extracted for compile-time testability).
 
     Over-fetches by one (``limit + 1``) so the caller can detect whether a further page
-    exists without a COUNT (Slice 51b): ``> limit`` rows back => there is a next page.
+    exists without a COUNT: ``> limit`` rows back => there is a next page.
     """
     terminal = _terminal_lateral()
     template = _template_lateral()
@@ -184,7 +184,7 @@ def _build_statement(
 
     terms: list[ColumnElement[bool]] = _tenant_term(scope)
     if status is not None:
-        # Filter on the DERIVED verdict (D117): a non-terminal run -> "processing".
+        # Filter on the DERIVED verdict: a non-terminal run -> "processing".
         verdict_expr = case(
             (terminal.c.t_stage.is_(None), literal(PROCESSING)),
             else_=_verdict_case(terminal.c.t_stage, terminal.c.t_outcome),
@@ -194,15 +194,15 @@ def _build_statement(
         terms.append(DataIngressEvent.received_at >= window_cutoff)
     if after is not None:
         # Keyset boundary: strictly-older rows over the (received_at DESC, id DESC) ordering,
-        # as a ROW-VALUE comparison (index-pushable; the OR form is forbidden, D124).
+        # as a ROW-VALUE comparison (index-pushable; the OR form is forbidden).
         terms.append(_keyset_term(after))
 
     statement = (
         select(
             DataIngressEvent.id,
             DataIngressEvent.trace_id,
-            DataIngressEvent.tenant_id,  # projected for fleet attribution (Chunk 1)
-            TenantRow.name.label("tenant_name"),  # LEFT JOIN identity_mirror.tenants (Chunk 9)
+            DataIngressEvent.tenant_id,  # projected for fleet attribution
+            TenantRow.name.label("tenant_name"),  # LEFT JOIN identity_mirror.tenants
             DataIngressEvent.store_id,
             DataIngressEvent.source_id,
             DataIngressEvent.dis_channel,
@@ -227,8 +227,8 @@ def _build_statement(
         .select_from(DataIngressEvent)
         .outerjoin(terminal, true())
         .outerjoin(template, true())
-        # LEFT JOIN identity_mirror.tenants for tenant_name (Chunk 9). Keyed on the tenant PK, so
-        # ≤1 match — no row fan-out; RLS-OFF table (D41), read under the existing read_session.
+        # LEFT JOIN identity_mirror.tenants for tenant_name. Keyed on the tenant PK, so
+        # ≤1 match — no row fan-out; RLS-OFF table, read under the existing read_session.
         .outerjoin(TenantRow, TenantRow.tenant_id == DataIngressEvent.tenant_id)
         .outerjoin(
             StoreRow,
@@ -246,7 +246,7 @@ def _build_statement(
         )
         .where(*terms)
         .order_by(DataIngressEvent.received_at.desc(), DataIngressEvent.id.desc())
-        .limit(limit + 1)  # over-fetch by one: > limit rows => a next page exists (Slice 51b)
+        .limit(limit + 1)  # over-fetch by one: > limit rows => a next page exists
     )
     return statement
 
@@ -264,7 +264,7 @@ async def list_runs(
 
     TENANT sees its own (bronze RLS + the defense-in-depth predicate); PLATFORM see-all reads
     across every tenant via the policy USING branch. ``received_at DESC`` with ``id`` (UUIDv7) as
-    the stable tie-breaker is the keyset cursor key (Slice 51b — do not destabilise). ``after``
+    the stable tie-breaker is the keyset cursor key (do not destabilise). ``after``
     is the decoded cursor boundary (strictly-older rows). Returns up to ``limit + 1`` rows: the
     over-fetched extra signals a next page (the caller trims to ``limit`` and mints the cursor).
     """

@@ -20,7 +20,7 @@ async def load(
     if rows:
         validate_columns(SHEET_NAME, list(rows[0].keys()))
 
-    # Slice 9 (one email = one identity): enforce the cross-TABLE rule the
+    # Enforce the cross-TABLE rule the
     # DB cannot (no single constraint spans platform_users + tenant_users).
     # platform_users is loaded before tenant_users, so any tenant email
     # colliding with a platform email is a violation. Tenant-vs-tenant

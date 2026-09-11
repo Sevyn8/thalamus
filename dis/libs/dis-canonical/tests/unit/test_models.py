@@ -41,8 +41,8 @@ def _sale_event(**overrides: object) -> StoreSkuSaleEvent:
         unit_sale_price=Decimal("8.5000"),
         tax_treatment="INCLUSIVE",
         currency="INR",
-        source_id="manual_csv_upload",  # NOT NULL (D38, migration 0003)
-        source_event_id="TXN-1:1",  # NOT NULL (D38; transaction_id:line_item_seq form)
+        source_id="manual_csv_upload",  # NOT NULL
+        source_event_id="TXN-1:1",  # NOT NULL
         row_hash="a" * 64,  # NOT NULL (migration 0019; sha256 hex is always 64 chars)
         mapping_version_id=1,
         trace_id=new_uuid7(),
@@ -106,7 +106,7 @@ def test_change_event_constructs() -> None:
         event_subtype="retail_price_update",
         source_event_timestamp=now_utc(),
         value_after={"price": "10.00"},
-        source_id="erp_nightly",  # NOT NULL (D38, migration 0003)
+        source_id="erp_nightly",  # NOT NULL
         source_event_id="0197a000-0000-7000-8000-000000000000:42",  # D65 fallback form
         row_hash="b" * 64,  # NOT NULL (migration 0019)
         mapping_version_id=2,
@@ -145,11 +145,11 @@ def test_composite_store_key_on_every_model() -> None:
 def test_mapping_version_present_on_mapping_tables() -> None:
     for model in (StoreSkuCurrentPosition, StoreSkuSaleEvent, StoreSkuChangeEvent):
         field = model.model_fields["mapping_version_id"]
-        assert field.is_required()  # NOT NULL, no default (D22)
+        assert field.is_required()  # NOT NULL, no default
 
 
 def test_signal_history_has_no_mapping_version_id() -> None:
-    # Daily-compute output, not mapping-produced (D22/D31/D32).
+    # Daily-compute output, not mapping-produced.
     assert "mapping_version_id" not in StoreSkuSignalHistory.model_fields
 
 

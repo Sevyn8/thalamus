@@ -1,6 +1,6 @@
 """Enablement: the pre-flight, the constants, the timezone, the gate, and the three states.
 
-WHAT THIS FILE IS FOR. Slice 5e turned a hand-run psql procedure into an endpoint, and almost all
+WHAT THIS FILE IS FOR. This endpoint replaced a hand-run psql procedure, and almost all
 of that procedure's value is in things a form discards by default: two pre-flight checks, two
 columns that are not parameters, a timezone chosen once, and the absence of a disable. Each of
 those has a test here, and each test names the failure it prevents rather than the branch it

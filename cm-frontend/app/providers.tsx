@@ -7,11 +7,10 @@ import { MotionConfig } from "framer-motion";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-// Phase 5n.1 (2026-05-18): MSW removed wholesale. No worker.start(),
-// no __msw_overrides, no __test_query window augmentation. All fetches
-// go directly to NEXT_PUBLIC_API_BASE_URL per lib/api/client.ts. The
-// app is no longer gated on an MSW-ready flag — Providers renders
-// children immediately.
+// No MSW: no worker.start(), no __msw_overrides, no __test_query window
+// augmentation. All fetches go directly to NEXT_PUBLIC_API_BASE_URL per
+// lib/api/client.ts. Providers renders children immediately — there is
+// no MSW-ready gate.
 
 function makeQueryClient(): QueryClient {
   return new QueryClient({

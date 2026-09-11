@@ -21,9 +21,8 @@ WHY IT LIVES IN ``synapse.core`` RATHER THAN A NEW ``synapse.analyses`` PACKAGE.
 no database, no SQL, no canonical row shapes, nothing but the two projections it is handed —
 so ``core`` is where it belongs on the merits. But the deciding reason is mechanical: the
 import-linter contracts live in dis/pyproject.toml, and a new top-level package added WITHOUT a
-layers line would sit outside the enforced set entirely. That is precisely the defect slice 1
-found when ``synapse.registry`` arrived while three docstrings claimed every module was
-covered. Put here, the evaluator inherits the strongest contract that exists — ``synapse.core``
+layers line would sit outside the enforced set entirely. Put here, the evaluator inherits the
+strongest contract that exists — ``synapse.core``
 may not import dis_canonical, dis_rls, sqlalchemy or psycopg, directly or transitively — which
 is exactly the guarantee a pure evaluator should have.
 

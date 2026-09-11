@@ -1,12 +1,12 @@
-"""Slice 8a (D71): the template-keyed active-mapping lookup, proven live.
+"""The template-keyed active-mapping lookup, proven live.
 
-The core D71 property: with TWO ACTIVE templates under one source — the exact
-state the pre-8a lookup resolved by ``.first()`` luck — each ``ingress.ready``
+With TWO ACTIVE templates under one source — a state the lookup could
+otherwise resolve by ``.first()`` luck — each ``ingress.ready``
 resolves to ITS OWN template's ``mapping_rules``, proven by distinguishable
 rules (the ``currency`` derive-constant) and the per-template
-``mapping_version_id`` stamp on the canonical rows (D22 unchanged: the stamp is
-still the loaded mapping's version, now the RIGHT mapping's). A ``template_id``
-naming no ACTIVE row fails loud with ``MAPPING_CONFIG_INVALID`` — since Slice 11a
+``mapping_version_id`` stamp on the canonical rows (the stamp is
+the loaded mapping's version, the RIGHT mapping's). A ``template_id``
+naming no ACTIVE row fails loud with ``MAPPING_CONFIG_INVALID``,
 held in quarantine and acked (the deterministic allowlist), never a silent
 wrong-mapping. The ``MAPPING_LOOKED_UP`` audit ``event_data`` carries the
 template the lookup keyed on (additive).
@@ -174,7 +174,7 @@ async def test_two_active_templates_each_resolve_their_own_rules(
                 ).all()
             }
 
-        # Each chunk carries ITS OWN template's version stamp (D22) and rules effect.
+        # Each chunk carries ITS OWN template's version stamp and rules effect.
         default_row = rows[str(chunk_default.trace_id)]
         alt_row = rows[str(chunk_alt.trace_id)]
         assert default_row.mapping_version_id == default_version
@@ -200,7 +200,7 @@ async def test_unknown_template_raises_clean_mapping_config_error(
 ) -> None:
     """A template_id naming no ACTIVE row fails loud — never a silent wrong-mapping.
 
-    Since Slice 11a the loud failure is HELD, not re-raised: MAPPING_CONFIG_INVALID
+    The loud failure is HELD, not re-raised: MAPPING_CONFIG_INVALID
     is on the deterministic allowlist, so the chunk lands in quarantined_chunks and
     the disposition acks (the storm fix). Loudness is unchanged — the FAILURE audit
     still carries the template id, and nothing reaches canonical.
@@ -255,12 +255,12 @@ async def test_unknown_template_raises_clean_mapping_config_error(
             {"t": str(chunk.trace_id)},
         ).one()
 
-    # Slice 30b: the stable vocabulary replaces the exception class name, and the
+    # The stable vocabulary replaces the exception class name, and the
     # catch-all carries the bronze id it knows (the lookup runs AFTER the fetch).
     assert failure.failure_code == "MAPPING_CONFIG_INVALID"
     assert failure.data_ingress_event_id is not None
     assert str(ghost_template) in failure.failure_message
-    # Slice 11a: the deterministic lookup failure is held (status=NEW) and acked.
+    # The deterministic lookup failure is held (status=NEW) and acked.
     assert (held.status, held.failure_reason) == ("NEW", "MAPPING_CONFIG_INVALID")
     assert written == {
         "store_sku_sale_events": 0,

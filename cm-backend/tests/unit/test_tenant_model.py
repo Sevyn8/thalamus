@@ -115,9 +115,9 @@ def test_db_default_columns_use_fetchedvalue() -> None:
     SQL — preserving D-21's intent and avoiding the FN-AB-13 maintenance
     trap, while letting SQLA generate correct INSERTs.
 
-    Tightened during Step 3.2 from the original ``server_default is None``
-    assertion: the prior shape would pass T6 but fail any actual ORM
-    INSERT on ``created_at`` / ``updated_at`` with a NOT NULL violation.
+    A bare ``server_default is None`` assertion would be too weak here:
+    that shape would pass T6 but fail any actual ORM INSERT on
+    ``created_at`` / ``updated_at`` with a NOT NULL violation.
     """
     expected_columns = ("id", "created_at", "updated_at", "status")
     for col_name in expected_columns:

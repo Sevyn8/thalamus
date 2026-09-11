@@ -298,7 +298,7 @@ curl -s -H "Authorization: Bearer $(cat "$P1_JWT")" \
     "${API}/tenant-users?limit=200" -o "$setup_tenant_users"
 curl -s -H "Authorization: Bearer $(cat "$P1_JWT")" \
     "${API}/platform-users?limit=10" -o "$setup_platform_users"
-# Step 6.1: also fetch roles list to discover a sample role_id for E3.
+# Also fetch roles list to discover a sample role_id for E3.
 # Pick a TENANT-audience role (Owner) so both PLATFORM and TENANT callers
 # can reference it; PLATFORM-audience roles would 404 for TENANT callers.
 curl -s -H "Authorization: Bearer $(cat "$P1_JWT")" \
@@ -318,7 +318,7 @@ T2_USER_ID=$(jq -r --arg e "$TENANT_EMAIL_2" \
     < "$setup_tenant_users" | head -1)
 ANY_PLATFORM_USER_ID=$(jq -r '.items[0].id' < "$setup_platform_users")
 
-# Step 5.3: discover an HQ-level org-node per tenant for the children endpoint.
+# Discover an HQ-level org-node per tenant for the children endpoint.
 # We fetch each tenant's org-tree with P1 (PLATFORM sees all under D-29) and
 # pick .tree[0].id — the first top-level node. node_type doesn't matter for
 # status-code coverage; we just need a real node id rooted in each tenant so
@@ -340,7 +340,7 @@ if [[ -z "$T2_HQ_NODE_ID" || "$T2_HQ_NODE_ID" == "null" ]]; then
 ${T2_TENANT_ID} — seed first"
 fi
 
-# Step 6.21.1: assert the new top-level tenant_root_* fields land on the
+# Assert the new top-level tenant_root_* fields land on the
 # /org-tree response. Cloud-strict assertion keyed on Buc-ee's (T1): the
 # tenant-root code is ``BUC-EES`` and the path is ``buc_ees`` per
 # operator-verified Cloud SQL state. Frontend uses tenant_root_id (not
@@ -362,7 +362,7 @@ else
     FAILURES+=("setup__t1_tenant_root_fields (id=${T1_TENANT_ROOT_ID:-null})")
 fi
 
-# Step 6.1: discover role IDs for both audiences.
+# Discover role IDs for both audiences.
 # OWNER is a TENANT-audience role (visible to all callers).
 # SUPER_ADMIN is a PLATFORM-audience role (visible only to PLATFORM callers;
 #   TENANT callers requesting it MUST 404 per RP3 invariant).
@@ -421,7 +421,7 @@ fi
 #     OTHER_USER_ID   = T1_USER_ID
 #     Same expectations as T1 with the tenant pair swapped.
 #
-# RBAC AUDIENCE-FILTER (Step 6.1):
+# RBAC AUDIENCE-FILTER:
 #   /roles, /permission-matrix, and /roles/{id}/permissions apply an
 #   APP-LAYER audience filter when the caller is TENANT — only roles
 #   with audience='TENANT' are visible. PLATFORM callers see both
@@ -437,7 +437,7 @@ req "public__health"            200 ""        GET "${API}/health"
 req "public__ready"             200 ""        GET "${API}/ready"
 req "public__openapi"           200 ""        GET "${API}/openapi.json"
 req "noauth__tenants_401"       401 ""        GET "${API}/tenants"
-# Step 5.3 / 6.5 / 6.8.3 endpoints — one no-auth probe each.
+# org-tree / dashboard / role-assignments endpoints — one no-auth probe each.
 req "noauth__org_tree_401"      401 ""        GET "${API}/tenants/${T1_TENANT_ID}/org-tree"
 req "noauth__org_children_401"  401 ""        GET "${API}/tenants/${T1_TENANT_ID}/org-nodes/${T1_HQ_NODE_ID}/children"
 req "noauth__dashboard_fleet_401" 401 ""      GET "${API}/dashboard/fleet-stats"
@@ -448,7 +448,7 @@ req "noauth__role_assignments_401" 401 ""     GET "${API}/role-assignments"
 # Args: caller_label  jwt_path  caller_kind  own_tenant  own_user  other_tenant  other_user  own_hq  other_hq
 #   caller_kind: "PLATFORM" or "TENANT"
 #   own_hq / other_hq: HQ-level org-node id rooted in own_tenant / other_tenant
-#     respectively. Used by the /org-nodes/{node_id}/children cells (Step 5.3)
+#     respectively. Used by the /org-nodes/{node_id}/children cells
 #     where the router's node_exists check filters by both tenant_id AND
 #     node_id — pairing a node id with the wrong tenant produces 404
 #     regardless of session type.
@@ -466,7 +466,7 @@ run_matrix_for_caller() {
     req "${label}__lookups__unknown_list" 200 "$jwt" GET "${API}/lookups?lists=does_not_exist"
 
     # --- /tenants list + filters + stats ---
-    # NOTE: /tenants list accepts `sort` as of Step 6.4 — aggregate keys
+    # NOTE: /tenants list accepts `sort` — aggregate keys
     # (num_users_active_{asc,desc}, num_stores_{asc,desc}) plus the
     # original created_at/name/tier asc+desc.
     req "${label}__tenants__list"          200 "$jwt" GET "${API}/tenants"
@@ -527,7 +527,7 @@ run_matrix_for_caller() {
     fi
     req "${label}__tu__detail_unknown"      404 "$jwt" GET "${API}/tenant-users/${UNKNOWN_UUID}"
 
-    # --- /roles list (Step 6.1: multi-user-type with app-layer audience filter) ---
+    # --- /roles list (multi-user-type with app-layer audience filter) ---
     # E1: pre-grouped response {platform_roles, tenant_roles}. TENANT JWT
     # gets platform_roles.total=0; PLATFORM gets all 15 roles.
     req "${label}__roles__list"             200 "$jwt" GET "${API}/roles"
@@ -538,7 +538,7 @@ run_matrix_for_caller() {
     req "${label}__roles__pagination"       200 "$jwt" GET "${API}/roles?limit=5&offset=0"
     req "${label}__roles__invalid_sort"     400 "$jwt" GET "${API}/roles?sort=nope"
 
-    # --- /roles/{id}/permissions (Step 6.1: E3, parent-echo response shape) ---
+    # --- /roles/{id}/permissions (E3, parent-echo response shape) ---
     # E3: TENANT-audience role visible to all callers.
     req "${label}__role_perms__tenant_role" 200 "$jwt" GET "${API}/roles/${TENANT_ROLE_ID}/permissions"
     # E3: PLATFORM-audience role; TENANT caller MUST 404 (RP3 invariant —
@@ -550,7 +550,7 @@ run_matrix_for_caller() {
     fi
     req "${label}__role_perms__unknown"     404 "$jwt" GET "${API}/roles/${UNKNOWN_UUID}/permissions"
 
-    # --- /roles/{id} (Step 6.18.2: E7, self-contained role detail) ---
+    # --- /roles/{id} (E7, self-contained role detail) ---
     # Same audience-gate as E3: TENANT-audience role visible to all
     # callers; PLATFORM-audience role yields 404 for TENANT callers
     # (LD5 RLS-as-404 per D-17).
@@ -562,7 +562,7 @@ run_matrix_for_caller() {
     fi
     req "${label}__role_detail__unknown"         404 "$jwt" GET "${API}/roles/${UNKNOWN_UUID}"
 
-    # --- /permissions catalogue (Step 6.1: E2, no audience filter) ---
+    # --- /permissions catalogue (E2, no audience filter) ---
     # Both PLATFORM and TENANT see the full catalogue (catalogue is
     # reference data; the matrix UI needs every row regardless of who
     # can be assigned them).
@@ -573,13 +573,13 @@ run_matrix_for_caller() {
     req "${label}__perms__pagination"       200 "$jwt" GET "${API}/permissions?limit=10&offset=0"
     req "${label}__perms__invalid_sort"     400 "$jwt" GET "${API}/permissions?sort=nope"
 
-    # --- /permission-matrix (Step 6.1: E6, render-ready grid) ---
+    # --- /permission-matrix (E6, render-ready grid) ---
     # E6: TENANT caller's response has fewer columns than PLATFORM (audience
     # filter on the roles[] array). Body assertion would verify col count
     # but smoke just confirms 200; full assertions are in pytest.
     req "${label}__matrix"                  200 "$jwt" GET "${API}/permission-matrix"
 
-# --- /module-access (Step 6.7: multi-user-type with RLS scoping) ---
+# --- /module-access (multi-user-type with RLS scoping) ---
     # /modules: 6 cards under PLATFORM, 6 cards collapsed under TENANT (all
     # total_active_trial_tenants=1, enabled_count is 0 or 1 per card).
     # /matrix: N rows under PLATFORM, exactly 1 row under TENANT (own only).
@@ -593,7 +593,7 @@ run_matrix_for_caller() {
     req "${label}__ma__matrix_search"          200 "$jwt" GET "${API}/module-access/matrix?q=buc"
     req "${label}__ma__matrix_invalid_sort"    400 "$jwt" GET "${API}/module-access/matrix?sort=nope"
 
-    # --- /tenants/{tenant_id}/org-tree (Step 5.3: multi-user-type with RLS) ---
+    # --- /tenants/{tenant_id}/org-tree (multi-user-type with RLS) ---
     # PLATFORM sees any tenant (D-29 OR on tenants_self_access); TENANT
     # gets 404 on cross-tenant (RLS hides the tenant row at resolution).
     # depth=99 trips Pydantic's le=MAX_DEPTH=6 (Query constraint at
@@ -608,7 +608,7 @@ run_matrix_for_caller() {
     req "${label}__org_tree__depth_2"       200 "$jwt" GET "${API}/tenants/${own_tenant}/org-tree?depth=2"
     req "${label}__org_tree__depth_99"      422 "$jwt" GET "${API}/tenants/${own_tenant}/org-tree?depth=99"
 
-    # --- /tenants/{tenant_id}/org-nodes/{node_id}/children (Step 5.3) ---
+    # --- /tenants/{tenant_id}/org-nodes/{node_id}/children ---
     # node_exists() filters WHERE tenant_id=:tenant_id AND id=:node_id at
     # src/admin_backend/repositories/org_nodes.py:236-244 — the tenant_id
     # filter is in the WHERE clause itself; RLS doesn't bypass it. So:
@@ -629,16 +629,16 @@ run_matrix_for_caller() {
     fi
     req "${label}__children__cross_node"    404 "$jwt" GET "${API}/tenants/${own_tenant}/org-nodes/${other_hq}/children"
 
-    # --- /dashboard/fleet-stats (Step 6.5: multi-user-type, RLS scopes) ---
+    # --- /dashboard/fleet-stats (multi-user-type, RLS scopes) ---
     # Status-code only. RLS persona projection (PLATFORM sees fleet totals;
     # TENANT sees own-tenant projection) is real but verified in pytest, not
     # here.
     req "${label}__dashboard__fleet_stats"  200 "$jwt" GET "${API}/dashboard/fleet-stats"
 
-    # --- /dashboard/governance-stats (Step 6.5) ---
+    # --- /dashboard/governance-stats ---
     req "${label}__dashboard__governance"   200 "$jwt" GET "${API}/dashboard/governance-stats"
 
-    # --- /role-assignments (Step 6.8.3: grouped envelope) ---
+    # --- /role-assignments (grouped envelope) ---
     # Multi-user-type with a security-load-bearing twist: TENANT JWTs cause
     # the platform-side query to be SHORT-CIRCUITED at the router (not RLS;
     # platform_user_role_assignments has no RLS) per locked decision 12 at
@@ -658,7 +658,7 @@ run_matrix_for_caller() {
         req "${label}__ra__platform_user_id_short_circuit" 200 "$jwt" GET "${API}/role-assignments?platform_user_id=${ANY_PLATFORM_USER_ID}"
     fi
 
-    # --- /me/* (Step 6.9.2: multi-user-type; caller-state endpoints) ---
+    # --- /me/* (multi-user-type; caller-state endpoints) ---
     # /me/permissions returns the caller's full grant set (always an array;
     # empty if no grants). /me/can-do is a server-authoritative single-
     # permission check. Cloud script asserts 200 only; the `allowed` boolean
@@ -667,21 +667,21 @@ run_matrix_for_caller() {
     req "${label}__me__permissions"            200 "$jwt" GET "${API}/me/permissions"
     req "${label}__me__can_do"                 200 "$jwt" GET "${API}/me/can-do?module=ADMIN&resource=USERS&action=VIEW&scope=TENANT"
 
-    # --- /stores (Step 6.17.2: multi-user-type with RLS scoping) ---
+    # --- /stores (multi-user-type with RLS scoping) ---
     # Same posture as local: PLATFORM sees all, TENANT sees own only,
     # detail on UNKNOWN_UUID → 404 STORE_NOT_FOUND (anchor dep miss).
     # Cloud catalogue must include ADMIN.STORES.VIEW.TENANT for OWNER
-    # per Step 6.17.1; PLATFORM cascades from .GLOBAL.
+    # in the seed; PLATFORM cascades from .GLOBAL.
     req "${label}__stores__list"               200 "$jwt" GET "${API}/stores"
     req "${label}__stores__detail_unknown"     404 "$jwt" GET "${API}/stores/${UNKNOWN_UUID}"
 
-    # --- /audit/activities (Step 6.16.3: multi-user-type with RLS scoping) ---
+    # --- /audit/activities (multi-user-type with RLS scoping) ---
     # PLATFORM sees merged UNION across both audit tables; TENANT sees
     # only own-tenant rows (tenant_activity_audit_logs, RLS-scoped).
     # Both callers gated on ADMIN.AUDIT_LOG.VIEW.TENANT: SUPER_ADMIN +
-    # PLATFORM_ADMIN + SUPPORT_ADMIN cascade from .VIEW.GLOBAL (Step
-    # 6.16.3 catalogue update); tenant roles with .VIEW.TENANT pass
-    # directly. Cursor pagination; malformed cursor -> 422
+    # PLATFORM_ADMIN + SUPPORT_ADMIN cascade from .VIEW.GLOBAL (per the
+    # catalogue); tenant roles with .VIEW.TENANT pass directly. Cursor
+    # pagination; malformed cursor -> 422
     # INVALID_CURSOR; UNKNOWN_UUID -> 404 AUDIT_EVENT_NOT_FOUND.
     req "${label}__audit__list"                200 "$jwt" GET "${API}/audit/activities?limit=5"
     req "${label}__audit__list_status_filter"  200 "$jwt" GET "${API}/audit/activities?limit=5&status=SUCCESS"
@@ -709,7 +709,7 @@ run_matrix_for_caller "${T2_PREFIX}_T" "$T2_JWT" TENANT \
     "$T2_TENANT_ID" "$T2_USER_ID" "$T1_TENANT_ID" "$T1_USER_ID" \
     "$T2_HQ_NODE_ID" "$T1_HQ_NODE_ID"
 
-# === Phase 4b — Step 6.11.2 tenants write flow ==============================
+# === Phase 4b — Tenants write flow ===========================================
 # Cloud-mirror of test_endpoints.sh's Phase 4b. 5 outside-matrix entries:
 # POST + PATCH + /suspend + /activate happy path (PLATFORM-1 caller), plus
 # 1 TENANT audience-deny on POST. Names UUID-suffixed for re-run safety
@@ -780,14 +780,14 @@ CREATE_OUTFILE=$(printf "%s/%03d__write_flow__create.json" "$RESULTS_DIR" "$seq"
 WRITE_TENANT_ID="$(jq -r '.id // empty' < "$CREATE_OUTFILE" 2>/dev/null || echo "")"
 
 if [[ -n "$WRITE_TENANT_ID" ]]; then
-    # Step 6.20.1: POST -> GET roundtrip. Pre-fix the GET returned 404
+    # POST -> GET roundtrip. Without this, the GET returned 404
     # because POST did not provision a tenant-root org_node.
     write_req "write_flow__post_get_roundtrip" 200 "$P1_JWT_VALUE" GET \
         "${API}/tenants/${WRITE_TENANT_ID}" ""
     write_req "write_flow__patch"    200 "$P1_JWT_VALUE" PATCH \
         "${API}/tenants/${WRITE_TENANT_ID}" \
         '{"primary_contact_name":"Cloud patched"}'
-    # Slice 1: tenants land ONBOARDING at create; complete onboarding
+    # Tenants land ONBOARDING at create; complete onboarding
     # (ONBOARDING -> TRIAL) before suspend/activate.
     write_req "write_flow__complete_onboarding" 200 "$P1_JWT_VALUE" POST \
         "${API}/tenants/${WRITE_TENANT_ID}/complete-onboarding" ""
@@ -800,7 +800,7 @@ fi
 write_req "write_flow__audience_deny" 403 "$T1_JWT_VALUE" POST "${API}/tenants" \
     '{"name":"tenant-jwt-should-not-land","region":"US","tier":"ENTERPRISE","industry":"GROCERY","country":"United States","primary_contact_name":"X","contact_email":"x@test.example.com","number_of_stores":1,"number_of_stores_as_of_date":"2026-01-01"}'
 
-# === Phase 4c — Step 6.10.1 tenant-users write flow =========================
+# === Phase 4c — Tenant-users write flow ======================================
 # Cloud-mirror of test_endpoints.sh's Phase 4c. 5 outside-matrix entries:
 # POST + PATCH + /suspend(409) + /activate(409) + TENANT self-edit deny.
 # Suspend/activate against the fresh INVITED user return 409
@@ -820,7 +820,7 @@ TU_OWNER_ROLE_ID="$(curl -s -H "Authorization: Bearer ${P1_JWT_VALUE}" \
 if [[ -z "$TU_OWNER_ROLE_ID" || "$TU_OWNER_ROLE_ID" == "null" ]]; then
     warn "Could not resolve OWNER role_id; tenant-users write flow skipped"
 else
-    # Step 6.14: resolve two distinct anchor org_nodes.
+    # Resolve two distinct anchor org_nodes.
     TU_TREE_RESP="$(curl -s -H "Authorization: Bearer ${P1_JWT_VALUE}" \
         "${API}/tenants/${T1_TENANT_ID}/org-tree" 2>/dev/null)"
     TU_ANCHOR_A="$(printf '%s' "$TU_TREE_RESP" | jq -r '.tree[0].id // empty')"
@@ -857,7 +857,7 @@ EOF
                 "${API}/tenant-users/${WRITE_TU_ID}/activate" ""
         fi
 
-        # Step 6.14 additions (cloud-mirror of test_endpoints.sh).
+        # Role-assignment additions (cloud-mirror of test_endpoints.sh).
         TU14_SUFFIX="$(uuidgen 2>/dev/null \
             || python3 -c 'import uuid;print(uuid.uuid4().hex[:8])')"
         TU14_ROLE2="$(curl -s -H "Authorization: Bearer ${P1_JWT_VALUE}" \
@@ -934,7 +934,7 @@ write_req "tu_flow__self_edit_deny" 403 "$T1_JWT_VALUE" PATCH \
     "${API}/tenant-users/${T1_USER_ID}" \
     '{"full_name":"Trying To Edit Self"}'
 
-# === Phase 4d — Step 6.15 module-access write flow ==========================
+# === Phase 4d — Module-access write flow =====================================
 # Cloud-mirror of test_endpoints.sh's Phase 4d. 6 outside-matrix
 # entries:
 #
@@ -1007,10 +1007,10 @@ else
         "${API}/module-access/${T1_TENANT_ID}/${MA_MODULE}/enable" ""
 fi
 
-# === Phase 4e — Step 6.13 org-tree write flow ===============================
+# === Phase 4e — Org-tree write flow ==========================================
 # Cloud mirror of test_endpoints.sh Phase 4e. Six entries. Note: cloud
 # catalogue update is DEFERRED to next Phase 6 deploy cycle per the
-# Step 6.13 operator note; before that deploy lands, OWNER and
+# operator note; before that deploy lands, OWNER and
 # PLATFORM_ADMIN may NOT have the post-Phase-3b ORG_NODES.CONFIGURE
 # grants on cloud. SUPER_ADMIN happy-path (P1) and TENANT-no-grant
 # (P3 deny) are reliable; the P2 reparent and OWNER paths may produce
@@ -1073,7 +1073,7 @@ else
         "{\"parent_id\":\"${T1_TENANT_ID}\",\"node_type\":\"STORE\",\"code\":\"te-deny-${OT_SUFFIX:0:8}\",\"name\":\"x\"}"
 fi
 
-# === Phase 4f — Step 6.17.3 stores write flow ===============================
+# === Phase 4f — Stores write flow ============================================
 # Three outside-matrix entries: POST create (UUID-suffixed name + store_code),
 # PATCH rename, TENANT-side denial (random TENANT JWT with no STORES grant).
 #
@@ -1091,8 +1091,8 @@ else
     ST_NAME="tec-store-${ST_SUFFIX}"
     ST_CODE="TEC-${ST_SUFFIX}"
 
-    # Step 6.21.2: POST /stores requires parent_org_node_id. Use the
-    # tenant_root_id surfaced by /org-tree (Step 6.21.1 field).
+    # POST /stores requires parent_org_node_id. Use the
+    # tenant_root_id surfaced by /org-tree.
     OT_TENANT_ROOT_ID="$(curl -s -H "Authorization: Bearer ${P1_JWT_VALUE}" \
         "${API}/tenants/${OT_TENANT_ID}/org-tree" 2>/dev/null \
         | jq -r '.tenant_root_id // empty')"
@@ -1112,7 +1112,7 @@ else
     # TENANT OWNER happy path (multi-audience contract). Mirrors the
     # local test_endpoints.sh entry; the TENANT-no-grants deny case is
     # covered by integration RC7. Reuse T1_TENANT_ROOT_ID set during
-    # fixture discovery (Step 6.21.1 setup__t1_tenant_root_fields).
+    # fixture discovery (setup__t1_tenant_root_fields).
     ST_OWNER_SUFFIX="$(uuidgen 2>/dev/null \
         || python3 -c 'import uuid;print(uuid.uuid4().hex[:8])')"
     ST_OWNER_SUFFIX="${ST_OWNER_SUFFIX:0:8}"
@@ -1121,7 +1121,7 @@ else
         "{\"tenant_id\":\"${T1_TENANT_ID}\",\"parent_org_node_id\":\"${T1_TENANT_ROOT_ID}\",\"name\":\"owner-${ST_OWNER_SUFFIX}\",\"country\":\"United States\",\"timezone\":\"America/New_York\",\"currency\":\"USD\",\"store_code\":\"ON-${ST_OWNER_SUFFIX}\",\"tax_treatment\":\"EXCLUSIVE\"}"
 fi
 
-# === Phase 4g — Step 6.17.4 stores set-status flow ==========================
+# === Phase 4g — Stores set-status flow =======================================
 # Two outside-matrix entries reusing ST_NEW_ID from Phase 4f. Order
 # is "rejected first, happy second" to preserve the ACTIVE source
 # state for the happy transition.
@@ -1140,7 +1140,7 @@ else
         '{"target_status":"INACTIVE"}'
 fi
 
-# === Phase 4h — Step 6.18.3 PATCH /roles/{role_id} ==========================
+# === Phase 4h — PATCH /roles/{role_id} =======================================
 # Mirrors test_endpoints.sh Phase 4h. 5 outside-matrix entries: happy path,
 # TENANT audience deny, unknown 404, SUPER_ADMIN protected 409, forbidden
 # field 422.
@@ -1174,7 +1174,7 @@ write_req "role_patch__super_admin_protected" 409 "$P1_JWT_VALUE" PATCH \
     "${API}/roles/${PLATFORM_ROLE_ID}" \
     '{"name":"super-admin-should-not-edit"}'
 
-# === Phase 4i — Step 6.20.2 /me/can-do target_anchor validation =============
+# === Phase 4i — /me/can-do target_anchor validation ==========================
 # Mirrors test_endpoints.sh Phase 4i. Single outside-matrix entry: GET
 # /me/can-do with a hyphen-bearing target_anchor (UUID shape) -> 422 from
 # Pydantic, BEFORE the ltree CAST runs. Closes FN-AB-61.

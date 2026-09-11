@@ -8,7 +8,7 @@ omission IS the offline/online switch, which is why ``tests/unit/test_transport.
 asserts the call site by AST: a future edit that re-injects a fake fails loudly instead of
 silently shipping an offline image.
 
-The producer/receiver split is unchanged (D54): this module STAMPS the producer-owned
+The producer/receiver split holds: this module STAMPS the producer-owned
 identifiers and hands them on the trigger; the receiver reads them and mints nothing.
 
 ``mint_connector_run_id`` is REUSED from ``thalamus_clover.run_id``, never copied, so the
@@ -48,7 +48,7 @@ async def _run(args: argparse.Namespace) -> int:
     connector_run_id = mint_connector_run_id(
         args.tenant_id, args.store_id, args.source_id, args.template_id, args.run_key
     )
-    trace_id = new_trace_id()  # producer mints the trace; the receiver reads it (D54)
+    trace_id = new_trace_id()  # producer mints the trace; the receiver reads it
 
     trigger = ConnectorTrigger(
         schema_version=1,

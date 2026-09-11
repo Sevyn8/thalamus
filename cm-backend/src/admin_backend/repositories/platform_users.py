@@ -18,8 +18,8 @@ Mirrors ``TenantsRepo``: stateless singleton (constructed once at
 module import), each method takes ``session`` as the first positional
 argument, no instance state.
 
-Step 6.8.3 — A1/A2 augmentation. ``list(...)`` and ``get_by_id(...)``
-now return row carriers (``PlatformUserListRow`` /
+``list(...)`` and ``get_by_id(...)``
+return row carriers (``PlatformUserListRow`` /
 ``PlatformUserDetailRow``) carrying the ORM row plus a per-row
 ``roles`` aggregate produced by a correlated jsonb_agg subquery
 against ``platform_user_role_assignments``. Mirrors ``tenants.py``'s
@@ -96,13 +96,13 @@ def _roles_subq() -> Any:
     where each element is the 8-field ``UserRoleAssignmentItem`` shape.
 
     No org_node join — ``platform_user_role_assignments`` has no
-    tenant_id and no org_node_id (per D-34 / Step 6.8.1's split).
+    tenant_id and no org_node_id (per D-34).
     The jsonb_build_object literally sets ``org_node_id`` and
     ``org_node_name`` to NULL so the wire shape stays uniform with
     tenant-side.
 
-    All assignments returned regardless of status (locked decision 6
-    of Step 6.8.3); ``ORDER BY granted_at DESC, id ASC`` inside the
+    All assignments returned regardless of status (locked decision 6);
+    ``ORDER BY granted_at DESC, id ASC`` inside the
     aggregate keeps the wire shape deterministic.
 
     COALESCE-to-``'[]'::jsonb`` so users with zero assignments get an

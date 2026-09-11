@@ -1,4 +1,4 @@
-"""Tenant users router (Step 5.2; augmented at Step 6.8.3).
+"""Tenant users router.
 
 Two GET endpoints under ``/tenant-users``:
 
@@ -6,9 +6,9 @@ Two GET endpoints under ``/tenant-users``:
                                                sort / pagination)
   - ``GET /api/v1/tenant-users/{user_id}`` — detail
 
-Auth posture (multi-user-type — see CLAUDE.md "v0 auth model" note).
-Both endpoints gate on ``ADMIN.USERS.VIEW.TENANT`` (Step 6.9.3.2
-retrofit). PLATFORM JWTs with SUPER_ADMIN-or-similar grants pass via
+Auth posture (multi-user-type).
+Both endpoints gate on ``ADMIN.USERS.VIEW.TENANT``. PLATFORM JWTs
+with SUPER_ADMIN-or-similar grants pass via
 GLOBAL→TENANT cascade; TENANT JWTs with OWNER pass directly. Visibility
 scoping below the gate is the DB layer's job via RLS:
 
@@ -40,9 +40,8 @@ in the Repo (a ValueError subclass shared with PlatformUsersRepo via
 ``InvalidSortKeyClientError`` from ``admin_backend.errors`` so the
 response surfaces as 400 ``INVALID_SORT_KEY`` instead of 500.
 
-Step 6.8.3 — A1 augmentation: each response item now carries an
-inline ``roles: list[UserRoleAssignmentItem]`` field. The Repo's
-correlated jsonb_agg subquery returns a list[dict] per row; the
+Each response item carries an inline ``roles: list[UserRoleAssignmentItem]``
+field. The Repo's correlated jsonb_agg subquery returns a list[dict] per row; the
 hand-written mapper ``_list_item_from_row`` constructs the typed
 ``UserRoleAssignmentItem`` instances explicitly, mirroring
 ``routers/v1/tenants.py:_list_item_from_row``'s ``Module`` mapper
@@ -106,10 +105,10 @@ _repo = TenantUsersRepo()
 _tenants_repo = TenantsRepo()
 
 
-# TenantUserNotFoundError moved to admin_backend.errors at Step 6.9.3.2 so
-# anchor deps in auth/anchor_deps.py can raise it without backward layering
-# violation (auth/ -> routers/v1/). Per-router import kept above for raise
-# sites; behavior identical to pre-move (RLS-as-404 per D-17).
+# TenantUserNotFoundError lives in admin_backend.errors so anchor deps in
+# auth/anchor_deps.py can raise it without a backward layering violation
+# (auth/ -> routers/v1/). Per-router import kept above for raise sites;
+# behavior is RLS-as-404 per D-17.
 
 
 # ---- Mappers ---------------------------------------------------------------
@@ -298,7 +297,7 @@ async def get_tenant_user(
 
 
 # ============================================================================
-# Step 6.10.1 write endpoints: POST / PATCH / suspend / activate.
+# Write endpoints: POST / PATCH / suspend / activate.
 #
 # Multi-audience (audience=None on every require() call); both PLATFORM
 # and TENANT JWTs pass Layer 1. Gate tuple is ADMIN.USERS.CONFIGURE.TENANT
@@ -338,7 +337,7 @@ def _flatten_role_assignments(
     AND raise ``DuplicateRoleAssignmentInRequestError`` (422) on any
     within-request ``(role_id, org_node_id)`` duplicate.
 
-    Step 6.14 LD5: handler-side pre-check ahead of the repo so the
+    Handler-side pre-check (LD5) ahead of the repo so the
     duplicate-detection response envelope is uniform with the rest
     of the AdminBackendError family. Pydantic's ``extra="forbid"``
     on ``RoleAssignmentItem`` and per-item shape are already
@@ -429,7 +428,7 @@ async def create_tenant_user(
       - 422 ``INVALID_ROLE_AUDIENCE`` when a role exists but is not
         TENANT audience.
       - 409 ``EMAIL_ALREADY_EXISTS`` when the email is already in use
-        platform-wide (Slice 9: one email = one identity). The message
+        platform-wide. The message
         names which side (platform vs a tenant) without naming the
         other tenant.
       - 404 ``TENANT_NOT_FOUND`` when the target tenant is missing or
@@ -486,7 +485,7 @@ async def patch_tenant_user(
       - 403 ``SELF_EDIT_FORBIDDEN`` when a TENANT caller targets their
         own user_id.
       - 409 ``EMAIL_ALREADY_EXISTS`` on rename to an email already in
-        use platform-wide (Slice 9).
+        use platform-wide.
       - 404 ``TENANT_USER_NOT_FOUND`` when the row is missing or
         RLS-filtered.
       - Allowed in any state (INVITED, ACTIVE, SUSPENDED).
@@ -513,7 +512,7 @@ async def patch_tenant_user(
     old_email = before.user.email
 
     # Convert Pydantic RoleAssignmentItem list to (role_id, org_node_id)
-    # tuples AND raise 422 on within-request duplicates (Step 6.14 LD5).
+    # tuples AND raise 422 on within-request duplicates (LD5).
     # An empty list is a valid PATCH value (revoke-all); ``roles`` set
     # to None means the field was omitted and the converter is skipped.
     if "roles" in fields and body.roles is not None:
@@ -698,14 +697,15 @@ async def provision_tenant_user_auth0(
     )),
     session: AsyncSession = Depends(get_tenant_session_dep),
 ) -> TenantUserProvisionResult:
-    """Provision the Auth0 identity for this tenant_users row (Slice 2c, D-39).
+    """Provision the Auth0 identity for this tenant_users row.
 
     Defensively get-or-create the tenant Organization, get-or-create the Auth0
     user by email, add Org membership, and stamp app_metadata
     (tenant_id / user_type / cm_user_id). Auth0-side only: reads the committed
     tenant_user + tenant rows under the PLATFORM session and calls Auth0; writes
     NOTHING to the CM DB (the row stays INVITED with auth0_sub NULL; invite-send
-    and accept are Slice 2d). Idempotent via natural-key lookup-before-create.
+    is a separate call, and accept happens via the Auth0 invite-accept callback).
+    Idempotent via natural-key lookup-before-create.
 
     Returns 404 if the user is not visible; 503 ``PROVISIONING_UNAVAILABLE`` if
     the management client or the Auth0 database-connection name is unconfigured.
@@ -770,7 +770,7 @@ async def send_invitation(
     session: AsyncSession = Depends(get_tenant_session_dep),
 ) -> Any:
     """Send the invitation email for a provisioned INVITED tenant-user
-    (Slice 2d-send, D-41). PLATFORM staff action.
+. PLATFORM staff action.
 
     Generates an Auth0 password-change ticket for the 2c-provisioned Auth0 user
     (re-looked-up by email, since ``auth0_sub`` is deliberately NULL until

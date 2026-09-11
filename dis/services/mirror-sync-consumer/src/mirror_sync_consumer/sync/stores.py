@@ -2,7 +2,7 @@
 
 Conflict target ``(tenant_id, store_id)`` = the live composite PK ``pk_ims`` — the natural
 identity, matching how canonical rows are filed and how the composite store FK
-``fk_sscp_store`` is shaped (D39). A store never changes tenants (a CM-side sale under a new
+``fk_sscp_store`` is shaped. A store never changes tenants (a CM-side sale under a new
 tenant creates a *new* store), so the composite key is stable; ``uq_ims_store_id`` remains an
 enforced constraint but is not the conflict target. ``mirror_synced_at`` is set only on insert
 or a real change, so an unchanged re-run is a no-op (idempotence).
@@ -58,7 +58,7 @@ def store_params(store: CmStore) -> dict[str, Any]:
         "store_id": store.store_id,
         "tenant_id": store.tenant_id,
         "name": store.name,
-        "store_code": store.store_code,  # copied as-is; nullable at source (D55)
+        "store_code": store.store_code,  # copied as-is; nullable at source
         "status": store.status,
         "country": store.country,
         "timezone": store.timezone,

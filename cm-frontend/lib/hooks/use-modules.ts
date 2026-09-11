@@ -9,8 +9,7 @@ import {
 } from "@/lib/api/modules";
 import { useAuthSnapshot } from "@/lib/auth/auth-cache";
 
-// Phase 5h.1.1 (2026-05-21): userId in queryKey to prevent cross-
-// persona cache bleed. See Finding #50.
+// userId in queryKey prevents cross-persona cache bleed.
 
 export function useModuleCards() {
   const userId = useAuthSnapshot()?.user?.userId ?? null;
@@ -27,7 +26,7 @@ export function useModuleMatrix(params?: ModuleMatrixParams) {
   return useQuery({
     queryKey: ["module-access-matrix", userId, params],
     queryFn: () => modulesApi.matrix(params),
-    // Phase 5d.1: matrix is slow-changing data. 5-min staleTime
+    // Matrix is slow-changing data. 5-min staleTime
     // matches useModuleCards; benefits the My Sevyn8 launcher
     // (TENANT path reads matrix on every visit) and the existing
     // /superadmin/modules consumer alike.
@@ -36,7 +35,7 @@ export function useModuleMatrix(params?: ModuleMatrixParams) {
   });
 }
 
-// Slice 8: the caller's OWN tenant's enabled modules. Powers the
+// The caller's OWN tenant's enabled modules. Powers the
 // tenant-persona launcher via the GATE_EXEMPT /module-access/me read
 // (the matrix endpoint is admin-gated and 403s for tenant users). Only
 // enable it for TENANT personas; PLATFORM tiles are static and need no
@@ -51,13 +50,12 @@ export function useMyModules(options?: { enabled?: boolean }) {
   });
 }
 
-// Phase 5j: write cutover. Server-wait UX (no optimistic state) per
-// Architectural Finding #28; the matrix cell toggle is a single binary
-// flip with a short server roundtrip, optimistic state is not justified.
-// onSuccess invalidates the read queries so the matrix re-renders with
-// the persisted status. invalidateQueries (NOT refetchQueries) is the
-// canonical production-code primitive; refetch is test-infra-only
-// (Finding #25).
+// Write hooks. Server-wait UX (no optimistic state): the matrix cell
+// toggle is a single binary flip with a short server roundtrip, so
+// optimistic state is not justified. onSuccess invalidates the read
+// queries so the matrix re-renders with the persisted status.
+// invalidateQueries (NOT refetchQueries) is the canonical
+// production-code primitive; refetch is test-infra-only.
 
 type ToggleInput = { tenantId: string; moduleCode: WritableModuleCode };
 

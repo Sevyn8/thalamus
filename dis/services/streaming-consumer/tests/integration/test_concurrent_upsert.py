@@ -1,5 +1,5 @@
 """The completeness-gated TWO-PATH hot merge under TWO real concurrent writers
-(D58 split, REVISED D63).
+.
 
 Every test runs the PRODUCTION dispatcher (``sinks.canonical._upsert_hot``)
 under the SERVICE role (``ithina_dis_user``) with RLS active, on two separate

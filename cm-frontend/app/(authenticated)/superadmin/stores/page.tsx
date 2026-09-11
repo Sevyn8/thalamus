@@ -54,10 +54,9 @@ function StoresPageInner() {
   const debouncedSearch = useDebouncedValue(search, 300);
   const [createOpen, setCreateOpen] = useState(false);
 
-  // Phase 5g.1.4: PLATFORM-only tenant filter. Backend's
-  // GET /api/v1/stores accepts tenant_id; TENANT-OWNER doesn't see
-  // the dropdown (their list is RLS-scoped to their own tenant, so
-  // the filter is meaningless).
+  // PLATFORM-only tenant filter. Backend's GET /api/v1/stores accepts
+  // tenant_id; TENANT-OWNER doesn't see the dropdown (their list is
+  // RLS-scoped to their own tenant, so the filter is meaningless).
   const canListAllTenants = hasPermission(
     snapshot,
     "ADMIN",

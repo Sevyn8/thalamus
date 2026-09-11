@@ -1,4 +1,4 @@
-"""Slice 50d: per-column MERGE of ``attribute_staleness_map`` on the catalogue upsert.
+"""Per-column MERGE of ``attribute_staleness_map`` on the catalogue upsert.
 
 Proven by writing REAL rows to ithina_dis_db (5433) through the real pipeline and
 reading the persisted map back after each ingestion — never a mock, never an
@@ -14,11 +14,10 @@ the full catalogue mapping carries price+cost+qty, the minimal mapping carries
 price+qty (it does NOT rename cost → it omits ``unit_cost``), so the second write drops
 a tracked column the first set.
 
-Tracked set (Slice 50d, explicit): current_retail_price, unit_cost, stock_qty,
-expiry_date. Removed vs the retired derivation: currency, product_name, sku_status,
+Tracked set: current_retail_price, unit_cost, stock_qty,
+expiry_date. Not tracked: currency, product_name, sku_status,
 promo_identifier. ``expiry_date`` is covered here only as the "never carried → no key"
-case (its positive stamp needs the expiry CHECK triple — a named deferral in the slice
-doc).
+case (its positive stamp needs the expiry CHECK triple — a named deferral).
 """
 
 from __future__ import annotations
@@ -51,7 +50,7 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.integration
 
-# Columns removed from the tracked set by Slice 50d — must NEVER be keys in the map.
+# Columns not in the tracked set — must NEVER be keys in the map.
 _REMOVED = {"currency", "product_name", "sku_status", "promo_identifier"}
 
 _READ_SQL = text(
@@ -106,7 +105,7 @@ async def _ingest_full(
 ) -> None:
     """Full catalogue snapshot (carries price+cost+qty → tracked {price, unit_cost, qty}).
 
-    ``expected_hot`` / ``expected_noops`` are EXACT (Slice 50f Fix 2): a forward write is 1/0; a
+    ``expected_hot`` / ``expected_noops`` are EXACT: a forward write is 1/0; a
     gate-rejected older write is 0/1. The no-op still ACKs (disposition ``written``) — the fix
     lives only in the count fields, not the ack/nack disposition.
     """
@@ -222,7 +221,7 @@ async def test_staleness_map_merges_per_column(
     assert m1["current_retail_price"] == t1.isoformat()  # was t1 before write 2
     assert m2["current_retail_price"] == t2.isoformat()  # advanced despite equal value
     # AC2 (merge, not wipe): unit_cost was NOT carried by the minimal write, so its key
-    # is PRESERVED at its prior t1 timestamp — the core Slice 50d behavior.
+    # is PRESERVED at its prior t1 timestamp — the core merge behavior.
     assert m2["unit_cost"] == t1.isoformat()
     # AC3 / AC5 still hold after the merge.
     assert "expiry_date" not in m2
@@ -376,7 +375,7 @@ async def test_older_snapshot_advances_nothing_in_the_map(
     r1 = _read(dis_admin, sku)
 
     # An older snapshot with different values — the gate blocks the DO UPDATE entirely.
-    # Slice 50f (Fix 2): the rejected write is counted as a no-op, NOT a hot upsert. These counts
+    # The rejected write is counted as a no-op, NOT a hot upsert. These counts
     # are EXACT and would go red if Fix 2 were reverted (pre-fix the catalogue path reported 1/0).
     await _ingest_full(
         pipeline,
@@ -412,7 +411,7 @@ async def test_merge_is_load_bearing(
     Swap ONLY the merge clause for the old WHOLESALE variant (``= EXCLUDED``), run the
     same write-1/write-2 sequence, and show ``unit_cost`` is DROPPED from the map — i.e.
     the AC2 keep-prior-timestamp assertion above would FAIL under the exact mistake the
-    merge guards against. Mirrors the Slice 50b ``test_conditional_stamp_is_load_bearing``.
+    merge guards against. Mirrors ``test_conditional_stamp_is_load_bearing``.
     """
     import streaming_consumer.sinks.canonical as canonical
 
@@ -464,7 +463,7 @@ async def test_merge_is_load_bearing(
     assert set(m2) == {"current_retail_price", "stock_qty"}
 
 
-# -- Slice 50f Fix 1: the stamp trigger is NON-NULL-VALUE-PRESENT, not projected-membership -------
+# -- The stamp trigger is NON-NULL-VALUE-PRESENT, not projected-membership -----------------------
 
 
 async def test_blank_tracked_column_preserves_prior_key(

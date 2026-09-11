@@ -1,18 +1,18 @@
-"""Engine result types — the partial-contribution surface (slice-05 OQ1).
+"""Engine result types — the partial-contribution surface.
 
 ``MappingResult.contribution`` carries the source-owned, mapping-produced columns
 ONLY: never ``tenant_id`` / ``store_id`` / ``trace_id`` / ``mapping_version_id``
-(consumer-injected after the engine runs; D8, hard rule 5). A row with ANY failed
+(consumer-injected after the engine runs). A row with ANY failed
 cell yields no contribution — whole-row drop, no nulled-cell pass-through.
 
 Per-cell failures are DATA, not exceptions: the engine reports them alongside the
-rows that succeeded, applies no pass-threshold, and routes nothing (B2 is the
-consumer's, Slice 10). ``row_index`` is carried so the consumer can later route at
-either chunk or row grain without an engine change.
+rows that succeeded, applies no pass-threshold, and routes nothing (thresholding
+and routing are the streaming consumer's). ``row_index`` is carried so the consumer
+can later route at either chunk or row grain without an engine change.
 
 The failure ``value`` is the cell as it entered the failing transform — it is part
-of the D20-mandated quarantine payload ("column X, value Y, expected format Z").
-It is NEVER logged by this lib (root CLAUDE.md: never log PII or raw payloads);
+of the quarantine payload ("column X, value Y, expected format Z").
+It is NEVER logged by this lib (never log PII or raw payloads);
 log lines carry column/op names and counts only.
 """
 

@@ -1,13 +1,13 @@
 """``canonical.store_sku_signal_history`` — daily computed signals (append-only).
 
 Introspected facts:
-- PK ``(id)``; plain for beta (migration 0009, D77 scope revised — Slice 21
-  re-partitions by ``as_of_date``); natural key
+- PK ``(id)``; plain for beta (a future repartition by ``as_of_date`` is
+  anticipated but not yet done); natural key
   ``uq_sssh_natural`` NULLS NOT DISTINCT on
   ``(tenant_id, store_id, sku_id, sku_variant, sku_lot_batch, as_of_date)``.
 - FKs: ``(tenant_id) -> tenants``; ``(tenant_id, store_id) -> stores``.
 - **No ``mapping_version_id``** — this is daily-compute output, not mapping-produced
-  (decisions.md D22 / D31 / D32, CLAUDE.md hard rule 5). Provenance is ``trace_id``
+. Provenance is ``trace_id``
   plus ``compute_metadata``. There is NO FK to config.source_mappings here.
 """
 

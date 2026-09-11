@@ -30,7 +30,7 @@ Asked directly: is the number already in hand? For ``dead_stock`` it is fetched 
 ``last_sale_at`` capability yields ``LastSaleAtRow.last_sale_date`` per (tenant, store, sku), so
 ``max()`` over those rows is the tenant's latest sale. For ``stockout_risk`` the ``daily_series``
 capability yields ``DailySeriesRow.event_date``, so ``max()`` over ITS rows would do the same —
-but only WITHIN ITS WINDOW (``window_days``, 28 and 14 in slice 7). A tenant stale beyond the
+but only WITHIN ITS WINDOW (``window_days``, 28 and 14 for the current analyses). A tenant stale beyond the
 window resolves to an EMPTY series, which is exactly the case worth reporting and exactly the
 case where the number is missing.
 
@@ -39,10 +39,10 @@ LAYER THAT CAN LOG THEM. ``runner._run_one`` holds a ``DeclarationSatisfied``, w
 ``fetch`` CALLABLES, not rows; the PLAN fetches, inside ``_propose``. ``Satisfied.fetch`` is a
 bare ``Callable[[], Awaitable[...]]`` with no memoisation, so calling it from the runner to read
 the number would issue a SECOND full series read, not reuse the first. And threading the value
-back out of the plan is a Plan-signature change — the identical blocker that deferred populating
-``run.detail`` (outstanding item 4). Doing it here would silently take on that deferred work.
+back out of the plan is a Plan-signature change. Doing it here would silently take on that
+larger change.
 
-DEAD_STOCK NOW DOES EXACTLY WHAT THE FIRST PARAGRAPH DESCRIBES, AND THIS MODULE IS UNCHANGED BY
+DEAD_STOCK DOES EXACTLY WHAT THE FIRST PARAGRAPH DESCRIBES, AND THIS MODULE IS UNAFFECTED BY
 IT. ``synapse.core.dead_stock._feed_refusal`` takes ``max()`` over the ``last_sale_at`` rows the
 plan already fetched and refuses the sweep when the tenant's newest sale is too old. That does
 not make this module redundant and does not contradict the paragraph above: the blocker named
@@ -57,9 +57,8 @@ say 3 days, strictly greater. A change to one without the others makes an alert 
 screen reads healthy.
 
 So: ONE AGGREGATE PER TENANT PER SWEEP, and it lives in
-``synapse.resolvers.sale_freshness`` — NOT here. Only resolvers may name a canonical table (D6,
-enforced by tests/unit/test_table_name_containment.py). The first draft of this module held the
-SQL itself and that test caught it, which is the guard working. See the resolver for the cost.
+``synapse.resolvers.sale_freshness`` — NOT here. Only resolvers may name a canonical table
+(enforced by tests/unit/test_table_name_containment.py). See the resolver for the cost.
 
 PER TENANT, NOT PER PAIR. Freshness is a property of the tenant's DATA, not of any (tenant,
 analysis) pair. A tenant with both analyses provisioned would otherwise emit the same number

@@ -1,4 +1,4 @@
-"""No-I/O contract for the pure pipeline libs (slice-05 criterion 1).
+"""No-I/O contract for the pure pipeline libs.
 
 The import-linter contracts (root pyproject ``[tool.importlinter]``) hold the
 import graph; this test holds the RUNTIME claim: a full engine pass plus both
@@ -7,7 +7,7 @@ validation suites execute end-to-end while ``socket.socket``,
 runtime file or network touch surfaces the guard exception and the test goes red.
 
 Honesty bound (stated, not over-claimed): one execution path cannot prove the
-UNIVERSAL absence of I/O — that residue is held by review. The D4 runner-swap
+UNIVERSAL absence of I/O — that residue is held by review. The runner-swap
 guarantee rests on this purity, so additions of I/O to these libs must fail here.
 
 These are contract tests over pure libs: no stack, no fixtures, no DB — they run
@@ -174,7 +174,7 @@ def test_full_engine_and_both_suites_run_without_any_io() -> None:
 
 
 def test_enrichment_runs_without_any_io() -> None:
-    # slice-5b: the enrichment engine is pure too (no DB read — the consumer hands in
+    # The enrichment engine is pure too (no DB read — the consumer hands in
     # the facts). A full apply runs under the tripwire.
     contribution = pl.DataFrame({"sku_id": ["A", "B"], "currency": ["USD", "USD"]})
     with _no_io():

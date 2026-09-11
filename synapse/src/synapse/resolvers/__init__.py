@@ -6,7 +6,7 @@ environment.
 
 TWO THINGS BESIDES RESOLVERS LIVE HERE, and both are here because they touch the database:
 
-- ``_collapse`` — the D33 read-time latest-wins collapse, shared. **Any aggregate over a
+- ``_collapse`` — the read-time latest-wins collapse, shared. **Any aggregate over a
   canonical event table must go through it**: the event tables are append-only, so a
   correction is two rows and ``SUM(...) GROUP BY ...`` over the raw table double-counts
   every one. The helper names no table itself, so it serves sale and change events alike.
@@ -20,7 +20,7 @@ pointing mirror-sync at ``cm-database-url`` instead of ``dis_mirror_reader``, wh
 project rejected on exactly those grounds. ``synapse_reader`` holds USAGE on ``canonical``,
 SELECT on exactly two CANONICAL tables — ``store_sku_current_position`` and
 ``store_sku_sale_events``, the only two any resolver here names — CONNECT on the database, and
-SELECT on ``synapse.actions`` (slice 5, so the action log can be read back without an admin
+SELECT on ``synapse.actions`` (so the action log can be read back without an admin
 credential). No write anywhere: appending is ``synapse_writer``'s, a separate role holding
 INSERT and nothing else.
 
@@ -30,10 +30,9 @@ consumer, and dis-rls refuses on first use any engine whose role reports otherwi
 PROVISIONED AND VERIFIED AGAINST STAGING: Terraform's ``google_sql_user`` in cloud,
 ``dis/infra/local/postgres-init.sql`` on a fresh local volume, grants by
 ``infra/db-setup/sql/03_synapse_reader_grant.sql`` after Alembic. The integration tests run
-as this role — that is what it exists for. SINCE SLICE 6a THE ORCHESTRATOR ALSO RUNS AS IT: it
-is the identity that enumerates synapse.provision under PLATFORM scope and reads every canonical
-row an analysis needs. So the sentence that stood here until now — "nothing in production runs as
-it yet" — is retired. SINCE SLICE 6b IT ALSO RUNS ON A SCHEDULE: a Cloud Scheduler job fires the
-orchestrator's Cloud Run job daily, so this role is exercised unattended rather than only when
-someone runs it. The hand-run remains — scheduling was an addition, not a replacement.
+as this role. THE ORCHESTRATOR ALSO RUNS AS IT: it is the identity that enumerates
+synapse.provision under PLATFORM scope and reads every canonical row an analysis needs. IT ALSO
+RUNS ON A SCHEDULE: a Cloud Scheduler job fires the orchestrator's Cloud Run job daily, so this
+role is exercised unattended rather than only when someone runs it. The hand-run remains —
+scheduling is an addition, not a replacement.
 """

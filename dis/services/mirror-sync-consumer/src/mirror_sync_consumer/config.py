@@ -1,6 +1,6 @@
 """Environment-resolved connection profile for the Mirror Sync run.
 
-Two env-resolved DSNs, **no hard-coded instance** (slice constraint / read contract §10):
+Two env-resolved DSNs, **no hard-coded instance** (read contract §10):
 
 - ``CM_DB_URL`` — the Customer Master read connection. Locally two separate Postgres
   instances (CM on 5432, DIS on 5433). In the CONSOLIDATED cloud deploy there is ONE
@@ -13,7 +13,7 @@ Two env-resolved DSNs, **no hard-coded instance** (slice constraint / read contr
   ``dis-rls`` ``create_rls_engine``, whose ``current_database()`` guard is
   parameterised by ``DIS_EXPECTED_DATABASE`` (default ``ithina_dis_db``).
 
-No silent default for a required value (code-quality rule 4): a missing ``CM_DB_URL`` or
+No silent default for a required value: a missing ``CM_DB_URL`` or
 ``POSTGRES_URL`` raises. ``CM_DB_NAME`` is an assertion target, not a secret.
 
 **TWO STALE DEFAULTS, both pre-consolidation.** ``DEFAULT_CM_DB_NAME``
@@ -24,7 +24,7 @@ error names a database nobody has heard of. The Cloud Run job therefore sets
 (``infra/modules/cloud-run-job-mirror-sync-consumer``). The defaults are left as-is for
 the local two-instance topology, which still matches them.
 
-**``DIS_DB_NAME`` BELOW IS AN INERT GUARD, recorded rather than fixed.** It exists so
+**``DIS_DB_NAME`` BELOW IS AN INERT GUARD.** It exists so
 ``reader.py``'s ``assert_cm_target`` can refuse a CM read that landed on the DIS
 database — "never read identity from the write target". Post-consolidation the CM read
 target and the DIS write target ARE THE SAME DATABASE, so the comparison is against a
@@ -32,7 +32,7 @@ literal (``ithina_dis_db``) that no longer exists and the check can never fire. 
 harmless — the reads are schema-qualified ``core.*`` and the writes
 ``identity_mirror.*``, so no mix-up is actually possible — but the protection is
 structurally inexpressible at database granularity now. Re-expressing it schema-wise is
-a design question, not a rename; it is on the ledger. The second half of that guard
+a design question, not a rename. The second half of that guard
 (``database != expected_cm_db``) still works and is what catches a wrong ``CM_DB_NAME``.
 """
 

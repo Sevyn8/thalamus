@@ -1,4 +1,4 @@
-"""``GET /template-types`` + the type-aware ``GET /template-mapping-fields`` (slice 14b b / 14d).
+"""``GET /template-types`` + the type-aware ``GET /template-mapping-fields``.
 
 Both are identical for every tenant; NOT tenant-scoped, open no ``rls_session``,
 touch no database — the per-type catalogs were built once at startup
@@ -7,7 +7,7 @@ validator uses (one canonical truth). Authenticated (UI data surface), but any
 verified identity qualifies: tenant or ops, no tenant context required —
 test-proven byte-identical across callers.
 
-``template-mapping-fields`` is type-aware (Slice 14d): the field set is selected
+``template-mapping-fields`` is type-aware: the field set is selected
 by the required ``?template_type=`` query parameter. A missing or unknown type is
 a 400 ``InvalidTemplateTypeError`` through the §2.3 envelope (never a half-served
 or empty catalog). The vocabulary is the one in-code definition

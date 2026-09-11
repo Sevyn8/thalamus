@@ -5,10 +5,9 @@ export type MePermissionsResponse =
   components["schemas"]["MePermissionsResponse"];
 export type MeCanDoResponse = components["schemas"]["MeCanDoResponse"];
 
-// Phase 5f.W.2 / 5n.1: clients for the /me/* family. All requests route
-// through lib/api/client.ts, whose base URL is resolved at runtime via
-// runtime-config (/api/config) (Phase 5n.1 removed the MOCK_CONFIG
-// family routing).
+// Clients for the /me/* family. All requests route through
+// lib/api/client.ts, whose base URL is resolved at runtime via
+// runtime-config (/api/config).
 //
 // canDo query params are enum-validated server-side (422 on invalid).
 // Pass `target_anchor` only as an ltree path (org_nodes.path, e.g.
@@ -17,10 +16,10 @@ export type MeCanDoResponse = components["schemas"]["MeCanDoResponse"];
 // satisfies."
 //
 // The runtime guard below fail-fasts in the browser if a non-ltree
-// string slips through. Pattern mirrors Sanjeev's Pydantic validator
-// at src/admin_backend/routers/v1/me.py (Step 6.20.2, 2026-05-19),
-// which returns HTTP 422 server-side; failing fast client-side avoids
-// the round-trip. Both layers now defend the cast (Finding #40).
+// string slips through. It mirrors the backend's Pydantic validator
+// (src/admin_backend/routers/v1/me.py), which returns HTTP 422
+// server-side; failing fast client-side avoids the round-trip. Both
+// layers defend the cast.
 //
 // Backend stamps maxLength=1024; not mirrored client-side (YAGNI —
 // no realistic org-tree depth approaches the cap).

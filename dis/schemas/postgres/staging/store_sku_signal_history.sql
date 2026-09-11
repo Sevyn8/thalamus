@@ -2,9 +2,9 @@
 -- DIS staging schema: store_sku_signal_history
 --
 -- Shadow mirror of canonical.store_sku_signal_history. Created for shape
--- parity with canonical so a future "shadow compute" path could populate
--- it during STAGED rollouts. In v1.0 the daily compute job runs only
--- against canonical; staging signal_history rows are not produced. The
+-- parity with canonical so a shadow-compute path could populate it during
+-- STAGED rollouts. No writer exists for signal history in either schema;
+-- staging signal_history rows are not produced. The
 -- table exists to keep the staging schema a clean structural mirror of
 -- canonical.
 --
@@ -13,21 +13,21 @@
 -- across schemas.
 --
 -- ----------------------------------------------------------------------------
--- Partitioning: none for beta (D77 scope revised)
+-- Partitioning: none for beta
 -- ----------------------------------------------------------------------------
 -- This is a PLAIN table. It was PARTITION BY RANGE (as_of_date) with a fixed
 -- bootstrap-created daily window, no DEFAULT partition, and no automation —
--- the same write-cliff shape Slice 30a removed from audit.events (D77).
+-- the same write-cliff shape audit.events was de-partitioned to remove.
 -- De-partitioned for beta on the same disposable-rows/drop-recreate pattern
 -- (migration 0009).
 --
--- Partitioning returns at Slice 21 (BQ archive + eviction), WITH automation
--- (decisions.md D29/D34). as_of_date stays NOT NULL; the natural-key UNIQUE
+-- Partitioning is planned to return with BQ archive + eviction, WITH
+-- automation. as_of_date stays NOT NULL; the natural-key UNIQUE
 -- keeps as_of_date (the daily-snapshot grain, not a partition artifact), so
--- the Slice 21 re-partition is safe.
+-- a future re-partition is safe.
 --
 -- ----------------------------------------------------------------------------
--- Phase 0 migration order
+-- Migration order (required for this DDL to succeed)
 -- ----------------------------------------------------------------------------
 --
 -- 1. Schemas exist: canonical, identity_mirror.
@@ -46,7 +46,7 @@
 
 
 -- ----------------------------------------------------------------------------
--- Table (plain for beta; Slice 21 re-partitions by as_of_date)
+-- Table (plain for beta; a future re-partition keys on as_of_date)
 -- ----------------------------------------------------------------------------
 
 CREATE TABLE staging.store_sku_signal_history (
@@ -54,7 +54,7 @@ CREATE TABLE staging.store_sku_signal_history (
     -- ---------- Surrogate key ----------
     id                              UUID                            NOT NULL DEFAULT uuidv7(),
 
-    -- ---------- As-of date (Slice 21's re-partition key) ----------
+    -- ---------- As-of date (the future re-partition key) ----------
     as_of_date                      DATE                            NOT NULL,
         -- The date these signals describe. NOT the date the compute job ran.
         -- A row with as_of_date = 2026-05-27 was computed on 2026-05-28 (the
@@ -94,7 +94,7 @@ CREATE TABLE staging.store_sku_signal_history (
     trace_id                        UUID                            NOT NULL,
         -- Trace for the compute-job run that produced this row.
     created_at                      TIMESTAMPTZ                     NOT NULL DEFAULT NOW(),
-        -- When DIS wrote this row (= when the daily compute job ran).
+        -- When DIS wrote this row.
         -- Distinct from as_of_date (the date the signals describe).
     compute_metadata                JSONB                           NULL,
         -- JSONB: compute job name, version, input row counts, runtime,
@@ -104,8 +104,8 @@ CREATE TABLE staging.store_sku_signal_history (
     -- ---------- Primary key ----------
     CONSTRAINT pk_st_sssh
         PRIMARY KEY (id),
-        -- (id, as_of_date) while partitioned — the composite existed only to
-        -- satisfy the partition-key-in-PK requirement (the D77 PK precedent).
+        -- While partitioned this was (id, as_of_date) — the composite existed
+        -- only to satisfy Postgres's partition-key-in-PK requirement.
 
     -- ---------- Natural key (one signal row per SKU per day) ----------
     CONSTRAINT uq_st_sssh_natural

@@ -4,7 +4,7 @@ CHECK/index co-existence, precondition teeth, reversibility, arbitration.
 Layers (the 0002/0003 pattern):
 
   * **Target-safety guard**, pure-testable without a bind.
-  * **Reversible cycle** against an ephemeral scratch DB (Slice 51c, D122):
+  * **Reversible cycle** against an ephemeral scratch DB:
     at head → ``uq_sscp_natural_key`` + both sentinel CHECKs present,
     ``uq_sscp_natural`` absent; downgrade 0003 → NND constraint restored, index
     + CHECKs gone; re-upgrade → restored. The **co-existence invariant**
@@ -86,13 +86,13 @@ def test_guard_passes_the_dis_database_positively() -> None:
 
 @pytest.fixture(scope="module")
 def seeded(admin_engine: Engine) -> None:
-    """Seed the Slice 2 tenants/stores + default mapping so the matrix rows'
+    """Seed the base tenants/stores + default mapping so the matrix rows'
     FKs resolve on a virgin stack (repo-root tests run before any service
     suite's seeder). Idempotent — seeds the resident DB (POSTGRES_URL)."""
     url = os.environ.get("POSTGRES_URL")
     if not url:
         raise StackRequiredError(
-            "POSTGRES_URL is not set — the arbitration-matrix test seeds the Slice 2 "
+            "POSTGRES_URL is not set — the arbitration-matrix test seeds the base "
             "fixtures. Bring up the stack (make run-local) and load .env."
         )
     from dis_testing.seed import seed_default_fixtures

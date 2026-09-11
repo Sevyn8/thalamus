@@ -72,7 +72,7 @@ indistinguishable from a real SKU. ``sku_source`` records which per row.
 ``sku_source`` is a BRONZE-ONLY provenance column with no canonical counterpart - do not go
 looking for it in Canonical Explorer. It is safe to leave unmapped: ``dis_mapping``'s rename
 stage selects only the columns the mapping declares and drops the rest ("extra source
-columns are the source's business", D18), so an unmapped source column is never an error.
+columns are the source's business"), so an unmapped source column is never an error.
 """
 
 from __future__ import annotations

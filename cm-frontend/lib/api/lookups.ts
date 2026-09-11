@@ -56,7 +56,7 @@ function adaptLookups(response: LookupsBatchResponse): Lookups {
   return result;
 }
 
-// Generic, additive lookups fetch (Slice 4). Returns the RAW backend map
+// Generic, additive lookups fetch. Returns the RAW backend map
 // keyed by the singular list_name, sorted by display_order. Unlike `all()`
 // (which is locked to the 4 tenant-facing lists and a fixed discrete-keyed
 // `Lookups` shape), this takes the list names the caller needs and returns
@@ -66,8 +66,8 @@ function adaptLookups(response: LookupsBatchResponse): Lookups {
 // existing `all()` path is untouched.
 export type LookupMap = Record<string, LookupItem[]>;
 
-// Phase 5n.1: routes through lib/api/client.ts, whose base URL is
-// resolved at runtime via runtime-config (/api/config).
+// Routes through lib/api/client.ts, whose base URL is resolved at
+// runtime via runtime-config (/api/config).
 export const lookupsApi = {
   all: async (): Promise<Lookups> => {
     const response = await apiFetch<LookupsBatchResponse>(

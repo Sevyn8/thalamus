@@ -1,7 +1,7 @@
 """Integration tests for TenantsRepo.
 
 Real Postgres, real schema, real RLS. No FastAPI machinery (per the
-Test pyramid in CLAUDE.md). Sessions come from `get_tenant_session`
+test pyramid). Sessions come from `get_tenant_session`
 via the `platform_session` and `tenant_session_factory` fixtures.
 
 R4 and R5 are the load-bearing cross-tenant isolation tests; if they

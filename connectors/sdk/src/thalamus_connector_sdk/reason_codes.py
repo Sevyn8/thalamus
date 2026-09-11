@@ -1,4 +1,4 @@
-"""The connector's stable preflight/failure reason vocabulary (Slice 30b pattern).
+"""The connector's stable preflight/failure reason vocabulary.
 
 Closure is a TYPE-LEVEL guarantee: a closed ``StrEnum`` the SDK owns. Raw vendor or
 HTTP-client error text is NEVER used as a reason (it can quote payload values); only

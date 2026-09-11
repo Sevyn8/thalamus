@@ -1,4 +1,4 @@
-"""Step 6.15 integration tests for ``ModulesAccessRepo`` write methods.
+"""Integration tests for ``ModulesAccessRepo`` write methods.
 
 Four tests covering the race-control invariants and LD-driven
 behaviours:

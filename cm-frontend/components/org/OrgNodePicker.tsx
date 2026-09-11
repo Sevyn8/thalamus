@@ -9,9 +9,9 @@ import { useOrgTree } from "@/lib/hooks/use-org-nodes";
 import { synthesizeTenantRoot } from "@/lib/org-nodes/synthesize-tenant-root";
 import type { OrgNodeTreeItem } from "@/types/api";
 
-// Phase 5c.2b1: picker-mode of OrgTree extracted as the deferred-from-
-// 5b.3 forward pointer fires (the source-create wizard's org-node
-// assignment step is the concrete consumer that drives the API shape).
+// Picker-mode of OrgTree, extracted for the source-create wizard's
+// org-node assignment step, the concrete consumer that drives the API
+// shape.
 //
 // Composes OrgTreeRow with onAction omitted (hiding the kebab/edit
 // affordances — picker users don't manage nodes, they pick one) and
@@ -19,11 +19,10 @@ import type { OrgNodeTreeItem } from "@/types/api";
 // same as /superadmin/org. Selection is driven via OrgTreeRow's
 // existing selectedId + onClick(node) props.
 //
-// Phase 5i.2 (2026-05-25): always renders the synthetic tenant-root
-// row at the top (via synthesizeTenantRoot) so anchor-required surfaces
-// always have at least one selectable option, even for tenants whose
-// org tree is empty beyond the root. Removes the previous dead-end
-// "No org nodes configured" EmptyState. See Finding #55.
+// Always renders the synthetic tenant-root row at the top (via
+// synthesizeTenantRoot) so anchor-required surfaces always have at
+// least one selectable option, even for tenants whose org tree is
+// empty beyond the root.
 
 export type OrgNodePickerProps = {
   tenantId: string;

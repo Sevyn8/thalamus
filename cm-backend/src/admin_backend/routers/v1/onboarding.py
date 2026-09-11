@@ -1,4 +1,4 @@
-"""Client-onboarding wizard section + state endpoints (Slice 2).
+"""Client-onboarding wizard section + state endpoints.
 
 All routes are tenant-scoped under ``/tenants/{tenant_id}`` and gated
 ``ADMIN.TENANTS.CONFIGURE.GLOBAL`` with ``audience="PLATFORM"`` (staff

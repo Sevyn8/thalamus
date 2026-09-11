@@ -1,12 +1,12 @@
-"""``GET/POST /sources`` against the LIVE stack — the FIRST writable table (Phase A, D112).
+"""``GET/POST /sources`` against the LIVE stack — the source-registry write path.
 
 Proves the WRITE path especially: a TENANT creates a source pinned to its own tenant (the
 two-GUC WITH CHECK backstop), a TENANT naming another tenant is 403 (resolve_acted_for), a
 PLATFORM+ops actor creates for the acted-for tenant, a TENANT cannot READ another tenant's
 sources (isolation), a duplicate (tenant_id, source_id) is 409, and the 0013 backfill query
-populates config.sources from existing mappings. All created rows are removed afterwards (D100).
+populates config.sources from existing mappings. All created rows are removed afterwards.
 
-Loud-error posture (the Slice 4/7/8 lesson): a missing stack env var ERRORS, never skips.
+Loud-error posture: a missing stack env var ERRORS, never skips.
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ def admin_engine(stack_env: dict[str, str]) -> Iterator[Engine]:
             # config.sources has no legitimate baseline in the test env (nothing seeds it; the
             # migration backfill ran over empty mappings). The backfill TEST runs the full
             # _BACKFILL, which also picks up the seeded_identity default mapping's source_id — so
-            # revert ALL of this table (D100: revert our own writes), not just the smoke ids.
+            # revert ALL of this table (revert our own writes), not just the smoke ids.
             conn.execute(text("DELETE FROM config.sources"))
             # source_mappings / bronze DO carry seeded baseline — only delete our smoke ids there.
             conn.execute(

@@ -4,7 +4,7 @@ The engine's contribution carries the mapping-produced columns only; this stage
 injects everything consumer-owned (the provenance.py line):
 
 - identity (``tenant_id``/``store_id``), ``trace_id`` (read, never minted),
-  ``mapping_version_id`` (D22, hard rule 5), ``dis_channel`` (the bronze row's),
+  ``mapping_version_id``, ``dis_channel`` (the bronze row's),
 - the D33 dedup key: ``source_id`` (the verified envelope value) and
   ``source_event_id`` — sale rows use ``transaction_id || ':' || line_item_seq``
   when the source supplied BOTH; otherwise (and always for change events) the
@@ -21,9 +21,9 @@ injects everything consumer-owned (the provenance.py line):
 Each row also carries its **hot contribution** (the D63 projection): which hot
 columns this row asserts, with values. Grouping per natural key (column-scoped,
 event-time-wins within the group) happens in the SINK per batch — the batch is
-the rollback unit (D30 at batch grain), so the hot merge must be batch-local.
+the rollback unit, so the hot merge must be batch-local.
 An unseen SKU's INSERT arm will violate the hot table's NOT NULL catalogue
-columns and fail the batch loudly (D63: catalogue-before-sales).
+columns and fail the batch loudly.
 """
 
 from __future__ import annotations
@@ -76,7 +76,7 @@ class EventRow:
     source_event_id: str
     event_ts: datetime
     natural_key: NaturalKey
-    hot_contributions: dict[str, Any]  # hot column -> value (D63 projection)
+    hot_contributions: dict[str, Any]  # hot column -> value
     payload: dict[str, Any]  # the mapping-produced columns (hash/compare universe)
     row_hash: str
     chunk_row_index: int

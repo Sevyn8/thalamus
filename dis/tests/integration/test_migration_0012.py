@@ -1,7 +1,7 @@
-"""Migration 0012 (nullable hot columns: unit_cost, product_category — Slice 16j).
+"""Migration 0012 (nullable hot columns: unit_cost, product_category).
 
 Proves, against the resident DIS database (5433 / ithina_dis_db, read-only
-reference) and an ephemeral scratch DB (Slice 51c, D122):
+reference) and an ephemeral scratch DB:
 
   * **Target-safety guard** (pure, always-run, never skips): refuses Customer Master
     and any non-DIS database; passes the DIS database.
@@ -12,12 +12,11 @@ reference) and an ephemeral scratch DB (Slice 51c, D122):
     nullable), so a fresh bootstrap to head lands the identical nullability the delta
     path leaves.
 
-Downgrade-reversibility (the SET NOT NULL round-trip) is deferred until staging (D99):
+Downgrade-reversibility (the SET NOT NULL round-trip) is deferred until staging:
 the downgrade leg is authored in the migration, but its round-trip test is skipped with
 the shared, greppable reason.
 
-See: docs/slices/slice-16j-nullable-canonical-columns.md, decisions.md D99 (downgrade
-defer), the 0011 fresh==migrated precedent.
+See: the 0011 fresh==migrated precedent.
 """
 
 from __future__ import annotations
@@ -111,7 +110,7 @@ def test_both_columns_nullable_at_head_and_check_retained(admin_engine: Engine) 
         f"expected both targets nullable at head, got {nullability}"
     )
     assert _check_present(admin_engine, _UNIT_COST_CHECK), (
-        f"{_UNIT_COST_CHECK} was dropped — it is NULL-safe and must be retained (Slice 16j)"
+        f"{_UNIT_COST_CHECK} was dropped — it is NULL-safe and must be retained"
     )
 
 
@@ -139,7 +138,7 @@ def test_fresh_bootstrap_converges_with_delta_path(scratch_db: ScratchDB, admin_
     )
 
 
-# --- Downgrade round-trip: deferred until staging (D99) -----------------------
+# --- Downgrade round-trip: deferred until staging -----------------------
 
 
 @pytest.mark.skip(reason="downgrade-reversibility deferred until staging (D99)")

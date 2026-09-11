@@ -1,6 +1,6 @@
 """``identity_mirror.tenants`` reads — the ONLY module that queries ``TenantRow``.
 
-``identity_mirror`` is RLS-OFF (D41): there is no database backstop, so isolation on this
+``identity_mirror`` is RLS-OFF: there is no database backstop, so isolation on this
 table is whatever the caller supplies. That is why every read of the model lives here.
 
 TWO POSTURES LIVE IN THIS MODULE, and the difference is deliberate — read it before adding
@@ -40,7 +40,7 @@ from dis_ui_server.db import read_session
 from dis_ui_server.models import TenantRow
 
 # Bounded like the other lists. The beta fleet is single digits, so this is a runaway guard
-# rather than pagination — if it is ever reached, the list needs the keyset treatment (D124),
+# rather than pagination — if it is ever reached, the list needs the keyset treatment,
 # not a bigger number.
 _LIST_LIMIT = 500
 
@@ -72,7 +72,7 @@ async def get_tenant_self(engine: AsyncEngine, tenant_id: UUID) -> Row[Any] | No
     would have made every caller unpack a row for one field.
     """
     statement = select(TenantRow.name, TenantRow.display_code).where(
-        TenantRow.tenant_id == tenant_id  # the in-query scoping (D41) — do not remove
+        TenantRow.tenant_id == tenant_id  # the in-query scoping — do not remove
     )
     async with rls_session(engine, tenant_id) as conn:
         return (await conn.execute(statement)).one_or_none()
@@ -81,12 +81,12 @@ async def get_tenant_self(engine: AsyncEngine, tenant_id: UUID) -> Row[Any] | No
 async def get_tenant_display_code(engine: AsyncEngine, tenant_id: UUID) -> str | None:
     """The token tenant's ``display_code``, or ``None`` (mirror-NULL or unmirrored).
 
-    Readability only (D52: codes are never a substitute for the UUID), so an
+    Readability only, so an
     absent value is not an error — the producer simply omits the optional wire
     field. ``tenant_id`` MUST come from the verified token (``tenant_uuid_of``).
     """
     statement = select(TenantRow.display_code).where(
-        TenantRow.tenant_id == tenant_id  # the in-query scoping (D41) — do not remove
+        TenantRow.tenant_id == tenant_id  # the in-query scoping — do not remove
     )
     async with rls_session(engine, tenant_id) as conn:
         return (await conn.execute(statement)).scalar_one_or_none()

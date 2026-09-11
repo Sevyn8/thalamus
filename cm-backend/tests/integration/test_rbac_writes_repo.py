@@ -1,4 +1,4 @@
-"""Repo-direct tests for invariant edge cases (Step 6.18.3).
+"""Repo-direct tests for invariant edge cases.
 
 Smaller test set targeting code paths that are difficult or
 non-determistic to reach via the router (W-series). Six tests:

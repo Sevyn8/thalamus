@@ -105,9 +105,7 @@ def _body(**over: object) -> dict[str, object]:
 # ----- authorize-url -----
 
 
-def test_authorize_url_unconfigured_returns_503(
-    client: TestClient, mint_token: Callable[..., str]
-) -> None:
+def test_authorize_url_unconfigured_returns_503(client: TestClient, mint_token: Callable[..., str]) -> None:
     resp = client.get(_AUTHZ_URL, params={"source_id": _SOURCE}, headers=_auth(mint_token()))
     assert resp.status_code == 503
     assert resp.json()["error"]["code"] == "oauth_not_configured"

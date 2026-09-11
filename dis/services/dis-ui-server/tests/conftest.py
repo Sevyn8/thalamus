@@ -1,4 +1,4 @@
-"""Shared fixtures for the Slice 13a tests (one conftest: unit + integration).
+"""Shared fixtures (one conftest: unit + integration).
 
 UNIT half — no stack, no real database. The app under test is built through
 the production factory (``create_app``) with PROBE routers passed through the
@@ -9,11 +9,11 @@ non-listening localhost port): startup must succeed (the engine is lazy),
 ``/healthz`` must serve, and ``/readyz`` must degrade — the
 liveness/readiness split these tests pin. Tokens are minted in-test with the
 contract §2.1 dev-stub parameters (byte-identical to dis-ui's ``/dev/login``);
-NOT the dis-testing RS256 CM-fake fixtures, which are the 13b JWKS target.
+NOT the dis-testing RS256 CM-fake fixtures, which target the AUTH0/JWKS verifier.
 
 INTEGRATION half — proves ``/readyz`` against the LIVE local stack
-(``ithina_dis_db`` on 5433; Customer Master on 5432 is never touched), so —
-the Slice 4/7 lesson — those tests must NOT skip silently when the stack is
+(``ithina_dis_db`` on 5433; Customer Master on 5432 is never touched), so
+those tests must NOT skip silently when the stack is
 absent: a missing env var is a loud ERROR (``StackRequiredError``), never a
 skip. Read-only by construction: the readiness probe runs one scoped
 ``SELECT`` under a fresh synthetic tenant; no rows are written.
@@ -62,21 +62,18 @@ UNREACHABLE_POSTGRES_URL = "postgresql+psycopg://u:p@127.0.0.1:9/ithina_dis_db"
 def set_unit_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """The unit-test environment: required config present, every backend unreachable.
 
-    Slice 8 made GCS_BUCKET_BRONZE + PUBSUB_PROJECT_ID required (crashloop on
+    GCS_BUCKET_BRONZE + PUBSUB_PROJECT_ID are required (crashloop on
     missing, same posture as POSTGRES_URL); the upload dependencies are
     construction-lazy, so unreachable emulator hosts keep startup green while
     any actual I/O would fail loudly — unit tests override ``app.state`` with
     fakes instead of reaching them.
     """
     monkeypatch.setenv("POSTGRES_URL", UNREACHABLE_POSTGRES_URL)
-    # DECLARED, NOT INHERITED. DIS_AUTH_MODE used to default to STUB, so the unit suite got
-    # the dev verifier by saying nothing. That default was fail-open in production and is now
-    # AUTH0, which requires an issuer and an audience, so a suite that wants the stub has to
-    # ask for it. Saying it here is also the honest thing: these tests DO want the HS256 stub,
-    # and that was previously invisible.
+    # DECLARED, NOT INHERITED. DIS_AUTH_MODE defaults to AUTH0 (which requires an issuer
+    # and an audience), so a suite that wants the HS256 dev stub has to ask for it.
     #
-    # The guard that AUTH0-by-default brought with it is satisfied by UNREACHABLE_POSTGRES_URL
-    # above being 127.0.0.1: STUB is refused against a non-loopback database.
+    # STUB is refused against a non-loopback database; UNREACHABLE_POSTGRES_URL above
+    # being 127.0.0.1 satisfies that guard.
     monkeypatch.setenv("DIS_AUTH_MODE", "STUB")
     monkeypatch.setenv("GCS_BUCKET_BRONZE", "ithina-bronze-raw")
     monkeypatch.setenv("PUBSUB_PROJECT_ID", "local-dis")
@@ -109,8 +106,7 @@ class TokenMinter(Protocol):
 def mint_token() -> TokenMinter:
     """Mint dev-stub-shaped HS256 tokens, with knobs for every failure mode.
 
-    Slice 17b adds the required ``user_type`` claim (default ``"TENANT"`` so existing
-    callers stay valid under the now-mandatory claim). The 3 interim token personas
+    ``user_type`` is a required claim (default ``"TENANT"``). The 3 token personas
     (token contract; the impersonation TARGET is a request-body field, NOT a claim):
 
     - TENANT:               mint_token(user_type="TENANT", tenant_id=<uuid>, roles=("dis:read",))
@@ -149,7 +145,7 @@ def mint_token() -> TokenMinter:
             payload["store_id"] = store_id
         if roles is not None:
             payload["roles"] = list(roles)
-        if user_type is not None:  # Slice 17b required claim; None/""/"BOGUS" exercise reject-on-ambiguous
+        if user_type is not None:  # required claim; None/""/"BOGUS" exercise reject-on-ambiguous
             payload["user_type"] = user_type
         for claim in omit:
             payload.pop(claim, None)
@@ -206,7 +202,7 @@ def _probe_router() -> APIRouter:
     async def raise_rls() -> None:
         raise RlsContextError("probe rls failure", database="wrong_db", role="some_role")
 
-    # Slice 14b error-family probes: the envelope mapping for the data endpoints.
+    # Error-family probes: the envelope mapping for the data endpoints.
     @router.get("/raise/resource-not-found")
     async def raise_not_found() -> None:
         raise ResourceNotFoundError(
@@ -364,9 +360,7 @@ def auth0_mint_token(auth0_keypair: tuple[Any, Any]) -> Auth0TokenMinter:
 
 
 @pytest.fixture
-def auth0_client(
-    monkeypatch: pytest.MonkeyPatch, auth0_keypair: tuple[Any, Any]
-) -> Iterator[TestClient]:
+def auth0_client(monkeypatch: pytest.MonkeyPatch, auth0_keypair: tuple[Any, Any]) -> Iterator[TestClient]:
     """The app in AUTH0 mode, probe routes mounted, JWKS pointed at the test key.
 
     Sets DIS_AUTH_MODE=AUTH0 + JWT_ISSUER/JWT_AUDIENCE so the lifespan builds the
@@ -412,7 +406,7 @@ def _require_env(name: str) -> str:
     value = os.environ.get(name)
     if not value:
         raise StackRequiredError(
-            f"{name} is not set — the Slice 13a readiness integration tests refuse to "
+            f"{name} is not set — the readiness integration tests refuse to "
             "skip silently. Bring up the stack (make run-local) and load .env."
         )
     return value

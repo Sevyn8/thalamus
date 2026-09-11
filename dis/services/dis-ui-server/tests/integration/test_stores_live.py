@@ -1,8 +1,8 @@
 """``GET /stores-onboarded`` against the live stack — the in-query-scoping proof.
 
-``identity_mirror.stores`` is RLS-OFF (D41): the database gives NO backstop, so
-tenant isolation here rests entirely on the repo's ``WHERE tenant_id`` predicate
-— the registered 14b weak link. These tests are that predicate's enforcement:
+``identity_mirror.stores`` is RLS-OFF: the database gives NO backstop, so
+tenant isolation here rests entirely on the repo's ``WHERE tenant_id`` predicate.
+These tests are that predicate's enforcement:
 token A must see exactly A's stores, token B exactly B's, and no request-side
 input may widen the scope (tenant from token ONLY).
 

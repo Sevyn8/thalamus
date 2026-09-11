@@ -201,8 +201,8 @@ async def _run_one(
             )
         claim = claimed
 
-    # ELAPSED IS MEASURED, THE ANCHOR IS INJECTED. finished_at used to be datetime.now(UTC)
-    # while started_at came from `now`, which violates ck_run_finished_after_started the moment
+    # ELAPSED IS MEASURED, THE ANCHOR IS INJECTED. If finished_at came from datetime.now(UTC)
+    # while started_at came from `now`, ck_run_finished_after_started would be violated the moment
     # the two disagree — and they disagree by design: `now` is a parameter precisely so a sweep
     # can be replayed for a past day or run at a boundary in a test. Anchoring the finish to the
     # same injected instant and adding a MONOTONIC elapsed keeps both timestamps in one clock

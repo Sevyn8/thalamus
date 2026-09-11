@@ -1,4 +1,4 @@
-"""The four-step mapping_rules gate (slice 14b principle 4) — config never stores invalid.
+"""The four-step mapping_rules gate — config never stores invalid.
 
 Pure unit tests (no app, no DB): the gate runs entirely before any write, so a
 rejection here is exactly what the POST/PATCH handlers turn into a 400.
@@ -128,7 +128,7 @@ def test_missing_locale_declaration_is_refused() -> None:
 
 def test_unknown_shape_key_is_refused() -> None:
     rules = _sale_rules()
-    rules["transforms"] = {}  # the D49-stale field name; extra="forbid" catches it
+    rules["transforms"] = {}  # an unknown (legacy) field name; extra="forbid" catches it
     with pytest.raises(MappingConfigError, match="do not parse"):
         validate_mapping_rules(rules, tenant_id=TENANT_A)
 
@@ -177,7 +177,7 @@ def test_rejection_paths_do_not_mutate_the_input() -> None:
     assert rules == frozen
 
 
-# -- the type-keyed gate (Slice 14d) ----------------------------------------------
+# -- the type-keyed gate ----------------------------------------------------------
 
 
 def _snapshot_rules() -> dict[str, Any]:
@@ -224,9 +224,9 @@ def test_event_targets_are_rejected_for_the_snapshot_type() -> None:
 
 
 def test_snapshot_omitting_currency_is_accepted_currency_enrichment_guaranteed() -> None:
-    # Slice 16i (D95): currency's VALUE is enrichment-guaranteed on the current-position
-    # path, so the create gate no longer demands the mapping supply it (pre-16i this was
-    # a 400). currency stays mapping-produced by ORIGIN — still legal to MAP, just not
+    # currency's VALUE is enrichment-guaranteed on the current-position
+    # path, so the create gate does not demand the mapping supply it.
+    # currency stays mapping-produced by ORIGIN — still legal to MAP, just not
     # required.
     rules = _snapshot_rules()
     del rules["derive"]["currency"]
@@ -237,8 +237,8 @@ def test_snapshot_omitting_currency_is_accepted_currency_enrichment_guaranteed()
         StoreSkuCurrentPosition, enrichment_guaranteed_for(StoreSkuCurrentPosition)
     )
     assert "currency" not in hot_mandatory
-    # Slice 16j: product_category and unit_cost became nullable, so they too dropped from
-    # the derived mandatory set with no gate edit (the auto-follow this slice relies on).
+    # product_category and unit_cost are nullable, so they are excluded from
+    # the derived mandatory set with no gate edit (the auto-follow property).
     assert hot_mandatory == {
         "sku_id",
         "product_name",

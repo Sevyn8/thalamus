@@ -1,9 +1,8 @@
 import { apiFetch, qs } from "./client";
 import type { components } from "@/types/openapi-generated";
 
-// Phase 5h.1 (2026-05-21): wired against Sanjeev's Step 6.16.3 read
-// endpoints. Cursor pagination — distinct shape from the offset
-// `Pagination` envelope used elsewhere. `prev_cursor` is server-null
+// Audit read endpoints. Cursor pagination — distinct shape from the
+// offset `Pagination` envelope used elsewhere. `prev_cursor` is server-null
 // in v0 (sequential next-only per the schema doc); the page-level
 // cursor stack provides client-side back navigation.
 
@@ -23,10 +22,9 @@ export type ActorUserType = components["schemas"]["ActorUserType"];
 export type AuditRowScope = "PLATFORM" | "TENANT";
 
 // Resource-type filter is documented by the backend as an open string
-// vocabulary; the values below are the current emitters per the Step
-// 6.16.5 / 6.16.7 audit retrofit. Unknown values return 0 rows (no
-// 422). Frontend keeps the union typed for autocomplete safety but the
-// wire shape is plain `string`.
+// vocabulary; the values below are the current emitters. Unknown
+// values return 0 rows (no 422). Frontend keeps the union typed for
+// autocomplete safety but the wire shape is plain `string`.
 export type AuditResourceType =
   | "TENANT"
   | "TENANT_USER"
@@ -44,10 +42,10 @@ export type AuditListParams = {
   tenant_id?: string;
   scope?: AuditRowScope;
   search?: string;
-  // Phase 5h.5 (6.16.5): filter by resource type.
+  // Filter by resource type.
   resource_type?: AuditResourceType;
-  // Phase 5i.1 (6.16.6): filter by acting user uuid. Enables the
-  // per-user Activity sub-section in PlatformUserDetailDrawer and
+  // Filter by acting user uuid. Enables the per-user Activity
+  // sub-section in PlatformUserDetailDrawer and
   // TenantUserDetailDrawer.
   actor_user_id?: string;
 };

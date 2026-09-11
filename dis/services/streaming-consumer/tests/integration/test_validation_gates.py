@@ -5,7 +5,7 @@
 - Post-mapping (canonical-shape) REJECTS a contribution that maps to an invalid
   canonical frame (the bad-subtype mapping derives ``event_subtype='GIFT'``,
   off the model's enum vocab) and ACCEPTS a valid one.
-- Gate failures are data-deterministic, so since Slice 11a they take the
+- Gate failures are data-deterministic, so they take the
   QUARANTINED disposition (the subscriber ACKS — the storm fix): a row-less
   failure shape (the absent column) is held at CHUNK grain in
   ``quarantined_chunks``; a row-indexed shape (the GIFT subtype, per-row enum
@@ -70,7 +70,7 @@ def _failure_audit_rows(dis_admin: Engine, trace_id: object, stage: str) -> int:
 
 
 def _assert_gate_failure_shape(dis_admin: Engine, trace_id: object, stage: str, summary_code: str) -> None:
-    """The Slice 30b failure-audit shape at a validation gate: a stable
+    """The failure-audit shape at a validation gate: a stable
     summary code, ROW rows coded VALIDATION_ROW_FAILED with the pandera check
     in event_data, and both correlation ids populated on every row."""
     with dis_admin.begin() as conn:

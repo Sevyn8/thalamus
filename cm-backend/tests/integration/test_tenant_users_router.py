@@ -1,7 +1,7 @@
-"""Integration tests for the tenant_users router (Step 5.2).
+"""Integration tests for the tenant_users router.
 
 Real Postgres, real schema, real RLS, real router via FastAPI's
-TestClient. JWTs minted via Step 2.1's ``make_test_jwt``. Mirrors the
+TestClient. JWTs minted via ``make_test_jwt``. Mirrors the
 shape used by ``test_platform_users_router.py`` and
 ``test_tenants_router.py``.
 
@@ -127,7 +127,7 @@ async def test_l1_list_platform_envelope_and_hidden_fields(
         "suspended_at",
         "created_at",
         "updated_at",
-        "roles",  # Step 6.8.3 augmentation: inline role assignments.
+        "roles",  # inline role assignments.
     }
     # Hidden fields stay hidden.
     for hidden in (
@@ -275,8 +275,8 @@ async def test_l5_list_sort_email_asc(
 # ---- L6: unknown sort key returns 400 (not 500) --------------------------
 def test_l6_list_invalid_sort_returns_400(app_client, settings, super_admin_jwt):
     """The Repo raises InvalidSortKeyError; the router catches and
-    re-raises as InvalidSortKeyClientError (shared with platform_users
-    per Step 5.2 promotion) so the response is 400 with code
+    re-raises as InvalidSortKeyClientError (shared with platform_users)
+    so the response is 400 with code
     INVALID_SORT_KEY, not 500.
     """
     resp = app_client.get(
@@ -335,7 +335,7 @@ async def test_l8_list_under_tenant_a_returns_only_a_users(
     """RLS scopes a TENANT-A session to tenant A's rows. Tenant B's
     users — created in the same test — must not appear.
 
-    Post Step 6.9.3.2: random-UUID `_tenant_jwt` swapped for
+    The random-UUID `_tenant_jwt` is swapped for
     `tenant_owner_jwt_factory(tenant_a.id)` which builds a synthetic
     OWNER-like user in tenant_a with ADMIN.USERS.VIEW.TENANT grant;
     gate passes; RLS scopes list results to tenant_a.
@@ -377,7 +377,7 @@ async def test_d1_detail_platform_returns_user_with_hidden_absent(
     app_client, settings, make_tenant, make_org_node, make_tenant_user,
     super_admin_jwt,
 ):
-    """Post Step 6.9.3.2: /tenant-users/{user_id} gates via
+    """/tenant-users/{user_id} gates via
     ``get_tenant_user_anchor`` which queries
     ``tenant_users JOIN org_nodes (tenant_root)``. The synthetic
     tenant from ``make_tenant`` has no org_nodes; the anchor would
@@ -416,7 +416,7 @@ async def test_d1_detail_platform_returns_user_with_hidden_absent(
         "suspended_at",
         "created_at",
         "updated_at",
-        "roles",  # Step 6.8.3 augmentation: inline role assignments.
+        "roles",  # inline role assignments.
     }
 
 
@@ -490,7 +490,7 @@ async def test_t10_cross_tenant_list_filter_returns_empty(
     result is empty. Specifically, NOT 500 (the filter must compose
     cleanly with RLS) and NOT a row leak from tenant B.
 
-    Post Step 6.9.3.2: random-UUID JWT swapped for
+    The random-UUID JWT is swapped for
     `tenant_owner_jwt_factory(tenant_a.id)` so the gate passes; the
     list endpoint then runs with RLS scoped to tenant_a.
     """
@@ -524,7 +524,7 @@ def test_a1_no_jwt_returns_401(app_client):
 
 
 # =============================================================================
-# Step 6.8.3 — Half 1 (A1) inline roles[] augmentation tests.
+# Half 1 (A1) inline roles[] augmentation tests.
 #
 # Naming: U<n>_<endpoint_short>. Short codes: tu_list, tu_detail.
 # (Platform-side U*_pu_* tests live in test_platform_users_router.py;
@@ -687,7 +687,7 @@ async def test_u2_tu_detail_roles_empty_array_for_unassigned(
     app_client, settings, make_tenant, make_org_node, make_tenant_user,
     super_admin_jwt,
 ):
-    """Post Step 6.9.3.2: detail-endpoint anchor dep needs a tenant
+    """Detail-endpoint anchor dep needs a tenant
     root org_node to resolve (same as D1)."""
     tenant = await make_tenant(name="U2tud-Tenant")
     await make_org_node(
@@ -934,7 +934,7 @@ async def test_u5_tu_list_cross_tenant_rls_isolation(
         role_id=role.id,
     )
 
-    # Tenant A JWT (post Step 6.9.3.2: synthetic OWNER in tenant_a)
+    # Tenant A JWT (synthetic OWNER in tenant_a)
     jwt = await tenant_owner_jwt_factory(tenant_a.id)
     resp = app_client.get(
         "/api/v1/tenant-users",

@@ -124,7 +124,7 @@ LABELS: dict[str, dict[str, FieldLabel]] = {
 }
 
 
-# The catalogue / snapshot roster (Slice 14d): the authored half of the
+# The catalogue / snapshot roster: the authored half of the
 # store_sku_current_position field set, keyed by canonical column. The 28 keys
 # are EXACTLY the mapping-produced columns of StoreSkuCurrentPosition (drift-guard
 # enforced at boot). tax_treatment is deliberately ABSENT: it is consumer-injected

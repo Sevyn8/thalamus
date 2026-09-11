@@ -132,7 +132,7 @@ for dir in src/admin_backend db/raw_ddl migrations/versions scripts; do
 done
 
 # Required top-level files
-for file in pyproject.toml docker-compose.yml CLAUDE.md BUILD_PLAN.md; do
+for file in pyproject.toml docker-compose.yml; do
     if [[ -f "$file" ]]; then
         pass "file exists: $file"
     else
@@ -277,11 +277,9 @@ fi
 
 # CSD-03 protection: local DB role must NOT have a default search_path.
 # If rolconfig is set (e.g., ALTER ROLE ... SET search_path = core, public),
-# local DB masks unqualified identifiers in raw SQL that would fail in
-# cloud — restoring the cloud-emergent bug class CSD-03 closed across
-# commits dd496bd / 1516484 / 6204fbd. See CLAUDE.md's "Note on raw
-# text() SQL — schema-qualify ALL non-public identifiers" for the full
-# convention.
+# the local DB masks unqualified identifiers in raw SQL that would fail
+# in cloud (bug class CSD-03). Convention: raw text() SQL must
+# schema-qualify ALL non-public identifiers.
 if [[ -n "${DATABASE_URL:-}" ]] && command -v psql >/dev/null 2>&1; then
     role_url="${DATABASE_URL/postgresql+psycopg/postgresql}"
     # rolconfig is text[] or NULL; coalesce to empty string for a clean

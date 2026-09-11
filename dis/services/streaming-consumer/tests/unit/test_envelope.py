@@ -1,8 +1,8 @@
 """ingress.ready envelope: typed parse, loud contract violations, and the drift guard.
 
 The drift guard reconciles the Pydantic model against the committed contract file
-both directions (the 9b/dis-audit reconcile pattern), so neither the model nor
-the frozen contract can change without the other noticing (hard rule 10).
+both directions, so neither the model nor the frozen contract can change without
+the other noticing.
 
 Also pins the transport consequence of a contract-reject: ``process_message``
 acks an unparseable envelope pre-pipeline (terminal — redelivery is identical)
@@ -32,7 +32,7 @@ def _good_payload() -> dict[str, object]:
         "tenant_id": "019e5e3c-b5d3-705f-9002-2451c4ca2626",
         "store_id": "019e5e3c-b62e-75e6-ad62-529127ae944a",
         "source_id": "sc_pos_v1",
-        "template_id": "019e98c9-df80-7649-98cd-83fb6293777a",  # Slice 8 carry (D71)
+        "template_id": "019e98c9-df80-7649-98cd-83fb6293777a",  # keys the active-mapping lookup
         "bronze_ref": "019e9508-0000-7000-8000-000000000002",
         "gcs_uri": (
             "gs://ithina-bronze-raw/tenant/019e5e3c-b5d3-705f-9002-2451c4ca2626/"
@@ -48,18 +48,18 @@ def test_good_payload_parses() -> None:
     event = parse_ingress_ready(json.dumps(_good_payload()).encode())
     assert event.schema_version == 1
     assert event.source_id == "sc_pos_v1"
-    # Consumed since Slice 8a (D71 closed): keys the active-mapping lookup —
-    # test_service_surface pins the predicate; test_template_lookup proves it.
+    # Keys the active-mapping lookup — test_service_surface pins the predicate;
+    # test_template_lookup proves it.
     assert str(event.template_id) == "019e98c9-df80-7649-98cd-83fb6293777a"
     assert event.replay is False  # absent -> the contract default
     assert event.received_ts.tzinfo is not None
-    # Slice 16f backward-compat: a payload lacking delimiter (pre-16f / replayed)
-    # parses as comma — the same behaviour as before this slice.
+    # Backward-compat: a payload lacking delimiter (older producer / replayed)
+    # parses as comma.
     assert event.delimiter == ","
 
 
 def test_delimiter_parsed_when_present() -> None:
-    # A 16f producer sets the detected separator; the consumer reads it verbatim.
+    # The producer sets the detected separator; the consumer reads it verbatim.
     event = parse_ingress_ready(json.dumps(_good_payload() | {"delimiter": ";"}).encode())
     assert event.delimiter == ";"
 
@@ -71,10 +71,9 @@ def test_delimiter_parsed_when_present() -> None:
         ("tenant_id", "not-a-uuid"),
         ("schema_version", 2),  # const: 1
         ("source_id", ""),  # min length
-        # Required since Slice 8; since 8a this reject IS the template_id-absent
-        # policy (D71): contract-reject + terminal ack, BEFORE the template-keyed
-        # lookup — no consumer fallback exists. Recovery is Slice 12 replay from
-        # bronze (D73).
+        # Required: an absent template_id is a contract-reject + terminal ack,
+        # BEFORE the template-keyed lookup — no consumer fallback exists.
+        # Recovery is replay from bronze.
         ("template_id", None),
         ("template_id", "not-a-uuid"),
         ("bronze_ref", None),

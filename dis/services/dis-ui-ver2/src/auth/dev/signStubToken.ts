@@ -6,7 +6,7 @@ import { STUB_AUDIENCE, STUB_EXPIRY, STUB_ISSUER, STUB_SECRET } from './devStubS
 const KEY = new TextEncoder().encode(STUB_SECRET)
 
 // DEV ONLY. Mints a local HMAC-signed stub JWT for a persona, carrying the
-// Customer Master claim set Sanjeev's slice-2 fake pins (sub via setSubject, plus
+// Customer Master claim set (sub via setSubject, plus
 // tenant_id / store_id / user_type / roles). No profile claims (email/name) - those are not
 // token claims. It must never run in a production bundle: minting tokens
 // client-side is a dev affordance, and there is no Customer Master here. The

@@ -1,10 +1,9 @@
 """Identity Service client interface.
 
 The single client abstraction that DIS services use to call the Identity Service.
-The Slice 2 fakes are consumed through this interface; the real Identity Service
-(Slice 13) satisfies the same Protocol and HTTP contract as a drop-in — callers
-swap ``IDENTITY_SERVICE_URL`` and nothing else changes (slice acceptance
-criterion 8).
+Any implementation (fake or real) is consumed through this interface, satisfying
+the same Protocol and HTTP contract as a drop-in — callers swap
+``IDENTITY_SERVICE_URL`` and nothing else changes.
 
 Shapes conform to the authoritative contract
 ``contracts/identity-service/identity_service.openapi.yaml``.

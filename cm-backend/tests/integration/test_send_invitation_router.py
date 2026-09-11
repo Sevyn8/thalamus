@@ -1,4 +1,4 @@
-"""Slice 2d-send integration tests: PLATFORM staff send-invitation action.
+"""Integration tests: PLATFORM staff send-invitation action.
 
 Fake mgmt client + fake email sender injected on app.state (no live Auth0 /
 SendGrid). The TestClient is built without the context-manager form so the

@@ -1,10 +1,10 @@
 """The sender's Terraform module, checked from its own suite.
 
-A NEW MODULE STARTS LIFE UNGUARDED, WHICH IS THE REASON THIS FILE EXISTS ON DAY ONE. Slice 5d
-shipped an env var the module never wired and a write path sat dead in staging for two days
-behind a green apply. synapse-ui-server has a test that parses its own module for exactly that,
-and that test is why 5d cannot recur on that service. A second service without one would start
-from the position 5d was in.
+A NEW MODULE STARTS LIFE UNGUARDED, WHICH IS THE REASON THIS FILE EXISTS ON DAY ONE. This
+estate has already shipped an env var a module never wired, and the write path behind it sat
+dead in staging for two days behind a green apply. synapse-ui-server has a test that parses its
+own module for exactly that, and that test is why the defect cannot recur on that service. A
+second service without one would start from the same exposed position.
 
 WHY IT LIVES HERE AND NOT NEXT TO synapse-ui-server's COPY. Each test parses ITS OWN module. A
 shared test over both would need a list of modules, which is the same class of thing as a root
@@ -53,7 +53,7 @@ def test_the_module_is_where_this_test_thinks_it_is() -> None:
 
 
 def test_every_secret_iam_member_is_listed_in_the_services_depends_on() -> None:
-    """SLICE 5d, REFUSED IN ADVANCE ON A SERVICE THAT DID NOT EXIST WHEN 5d HAPPENED.
+    """A REVISION RACING ITS OWN SECRET GRANT, REFUSED IN ADVANCE.
 
     THE FAILURE THIS CATCHES. The env blocks reference
     ``data.google_secret_manager_secret.*.secret_id``, which is the DATA SOURCE. Terraform sees an

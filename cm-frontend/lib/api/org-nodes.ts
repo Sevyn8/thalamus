@@ -22,11 +22,10 @@ export type OrgNodeCreatePayload = components["schemas"]["OrgNodeCreateRequest"]
 export type OrgNodePatchPayload = components["schemas"]["OrgNodePatchRequest"];
 export type OrgNodeRead = components["schemas"]["OrgNodeRead"];
 
-// Phase 5n.1 (reads) + Phase 5n.7 (writes): routes through
-// lib/api/client.ts, whose base URL is resolved at runtime via
-// runtime-config (/api/config). Permission tuple
-// ADMIN.ORG_NODES.CONFIGURE.TENANT gates POST + PATCH (LD9 collapse,
-// matches the Stores pattern from Finding #32).
+// Routes through lib/api/client.ts, whose base URL is resolved at
+// runtime via runtime-config (/api/config). Permission tuple
+// ADMIN.ORG_NODES.CONFIGURE.TENANT gates POST + PATCH (matches the
+// Stores posture).
 export const orgNodesApi = {
   tree: (tenantId: string, params?: OrgTreeParams) =>
     apiFetch<OrgTreeResponse>(

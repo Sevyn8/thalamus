@@ -1,4 +1,4 @@
-"""Unit tests for the Step 6.15 error class ``ModuleAccessNotFoundError``.
+"""Unit tests for the error class ``ModuleAccessNotFoundError``.
 
 E1 — verifies the class attributes that drive the HTTP response and the
 Q7 envelope posture (structured context lives on the exception, not in

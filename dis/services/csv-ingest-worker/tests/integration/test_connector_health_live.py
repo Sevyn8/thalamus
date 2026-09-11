@@ -1,4 +1,4 @@
-"""Connector-health WRITE against the LIVE stack (D116) — the worker-write isolation proof.
+"""Connector-health WRITE against the LIVE stack — the worker-write isolation proof.
 
 This is the load-bearing test for a WORKER writing a tenant-scoped shared-DB table: the emit
 rides ``rls_session`` under the event's tenant, so the two-GUC WITH CHECK pins every write to that
@@ -38,7 +38,7 @@ _ALL_SRCS = [_SRC_SEEN, _SRC_MERGE, _SRC_XCHECK]
 
 @pytest.fixture
 def cleanup_health(dis_admin: Engine) -> Iterator[None]:
-    """Remove this suite's connector_health rows (both tenants) on teardown (D100)."""
+    """Remove this suite's connector_health rows (both tenants) on teardown."""
     yield
     with dis_admin.begin() as conn:
         conn.execute(

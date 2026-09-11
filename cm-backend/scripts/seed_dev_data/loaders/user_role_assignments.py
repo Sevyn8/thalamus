@@ -1,6 +1,6 @@
 """Loader for the user_role_assignments sheet — routes per row.
 
-Post Step 6.8.1 split (D-34): the dual-FK XOR is gone at the DB layer.
+After the platform/tenant split (D-34), the dual-FK XOR is gone at the DB layer.
 Each Excel row has exactly one user-side FK (``platform_user_id`` XOR
 ``tenant_user_id``); the loader inspects which one is populated and
 writes to the matching physical table:

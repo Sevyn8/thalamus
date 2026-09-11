@@ -131,8 +131,8 @@ async def test_a_duplicate_is_acked_without_a_second_row(sent: Any) -> None:
 async def test_a_ledger_failure_is_nacked(sent: Any) -> None:
     """THE ONE NACK THAT IS NOT ABOUT THE MESSAGE, AND THE REASON THE QUEUE EXISTS.
 
-    No row means nothing in the database says this was ever owed. Under slice 1 that was the end
-    of it; now the message survives and the redelivery is what can still produce a row.
+    No row means nothing in the database says this was ever owed. Without the queue that would be
+    the end of it; the message survives and the redelivery is what can still produce a row.
 
     IT IS ALSO THE DUPLICATE WINDOW. The send may already have happened, and on redelivery this
     path cannot know, so it sends again. That is the at-least-once residual, bounded by

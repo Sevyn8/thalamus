@@ -106,9 +106,7 @@ class SquareOAuthClient:
         }
         return self._token_request(body, reject=SquareOAuthRefreshRejectedError)
 
-    def _token_request(
-        self, body: dict[str, str], *, reject: type[_RejectError]
-    ) -> SquareTokenSet:
+    def _token_request(self, body: dict[str, str], *, reject: type[_RejectError]) -> SquareTokenSet:
         url = f"{self._base_url}/oauth2/token"
         try:
             response = self._http.post(url, json=body)

@@ -2,7 +2,7 @@
 
 The SQL itself is proven against the live schema by the integration tests; here the
 pure logic is pinned: the dedup-key components are required values (rule 4), and
-``PriorIngest.is_published`` is what splits full-no-op from resume-and-mark (D59).
+``PriorIngest.is_published`` is what splits full-no-op from resume-and-mark.
 """
 
 from __future__ import annotations
@@ -87,7 +87,7 @@ def test_prior_published_when_status_published_even_without_timestamp() -> None:
 
 
 def test_prior_unpublished_when_received_and_no_timestamp() -> None:
-    # The resume-and-mark branch (D59): bronze landed, publish was lost.
+    # The resume-and-mark branch: bronze landed, publish was lost.
     assert not _prior().is_published
 
 

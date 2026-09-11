@@ -1,6 +1,6 @@
 """``telemetry.connector_health`` reads — the Connector Health data access (GET /connector-health).
 
-READ-ONLY (D116): dis-ui-server READS this table; ``csv-ingest-worker`` (and, later, the other
+READ-ONLY: dis-ui-server READS this table; ``csv-ingest-worker`` (and, later, the other
 receivers) remain its SOLE writers. This module builds SELECT-only statements — never an
 INSERT/UPDATE/DELETE (the inverse of ``config.sources``, which the BFF writes).
 
@@ -8,12 +8,12 @@ The read drives FROM ``config.sources`` (the connector registry, so every regist
 appears) LEFT JOIN ``telemetry.connector_health`` (the worker telemetry, absent → pending) LEFT
 JOIN a bronze ``MAX(received_at)`` per-source subquery. ``last_seen_at`` is COALESCE(health,
 bronze) so an active connector shows real freshness even before the worker has emitted a health
-row (the coalesce D116 requires). All three tables are two-GUC RLS (USING tenant OR PLATFORM), so
+row. All three tables are two-GUC RLS (USING tenant OR PLATFORM), so
 per-tenant scope is the DATABASE's guarantee under ``read_session``; the explicit ``WHERE
 s.tenant_id`` predicate (pinned scope only) is defense-in-depth, mirroring ``repos/runs.py`` /
-``repos/canonical.py`` (the 14b/D41 catastrophe invariant).
+``repos/canonical.py``.
 
-Reads execute on the ``read_session`` connection (service CLAUDE.md durable invariant); never an
+Reads execute on the ``read_session`` connection; never an
 ``AsyncSession``, never a ``.commit()``. This module speaks DB vocabulary only — the wire status
 derivation + ISO rendering live in the handler (mirroring ``runs``). Rows are ordered by
 ``source_id`` (a bounded per-tenant registry; no pagination this slice).
@@ -51,7 +51,7 @@ _SELECT = (
     "  b.bronze_last_seen         AS bronze_last_seen "
     "FROM config.sources s "
     # LEFT JOIN identity_mirror.tenants for tenant_name (Chunk 9). Keyed on the tenant PK (≤1
-    # match, no fan-out); RLS-OFF table (D41), read under the existing read_session.
+    # match, no fan-out); RLS-OFF table, read under the existing read_session.
     "LEFT JOIN identity_mirror.tenants t "
     "       ON t.tenant_id = s.tenant_id "
     "LEFT JOIN telemetry.connector_health h "

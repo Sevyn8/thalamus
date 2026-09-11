@@ -12,7 +12,7 @@ from ``labels.py``, merged by key under a both-directions drift check that raise
 the BOOT loudly (crashloop is the correct misconfiguration signal), never a
 half-true catalog at runtime.
 
-Slice 14d makes the catalog TYPE-AWARE: one field set per ``template_type``
+The catalog is TYPE-AWARE: one field set per ``template_type``
 (``dis_validation.MODEL_BY_TYPE``). The two event types keep their existing
 grouping (section == the routed model's wire label) and gain the two new uniform
 keys (``sink``, ``constraints``); the ``snapshot`` (catalogue) type serves the
@@ -189,7 +189,7 @@ def _structural(model: type[BaseModel], name: str) -> tuple[FieldDatatype, list[
 
 def reflect_field_shape(model: type[BaseModel], name: str) -> tuple[FieldDatatype, int | None, int | None]:
     """The (datatype, precision, scale) of one canonical field — the translator's
-    internal cast-shape source (Slice 16c).
+    internal cast-shape source.
 
     Reuses the same Annotated peelers + datatype dispatch the catalog builder uses,
     but additionally reads ``max_digits``/``decimal_places`` (precision/scale) off the
@@ -217,7 +217,7 @@ def _entries(
     the model's single canonical table; ``constraints`` is null in v1.
     """
     produced = mapping_produced_columns(model)  # runs assert_no_drift (provenance guard)
-    # Slice 16i: enrichment-value-guaranteed columns (currency on the hot path) are
+    # Enrichment-value-guaranteed columns (currency on the hot path) are
     # mappable but NOT mandatory — the lib supplies their value, so the picker must not
     # force the user to map them. The column stays in `produced` (a present catalog
     # entry); only its `mandatory` flag drops.
@@ -279,13 +279,14 @@ def build_field_catalogs() -> dict[str, list[TemplateMappingField]]:
 
 
 def build_field_catalog() -> list[TemplateMappingField]:
-    """The flat EVENT field universe (sale + change) — the mapping-suggestion input.
+    """The flat EVENT field universe (sale + change) — the mapping-suggestion fallback
+    for requests that omit ``template_type``.
 
     The per-column suggester (``suggest/``) matches a source column to a canonical
-    field across a flat candidate list; it predates the type axis and is out of
-    Slice 14d's scope, so it keeps the event field set it always had. Type-aware
-    suggestions (including the catalogue field set) are a later slice. The
-    ``__ignore__`` sentinel is deliberately NOT included here — it is a mapping-UI
+    field across a flat candidate list. This flat set predates the type axis and
+    remains the fallback; a request that supplies ``template_type`` instead scores
+    against that type's per-type catalog (see ``handlers/mapping_suggestions.py``).
+    The ``__ignore__`` sentinel is deliberately NOT included here — it is a mapping-UI
     target, never a suggestion candidate."""
     return _event_entries(StoreSkuSaleEvent, "sale_event") + _event_entries(
         StoreSkuChangeEvent, "change_event"

@@ -1,4 +1,4 @@
-"""Data access for the client-onboarding wizard sections + state (Slice 2).
+"""Data access for the client-onboarding wizard sections + state.
 
 One ``OnboardingRepo`` covering the four section resources (legal
 profile 1:1, tax registrations 1:N, billing profile 1:1, contacts 1:N)
@@ -8,7 +8,7 @@ through the session GUCs (PLATFORM callers see all rows via the D-29
 OR-branch; the endpoints are PLATFORM-audience-gated anyway).
 
 Write methods (upserts + full-replaces) emit exactly one audit event
-per call via ``emit_audit_event`` (Slice 2 item 5). The 1:N replaces run
+per call via ``emit_audit_event``. The 1:N replaces run
 DELETE + INSERT in the request transaction and emit a single event, not
 one per row (guardrail). ``auth`` + ``request_id`` are optional and
 both-or-neither: repo-level tests may omit them to skip emission.
@@ -486,7 +486,7 @@ class OnboardingRepo:
     ) -> dict[str, Any] | None:
         """Return the wizard state dict, or None if the tenant is not
         visible. The tenant_onboarding row may be absent (seed tenants
-        predate Slice 1 provisioning); defaults are synthesised."""
+        predate onboarding-row provisioning); defaults are synthesised."""
         schema = get_settings().db_schema
         if await self.tenant_name_or_none(session, tenant_id) is None:
             return None
@@ -530,7 +530,7 @@ class OnboardingRepo:
             )
         ).one()
 
-        # Slice 3: documents section is a verification-status counts block.
+        # Documents section is a verification-status counts block.
         doc_counts = (
             await session.execute(
                 text(
@@ -583,7 +583,7 @@ class OnboardingRepo:
                 "documents": documents_block,
             },
             "provisioning": {
-                # Slice 5 (option a): derived from tenants.auth0_org_id,
+                # Derived from tenants.auth0_org_id,
                 # stamped by POST /tenants/{id}/provision-auth0. TRUE once
                 # the Auth0 Organization has been provisioned (and its id
                 # persisted), FALSE otherwise. No longer UNKNOWN: the fact

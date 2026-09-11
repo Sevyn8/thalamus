@@ -20,7 +20,7 @@ are independent of each other (no co-join concerns); each adds the
 ``display_name`` of the matching ``lookups`` row, falling back to the
 enum code itself if no lookup row matches (defensive — a missing label
 should not break matrix render). Per the locked vocabulary, all 25
-lookup rows exist post Step 6.1's seed migration, so the COALESCE is
+lookup rows exist from the seed migration, so the COALESCE is
 belt-and-suspenders.
 """
 from __future__ import annotations
@@ -96,12 +96,11 @@ class PermissionMatrixRepo:
         resource/action/scope ascending, then code/id for stable tie-
         breakers.
 
-        Step 6.6 changed the module-side ordering basis: pre-step,
-        ``ORDER BY p.module`` sorted by ``module_enum``'s ordinal
-        (DDL declaration order); post-step, ``permissions.module`` is
-        ``module_code_enum`` whose ordinals differ from the old enum
-        for the same four overlapping values (e.g., ADMIN moved from
-        ordinal 0 to 5). Sorting by ``lk_module.display_order``
+        The module-side ordering deliberately avoids
+        ``ORDER BY p.module``, which would sort by ``module_code_enum``'s
+        ordinal (DDL declaration order) — an ordinal that does not
+        reflect the intended UX order (e.g., ADMIN's ordinal is 5, not
+        0). Sorting by ``lk_module.display_order``
         decouples the sort from enum ordinal and makes the seed data's
         explicit ``display_order`` column the source of truth — robust
         across future enum vocabulary changes (additive ALTER TYPE

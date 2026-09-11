@@ -1,4 +1,4 @@
-"""Integration tests for the Step 6.16.3 audit log read endpoints.
+"""Integration tests for the audit log read endpoints.
 
 Coverage:
 
@@ -530,7 +530,7 @@ async def test_l15_limit_below_min_returns_422(
 
 
 # ============================================================================
-# actor_user_id filter tests (AUF1-AUF3) — Step 6.16.6
+# actor_user_id filter tests (AUF1-AUF3)
 # ============================================================================
 
 
@@ -679,8 +679,8 @@ async def test_d1_platform_detail_returns_full_row(
 ) -> None:
     """LOAD-BEARING. Detail returns full 19-column shape including details JSONB.
 
-    Step 6.16.7 LD10 : detail grew from 16 to 19 columns (added
-    actor_organization_name, actor_roles, resource_subtype).
+    Detail carries 19 columns, including
+    actor_organization_name, actor_roles, and resource_subtype.
     """
     tenant = await make_tenant(name="D1-Detail")
     row = await make_tenant_activity_audit_log(
@@ -698,7 +698,7 @@ async def test_d1_platform_detail_returns_full_row(
     assert body["id"] == str(row.id)
     assert body["details"]["before"]["status"] == "TRIAL"
     assert body["details"]["after"]["status"] == "ACTIVE"
-    # Verify the 19 expected keys are present (Step 6.16.7).
+    # Verify the 19 expected keys are present.
     expected_keys = {
         "id", "timestamp", "tenant_id", "tenant_name",
         "actor_user_id", "actor_user_type", "actor_display_name",
@@ -914,7 +914,7 @@ async def test_p3_tenant_without_audit_grant_returns_403(
 
 
 # ============================================================================
-# Step 6.16.7 LD10 + LD11 — list response wire-shape extension
+# List response wire-shape extension
 # ============================================================================
 
 
@@ -924,7 +924,7 @@ async def test_l_n1_list_response_carries_14_fields_per_item(
     make_tenant,
     make_tenant_activity_audit_log,
 ) -> None:
-    """LOAD-BEARING (Step 6.16.7 LD10): list endpoint item carries the
+    """LOAD-BEARING: list endpoint item carries the
     14 fields including the 6 new ones (actor_organization_name,
     actor_roles, what, resource_type, resource_subtype, result_type).
 
@@ -990,8 +990,8 @@ async def test_l_n2_list_response_org_node_row_carries_subtype_and_composed_what
     make_tenant,
     make_tenant_activity_audit_log,
 ) -> None:
-    """Step 6.16.7: ORG_NODE rows render ``resource_subtype`` and the
-    composed ``what`` reflects the LD12 subtype-driven Type label.
+    """ORG_NODE rows render ``resource_subtype`` and the
+    composed ``what`` reflects the subtype-driven Type label.
     """
     tenant = await make_tenant(name="LN2-Tenant")
     await make_tenant_activity_audit_log(

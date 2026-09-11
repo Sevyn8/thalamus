@@ -2,8 +2,7 @@
 
 If a source mapping flags any PII column and no backend is configured to handle it,
 :func:`assert_pii_handled` raises :class:`PiiBackendNotConfiguredError` *before* any
-persistence path can run, so accidental PII landing fails loudly rather than silently
-(root CLAUDE.md hard rule 2, code-quality rule 4).
+persistence path can run, so accidental PII landing fails loudly rather than silently.
 
 The **only** way to reach the not-raise branch is to pass a non-``None`` ``backend``.
 There is deliberately no config default or flag that disables the gate — that would be

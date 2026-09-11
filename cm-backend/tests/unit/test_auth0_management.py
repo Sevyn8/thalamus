@@ -1,8 +1,8 @@
-"""Slice 2b offline unit tests for Auth0ManagementClient.
+"""Offline unit tests for Auth0ManagementClient.
 
 No network: an httpx.MockTransport backs the injected AsyncClient, so the REAL
 request-building and response-parsing run while the live Auth0 tenant is never
-hit (mirrors the Slice-1 test_auth0 discipline). Covers M2M token
+hit (mirrors the test_auth0 discipline). Covers M2M token
 acquisition / caching / refresh, each Management operation's request shape and
 response parsing, and failure mapping to Auth0ManagementError.
 """
@@ -354,7 +354,7 @@ async def test_transport_error_maps_to_typed_error(settings: Settings) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Password-change ticket (Slice 2d-send)
+# Password-change ticket
 # ---------------------------------------------------------------------------
 
 
@@ -399,7 +399,7 @@ async def test_create_password_change_ticket_non_success_maps_to_typed_error(
 
 
 # ---------------------------------------------------------------------------
-# Update user email (Slice 2e)
+# Update user email
 # ---------------------------------------------------------------------------
 
 

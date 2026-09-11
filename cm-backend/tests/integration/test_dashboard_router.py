@@ -1,7 +1,7 @@
-"""Integration tests for the dashboard stats router (Step 6.5).
+"""Integration tests for the dashboard stats router.
 
 Real Postgres, real schema, real RLS, real router via FastAPI's
-TestClient. JWTs minted via Step 2.1's ``make_test_jwt``. Mirrors
+TestClient. JWTs minted via ``make_test_jwt``. Mirrors
 the shape used by ``test_tenants_router.py``.
 
 Test ID convention:
@@ -23,8 +23,8 @@ Five LOAD-BEARING tests:
   O5  modules_deployed sub_text scope-awareness across user types.
 
 Plus one design-review-amendment test:
-  S3+ active_tenants sub_text covers ONBOARDING (Step 6.5 amendment;
-       lifecycle order onboarding → trial → suspended).
+  S3+ active_tenants sub_text covers ONBOARDING
+       (lifecycle order onboarding → trial → suspended).
 
 The seed loader's --reset state is recreated by each test that needs
 seeded counts; tests that assert relative ordering / proportions
@@ -187,9 +187,8 @@ async def test_s3_active_tenants_sub_text_branches(
 ):
     """Sub_text covers ONBOARDING + TRIAL + SUSPENDED in lifecycle order.
 
-    Step 6.5 amendment (2026-05-06): the sub_text vocabulary was
-    extended to cover ONBOARDING (the lifecycle's first state). This
-    test creates a tenant in each of the three breakout states and
+    The sub_text vocabulary covers ONBOARDING (the lifecycle's first
+    state). This test creates a tenant in each of the three breakout states and
     verifies all three appear in the sub_text in lifecycle order
     (onboarding → trial → suspended), separated by " · ".
 
@@ -324,8 +323,7 @@ async def test_s6_stores_distinct_countries(
 
     Insert 4 stores in 3 distinct countries under one tenant; assert
     the TENANT-scoped response sees distinct_countries=3 with sub_text
-    "3 countries". Step 6.17.2 upgraded make_store to accept ``country``
-    directly; the prior raw UPDATE override is retired.
+    "3 countries". ``make_store`` accepts ``country`` directly.
     """
     tenant = await make_tenant(name="S6-T")
     await make_store(tenant_id=tenant.id, country="France")
@@ -378,7 +376,7 @@ async def test_s8_mrr_value_is_2dp_string(
     app_client, settings, make_tenant,
     super_admin_jwt,
 ):
-    """Per Q2 (Step 6.5 design review): explicit f"{x:.2f}" format.
+    """Per Q2: explicit f"{x:.2f}" format.
 
     Insert a tenant with a known revenue and verify the response
     string ends with "0.00" or "00" pattern (the actual digits depend
@@ -704,7 +702,7 @@ def test_x1_pydantic_extra_forbid_guards_drift(app_client, settings, super_admin
         assert set(body[key].keys()) == expected, f"drift on {key}"
 
 
-# ---- X2: raw SQL schema qualification (LOAD-BEARING regression for Step 6.5.1) -------
+# ---- X2: raw SQL schema qualification (LOAD-BEARING regression) -------
 async def test_x2_raw_sql_works_with_clobbered_search_path(
     session_factory, platform_auth
 ):

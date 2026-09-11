@@ -1,4 +1,4 @@
-"""Pydantic schemas for tenant onboarding documents (Slice 3).
+"""Pydantic schemas for tenant onboarding documents.
 
 Reads use ``from_attributes=True`` and hide the internal storage ref
 (``gcs_object_uri``) and audit-actor columns per the D-28 convention;

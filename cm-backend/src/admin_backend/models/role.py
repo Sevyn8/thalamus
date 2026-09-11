@@ -11,9 +11,7 @@ Notes on shape (mirrors ``models/tenant_user.py`` exactly):
 
 - Platform-global table — no RLS. Visibility is controlled at the app
   layer via the ``audience`` column: TENANT JWTs see only
-  ``audience='TENANT'`` rows. PLATFORM JWTs see both. Captured as the
-  audience-filter convention note in CLAUDE.md "Code conventions and
-  structure" subsection.
+  ``audience='TENANT'`` rows. PLATFORM JWTs see both.
 
 - ``id``, ``status``, ``created_at``, ``updated_at`` carry
   ``server_default=FetchedValue()``. The DDL owns the actual default
@@ -32,7 +30,7 @@ Notes on shape (mirrors ``models/tenant_user.py`` exactly):
   ``*_user_type`` is the ``actor_user_type_enum`` discriminator.
 
 - The ``actor_user_type_enum`` is shared platform-wide; it was first
-  declared by ``tenant_users`` (Step 5.2). This module imports the
+  declared by ``tenant_users``. This module imports the
   ``ActorUserType`` Python enum from there rather than redeclaring —
   per the "Note on PG enum columns" convention, redeclaration with
   ``create_type=True`` would error on metadata creation; redeclaration

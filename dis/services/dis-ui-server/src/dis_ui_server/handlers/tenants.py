@@ -10,14 +10,14 @@ versus explicit-tenant-predicate — which is why ``repos/tenants.py``'s module 
 worth reading before adding a third caller here.
 
 WHY /tenants-actable EXISTS. The connect journeys let a PLATFORM ops caller onboard a source
-ON BEHALF OF a tenant (``resolve_acted_for``, Slice 17b / D92), so the UI has to offer a
+ON BEHALF OF a tenant (``resolve_acted_for``), so the UI has to offer a
 tenant to act for. It used to derive that list from ``GET /sources`` — distinct tenants
 among the rows — which silently made the list "every tenant that ALREADY HAS a source".
 That is the exact complement of the onboarding case: a freshly onboarded tenant with zero
 sources could never be picked, so nobody could connect its FIRST source. The list has to
 come from the tenant mirror, not from a by-product of another read.
 
-THE QUERY CARRIES NO TENANT PREDICATE. ``identity_mirror`` is RLS-OFF (D41) and
+THE QUERY CARRIES NO TENANT PREDICATE. ``identity_mirror`` is RLS-OFF and
 ``repos.tenants.list_actable_tenants`` is unpredicated by design — an all-tenants list is
 the point of it. Its replacement is a ``scope.is_platform`` assertion, and that assertion
 lives in TWO places on purpose:

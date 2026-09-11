@@ -1,4 +1,4 @@
-"""Unit tests for the quarantine console endpoints (slice 15a).
+"""Unit tests for the quarantine console endpoints.
 
 Two halves. PURE: the single crosswalk (display forward == filter reverse, no drift),
 the Context composition, the type-tagged id parse, the ISO rendering. WIRE: the parts
@@ -72,7 +72,7 @@ def _bearer(token: str) -> dict[str, str]:
 def test_list_filters_tenant_predicate_is_conditional_on_platform(
     model: type[QuarantinedRow] | type[QuarantinedChunk],
 ) -> None:
-    # Slice 17b structural catastrophe guard (criterion 7): the tenant predicate is
+    # Structural catastrophe guard: the tenant predicate is
     # PRESENT for a pinned (TENANT) scope and OMITTED for PLATFORM see-all -- conditioned
     # on is_platform, NEVER on tenant_id being absent. quarantine.* is RLS ON, so this
     # pins the predicate so it cannot quietly vanish for TENANT (leaving isolation on RLS
@@ -203,7 +203,7 @@ def test_iso_renders_utc_as_z() -> None:
     assert _iso(datetime(2026, 6, 3, 9, 8, 0, tzinfo=UTC)) == "2026-06-03T09:08:00Z"
 
 
-# -- Slice 52b: structured failures[] (detail), typed check+reason-only-required -----
+# -- structured failures[] (detail), typed check+reason-only-required ---------------
 
 
 def test_to_failures_builds_typed_list_across_all_three_shapes() -> None:
@@ -271,11 +271,11 @@ def test_error_context_string_is_unchanged_alongside_structured_failures() -> No
     assert _to_failures(fc)[0].value is None  # the same source also yields the typed shape
 
 
-# -- Slice 52b: the wire is ADDITIVE-ONLY (nothing renamed/removed) -----------------
+# -- the wire is ADDITIVE-ONLY (nothing renamed/removed) ----------------------------
 
 
 def test_quarantine_response_shape_is_additive_only() -> None:
-    # AC5: every pre-52b field name still exists on both models (none renamed/removed);
+    # Every long-standing field name still exists on both models (none renamed/removed);
     # the slice only GROWS the shape. The frontend is not updated in lockstep, so this is
     # the load-bearing wire guard.
     pre_52b_list = {
@@ -319,7 +319,7 @@ def test_list_requires_a_token(client: TestClient) -> None:
 
 
 def test_list_denies_platform_without_ops(client: TestClient, mint_token: Callable[..., str]) -> None:
-    # Slice 17b: GET /quarantine serves a PLATFORM+dis:ops token (see-all, integration
+    # GET /quarantine serves a PLATFORM+dis:ops token (see-all, integration
     # suite); a PLATFORM token WITHOUT dis:ops is denied see-all -- a clean 403.
     token = mint_token(user_type="PLATFORM", tenant_id=None, roles=("dis:read",))
     response = client.get("/api/v1/quarantine", headers=_bearer(token))

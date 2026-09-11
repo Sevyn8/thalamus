@@ -71,9 +71,7 @@ def _require_oauth(request: Request) -> tuple[CloverOAuthClient, CloverTokenVaul
     vault: CloverTokenVault | None = request.app.state.clover_token_vault
     key: str | None = request.app.state.oauth_state_key
     if client is None or vault is None or key is None:
-        raise OauthNotConfiguredError(
-            "Clover OAuth is not configured on this server", connector="clover"
-        )
+        raise OauthNotConfiguredError("Clover OAuth is not configured on this server", connector="clover")
     return client, vault, key
 
 

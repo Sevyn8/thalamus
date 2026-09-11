@@ -9,7 +9,7 @@ Proves against the running DB the two load-bearing properties the join must have
    identity_mirror.tenants.name (NOT the UUID); a system (NULL-tenant) audit row carries NULL.
 
 Seeds a couple of rows for two mirrored tenants (buc-ees / zabka-group) + one NULL-tenant audit row,
-asserts, then removes them (D100). Loud-error posture: a missing stack env ERRORS, never skips.
+asserts, then removes them. Loud-error posture: a missing stack env ERRORS, never skips.
 """
 
 from __future__ import annotations
@@ -79,8 +79,13 @@ async def seeded(stack_env: dict[str, str]) -> AsyncIterator[dict[str, str]]:
             (
                 await conn.execute(
                     _SEED_AUDIT,
-                    {"tenant": TENANT_A, "stage": "RECEIVED", "outcome": "SUCCESS",
-                     "row_count": 100, "rows_succeeded": 100},
+                    {
+                        "tenant": TENANT_A,
+                        "stage": "RECEIVED",
+                        "outcome": "SUCCESS",
+                        "row_count": 100,
+                        "rows_succeeded": 100,
+                    },
                 )
             ).scalar_one()
         )
@@ -90,8 +95,13 @@ async def seeded(stack_env: dict[str, str]) -> AsyncIterator[dict[str, str]]:
             (
                 await conn.execute(
                     _SEED_AUDIT,
-                    {"tenant": None, "stage": "RECEIVED", "outcome": "FAILURE",
-                     "row_count": None, "rows_succeeded": None},
+                    {
+                        "tenant": None,
+                        "stage": "RECEIVED",
+                        "outcome": "FAILURE",
+                        "row_count": None,
+                        "rows_succeeded": None,
+                    },
                 )
             ).scalar_one()
         )
@@ -168,9 +178,7 @@ async def test_audit_real_name_and_null_tenant_is_null_name(
     rls = create_rls_engine(stack_env["POSTGRES_URL"])
     try:
         events = await list_events(rls, _PLATFORM, limit=500)
-        by_tenant = {
-            (str(e.tenant_id) if e.tenant_id is not None else None): e.tenant_name for e in events
-        }
+        by_tenant = {(str(e.tenant_id) if e.tenant_id is not None else None): e.tenant_name for e in events}
         assert by_tenant[TENANT_A] == seeded[TENANT_A]  # real name
         # The NULL-tenant system row is present with a NULL name (never dropped, never fabricated).
         assert None in by_tenant

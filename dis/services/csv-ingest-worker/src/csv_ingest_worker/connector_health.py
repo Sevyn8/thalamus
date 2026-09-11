@@ -1,14 +1,14 @@
-"""The connector-health emit: one idempotent per-run upsert of liveness/freshness (D116).
+"""The connector-health emit: one idempotent per-run upsert of liveness/freshness.
 
 Mirrors ``bronze.py`` EXACTLY: every statement runs on a connection yielded by
-``dis-rls`` ``rls_session`` under the EVENT's tenant (hard rules 1 & 12) — tenant
+``dis-rls`` ``rls_session`` under the EVENT's tenant — tenant
 scoping is the RLS policy's (``telemetry.connector_health`` is FORCE RLS,
 ``tenant_isolation`` USING + WITH CHECK on ``app.tenant_id``), inherited target guard
 included (``current_database()=='ithina_dis_db'``, NOBYPASSRLS; DIS on 5433, never CM).
 The WITH CHECK is the structural backstop: a worker can only stamp health for its own
 event's tenant (the write-isolation test proves this).
 
-This is the WORKER side of D116's producer/consumer split (the inverse of config.sources,
+This is the WORKER side of the producer/consumer split (the inverse of config.sources,
 which is BFF-written). It writes the FACTS the surface reads:
   - a successful arrival stamps ``last_seen_at = now`` and the coarse ``status = 'healthy'``;
   - a failed run stamps ``last_error_at = now`` + ``last_error_detail`` and ``status = 'stale'``.
@@ -17,8 +17,8 @@ worker status is only a hint; the columns not set by a given path keep their pri
 (the upsert never nulls a column it is not stamping).
 
 ADDITIVE + FIRE-AND-FORGET at the call site: the pipeline calls this AFTER its bronze write
-and never lets a health-emit failure touch the data path (extends hard rule 11's
-audit-telemetry posture to connector-health telemetry). The upsert itself raises on an RLS
+and never lets a health-emit failure touch the data path (the same posture as
+fire-and-forget audit telemetry). The upsert itself raises on an RLS
 violation — the swallow lives only in the pipeline caller, so the write-isolation test can
 assert WITH CHECK by calling this directly.
 """

@@ -2,7 +2,7 @@
 
 The write goes through ``dis-rls`` ``rls_session(engine, tenant_id)``, which on first use
 asserts ``current_database()=='ithina_dis_db'`` and a NOBYPASSRLS role — so the DIS-side
-target safety is inherited. ``identity_mirror`` is RLS-off (D41), so the per-tenant
+target safety is inherited. ``identity_mirror`` is RLS-off, so the per-tenant
 ``app.tenant_id`` scope is a harmless no-op; the guard is the reason we use it.
 
 Per tenant, in one transaction: upsert the tenant row, then upsert that tenant's stores

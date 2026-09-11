@@ -4,14 +4,14 @@ Tenant from the verified token ONLY (no path/query/header tenant input exists). 
 through ``repos/runs.py``, which scopes every statement under ``read_session`` (bronze's two-GUC
 RLS is the database backstop) plus an explicit tenant predicate on bronze and every joined table.
 
-Run STATE derives from the audit trail (Slice 51a, D117): the repo returns each run's bronze
+Run STATE derives from the audit trail: the repo returns each run's bronze
 identity plus its top-precedence terminal audit event; this handler maps that event's
 ``(stage, outcome)`` to the wire verdict via the SINGLE crosswalk (``verdict_of`` — fail-loud on
-an unmapped pair, D118), composes the three independent counts (D119), and renders display names.
+an unmapped pair, D118), composes the three independent counts, and renders display names.
 Wire<->DB translation lives HERE; the repo speaks DB vocabulary only.
 
-READ-ONLY: this surface never writes bronze (D111). LIST-ONLY this slice: BOUNDED to the newest
-``_RUNS_LIST_LIMIT`` runs, no pagination (Slice 51b; the newest-first order is its cursor key).
+READ-ONLY: this surface never writes bronze. LIST-ONLY this slice: BOUNDED to the newest
+``_RUNS_LIST_LIMIT`` runs, no pagination.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ from dis_ui_server.schemas.runs import (
 
 router = APIRouter()
 
-# Caller-supplied page size (Slice 51b): default = 51a's first-page size; the hard max keeps
+# Caller-supplied page size: default = 51a's first-page size; the hard max keeps
 # 100 as the ceiling (this endpoint never serves more than today — over-max is clamped, never
 # an unbounded query). A cursor walks the full history in bounded pages beyond the first.
 _RUNS_PAGE_DEFAULT = 100
@@ -63,11 +63,11 @@ def _verdict(row: Row[Any]) -> StatusWire:
     """The run's verdict: the terminal event's crosswalk mapping (fail-loud), else processing."""
     if row.t_stage is None:  # no terminal-marking audit event -> still in flight / stalled
         return PROCESSING
-    return verdict_of(row.t_stage, row.t_outcome)  # KeyError -> 500 on an unmapped pair (D118)
+    return verdict_of(row.t_stage, row.t_outcome)  # KeyError -> 500 on an unmapped pair
 
 
 def _accepted(verdict: StatusWire, row: Row[Any]) -> int | None:
-    """Rows committed to canonical, path-aware, from the terminal CANONICAL_WRITTEN event (D119).
+    """Rows committed to canonical, path-aware, from the terminal CANONICAL_WRITTEN event.
 
     Event path (sale/change): ``rows_succeeded``. Catalogue/snapshot path: ``event_rows_written``
     is 0 there, so the real figure is ``hot_rows_upserted + hot_noops`` in ``event_data``. Only a
@@ -84,7 +84,7 @@ def _accepted(verdict: StatusWire, row: Row[Any]) -> int | None:
 
 
 def _quarantined(verdict: StatusWire, row: Row[Any]) -> int | None:
-    """The ONE quarantine bucket (D119): the QUARANTINED event's held-row count for a quarantined
+    """The ONE quarantine bucket: the QUARANTINED event's held-row count for a quarantined
     run; 0 for succeeded; null for failed (a pure nack is not held) and processing (unknown)."""
     if verdict == "quarantined":
         return int(row.t_row_count) if row.t_row_count is not None else None
@@ -108,10 +108,10 @@ def _to_row(row: Row[Any]) -> RunRow:
         template_name=row.template_name,
         method=row.dis_channel,  # passthrough (CHECK-constrained to the wire vocab)
         status=verdict,  # the audit-derived verdict (wire key stays 'status', D117)
-        mapping_version=row.t_mapping_version,  # from the terminal audit event (D117)
-        seen_before=bool(row.seen_before),  # recorded duplicate outcome (D119, criterion 5)
+        mapping_version=row.t_mapping_version,  # from the terminal audit event
+        seen_before=bool(row.seen_before),  # recorded duplicate outcome
         source_payload_id=row.source_payload_id,
-        file_name=row.original_filename,  # null on pre-Slice-51a runs (D120)
+        file_name=row.original_filename,  # null on older runs predating this column
         input_row_count=row.row_count,  # bronze total (worker DuckDB preflight)
         accepted=_accepted(verdict, row),
         quarantined=_quarantined(verdict, row),
@@ -135,7 +135,7 @@ async def list_ingestion_runs(
     audit-derived verdict; ``limit`` is the page size (clamped to the hard max, never
     unbounded); ``cursor`` walks older pages and is valid only within its issuing filter set
     (a mismatch is a 422 ``invalid_cursor``, never a silent wrong page). ``next_cursor`` in the
-    body is null when no more runs remain (Slice 51b, D124)."""
+    body is null when no more runs remain."""
     engine: AsyncEngine = request.app.state.engine
     page_size = min(limit, _RUNS_PAGE_MAX)  # clamp over-max; <1 / non-int already 422 (Query ge=1)
     cutoff = now_utc() - _WINDOW_DELTA[window] if window is not None else None

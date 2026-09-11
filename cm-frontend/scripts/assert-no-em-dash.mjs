@@ -35,14 +35,14 @@ const ROOTS = [
   "components/synapse",
   "lib/synapse",
   "app/(authenticated)/superadmin/synapse",
-  // AXON (slice 3). Its console surface renders through the same primitives and is
+  // AXON. Its console surface renders through the same primitives and is
   // read by the same operators, so it is governed by the same rule. Added WITH the
   // surface rather than after it: a root list that lags the directories it is meant
   // to cover reports zero and means nothing, which is the exact blindness the
   // header above records.
   "lib/axon",
   "app/(authenticated)/superadmin/axon",
-  // CHANNELS (Axon slice 5). Added for the same reason axon was: this surface is copy-heavy in
+  // CHANNELS. Added for the same reason axon was: this surface is copy-heavy in
   // a way the console screens are not. It carries the sentences telling a tenant that saving
   // replaces their whole credential and that nothing sends yet, and those are precisely the
   // sentences somebody will reach for a dash while writing.

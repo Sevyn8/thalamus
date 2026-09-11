@@ -16,9 +16,9 @@ So the fix is that the return type MUST NOT be optional:
 - ``PreconditionUnmet`` — registered, and blocked, with the measurement attached.
 
 MEASUREMENT AND POLICY ARE SEPARATE HERE. ``Observation`` is what a probe measured;
-``SeriesPolicy`` is the rule that turns it into a verdict, and it is now SUPPLIED BY THE
-CALLER rather than assumed. Slice 1 had ``satisfies_placeholder_policy`` because no caller
-existed that was entitled to say what "enough" meant across a population of series.
+``SeriesPolicy`` is the rule that turns it into a verdict, and it is SUPPLIED BY THE
+CALLER rather than assumed: only the caller is entitled to say what "enough" means
+across a population of series.
 
 ``match`` over the three plus ``typing.assert_never`` is the enforcement: mypy --strict
 fails a caller that forgets a branch. That is a mechanism, not a review convention.
@@ -79,8 +79,8 @@ class Observation:
     pairs_measured: int
     pairs_qualifying: int
     measured_at: datetime
-    # WHICH subjects cleared, not just how many — added in slice 7 to discharge the deferral
-    # on ``Satisfied``. Identities at the capability's grain minus its date column, measured in
+    # WHICH subjects cleared, not just how many.
+    # Identities at the capability's grain minus its date column, measured in
     # the SAME transaction as the counts above, so the two cannot describe different instants.
     #
     # None = this probe does not report identities. No probe is in that state today; the field
@@ -181,9 +181,8 @@ class Satisfied[RowT]:
 
     THE CHECK-THEN-FETCH WINDOW, AND UNDER ``ALL_SERIES`` NOTHING CLOSES IT.
 
-    Slice 1 flagged that an all-series policy would not be monotonic and that this note would
-    need revisiting when such a policy became selectable. It just did, so here is what
-    actually happens rather than a warning that it might:
+    An all-series policy is not monotonic, and such a policy is selectable, so here is what
+    actually happens:
 
     - Under ``ANY_SERIES`` the window is harmless. Coverage only grows and series are only
       added, so ``pairs_qualifying`` only rises; a capability that satisfied ANY cannot stop
@@ -202,11 +201,9 @@ class Satisfied[RowT]:
     analysis that declared it needs every series to have 90 days can receive rows covering a
     series with one day, and nothing in this type tells it so.
 
-    THE FIX LANDED IN SLICE 7, AND THE DEFERRAL IS DISCHARGED. The note that stood here named
-    its own trigger — "the first analysis that binds a gate" — and ``stockout_risk`` is that
-    analysis. What it does:
+    THE MITIGATION:
 
-    ``Satisfied`` now carries ``qualifying``, the SUBJECTS that cleared every gate, and
+    ``Satisfied`` carries ``qualifying``, the SUBJECTS that cleared every gate, and
     ``resolve()`` binds the narrowing INTO ``fetch`` before handing this value back. So the rows
     a caller receives describe exactly the population the verdict was made about.
 
@@ -294,15 +291,13 @@ class PreconditionUnmet:
     def __post_init__(self) -> None:
         if not self.unmet:
             raise ValueError("PreconditionUnmet with no unmet report is a Satisfied in disguise")
-        # NO POLICY CHECK HERE ANY MORE, and its absence is deliberate rather than an
-        # oversight. Slice 1 re-checked every report against the module-level placeholder, so
-        # constructing a PreconditionUnmet carrying a satisfied report raised. That check
-        # cannot exist now: whether a report is satisfied depends on the CALLER's policy, and
-        # this type does not know it — the same report is unmet under ALL_SERIES and satisfied
-        # under ANY_SERIES, so there is no policy-free notion of "carries a satisfied report"
-        # left to assert. The engine's filter is now the single place the policy is applied
-        # (registry.resolve), which is also the only place that knows which policy was asked
-        # for. Weaker than slice 1 by exactly the amount the caller gained.
+        # NO POLICY CHECK HERE, and its absence is deliberate rather than an oversight:
+        # whether a report is satisfied depends on the CALLER's policy, and this type does
+        # not know it — the same report is unmet under ALL_SERIES and satisfied under
+        # ANY_SERIES, so there is no policy-free notion of "carries a satisfied report"
+        # to assert. The engine's filter is the single place the policy is applied
+        # (registry.resolve), which is also the only place that knows which policy was
+        # asked for.
 
 
 # Generic in the row type so a caller that knows which capability it asked for keeps its

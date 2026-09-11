@@ -21,8 +21,8 @@ its own SA for everything else. Unset -> the ambient ADC is used directly.
 The blocking google-genai call runs off the event loop via ``anyio.to_thread``.
 The request DEADLINE is enforced at the SDK level via ``HttpOptions(timeout=...)``
 (milliseconds) — NOT an outer ``anyio.fail_after``, which is inert against a
-non-cancellable worker thread (Slice 34a / D-b). The ``genai.Client`` is built ONCE
-per process and reused (Slice 34a): construction stays lazy (first call, in the
+non-cancellable worker thread. The ``genai.Client`` is built ONCE
+per process and reused: construction stays lazy (first call, in the
 worker thread) so startup does no I/O, and the SDK auto-refreshes credentials on the
 long-lived client. The google-genai import is LAZY (inside the client seam) so this
 module loads without the package; only the real LLM path needs it. ``_call_model`` is
@@ -45,7 +45,7 @@ from dis_ui_server.suggest.fallback_matcher import match_columns
 
 _log = get_logger(SERVICE_NAME)
 
-# Built-in defaults (Slice 34a): the ONE place the fast-path values live. Config passes None
+# Built-in defaults: the ONE place the fast-path values live. Config passes None
 # when the env var is unset, and the constructor resolves None to these.
 _DEFAULT_MODEL = "gemini-2.5-flash"
 _DEFAULT_TIMEOUT_S = 20.0  # SDK request deadline (seconds); a stall guard above valid latency.
@@ -97,7 +97,7 @@ class GeminiSuggester:
             prompt = self._build_prompt(columns, catalog)
             # The deadline is enforced INSIDE the SDK call via HttpOptions(timeout=...); the old
             # anyio.fail_after wrapper was inert against this non-cancellable worker thread
-            # (Slice 34a / D-b) and is removed. A deadline hit surfaces as an SDK timeout error,
+            # and is removed. A deadline hit surfaces as an SDK timeout error,
             # caught below and degraded to the mechanical fallback.
             text = await anyio.to_thread.run_sync(self._call_model, prompt)
             suggestions = self._parse_and_validate(text, columns, catalog)

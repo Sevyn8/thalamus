@@ -112,7 +112,7 @@ CREATE ROLE synapse_writer
 GRANT CONNECT ON DATABASE ithina_dis_db TO synapse_writer;
 
 -- ---------------------------------------------------------------------------
--- synapse_lifecycle — the CONSOLE's write identity (slice 5d)
+-- synapse_lifecycle — the CONSOLE's write identity
 -- ---------------------------------------------------------------------------
 -- A THIRD role rather than reusing synapse_writer, and the reason is attribution:
 -- synapse_writer is the orchestrator's identity (INSERT on synapse.actions, no

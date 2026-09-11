@@ -1,4 +1,4 @@
-"""Connector-health emit (D116) with an optional metadata hint and the rate-limit posture.
+"""Connector-health emit with an optional metadata hint and the rate-limit posture.
 
 Mirrors csv-ingest-worker's ``connector_health`` upserts (same table, same
 ``ON CONFLICT (tenant_id, source_id)`` semantics, same "never null a column this path is
@@ -22,7 +22,7 @@ TWO MERGE DISCIPLINES, because the two columns mean different things:
 
 Every statement runs on a ``dis-rls`` ``rls_session`` connection under the trigger's
 tenant (hard rules 1 & 12); the WITH CHECK pins the write to that tenant. The caller keeps
-the fire-and-forget posture (a health-emit failure never blocks ingest, D116).
+the fire-and-forget posture (a health-emit failure never blocks ingest).
 """
 
 from __future__ import annotations

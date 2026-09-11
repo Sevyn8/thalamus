@@ -15,8 +15,8 @@ FK to navigate.
 
 The audience invariant (``role.audience='TENANT'`` only) is enforced at
 the DB layer by the BEFORE INSERT/UPDATE OF role_id trigger
-``enforce_tenant_role_audience()`` (Step 6.8.1's migration
-``3e05299cb533``). Application code does not need to re-enforce.
+``enforce_tenant_role_audience()`` (migration ``3e05299cb533``).
+Application code does not need to re-enforce.
 
 Notes on shape:
 

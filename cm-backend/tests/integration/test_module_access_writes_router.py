@@ -1,4 +1,4 @@
-"""Integration tests for the Step 6.15 module-access write endpoints.
+"""Integration tests for the module-access write endpoints.
 
 Coverage shape:
 

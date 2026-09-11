@@ -1,6 +1,5 @@
 # syntax=docker/dockerfile:1
 # Multi-stage build for Next.js standalone output. Targets Cloud Run v2.
-# Step 6.1 — see DEPLOY.md.
 
 FROM node:22-alpine AS deps
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate

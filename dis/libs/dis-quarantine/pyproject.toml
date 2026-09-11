@@ -1,7 +1,7 @@
 [project]
 name = "dis-quarantine"
 version = "0.0.0"
-description = "DIS quarantine record models + fail-loud Cloud SQL writer for quarantine.quarantined_chunks / quarantined_rows (Slice 11a direct-write path; the 11b topic/drainer path supersedes the call site, not this lib). Owns the failure_stage vocabulary and the audit-Stage mapping."
+description = "DIS quarantine record models + fail-loud Cloud SQL writer for quarantine.quarantined_chunks / quarantined_rows, written directly by the caller (no topic/drainer indirection). Owns the failure_stage vocabulary and the audit-Stage mapping."
 requires-python = ">=3.12"
 dependencies = [
   # DisError root (QuarantineWriteError) + UTC timestamps + structured logging.

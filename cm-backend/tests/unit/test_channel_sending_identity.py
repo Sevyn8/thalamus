@@ -1,6 +1,6 @@
 """The sending identity is checked against the channel, and only where the shape is knowable.
 
-THE DEFECT. On 2026-08-15 a channel_connections row was saved with channel=email and
+THE DEFECT. A channel_connections row was saved with channel=email and
 sending_identity=9560879222. Nothing refused it: the field carried a length cap and no format
 rule. A From address that is a phone number cannot send, and the tenant was told the channel was
 configured.

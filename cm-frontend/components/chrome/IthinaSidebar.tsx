@@ -5,7 +5,7 @@
 // (server-rendered) authenticated layout doesn't have to import the
 // constant itself — function references on the icons would otherwise
 // fail to serialize across the server/client boundary at prerender
-// time. Phase 5b.1 introduces a parallel `DisSidebar` wrapper.
+// time.
 
 import { Sidebar } from "./Sidebar";
 import { ithinaSidebarNavItems } from "@/lib/ithina/sidebar-nav-items";

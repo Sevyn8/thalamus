@@ -22,7 +22,7 @@ variable "image" {
 
 variable "service_account_id" {
   type        = string
-  description = "Account id for this service's DEDICATED runtime identity. Holds secretAccessor on THREE secrets: the synapse_reader DSN, the synapse_lifecycle DSN (slice 5d) and the synapse_provisioner DSN (slice 5e). NOT the writer, which is the orchestrator's identity and holds INSERT on synapse.actions. Each write credential is one verb on one table: lifecycle appends to synapse.action_events so the console can record a snooze, dismissal or acknowledgement, and provisioner inserts into synapse.provision so the console can enable a monitor. Neither can UPDATE anything, so neither can edit or undo what it wrote."
+  description = "Account id for this service's DEDICATED runtime identity. Holds secretAccessor on THREE secrets: the synapse_reader DSN, the synapse_lifecycle DSN and the synapse_provisioner DSN. NOT the writer, which is the orchestrator's identity and holds INSERT on synapse.actions. Each write credential is one verb on one table: lifecycle appends to synapse.action_events so the console can record a snooze, dismissal or acknowledgement, and provisioner inserts into synapse.provision so the console can enable a monitor. Neither can UPDATE anything, so neither can edit or undo what it wrote."
   default     = "synapse-ui-server"
 }
 
@@ -44,19 +44,19 @@ variable "secret_reader_url" {
 
 variable "secret_lifecycle_url" {
   type        = string
-  description = "Secret Manager id of the synapse_lifecycle DSN. INSERT on synapse.action_events and nothing else. Arrived with slice 5d; the service refuses to start without it."
+  description = "Secret Manager id of the synapse_lifecycle DSN. INSERT on synapse.action_events and nothing else. The service refuses to start without it."
   default     = "synapse-lifecycle-database-url"
 }
 
 variable "secret_provisioner_url" {
   type        = string
-  description = "Secret Manager id of the synapse_provisioner DSN. INSERT on synapse.provision, plus SELECT on identity_mirror.tenants and canonical.store_sku_current_position because the enablement pre-flight runs in the same transaction as the insert and cannot execute without them. No UPDATE, so the console can enable a monitor and cannot disable one or edit a timezone. Not synapse_writer and not synapse_lifecycle. Created OUT OF BAND like the other two DSN secrets; grants come from infra/db-setup/sql/05_synapse_provisioner_grant.sql. Arrived with slice 5e; the service refuses to start without it."
+  description = "Secret Manager id of the synapse_provisioner DSN. INSERT on synapse.provision, plus SELECT on identity_mirror.tenants and canonical.store_sku_current_position because the enablement pre-flight runs in the same transaction as the insert and cannot execute without them. No UPDATE, so the console can enable a monitor and cannot disable one or edit a timezone. Not synapse_writer and not synapse_lifecycle. Created OUT OF BAND like the other two DSN secrets; grants come from infra/db-setup/sql/05_synapse_provisioner_grant.sql. The service refuses to start without it."
   default     = "synapse-provisioner-database-url"
 }
 
 variable "secret_axon_reader_url" {
   type        = string
-  description = "Secret Manager id of the axon_reader DSN (Axon slice 3). SELECT on axon.platform_deliveries and axon.tenant_deliveries, and NO write verb anywhere. NOT the sender's DSN and not a widening of it: axon_sender deliberately holds no SELECT, so reusing it would let the send path read back the ledger of who was contacted about what. Created OUT OF BAND like every other DSN here; grants come from infra/db-setup/sql/07_axon_reader_grant.sql. The service refuses to start without it."
+  description = "Secret Manager id of the axon_reader DSN. SELECT on axon.platform_deliveries and axon.tenant_deliveries, and NO write verb anywhere. NOT the sender's DSN and not a widening of it: axon_sender deliberately holds no SELECT, so reusing it would let the send path read back the ledger of who was contacted about what. Created OUT OF BAND like every other DSN here; grants come from infra/db-setup/sql/07_axon_reader_grant.sql. The service refuses to start without it."
   default     = "axon-reader-database-url"
 }
 

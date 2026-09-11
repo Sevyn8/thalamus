@@ -3,8 +3,8 @@
 =================================================================================================
 THIS RULE LIVES IN CUSTOMER MASTER ALONE, AND THAT IS THE DECISION RATHER THAN AN ACCIDENT
 =================================================================================================
-Axon shipped a shared ``axon.vault.secret_id_for`` in slice 4 so that both the writer and the
-reader could derive the same name. It had one caller and was deleted in slice 5. cm-backend is
+Axon once shipped a shared ``axon.vault.secret_id_for`` so that both the writer and the
+reader could derive the same name. It had one caller and was deleted. cm-backend is
 not a uv workspace member and its Dockerfile builds from ``cm-backend/`` with no path to
 ``axon/``, so the writer could never import it; a "shared" function only one side can call is
 two definitions waiting to disagree.

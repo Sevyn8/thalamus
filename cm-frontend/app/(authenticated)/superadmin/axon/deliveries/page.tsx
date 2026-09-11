@@ -35,9 +35,9 @@ export const dynamic = "force-dynamic";
 // ============================================================================
 // AXON'S DELIVERY LEDGER. What the platform sent, to whom, and what came back.
 // ============================================================================
-// BUILT BEFORE THE QUEUE ON PURPOSE. Slice 2 makes sending asynchronous and adds
-// a dead-letter lane, and debugging a queue through psql is worse than debugging
-// it with a screen. This is the screen.
+// BUILT BEFORE THE QUEUE ON PURPOSE. Sending is synchronous today; once it
+// becomes async with a dead-letter lane, debugging a queue through psql is
+// worse than debugging it with a screen. This is the screen.
 //
 // ============================================================================
 // ACCEPTED IS NOT DELIVERED, AND NOTHING ON THIS PAGE SAYS OTHERWISE

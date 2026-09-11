@@ -2,9 +2,9 @@
 
 A faithful read mirror of the columns the ``GET /audit`` list serves. dis-ui-server
 NEVER writes this table via SQL - emission is ``libs/dis-audit`` fire-and-forget from
-every service (root CLAUDE.md hard rule 11); this model is typed read metadata only.
+every service; this model is typed read metadata only.
 
-RLS is the two-GUC OUTLIER (Slice 17b / D91): the ``rls_audit_events_tenant`` policy is
+RLS is the two-GUC OUTLIER: the ``rls_audit_events_tenant`` policy is
 USING-only - ``tenant_id = app.tenant_id OR tenant_id IS NULL OR app.user_type='PLATFORM'``
 - with NO WITH CHECK (the UI never writes). The per-tenant scope rides ``rls_session``;
 the explicit ``WHERE tenant_id`` predicate in ``repos/audit.py`` is defense-in-depth AND
@@ -12,8 +12,8 @@ the explicit ``WHERE tenant_id`` predicate in ``repos/audit.py`` is defense-in-d
 the thing that keeps a TENANT read from surfacing other-tenant/system rows (intended).
 
 ``auth_principal`` and ``client_ip`` are DELIBERATELY NOT MIRRORED: they are caller-context
-PII (root CLAUDE.md logging rule) and never reach the tenant wire, so the read must not be
-able to select them. The columns not read by the list (``event_date``, ``service_version``,
+PII and never reach the tenant wire, so the read must not be able to select them. The
+columns not read by the list (``event_date``, ``service_version``,
 ``data_ingress_event_id``, ``row_offset``, ``_loaded_at``) are likewise omitted, per the
 minimal-mirror precedent of the quarantine models.
 """
@@ -42,7 +42,7 @@ class AuditEvent(Base):
     trace_id: Mapped[UUID] = mapped_column(Uuid)
     prior_trace_id: Mapped[UUID | None] = mapped_column(Uuid)  # NULL on non-duplicate rows
     tenant_id: Mapped[UUID | None] = mapped_column(Uuid)  # NULL for system/pre-auth events
-    # The bronze run this event belongs to (Slice 51a: the runs-surface verdict/counts join key,
+    # The bronze run this event belongs to (the runs-surface verdict/counts join key,
     # partial index ix_audit_events_data_ingress_event). NULL for events outside the ingress
     # lifecycle. Read-only mirror addition; no DDL (the column exists live).
     data_ingress_event_id: Mapped[UUID | None] = mapped_column(Uuid)

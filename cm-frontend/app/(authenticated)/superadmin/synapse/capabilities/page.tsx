@@ -144,9 +144,9 @@ export default async function CapabilitiesPage() {
             which is the half of the disclosure that degrades gracefully.
 
             NATIVE <details>, NOT AN ACCORDION COMPONENT. There is no disclosure
-            primitive in this codebase — nothing in components/ui (17 components),
-            nothing in components/shared, nothing in PATTERNS.md. The two
-            expand/collapse implementations that DO exist (OrgTreeRow,
+            primitive in this codebase — nothing in components/ui, nothing in
+            components/shared. The two expand/collapse implementations that DO
+            exist (OrgTreeRow,
             PermissionMatrixGroup) are bespoke CLIENT-side state machines, and
             adopting either would turn this server component into a client island
             purely to hide some rows. <details> is the platform doing it with no

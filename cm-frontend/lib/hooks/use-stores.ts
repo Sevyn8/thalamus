@@ -11,12 +11,11 @@ import {
 import { useAuthSnapshot } from "@/lib/auth/auth-cache";
 import type { StoreStatus } from "@/types/api";
 
-// Phase 5-stores: react-query hooks. Server-wait pattern (no
-// optimistic state) per the post-MSW precedent. invalidateQueries on
-// success — the production-canonical primitive.
+// Stores react-query hooks. Server-wait pattern (no optimistic
+// state). invalidateQueries on success — the production-canonical
+// primitive.
 //
-// Phase 5h.1.1 (2026-05-21): userId in queryKey to prevent cross-
-// persona cache bleed. See Finding #50.
+// userId in queryKey prevents cross-persona cache bleed.
 
 export function useStores(params?: StoreListParams) {
   const userId = useAuthSnapshot()?.user?.userId ?? null;

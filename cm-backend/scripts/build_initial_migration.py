@@ -65,7 +65,7 @@ TABLES_REVERSE_ORDER = [
     "lookups",
 ]
 
-# Enumerated by grep at generation time (Step 2a in the prompt).
+# Enumerated by grep at generation time.
 ENUMS_TO_DROP = [
     "action_enum",
     "actor_user_type_enum",
@@ -185,7 +185,7 @@ write a new ALTER-style migration) rather than editing this file.
 
 Extensions (ltree, pgcrypto) are NOT installed by this migration.
 CREATE EXTENSION requires superuser privilege; the application role is
-NOSUPERUSER NOBYPASSRLS by design (see CLAUDE.md "Current state").
+NOSUPERUSER NOBYPASSRLS by design.
 Extensions are a database-setup precondition, installed once by a
 privileged role before migrations run. The upgrade() begins with a
 precondition check that surfaces a clear error if either extension is

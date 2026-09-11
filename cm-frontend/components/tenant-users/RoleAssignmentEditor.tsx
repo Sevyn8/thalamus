@@ -11,8 +11,8 @@ import { useOrgTree } from "@/lib/hooks/use-org-nodes";
 import type { OrgNodeTreeItem, RoleListItem } from "@/types/api";
 import { cn } from "@/lib/utils";
 
-// Phase 5n.8.2 RoleAssignmentEditor: per-grant (role_id, org_node_id)
-// editor used by Edit (and Create, 5n.8.3) tenant-user modals.
+// RoleAssignmentEditor: per-grant (role_id, org_node_id) editor used
+// by the Edit and Create tenant-user modals.
 // Fully controlled — `value` is the source of truth including
 // partially-filled rows where role_id or org_node_id is "". The
 // parent decides validity (see hasIncompleteRows / duplicate index
@@ -104,10 +104,10 @@ export function RoleAssignmentEditor({
   // anchors (depth=2 from useOrgTree default); in that case fall
   // back to the id. The picker itself owns lazy-loading.
   //
-  // Phase 5i.2: the synthetic tenant-root row (rendered by the
-  // shared picker via synthesizeTenantRoot) lives outside `tree[]`
-  // — match it explicitly so the collapsed state shows the tenant
-  // name rather than "(anchor not in loaded tree)".
+  // The synthetic tenant-root row (rendered by the shared picker via
+  // synthesizeTenantRoot) lives outside `tree[]` — match it explicitly
+  // so the collapsed state shows the tenant name rather than
+  // "(anchor not in loaded tree)".
   function findOrgNodeName(nodeId: string): string {
     const treeData = treeQuery.data;
     if (!treeData) return "";

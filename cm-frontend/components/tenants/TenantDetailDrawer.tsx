@@ -129,13 +129,13 @@ export function TenantDetailDrawer({ tenantId, open, onOpenChange }: TenantDetai
   const suspendMutation = useSuspendTenant();
   const activateMutation = useActivateTenant();
 
-  // Phase 5n.5 tuple split: lifecycle (suspend/activate) is gated by
-  // backend on ADMIN.TENANTS.OVERRIDE.GLOBAL per
+  // Lifecycle (suspend/activate) is gated by backend on
+  // ADMIN.TENANTS.OVERRIDE.GLOBAL per
   // src/admin_backend/routers/v1/tenants.py:363-366 (activate) and
   // line 409+ (suspend). Do NOT collapse this to CONFIGURE — that
   // gate is for create/edit, not lifecycle transitions. SUPER_ADMIN
-  // holds both grants today; future TENANT-scoped admins (Phase 5g)
-  // may hold only one. Code comment is load-bearing — preserve.
+  // holds both grants today; future TENANT-scoped admins may hold
+  // only one. Code comment is load-bearing — preserve.
   const canManageTenantLifecycle = useCanDo(
     "ADMIN",
     "TENANTS",
@@ -145,10 +145,9 @@ export function TenantDetailDrawer({ tenantId, open, onOpenChange }: TenantDetai
 
   // Edit gate (PATCH /tenants/{id}); tuple matches POST per
   // src/admin_backend/routers/v1/tenants.py:137-140 (POST) and
-  // 310-313 (PATCH). Slice 7 item 2: Edit tenant routes to the wizard
-  // edit surface (the retired EditTenantModal's replacement); the wizard
-  // route enforces the same CONFIGURE gate, and this pre-flight keeps the
-  // denial path honest before navigating.
+  // 310-313 (PATCH). Edit tenant routes to the wizard edit surface; the
+  // wizard route enforces the same CONFIGURE gate, and this pre-flight
+  // keeps the denial path honest before navigating.
   const canEditTenant = useCanDo(
     "ADMIN",
     "TENANTS",
@@ -215,7 +214,7 @@ export function TenantDetailDrawer({ tenantId, open, onOpenChange }: TenantDetai
       subtitle={q.data?.display_code ?? undefined}
       footer={
         // Lifecycle button matrix mirrors the backend's allowed_sources:
-        //   ONBOARDING → Resume onboarding (Slice 6; suspend/activate would
+        //   ONBOARDING → Resume onboarding (suspend/activate would
         //                409, so they are correctly absent)
         //   TRIAL      → Activate (positive) + Suspend (destructive)
         //   ACTIVE     → Suspend

@@ -1,4 +1,4 @@
-"""GCS signed-URL generation for tenant documents (Slice 3).
+"""GCS signed-URL generation for tenant documents.
 
 A ``runtime_checkable`` ``SignedUrlGenerator`` Protocol plus a concrete
 ``GcsSignedUrlGenerator`` wrapping ``google-cloud-storage``, mirroring the
@@ -39,7 +39,7 @@ from google.cloud import storage
 from admin_backend.config import Settings
 from admin_backend.errors import DocumentStorageUnavailableError
 
-# Allowlisted upload content types (Slice 3). The router validates against
+# Allowlisted upload content types. The router validates against
 # this set before minting an upload URL.
 ALLOWED_CONTENT_TYPES: tuple[str, ...] = (
     "application/pdf",

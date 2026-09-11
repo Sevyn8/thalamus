@@ -162,13 +162,13 @@ async def test_happy_path_order_read_parse_before_write_then_conditional_publish
 
     names = recorder.names()
     # Read/parse strictly before any write; bronze INSERT before publish (D5);
-    # publish before the mark (D59).
+    # publish before the mark.
     assert names.index("download") < names.index("insert")
     assert names.index("find_prior") < names.index("insert")
     assert names.index("insert") < names.index("publish")
     assert names.index("publish") < names.index("mark_published")
     assert outcome.disposition == "ingested"
-    # Slice 30b: every emitted stage row carries a non-negative duration (lap seam).
+    # Every emitted stage row carries a non-negative duration (lap seam).
     assert writer.events
     assert all(e.duration_ms is not None and e.duration_ms >= 0 for e in writer.events)
 
@@ -181,7 +181,7 @@ async def test_emitted_trace_equals_event_trace_and_no_mint(
     import dis_core.trace_id as trace_id_module
 
     def _explode() -> Any:
-        raise AssertionError("the worker must NEVER mint a trace_id (hard rule 4 / D54)")
+        raise AssertionError("the worker must NEVER mint a trace_id")
 
     monkeypatch.setattr(trace_id_module, "new_trace_id", _explode)
 
@@ -216,8 +216,8 @@ async def test_bronze_row_is_metadata_only_with_event_identity(
     assert row.store_id == UUID(_CSV_EXAMPLE["store_id"])  # single-store session
     assert row.trace_id == UUID(_CSV_EXAMPLE["trace_id"])
     assert row.source_payload_id == _CSV_EXAMPLE["upload_session_id"]
-    assert row.template_id == UUID(_CSV_EXAMPLE["template_id"])  # replay lineage (Slice 8 / D71)
-    assert row.original_filename == _CSV_EXAMPLE["file_name"]  # Slice 51a / D120: persisted verbatim
+    assert row.template_id == UUID(_CSV_EXAMPLE["template_id"])  # replay lineage
+    assert row.original_filename == _CSV_EXAMPLE["file_name"]  # persisted verbatim
     assert row.processing_status == "RECEIVED"
     assert row.row_count == 3
     assert len(row.payload_sha256) == 64
@@ -235,7 +235,7 @@ async def test_published_envelope_carries_bronze_ref_and_codes(
     assert published["bronze_ref"] == str(outcome.bronze_id)
     assert published["tenant_display_code"] == _CSV_EXAMPLE["tenant_display_code"]
     assert published["store_code"] == _CSV_EXAMPLE["store_code"]
-    assert published["template_id"] == _CSV_EXAMPLE["template_id"]  # carried verbatim (D71)
+    assert published["template_id"] == _CSV_EXAMPLE["template_id"]  # carried verbatim
     assert recorder.first("publish")[0] == "ingress.ready"
 
 
@@ -305,7 +305,7 @@ async def test_pii_raise_precedes_bronze_write(monkeypatch: pytest.MonkeyPatch) 
     assert "insert" not in recorder.names()
     assert "publish" not in recorder.names()
     assert "mark_published" not in recorder.names()
-    # Slice 30b: stable code + the detected-column COUNT in event_data. The
+    # Stable code + the detected-column COUNT in event_data. The
     # bronze id stays NULL — correctly: the gate runs BEFORE the bronze write
     # (hard rule 2), so no bronze row exists at this emit (operator-confirmed).
     [pii_failure] = [e for e in writer.events if e.outcome is Outcome.FAILURE]
@@ -352,14 +352,14 @@ async def test_preflight_failure_writes_failed_row_and_never_publishes(
     assert "publish" not in recorder.names()
     assert "mark_published" not in recorder.names()
     failures = [e for e in writer.events if e.outcome is Outcome.FAILURE]
-    # Slice 30b: the stable vocabulary replaces the raw reason; the reason rides event_data.
+    # The stable vocabulary replaces the raw reason; the reason rides event_data.
     assert failures and failures[0].failure_code == "PREFLIGHT_NOT_CSV"
     assert failures[0].event_data is not None and failures[0].event_data["reason"] == "not_csv"
     assert failures[0].data_ingress_event_id == row.id
 
 
 # ---------------------------------------------------------------------------
-# Idempotency (AC7 / D59): no-op vs resume, both ways.
+# Idempotency: no-op vs resume, both ways.
 # ---------------------------------------------------------------------------
 
 
@@ -374,7 +374,7 @@ async def test_duplicate_with_published_prior_is_full_noop_returning_prior_trace
     assert outcome.trace_id == prior.trace_id  # the PRIOR trace, not the event's
     assert "insert" not in recorder.names()  # no second bronze row
     assert "publish" not in recorder.names()  # no second publish
-    # FLIPPED by Slice 30c (the D42 revision): the kind is the OUTCOME and the
+    # The duplicate kind is the OUTCOME and the
     # prior trace is a COLUMN — no longer SKIPPED + event_data JSONB keys.
     [noop] = [e for e in writer.events if e.outcome is Outcome.DUPLICATE_NOOP]
     assert noop.prior_trace_id == prior.trace_id  # the column
@@ -396,7 +396,7 @@ async def test_duplicate_with_failed_prior_is_noop_without_republish(
     assert outcome.disposition == "duplicate_noop"
     assert "insert" not in recorder.names()
     assert "publish" not in recorder.names()
-    # Slice 30c: this path too sets the DUPLICATE_NOOP outcome + the column.
+    # This path too sets the DUPLICATE_NOOP outcome + the column.
     [noop] = [e for e in writer.events if e.outcome is Outcome.DUPLICATE_NOOP]
     assert noop.prior_trace_id == prior.trace_id
 
@@ -404,7 +404,7 @@ async def test_duplicate_with_failed_prior_is_noop_without_republish(
 async def test_duplicate_with_unpublished_prior_resumes_publish_and_marks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # D59 resume-and-mark: complete the lost publish under the PRIOR trace_id,
+    # Resume-and-mark: complete the lost publish under the PRIOR trace_id,
     # stamp published_at, write no second bronze row.
     prior = _prior()  # RECEIVED, published_at NULL
     recorder = _Recorder()
@@ -420,7 +420,7 @@ async def test_duplicate_with_unpublished_prior_resumes_publish_and_marks(
     assert recorder.first("mark_published") == prior.bronze_id
     names = recorder.names()
     assert names.index("publish") < names.index("mark_published")
-    # Slice 30c: the resume is a retry-completion — legible as RETRIED.
+    # The resume is a retry-completion — legible as RETRIED.
     [resumed] = [e for e in writer.events if e.stage is Stage.INGRESS_PUBLISHED]
     assert resumed.outcome is Outcome.RETRIED
     assert resumed.event_data is not None and resumed.event_data["resumed"] is True

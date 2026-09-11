@@ -5,38 +5,33 @@ APPEND-ONLY IS ENFORCED BY WHAT THESE PROTOCOLS DO NOT HAVE. There is no ``updat
 frozen dataclasses and the sequence handed back is a copy. A correction is a new append naming
 what it supersedes (``ActionEvent.supersedes``).
 
-That is a stronger guarantee than a table with a comment saying "do not update", which is what
-canonical's event tables had before migration 0019 and which cost one 328-row upload becoming
-1640 rows. A type that offers no edit cannot be edited by someone in a hurry.
+That is a stronger guarantee than a table with a comment saying "do not update". A type that
+offers no edit cannot be edited by someone in a hurry.
 
 ===============================================================================================
 WHY TWO PROTOCOLS AND NOT ONE
 ===============================================================================================
 
-Slice 4 had a single ``ActionLog`` with both methods, and slice 5 discovered it could not be
-implemented in Postgres — for two separate reasons, and the second is the interesting one.
+A single ``ActionLog`` with both methods cannot be implemented in Postgres here, for two
+separate reasons — the second is the interesting one.
 
-FIRST, IT WAS SYNCHRONOUS. Everything in Synapse that touches a database is async: rls_session,
-every resolver, resolve(), resolve_declaration(). A durable log was the odd one out only
-because it had not been written yet, and the sync shape was never a decision — it was what
-happened to work when the only implementation needed no I/O. mypy said so plainly the moment a
-Postgres implementation was asserted against it:
-``Expected: def append(...) -> None`` / ``Got: def append(...) -> Coroutine[Any, Any, None]``.
+FIRST, THE METHODS MUST BE ASYNC. Everything in Synapse that touches a database is async:
+rls_session, every resolver, resolve(), resolve_declaration(). A sync log protocol would be
+unimplementable by anything that does I/O.
 
-SECOND, AND MORE IMPORTANTLY, IT ASKED ONE OBJECT TO DO TWO THINGS THAT DELIBERATELY LIVE IN
+SECOND, AND MORE IMPORTANTLY, ONE OBJECT WOULD HAVE TO DO TWO THINGS THAT DELIBERATELY LIVE IN
 DIFFERENT ROLES. ``synapse_writer`` holds INSERT and no SELECT; ``synapse_reader`` holds SELECT
 and no INSERT. That split is not incidental — it is what makes "resolvers never write" a runtime
-property rather than a grep test. A single protocol forced a durable writer to carry an
+property rather than a grep test. A single protocol would force a durable writer to carry an
 ``events()`` it could never implement, and ``NotImplementedError`` there is the SYMPTOM, not the
 fix: a protocol with a member one implementation deliberately cannot satisfy is a broken
 protocol.
 
-So the types now agree with the posture that already existed, and THREE LAYERS SAY THE SAME
-THING instead of two:
+So the types agree with the role posture, and THREE LAYERS SAY THE SAME THING:
 
     the GRANT says the writer cannot read
     the ENGINE says it
-    and now the TYPE says it — a writer object has no events() to call
+    and the TYPE says it — a writer object has no events() to call
 
 Same discipline as the generated columns in the DDL: make the disagreement unrepresentable
 rather than detectable.
@@ -66,12 +61,10 @@ class ActionAppender(Protocol):
     async def append(self, event: ActionEvent) -> bool:
         """Record one event. Returns whether it LANDED; ``False`` means it was suppressed.
 
-        THIS RETURNED ``None`` UNTIL SLICE 6, on the reasoning that ``synapse_writer`` holds no
-        SELECT so a durable appender cannot look. That reasoning was wrong in a specific way
-        worth keeping: it conflated READING THE LOG with knowing what your own statement did.
-        ``ON CONFLICT DO NOTHING`` reports its own ``rowcount``, which needs no SELECT grant and
-        discloses nothing about any other row. The information was always available and was
-        being discarded.
+        A ``bool`` even though ``synapse_writer`` holds no SELECT, because READING THE LOG and
+        knowing what your own statement did are different things: ``ON CONFLICT DO NOTHING``
+        reports its own ``rowcount``, which needs no SELECT grant and discloses nothing about
+        any other row.
 
         It is NOT an invitation to read-modify-write. The value says what one INSERT did; it
         cannot be used to look up, compare or amend anything, and there is still no way to read
@@ -102,8 +95,8 @@ class InMemoryActionLog:
     durable implementations, so the two cannot drift apart in what they promise.
 
     ``async`` despite needing no I/O. Matching the protocol is the point — an in-memory
-    implementation that was sync would force the protocol to be sync, which is exactly the
-    mistake slice 4 made.
+    implementation that was sync would force the protocol to be sync, which nothing that
+    does real I/O could then implement.
 
     ``_events`` is private and ``events()`` returns a TUPLE, so a caller cannot append by
     reaching through the accessor. Returning the live list would make ``append`` advisory and

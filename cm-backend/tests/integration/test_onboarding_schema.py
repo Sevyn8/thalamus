@@ -1,4 +1,4 @@
-"""Slice 1: schema-layer tests for the client-onboarding tables.
+"""Schema-layer tests for the client-onboarding tables.
 
 Asserts the live database state at migration head matches the design:
 

@@ -1,4 +1,4 @@
-"""Migration 0007 (audit.events de-partition, Slice 30a): target safety, the
+"""Migration 0007 (audit.events de-partition): target safety, the
 cliff-gone proof, RLS invariance, reversibility, scope boundary, and
 fresh-bootstrap convergence.
 
@@ -8,31 +8,29 @@ Layers (the 0002..0005 migration-test conventions):
     ``check_migration_target`` refusal logic is unit-testable without a live
     bind: refuses Customer Master outright, refuses any non-expected database,
     passes only the DIS database.
-  * **The cliff-gone proof (the load-bearing test of the slice).** A
+  * **The cliff-gone proof (the load-bearing test of this migration).** A
     ``PostgresAuditWriter`` write dated WELL OUTSIDE the old fixed partition
     window (2026-06-01..07) — both far-future and pre-window — lands with no
-    missing-partition error. Pre-30a both writes were silently swallowed
-    (decisions.md D45); they must now return True and read back. Run against
+    missing-partition error. Before de-partitioning, both writes were silently
+    swallowed; they must now return True and read back. Run against
     the resident DB (read-only reference, at head); rows are cleaned up.
   * **RLS tenant isolation identical through the drop-recreate.** Tenant A's
     audit row is invisible under tenant B's ``app.tenant_id`` and visible
     under tenant A's — proven via raw reads, not the writer under test.
-  * **Reversible cycle against an ephemeral scratch DB (Slice 51c, D122).**
+  * **Reversible cycle against an ephemeral scratch DB.**
     ``upgrade head`` leaves a PLAIN audit.events (no partkey, PK (id),
     constraints/indexes/RLS intact, app-role INSERT grant intact); ``downgrade
     0006`` recreates the partitioned form with a fresh CURRENT_DATE-relative
     window; ``upgrade head`` returns to the plain shape.
-  * **Scope boundary — MOVED.** The 30a boundary test (the other 6 parents
+  * **Scope boundary — MOVED.** The boundary test (the other 6 parents
     stay partitioned) was repealed when migration 0009 consciously revised
-    D77's scope clause and de-partitioned those parents too; the at-head
+    the de-partition scope and de-partitioned those parents too; the at-head
     boundary now lives in test_migration_0009.py
     (test_scope_boundary_nothing_else_moved).
-  * **Fresh-bootstrap convergence on a scratch DB (the 9a lesson).** The
+  * **Fresh-bootstrap convergence on a scratch DB.** The
     ephemeral scratch DB at head (0001 applies the now-plain manifest; 0007
     re-applies the same file) must carry the IDENTICAL audit.events shape the
     delta-path (resident migrated reference) database's carries.
-
-See: docs/slices/slice-30a-audit-departition.md, decisions.md D45/D34/D29/D43/D44.
 """
 
 from __future__ import annotations
@@ -70,7 +68,7 @@ _AUDIT_CONSTRAINTS = (
     "ck_audit_events_rows_failed_non_negative",
     "ck_audit_events_duration_non_negative",
     # Kept deliberately (NOT a partition-routing-only artifact): defines
-    # event_date's semantics; Slice 21's re-partition invariant.
+    # event_date's semantics, a re-partition invariant.
     "ck_audit_events_event_date_matches",
 )
 _AUDIT_INDEXES = (
@@ -123,7 +121,7 @@ async def app_engine() -> AsyncIterator[AsyncEngine]:
     url = os.environ.get("POSTGRES_URL")
     if not url:
         raise StackRequiredError(
-            "POSTGRES_URL is not set — the Slice 30a cliff-gone proof refuses to skip "
+            "POSTGRES_URL is not set — the cliff-gone proof refuses to skip "
             "silently. Bring up the stack (make run-local) and export POSTGRES_URL "
             "(5433 / ithina_dis_db)."
         )
@@ -133,7 +131,7 @@ async def app_engine() -> AsyncIterator[AsyncEngine]:
         seed_default_fixtures(url=url)  # FK target tenants; idempotent
     except Exception as exc:  # noqa: BLE001 — stack down → ERROR loudly, never skip
         raise StackRequiredError(
-            f"DIS Postgres unreachable for the Slice 30a proofs ({exc!r}); refusing "
+            f"DIS Postgres unreachable for the cliff-gone proofs ({exc!r}); refusing "
             "to skip. Bring up the stack (make run-local)."
         ) from exc
 
@@ -261,7 +259,7 @@ def _audit_shape(engine: Engine) -> dict[str, object]:
 
 
 def _assert_plain_shape(engine: Engine) -> None:
-    """The Slice 30a acceptance shape, from live catalogs."""
+    """The de-partitioned acceptance shape, from live catalogs."""
     assert _partkey(engine, "audit.events") is None, "audit.events is still partitioned"
     assert _partition_children(engine) == []
     assert _pk_def(engine) == "PRIMARY KEY (id)"
@@ -282,7 +280,7 @@ def _assert_plain_shape(engine: Engine) -> None:
 
 
 # ---------------------------------------------------------------------------
-# The cliff-gone proof (the load-bearing test of the slice).
+# The cliff-gone proof (the load-bearing test of this migration).
 # ---------------------------------------------------------------------------
 
 
@@ -311,7 +309,7 @@ def _delete_audit_trace(admin_engine: Engine, trace_id: str) -> None:
     """Revert a directly-written audit row (admin bypasses FORCE RLS).
 
     These cliff-gone proofs write real ``audit.events`` rows; without this they would
-    leak past the suite and the D100 post-suite clean-state guard would (correctly) fail.
+    leak past the suite and the post-suite clean-state guard would (correctly) fail.
     """
     with admin_engine.begin() as conn:
         conn.execute(text("DELETE FROM audit.events WHERE trace_id = :tr"), {"tr": trace_id})
@@ -321,8 +319,8 @@ def _delete_audit_trace(admin_engine: Engine, trace_id: str) -> None:
     ("timestamp", "expected_date"),
     [
         # Far OUTSIDE the old fixed window (2026-06-01..07) on both sides.
-        # Pre-30a each write hit "no partition found" and was silently
-        # swallowed by fire-and-forget (decisions.md D45).
+        # Before de-partitioning, each write hit "no partition found" and was silently
+        # swallowed by fire-and-forget.
         (datetime(2027, 3, 15, 12, 0, tzinfo=UTC), "2027-03-15"),
         (datetime(2025, 1, 1, 0, 30, tzinfo=UTC), "2025-01-01"),
     ],
@@ -383,7 +381,7 @@ async def test_rls_isolation_survives_departition(app_engine: AsyncEngine, admin
 
 
 # ---------------------------------------------------------------------------
-# Reversible cycle against an ephemeral scratch DB (Slice 51c, D122).
+# Reversible cycle against an ephemeral scratch DB.
 # ---------------------------------------------------------------------------
 
 

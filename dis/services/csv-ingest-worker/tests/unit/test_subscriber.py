@@ -93,7 +93,7 @@ class _RecordingSubscriberClient:
 
 
 async def test_run_forever_beats_heartbeat_each_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Slice 40a: the heartbeat is written by the LOOP, unconditionally — no toggle,
+    # The heartbeat is written by the LOOP, unconditionally — no toggle,
     # no server involved. One cycle (poll_once cancels out of the infinite loop)
     # must advance last_beat.
     from google.cloud import pubsub_v1
@@ -116,7 +116,7 @@ async def test_run_forever_beats_heartbeat_each_cycle(monkeypatch: pytest.Monkey
 def test_subscriber_constructs_without_emulator_var_ambient_mode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Slice 40a emulator-or-ambient: the branch that pre-40a raised now constructs
+    # Emulator-or-ambient: the no-emulator branch constructs
     # a bare client (ambient ADC = pass nothing; pubsub_v1 honours the env var
     # natively, so both branches are the identical no-kwargs construction).
     from google.cloud import pubsub_v1

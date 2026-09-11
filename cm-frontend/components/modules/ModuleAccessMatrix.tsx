@@ -44,12 +44,11 @@ export type ModuleAccessMatrixProps = {
   onRetry: () => void;
 };
 
-// Phase 5e.3: rewritten to consume backend's MatrixResponse shape.
-// cells[] are now {module_code, status: "ENABLED" | "DISABLED"}
-// rather than the pre-5e3 {code, enabled, enabled_at}. The
-// enabled_at field had no backend equivalent and is dropped.
-// Phase 5j: cell click wires to real backend enable/disable mutations
-// (Step 6.15 endpoints). Server-wait UX, no optimistic state.
+// Consumes backend's MatrixResponse shape: cells[] are
+// {module_code, status: "ENABLED" | "DISABLED"}. There is no
+// enabled_at field — backend has no equivalent, so none is rendered.
+// Cell click wires to real backend enable/disable mutations.
+// Server-wait UX, no optimistic state.
 export function ModuleAccessMatrix({
   rows,
   modules,
@@ -57,14 +56,12 @@ export function ModuleAccessMatrix({
   hasError,
   onRetry,
 }: ModuleAccessMatrixProps) {
-  // Phase 5j: useCanDo pre-flight gate.
-  // Module Access enable/disable shares the tenant lifecycle permission
-  // tuple (ADMIN.TENANTS.OVERRIDE.GLOBAL) per
-  // step-6_15-impl-2026-05-15.md LD3. The reuse is deliberate
-  // (SUPER_ADMIN-only, same privilege boundary as tenant suspend/
-  // activate). Do NOT "fix" this to look more module-access-specific —
-  // Sanjeev's backend gates exclusively on this tuple. See BUILD_PLAN
-  // Sanjeev queue for the Phase 5g aliasing concern.
+  // useCanDo pre-flight gate. Module Access enable/disable shares the
+  // tenant lifecycle permission tuple (ADMIN.TENANTS.OVERRIDE.GLOBAL).
+  // The reuse is deliberate (SUPER_ADMIN-only, same privilege boundary
+  // as tenant suspend/activate). Do NOT "fix" this to look more
+  // module-access-specific — the backend gates exclusively on this
+  // tuple.
   const canToggleModuleAccess = useCanDo(
     "ADMIN",
     "TENANTS",

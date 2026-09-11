@@ -1,4 +1,4 @@
-"""Response schemas for ``/api/v1/me/*`` (Step 6.9.2).
+"""Response schemas for ``/api/v1/me/*``.
 
 Three Pydantic models:
 
@@ -10,7 +10,7 @@ Three Pydantic models:
 
 - ``MePermissionsResponse`` — envelope ``{"permissions": [...]}`` for
   ``GET /me/permissions``. Always an array (D-30 list-wrapper-with-key
-  shape per the batch-by-key convention precedent at Step 3.6).
+  shape per the batch-by-key convention).
 
 - ``MeCanDoResponse`` — flat object for ``GET /me/can-do``:
   ``{"allowed": bool, "reason_code": str}``. Single-resource shape,

@@ -1,6 +1,6 @@
-"""Migration 0010 (config.source_mappings.template_type, Slice 14d): target
+"""Migration 0010 (config.source_mappings.template_type): target
 safety, the additive column shape, the signature backfill, view exposure, and a
-reversible cycle against an ephemeral scratch DB (Slice 51c, D122).
+reversible cycle against an ephemeral scratch DB.
 
 Layers (the 0005..0009 migration-test conventions):
 

@@ -8,13 +8,11 @@ per the contract's versioning rules).
 
 Note on identifiers: ``tenant_id`` / ``store_id`` are the **internal UUIDs**
 (identical to Customer Master ``core.tenants.id`` / ``core.stores.id`` and the
-``identity_mirror`` keys) — the load-bearing identity a caller writes downstream
-(decisions.md D37/D52). The invented external ``t_*``/``s_*`` form is retired.
+``identity_mirror`` keys) — the load-bearing identity a caller writes downstream.
 Customer Master's authoritative external codes (``display_code``/``store_code``)
-ride alongside for readability only (D55); they are never a substitute for the
+ride alongside for readability only; they are never a substitute for the
 UUIDs. The same ``TenantId``/``StoreId`` UUID types live in
-``dis_core.identifiers`` for DB/RLS/canonical use — the historical name
-collision between the two modules is resolved: both are UUIDs now.
+``dis_core.identifiers`` for DB/RLS/canonical use.
 """
 
 from __future__ import annotations
@@ -25,8 +23,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 # Identifier patterns — copied verbatim from the OpenAPI contract. These are the
-# genuine Customer Master artifact forms (upload sessions, endpoint configs);
-# the retired t_*/s_* identity patterns are gone (D52).
+# genuine Customer Master artifact forms (upload sessions, endpoint configs).
 UPLOAD_SESSION_ID_PATTERN = r"^us_[a-z0-9]{12}$"
 ENDPOINT_CONFIG_ID_PATTERN = r"^ec_[a-z0-9]{12}$"
 
@@ -52,9 +49,9 @@ ErrorCode = Literal[
 class Identity(BaseModel):
     """Resolved identity returned by the three ``resolve_*`` methods.
 
-    ``tenant_id``/``store_id`` are the internal UUIDs (load-bearing, D37).
+    ``tenant_id``/``store_id`` are the internal UUIDs (load-bearing).
     ``display_code``/``store_code`` are Customer Master's authoritative external
-    codes (D55): optional in the schema, populated when present in Customer
+    codes: optional in the schema, populated when present in Customer
     Master (``store_code`` is nullable at source), readability only.
     """
 

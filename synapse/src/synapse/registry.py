@@ -14,11 +14,13 @@ FOUR MAPPINGS AND TWO FUNCTIONS, and which reads which matters:
 whoever evaluates; nothing here calls an evaluator, because resolution and arithmetic are
 separate concerns.
 
-(The previous version of this paragraph said "``resolve()`` reads them", of all three mappings.
-That was FALSE when written — resolve() never touched ``_DECLARATIONS`` — and slice 3 adding
-``resolve_declaration()`` would have made it quietly true, which is worse than leaving it wrong:
-the drift that exposes a false claim never happens, and a grep for expired claims never fires
-because by then it is accurate. Corrected by naming each reader explicitly.)
+(An earlier version of this paragraph said "``resolve()`` reads them", of all three mappings.
+That was FALSE when written — resolve() never touched ``_DECLARATIONS`` — and adding
+``resolve_declaration()`` later would have made it quietly true, which is worse than leaving it
+wrong: the drift that would expose a false claim never happens, and a grep for expired claims
+never fires once the claim is accurate by accident. Corrected by naming each reader explicitly,
+which is why this docstring calls out which mapping each function reads rather than saying
+"reads them".)
 
 There is no dispatch on capability id or analysis id anywhere — adding either is adding a row,
 and every invariant below is checked at import rather than trusted.
@@ -282,8 +284,8 @@ _REGISTRY: Final[Mapping[str, RegisteredCapability]] = MappingProxyType(
 
 
 # THE ANALYSIS DECLARATIONS. Data, exactly like _REGISTRY: adding an analysis is adding a row
-# here, never editing an engine. Their output is consumed by an evaluator and, from slice 4, by
-# an action proposer; nothing SCHEDULES a run or DELIVERS a result anywhere, which is why the
+# here, never editing an engine. Their output is consumed by an evaluator and by an action
+# proposer; nothing SCHEDULES a run or DELIVERS a result anywhere, which is why the
 # declaration still has no schedule and no destination.
 _DECLARATIONS: Final[Mapping[str, AnalysisDeclaration]] = MappingProxyType(
     {
@@ -452,9 +454,9 @@ def _bound(gate: Gate) -> tuple[GateKind, int, SeriesPolicy]:
     --strict here until it is handled, which is the visible edit the ``Gate`` union alias in
     synapse.core.analysis exists to force.
 
-    ALL THREE COME FROM THE CALLER. Slice 1 read the threshold off the DESCRIPTOR and applied a
-    module-level policy; both now arrive bound together on the gate, so a capability cannot
-    dictate either and a caller cannot supply one without the other.
+    ALL THREE COME FROM THE CALLER. An earlier version read the threshold off the DESCRIPTOR and
+    applied a module-level policy; both now arrive bound together on the gate, so a capability
+    cannot dictate either and a caller cannot supply one without the other.
     """
     match gate:
         case MinHistoryDays(days=days, policy=policy):
@@ -621,8 +623,8 @@ def check_window_declarations(
     1. A named threshold must EXIST on the declaration. Otherwise the KeyError surfaces inside
        resolve_declaration, at the first fetch, for one tenant.
 
-    2. A WINDOW AGAINST A ``LAST_WRITE`` CAPABILITY IS A CONTRADICTION. ``Freshness`` has said
-       since slice 1 which capabilities a date parameter is meaningful for: AS_OF_DATE means a
+    2. A WINDOW AGAINST A ``LAST_WRITE`` CAPABILITY IS A CONTRADICTION. ``Freshness`` says
+       which capabilities a date parameter is meaningful for: AS_OF_DATE means a
        value stamped with the date it describes, LAST_WRITE means "whatever the row says now,
        asking for yesterday is not answerable". Declaring a window against the latter asks a
        question the capability's own contract says has no answer, and it would silently pass a
@@ -841,17 +843,18 @@ async def resolve(
     one unmet gate would hide the second the day a capability declares two, and the probes
     are cheap counts.
 
-    ``gates`` IS REQUIRED AND HAS NO DEFAULT, and that is the breaking change slice 2 makes to
-    a slice-1 signature. It is deliberate. The threshold and the policy both arrive here bound
+    ``gates`` IS REQUIRED AND HAS NO DEFAULT. This is deliberate: an earlier signature defaulted
+    it and read the threshold and policy off the descriptor instead. Now both arrive here bound
     together on each gate, supplied by whoever is asking — an analysis declaration, or a console
     that must now say what it means.
 
     A DEFAULT WOULD MAKE THE GATE DECORATIVE. Defaulting ``gates=()`` would let
     ``resolve(engine, "daily_series", scope)`` skip a declared gate entirely and answer
     Satisfied, which is a free verdict with nobody having said what enough means. Defaulting the
-    POLICY would be worse: it would reinstate exactly the unowned default slice 2 deleted. So
-    a caller with no gates passes ``gates=()`` explicitly — an empty tuple is a claim, a missing
-    argument is a silence, and this codebase already refuses to let those be the same value.
+    POLICY would be worse: it would reinstate exactly the unowned default this signature was
+    changed to remove. So a caller with no gates passes ``gates=()`` explicitly — an empty tuple
+    is a claim, a missing argument is a silence, and this codebase already refuses to let those
+    be the same value.
 
     THE SUPPLIED KINDS MUST EQUAL THE DECLARED KINDS EXACTLY. Not a subset: an unbound declared
     gate never runs. Not a superset: a bound gate the capability does not declare has no probe
@@ -954,10 +957,11 @@ async def resolve_declaration(
     ``_check_declarations()`` verified at import that dead_stock's grain was joinable and its
     fields were real, and nothing had ever fetched a row for it.
 
-    ONE ``resolve()`` PER REQUIREMENT, WITH THE DECLARATION'S OWN GATES. This is where slice 2's
-    inversion pays off: the thresholds and policies come from the declaration, so two analyses
-    requiring the same capability at different thresholds each get their own answer, and neither
-    can be given a verdict nobody asked for.
+    ONE ``resolve()`` PER REQUIREMENT, WITH THE DECLARATION'S OWN GATES. This is where binding
+    the threshold and policy to the caller rather than the descriptor pays off: the thresholds
+    and policies come from the declaration, so two analyses requiring the same capability at
+    different thresholds each get their own answer, and neither can be given a verdict nobody
+    asked for.
 
     EVERY REQUIREMENT IS EVALUATED, never short-circuited on the first block. An operator about
     to provision one missing capability needs to know the other is also missing, or they will fix
@@ -1037,7 +1041,7 @@ async def resolve_declaration(
         )
         if isinstance(outcome, Satisfied):
             # THE WHOLE Satisfied, not just its fetch: it carries the descriptor and therefore the
-            # capability VERSION, which provenance needs and which slice 3 discarded here.
+            # capability VERSION, which provenance needs and an earlier version discarded here.
             resolutions[requirement.capability_id] = outcome
         else:
             blocked[requirement.capability_id] = outcome

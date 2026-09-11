@@ -47,8 +47,8 @@ from scripts.seed_dev_data.column_mappings import SHEET_MAPPINGS
 
 
 # All loadable sheets. Derived from SHEET_MAPPINGS to keep a single
-# source of truth — when Step 6.2 lands audit_logs, adding it to
-# SHEET_MAPPINGS automatically extends excel_reader's coverage too.
+# source of truth — any sheet added to SHEET_MAPPINGS automatically
+# extends excel_reader's coverage too.
 SHEETS_TO_READ: set[str] = set(SHEET_MAPPINGS.keys())
 
 # Excel formula-error sentinels. A cell rendering one of these is a

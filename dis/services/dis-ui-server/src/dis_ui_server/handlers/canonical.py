@@ -6,10 +6,10 @@ RLS is the database backstop) plus an explicit tenant predicate. Wire<->DB trans
 (Decimal->str money-safe rendering, ISO timestamp + date rendering, enum-as-text, store_id parse);
 the repo speaks DB vocabulary only.
 
-Slice 52a widens the served fields to the FULL live column set of store_sku_current_position
+The served fields are the FULL live column set of store_sku_current_position
 EXCEPT tenant_id (scope) and ingest_metadata (operator-excluded), plus a human-readable store_name
-LEFT-joined from identity_mirror.stores (null when unmirrored). Additive: every prior key keeps its
-name and rendered value; mapping_version stays the sole version key (from mapping_version_id).
+LEFT-joined from identity_mirror.stores (null when unmirrored). mapping_version is the sole
+version key (from mapping_version_id).
 
 READ-ONLY (canonical is in the service read-set; the consumer/daily-compute are its sole
 writers). LIST-ONLY, BOUNDED to the newest ``_POSITIONS_LIMIT`` positions (the mockup's "sample

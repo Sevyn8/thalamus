@@ -16,11 +16,10 @@ export type TenantListProps = {
   hasError: boolean;
 };
 
-// Phase 4e: backend's tenants list (used here in place of the
-// retired /api/v1/org-summary) doesn't carry node_count, so the
-// previous "(N nodes)" badge per tile drops. The OrgTreePane's
-// header already shows the per-tenant node total once a tenant is
-// selected, so the information isn't lost — just relocated.
+// The backend's tenants list doesn't carry node_count, so there is no
+// "(N nodes)" badge per tile here. The OrgTreePane's header already shows
+// the per-tenant node total once a tenant is selected, so the information
+// isn't lost — just relocated.
 export function TenantList({
   tenants,
   selectedId,

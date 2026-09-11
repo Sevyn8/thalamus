@@ -1,6 +1,6 @@
 """Source-shape (pre-mapping) suite: judges a raw chunk in the tenant's vocabulary.
 
-Checks chunk shape BEFORE mapping (D18): required source columns present, value
+Checks chunk shape BEFORE mapping: required source columns present, value
 plausibility (declared pattern), null and row-count plausibility — so the failure
 reason is intelligible to the tenant ("expected column ``item_code``, got
 ``itemcd``") rather than a misleading downstream symptom.
@@ -8,11 +8,11 @@ reason is intelligible to the tenant ("expected column ``item_code``, got
 The expected columns DERIVE FROM THE MAPPING'S RENAME MAP by default
 (``from_rename``): the rename map is the single statement of what the engine will
 read, so a standalone list could only drift. The coupling crosses no lib boundary
-— the caller (Slice 10/14) hands the rename map over as a plain dict. A fully
+— the caller hands the rename map over as a plain dict. A fully
 authored standalone definition remains possible.
 
 Extra columns are tolerated by default (the source may carry columns the mapping
-ignores; receiver-permissive posture, D13) — set ``allow_extra_columns=False``
+ignores; receiver-permissive posture) — set ``allow_extra_columns=False``
 for strict vocabularies.
 """
 
@@ -62,8 +62,8 @@ class SourceShapeSuiteDef(BaseModel):
     never admit or alter wrong data — which is why it is acceptable as a lib
     default where the locale separators (whose defaulting could silently produce
     wrong values) are mandatory declarations. The empty-file product rule's
-    first line of defence is tier-0 structural validation at the upload endpoint
-    (decisions.md D51); this bound is the pipeline-side backstop.
+    first line of defence is tier-0 structural validation at the upload endpoint;
+    this bound is the pipeline-side backstop.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
