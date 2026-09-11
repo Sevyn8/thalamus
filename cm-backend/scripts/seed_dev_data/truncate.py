@@ -18,18 +18,6 @@ of row counts).
 A TRUNCATE that needs CASCADE is a sign of either wrong ordering or
 wrong scope; a single multi-table TRUNCATE without CASCADE is the
 project-shaped solution.
-
-ROOS lookup cleanup. The migration chain seeds ROOS at
-``lookups(list_name='module_code', code='ROOS', display_order=1)``,
-but ROOS is retired from the Python ``ModuleCode`` vocabulary; with
-the narrowed ``ModuleCodeLiteral`` (5 values), a
-``module_code='ROOS'`` row surfacing through ``/module-access/modules``
-would crash Pydantic validation at the response boundary. The local
-DELETE here mirrors the operator-run cloud cleanup SQL so local and
-cloud stay aligned at 5 module_code rows (display_order 2-6). The
-DB enum ``core.module_code_enum`` still carries ROOS; a future
-rename migration handles that. Idempotent — DELETE matches zero
-rows on subsequent runs.
 """
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -70,8 +58,7 @@ SEED_TABLES = [
 
 
 async def truncate_seed_tables(session: AsyncSession) -> None:
-    """TRUNCATE all seed tables in one statement. NO CASCADE. Then
-    DELETE the retired ROOS lookups row (see module docstring).
+    """TRUNCATE all seed tables in one statement. NO CASCADE.
 
     Shares the caller's transaction (the runner's
     ``get_tenant_session`` block); commit happens on clean exit.
@@ -81,11 +68,5 @@ async def truncate_seed_tables(session: AsyncSession) -> None:
             "TRUNCATE "
             + ", ".join(SEED_TABLES)
             + " RESTART IDENTITY"
-        )
-    )
-    await session.execute(
-        text(
-            "DELETE FROM core.lookups "
-            "WHERE list_name = 'module_code' AND code = 'ROOS'"
         )
     )

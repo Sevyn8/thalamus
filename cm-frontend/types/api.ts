@@ -201,8 +201,8 @@ export type AuditDetail = AuditEvent & {
 // per integration plan).
 //
 // `module_code` bridges to the hand-maintained ModuleCode union. The spec now
-// ships DIS (and ROOS stays retired), so the union and the generated enums
-// agree; the bridge is retained under option A (retired in the option-B pass).
+// ships DIS, so the union and the generated enums agree; the bridge is retained
+// under option A (retired in the option-B pass).
 export type ModuleCard = Omit<Schemas["ModuleCard"], "module_code"> & {
   module_code: ModuleCode;
 };

@@ -263,9 +263,9 @@ jobs:
         working-directory: cm-backend
         run: uv run alembic upgrade head
       - name: Seed the development fixtures
-        # --reset is load-bearing, not tidiness: it is what retires the ROOS lookups
-        # row that the migration chain still seeds, which the module-catalog and
-        # lookups tests assert is gone.
+        # --reset truncates the seed tables first, so the load is a clean reseed rather
+        # than a second insert on top of whatever the previous step left. The module
+        # catalogue itself is migration-owned and is not touched by the reset.
         working-directory: cm-backend
         run: uv run python -m scripts.seed_dev_data --reset
       - name: mypy --strict
