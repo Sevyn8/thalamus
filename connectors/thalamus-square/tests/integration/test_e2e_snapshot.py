@@ -265,10 +265,7 @@ def _drain_ingress_ready() -> None:
     """Best-effort: pull+ack the connector's published ingress.ready messages so they do not
     linger on the shared subscription (test hygiene; DB residue is handled by _cleanup)."""
     try:
-        # attr-defined: google-cloud-secret-manager (square-oauth, S2) ships py.typed and
-        # makes google.cloud a resolved namespace in this package's mypy run, so the untyped
-        # sibling pubsub_v1 no longer resolves as an attribute. Runtime import is unaffected.
-        from google.cloud import pubsub_v1  # type: ignore[attr-defined]
+        from google.cloud import pubsub_v1
 
         project = _require_env("PUBSUB_PROJECT_ID")
         sub = pubsub_v1.SubscriberClient()

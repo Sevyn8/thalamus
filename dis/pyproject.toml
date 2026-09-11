@@ -178,8 +178,18 @@ exclude = "^services/dis-ui/"
 [[tool.mypy.overrides]]
 # The google-cloud namespace packages (pubsub, storage) ship no py.typed mypy
 # can use; standard resolution, scoped to the namespace — not a blanket ignore.
-module = "google.cloud.*"
+#
+# THE NAMESPACE ROOT IS LISTED SEPARATELY AND IS LOAD-BEARING. "google.cloud.*"
+# matches submodules, NOT "google.cloud" itself, so mypy still resolved the
+# namespace package and reported `from google.cloud import pubsub_v1` as
+# attr-defined on it rather than as a missing import — which ignore_missing_imports
+# does not silence. Same formulation cm-backend already uses.
+module = ["google.cloud.*", "google.cloud"]
 ignore_missing_imports = true
+# ignore_missing_imports alone is moot for the root: the namespace directory IS
+# findable, so mypy analyses it and the submodule access fails as an attribute.
+# follow_imports=skip is what makes the untyped namespace resolve to Any.
+follow_imports = "skip"
 
 [[tool.mypy.overrides]]
 # google-api-core exceptions (NotFound, used by the square-oauth Secret Manager

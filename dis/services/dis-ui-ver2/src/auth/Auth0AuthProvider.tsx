@@ -51,11 +51,12 @@ export function Auth0AuthProvider({ children }: { children: ReactNode }) {
     logout,
     error,
   } = useAuth0()
-  const [snapshot, setSnapshot] = useState<AuthSnapshot | null>(null)
-  // The access token is fetched asynchronously after Auth0 reports authenticated;
-  // until it is written to storage, client.ts would have no bearer, so we hold the
-  // status at 'loading' (tokenReady=false) rather than prematurely 'authenticated'.
-  const [tokenReady, setTokenReady] = useState(false)
+  // The result of the access-token fetch below. Non-null ONLY once a token has been
+  // fetched and written to storage. Nothing resets it when Auth0 reports
+  // unauthenticated: the two values consumers see are DERIVED from it during render
+  // (below), because syncing derived state back through an effect is the pattern
+  // react-hooks/set-state-in-effect exists to reject.
+  const [fetchedSnapshot, setFetchedSnapshot] = useState<AuthSnapshot | null>(null)
 
   // Loop guard for the silent-authorize attempt below. Computed once per page load:
   // true when the URL carries an Auth0 redirect result (?code/?state on success,
@@ -73,9 +74,10 @@ export function Auth0AuthProvider({ children }: { children: ReactNode }) {
   const [authorizeFailed, setAuthorizeFailed] = useState(false)
 
   useEffect(() => {
+    // Nothing to fetch while unauthenticated. No reset here: `snapshot` /
+    // `tokenReady` below already read as null / false whenever isAuthenticated is
+    // false, so a stored result is unreachable rather than cleared.
     if (!isAuthenticated) {
-      setSnapshot(null)
-      setTokenReady(false)
       return
     }
     let active = true
@@ -90,16 +92,14 @@ export function Auth0AuthProvider({ children }: { children: ReactNode }) {
           return
         }
         writeToken(token)
-        setSnapshot(snapshotFromToken(token))
-        setTokenReady(true)
+        setFetchedSnapshot(snapshotFromToken(token))
       })
       .catch(() => {
         if (!active) {
           return
         }
         clearToken()
-        setSnapshot(null)
-        setTokenReady(false)
+        setFetchedSnapshot(null)
       })
     return () => {
       active = false
@@ -126,6 +126,17 @@ export function Auth0AuthProvider({ children }: { children: ReactNode }) {
       setAuthorizeFailed(true)
     })
   }, [isLoading, isAuthenticated, error, returningFromCallback, loginWithRedirect])
+
+  // DERIVED, not synced. A fetched snapshot is only the current one while Auth0 still
+  // reports an authenticated session, so logging out makes it unreachable without an
+  // effect writing null back into state.
+  const snapshot = isAuthenticated ? fetchedSnapshot : null
+  // The access token is fetched asynchronously after Auth0 reports authenticated;
+  // until it is written to storage, client.ts would have no bearer, so status is held
+  // at 'loading' rather than prematurely 'authenticated'. This is exactly
+  // "a snapshot exists": every path that produced a snapshot also meant the token was
+  // written, and every path that cleared one also meant it was not.
+  const tokenReady = snapshot !== null
 
   // While the silent authorize is pending (unauthenticated, no error, not returning
   // from a callback, not failed), report 'loading' — NOT 'unauthenticated' — so
