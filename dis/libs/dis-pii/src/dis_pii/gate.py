@@ -24,8 +24,8 @@ from dis_pii.detectors import detect_pii_columns
 class PiiBackend(Protocol):
     """Contract a real PII backend must satisfy to handle flagged columns.
 
-    No implementation exists in v1.0 (the tokenizer / key-vault seams are inert).
-    The gate only checks for *presence* of a backend; it never invokes it here.
+    No implementation exists. The gate only checks for *presence* of a
+    backend; it never invokes it here.
     """
 
     def tokenize(self, value: str, *, tenant_id: str) -> str:

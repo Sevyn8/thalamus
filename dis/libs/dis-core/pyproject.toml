@@ -1,7 +1,7 @@
 [project]
 name = "dis-core"
 version = "0.0.0"
-description = "DIS shared base types and primitives: errors, identifiers, IDs, trace_id, timestamps, logging, BqClient stub, identity client."
+description = "DIS shared base types and primitives: errors, identifiers, IDs, trace_id, timestamps, logging, identity client."
 requires-python = ">=3.12"
 dependencies = [
   # Identity client: Pydantic models + an httpx-based client.

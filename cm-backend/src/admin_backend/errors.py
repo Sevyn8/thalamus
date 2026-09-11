@@ -1116,22 +1116,6 @@ class ChannelsUnavailableError(AdminBackendError):
     code = "CHANNELS_UNAVAILABLE"
 
 
-class InvalidChannelCredentialError(ClientError):
-    """The submitted credential key-value set is malformed.
-
-    THE FIELD NAMES ARE THE TENANT'S, NOT OURS, so this validates SHAPE and never semantics: keys
-    present, unique, legally charactered, values non-empty, the whole blob within a size bound.
-    Nothing here knows what a Sinch credential looks like, and inventing a schema for one would
-    be a guess frozen into a 422.
-
-    The offending KEYS travel in ``context`` for the log; the VALUES never leave the request.
-    """
-
-    public_message = "The credential could not be accepted; check the highlighted fields"
-    http_status = 422
-    code = "INVALID_CHANNEL_CREDENTIAL"
-
-
 class UserNotProvisionedError(AdminBackendError):
     """Send-invitation was requested for a user that has no Auth0 identity yet.
 

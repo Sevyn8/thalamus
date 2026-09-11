@@ -74,7 +74,7 @@ def provision_pubsub(project_id: str) -> None:
     ``main`` and the dis-testing ``_dis_pubsub_provisioned`` fixture. The
     ``pubsub_v1`` clients honour ``PUBSUB_EMULATOR_HOST`` natively.
     """
-    # Lazy import (the dis-core BqClient idiom): a pure name lookup needs no GCP client.
+    # Lazy import: a pure name lookup needs no GCP client.
     from google.api_core.exceptions import AlreadyExists
     from google.cloud import pubsub_v1
 

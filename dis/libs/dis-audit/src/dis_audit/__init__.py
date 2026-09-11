@@ -5,9 +5,7 @@ Four responsibilities:
 - :class:`AuditEvent` — one ``audit.events`` row, hand-aligned to the live schema.
 - :class:`PostgresAuditWriter` — the Cloud SQL writer, fire-and-forget (hard
   rule 11): failures are logged with context and never raised to or block the caller.
-- The backend-selecting :class:`AuditWriter` interface + :func:`select_writer`, with the
-  inert :class:`BigQueryAuditWriter` seam behind ``BqClient`` for the deferred BigQuery
-  archive path.
+- The backend-selecting :class:`AuditWriter` interface + :func:`select_writer`.
 - The :class:`Stage` / :class:`EventScope` / :class:`Outcome` vocabulary consumers import,
   plus the :class:`FailureCode` stable failure vocabulary and its
   :func:`failure_code_for` exception registry.
@@ -18,7 +16,6 @@ audit event carries a known ``tenant_id``.
 
 from __future__ import annotations
 
-from dis_audit.bigquery_writer import BigQueryAuditWriter
 from dis_audit.event import AuditEvent
 from dis_audit.failure_codes import FailureCode, failure_code_for
 from dis_audit.postgres_writer import PostgresAuditWriter
@@ -31,7 +28,6 @@ __all__ = [
     "AuditBackend",
     "AuditEvent",
     "AuditWriter",
-    "BigQueryAuditWriter",
     "ColumnSpec",
     "EventScope",
     "FailureCode",

@@ -71,27 +71,6 @@ _repo = PlatformUsersRepo()
 # ---- Errors specific to this router ----------------------------------------
 
 
-# DEAD CODE candidate (post-Step-6.9.3.2 retrofit).
-#
-# ``_require_platform_auth`` was retired at Step 6.9.3.2; this class was
-# its sole raise site. Kept here as a forward-defensive artefact in case
-# a future PLATFORM-only check needs a distinct error code from
-# ``PERMISSION_DENIED``. Safe to remove once Stage 3 confirms no
-# consumer emerges; tracked as a CLAUDE.md forward note.
-class PlatformAccessRequiredError(ClientError):
-    """Raised when a non-PLATFORM JWT calls a PLATFORM-only endpoint.
-
-    Retired at Step 6.9.3.2 — `_require_platform_auth` was replaced
-    with ``Depends(require(ADMIN, USERS, VIEW, GLOBAL))`` which raises
-    ``PermissionDeniedError`` (code ``PERMISSION_DENIED``). This class
-    has no current raise site.
-    """
-
-    public_message = "This endpoint requires platform access"
-    http_status = 403
-    code = "PLATFORM_ACCESS_REQUIRED"
-
-
 class PlatformUserNotFoundError(ClientError):
     """Raised when a platform_user lookup by id finds nothing."""
 

@@ -1,7 +1,7 @@
 [project]
 name = "dis-pii"
 version = "0.0.0"
-description = "DIS PII detection + fail-loud gate over a caller-supplied source mapping. Pure functions, no DB, crypto, or network access. Tokenizer / key-vault / backend are inert placeholder seams."
+description = "DIS PII detection + fail-loud gate over a caller-supplied source mapping. Pure functions, no DB, crypto, or network access."
 requires-python = ">=3.12"
 dependencies = [
   # DisError root + structured logging only. NO dis-rls, NO DB, NO crypto, NO network.

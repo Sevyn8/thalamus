@@ -11,7 +11,6 @@ Foundational, dependency-light building blocks every DIS service and lib imports
 - ``trace_id`` — trace_id minting + context-local access.
 - ``timestamps`` — UTC-only datetime helpers (never naive).
 - ``logging`` — structured JSON logging binding service/stage/tenant_id/trace_id.
-- ``bq`` — ``BqClient`` Phase-1 stub (inert; the real client lands in Phase 3).
 - ``identity`` — the Identity Service client interface.
 - ``pubsub_names`` — resolve a Pub/Sub topic/subscription SHORT name from env,
   defaulting to the frozen contract literal (lets infra override the deployed name).

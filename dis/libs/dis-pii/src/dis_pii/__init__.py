@@ -15,9 +15,7 @@ what the matcher catches; a PII column the matcher does not recognise passes sil
 This limitation, and the absence of an explicit per-column PII flag in the mapping
 contract, are both current constraints — do not read detection as exhaustive.
 
-The tokenizer, key vault, and tokenization policy are **inert placeholder seams**
-(no crypto, no I/O) marking where the real implementation lands later, mirroring the
-``BqClient`` stub discipline used elsewhere in dis-core.
+No tokenization, key-vault, or crypto implementation exists in this package.
 """
 
 from __future__ import annotations
