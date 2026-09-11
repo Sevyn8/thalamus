@@ -2,8 +2,8 @@
 // decoding the auth token's claims (see verifyToken.ts). It mirrors the Customer
 // Master token model (PROVISIONAL vocabulary):
 // sub + tenant_id + store_id + user_type + a roles list. It carries NO profile fields
-// (email, name, tenant_name) - those are not token claims; they come from the separate
-// dis-ui-server GET /me profile call (see lib/dis-ui-server/types.ts MeResponse).
+// (email, name, tenant_name) - those are not token claims, and no profile endpoint
+// exists; surfaces that need a display name derive it from the claims they have.
 
 // The token's user_type claim: the backend's AUTHORITATIVE
 // tenant-vs-ops discriminator. TENANT scopes to its own tenant; PLATFORM is cross-tenant.

@@ -166,7 +166,7 @@ components:
       example: "019e5e3c-b5d3-705f-9002-2451c4ca2626"
       description: |
         Internal tenant UUID, identical to Customer Master core.tenants.id and
-        identity_mirror.tenants.tenant_id (decisions.md D37/D52). The load-bearing
+        identity_mirror.tenants.tenant_id. The load-bearing
         identity: callers write identity downstream from this field. The invented
         't_*' external form is retired.
 
@@ -176,7 +176,7 @@ components:
       example: "019e5f10-2a3b-7c4d-8e5f-6a7b8c9d0e1f"
       description: |
         Internal store UUID, identical to Customer Master core.stores.id and
-        identity_mirror.stores.store_id (decisions.md D37/D52). The load-bearing
+        identity_mirror.stores.store_id. The load-bearing
         identity. The invented 's_*' external form is retired.
 
     Identity:
@@ -192,8 +192,7 @@ components:
             Customer Master's authoritative external code for the tenant
             (core.tenants.display_code). Optional in the schema, but the service
             MUST populate it when present in Customer Master (the source column is
-            nullable). Readability only — never a substitute for tenant_id
-            (decisions.md D55).
+            nullable). Readability only — never a substitute for tenant_id.
         store_code:
           type: string
           nullable: true
@@ -201,8 +200,7 @@ components:
           description: |
             Customer Master's authoritative external code for the store
             (core.stores.store_code). Optional/nullable: the source column is
-            nullable. Readability only — never a substitute for store_id
-            (decisions.md D55).
+            nullable. Readability only — never a substitute for store_id.
         is_active:
           type: boolean
           description: Whether the tenant and store are both currently active.

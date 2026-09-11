@@ -173,7 +173,7 @@ class AuditWriteError(DisError):
     Raised by ``dis-audit`` backend selection (``select_writer``) when a required value is
     missing — e.g. the Postgres backend without an engine (no silent fallback, code-quality
     rule 4). Note the *fire-and-forget* write path does NOT raise: a write failure or a
-    tenant-less event (the D43 contract violation) is logged and reported as ``False`` so the
+    tenant-less event (a caller contract violation) is logged and reported as ``False`` so the
     data path is never blocked (hard rule 11). Carries ``tenant_id`` / ``trace_id`` / ``stage``
     / ``failure_code`` for diagnosis.
     """
@@ -206,7 +206,7 @@ class QuarantineWriteError(DisError):
     """A ``quarantine.*`` write could not be performed.
 
     Raised by ``dis-quarantine``'s writer on any insert failure (store down, FK
-    rejection, RLS misconfiguration) and on a tenant-less record (the same D43-shaped
+    rejection, RLS misconfiguration) and on a tenant-less record (the same
     contract: there is no tenant-less quarantine path). Deliberately NOT
     fire-and-forget — quarantine holds the failed data itself, so the caller must
     see the failure and keep the message live (nack; the Pub/Sub dead-letter policy

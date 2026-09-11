@@ -77,9 +77,9 @@ class PostgresAuditWriter:
         if event.tenant_id is None:
             log.error(
                 "audit event refused: no tenant_id. DIS has no tenant-less audit path "
-                "(decisions.md D43) — caller contract violation, not an infrastructure failure. "
+                "— caller contract violation, not an infrastructure failure. "
                 "Event dropped; fix the caller.",
-                extra={"emitting_service": event.service_name, "contract_violation": "D43"},
+                extra={"emitting_service": event.service_name, "contract_violation": "TENANT_ID_MISSING"},
             )
             return False
         try:

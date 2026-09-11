@@ -30,7 +30,7 @@ function RealModeSignIn() {
 // Dev-only login. Mints the chosen persona's dev-stub token AT RUNTIME via
 // signStubToken (HMAC, byte-identical secret/iss/aud to the backend verifier), hands
 // it to AuthProvider via login(), and navigates to the protected home. Runtime minting
-// (over the older pre-baked VITE_STUB_TOKEN_* build args) means the token always carries
+// (rather than baking tokens into the bundle at build time) means the token always carries
 // the persona's current claims - notably the real seeded tenant_id/store_id UUIDs the
 // backend RLS keys on - so real mode against a live BFF authorizes correctly without a
 // rebuild. signStubToken refuses to run in a production bundle. Dev/staging only.

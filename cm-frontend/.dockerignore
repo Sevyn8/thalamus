@@ -22,7 +22,6 @@ keys
 *.md
 !README.md
 Docs
-Prompts
 
 # IDE / OS noise
 .DS_Store

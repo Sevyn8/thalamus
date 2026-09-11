@@ -3,7 +3,9 @@
 -- Table: store_sku_sale_events
 --
 -- Long-term archive of canonical.store_sku_sale_events from Cloud SQL.
--- Loaded daily by services/nightly-batch via Cloud SQL → GCS Parquet → BQ
+-- RETAINED DESIGN ASSET: no export job or BigQuery application client is
+-- currently implemented; nothing loads or reads this table today. The design
+-- intent is a daily Cloud SQL → GCS Parquet → BQ
 -- load job (WRITE_TRUNCATE per partition for idempotency). After successful
 -- load, the Cloud SQL partition is dropped.
 --
@@ -14,9 +16,10 @@
 --   - DIS analytics consumers (ROOS-side; future).
 --   - DIS engineering for ad-hoc ops investigations.
 --
--- Tenant scoping is APPLICATION-ENFORCED via libs/dis-core BqClient wrapper.
--- BQ has no row-level access policy on this table; the wrapper auto-injects
--- WHERE tenant_id = :tenant_id on every query. See operational caveats below.
+-- BQ has no row-level access policy on this table, and no application-level
+-- enforcement wrapper is currently implemented. Tenant isolation must be
+-- explicitly designed and enforced before this asset becomes a production
+-- serving path. See operational caveats below.
 --
 -- ----------------------------------------------------------------------------
 -- Operational caveats (from system-level stress test)
@@ -25,28 +28,24 @@
 -- 1. COST GUARDS REQUIRED.
 --    A query without partition filter scans the entire table (~22TB at year 1
 --    scale; ~$110 per scan at on-demand pricing). Configure:
---      - per-query: maximum_bytes_billed flag on every BqClient call.
+--      - per-query: maximum_bytes_billed flag on every query.
 --      - per-user: daily quota via Google Cloud Console > BigQuery > Reservations.
 --      - alerting: notify on any single query exceeding $10.
 --
--- 2. BqClient ENFORCEMENT REQUIRED.
---    Direct google-cloud-bigquery usage in services bypasses tenant scoping
---    AND cost guards. Defense:
---      - libs/dis-core BqClient is the only allowed BQ client in services.
---      - CI lint rejects direct google.cloud.bigquery.Client imports outside libs.
---      - CI test scans for "FROM canonical_history" not co-located with
---        "WHERE tenant_id" or BqClient usage.
+-- 2. TENANT-SCOPING ENFORCEMENT REQUIRED (NOT YET IMPLEMENTED).
+--    No BigQuery application client exists in this repository. Before any
+--    service queries this table, a single enforced access path that injects
+--    tenant scoping and cost guards must be designed and built.
 --
 -- 3. SOURCE FRESHNESS CHECKS REQUIRED.
 --    dbt source freshness test: the most recent event_date partition must
---    exist and be no older than 25 hours. Failure indicates nightly-batch
---    has not completed or has been failing.
+--    exist and be no older than 25 hours (applies once an export job exists).
 --
 -- 4. SCHEMA MIGRATION SEQUENCING.
 --    When Postgres source schema changes via Alembic, the BQ schema must
 --    follow:
 --      a. Alembic migration adds column in Cloud SQL canonical.
---      b. nightly-batch export job updated to project the new column.
+--      b. the (future) export job updated to project the new column.
 --      c. dbt model updated to declare new column.
 --      d. Deploy in order; CI gates the sequence.
 --    Old BQ partitions will have NULL for the new column (expected); dbt
@@ -84,7 +83,7 @@
 -- ----------------------------------------------------------------------------
 --   - dataset: canonical_history (must exist)
 --   - source:  canonical.store_sku_sale_events in Cloud SQL Postgres
---   - export:  services/nightly-batch, loads via WRITE_TRUNCATE per partition
+--   - export:  not implemented (design: daily load via WRITE_TRUNCATE per partition)
 -- ============================================================================
 
 
@@ -97,7 +96,7 @@ CREATE TABLE `canonical_history.store_sku_sale_events`
     event_date                      DATE        NOT NULL OPTIONS(description="Partition key. Derived in source from source_sale_timestamp::date at UTC."),
 
     -- ---------- Identity (cluster keys 1-3) ----------
-    tenant_id                       STRING      NOT NULL OPTIONS(description="The tenant. Cluster key 1. Tenant-scoping is application-enforced via BqClient."),
+    tenant_id                       STRING      NOT NULL OPTIONS(description="The tenant. Cluster key 1. No application-level tenant-scoping enforcement is currently implemented."),
     store_id                        STRING      NOT NULL OPTIONS(description="The store. Cluster key 2."),
     sku_id                          STRING      NOT NULL OPTIONS(description="The SKU. Cluster key 3."),
     sku_variant                     STRING               OPTIONS(description="Sub-classification of SKU (size, flavor). NULL when not applicable."),
@@ -145,12 +144,12 @@ CREATE TABLE `canonical_history.store_sku_sale_events`
     ingest_metadata                 JSON                 OPTIONS(description="JSONB from source: source_name, source_event_id, source_event_timestamp, dis_received_timestamp, dis_published_timestamp, csv_row_num. Queryable via JSON_VALUE / JSON_EXTRACT."),
 
     -- ---------- BQ-specific metadata (ETL provenance) ----------
-    _loaded_at                      TIMESTAMP   NOT NULL OPTIONS(description="When the nightly-batch load wrote this row to BQ. Set by the export job."),
+    _loaded_at                      TIMESTAMP   NOT NULL OPTIONS(description="When the (not yet implemented) export load would write this row to BQ."),
     _source_partition_date          DATE        NOT NULL OPTIONS(description="Cloud SQL Postgres partition this row was exported from. Usually equals event_date; separates data semantics from ETL provenance for forensics.")
 )
 PARTITION BY event_date
 CLUSTER BY tenant_id, store_id, sku_id, event_subtype
 OPTIONS(
-    description = "Long-term archive of canonical.store_sku_sale_events. Loaded daily by services/nightly-batch via WRITE_TRUNCATE per partition. Partitioned by event_date; clustered by (tenant_id, store_id, sku_id, event_subtype). Tenant scoping is application-enforced via libs/dis-core BqClient.",
+    description = "Long-term archive of canonical.store_sku_sale_events. Design intent: loaded daily via WRITE_TRUNCATE per partition (no export job currently implemented). Partitioned by event_date; clustered by (tenant_id, store_id, sku_id, event_subtype). No application-level tenant-scoping enforcement is currently implemented.",
     labels = [("system", "dis"), ("layer", "canonical_history"), ("source_table", "canonical_store_sku_sale_events")]
 );

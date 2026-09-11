@@ -527,11 +527,4 @@ The v0 live write surface is **16 endpoints across 6 resource families**: tenant
 
 **6.16 series complete.** All 16 v0 write endpoints across 6 resource families (tenants 4 + tenant-users 4 + module-access 2 + org-tree 2 + stores 3 + roles 1) emit synchronous audit rows on success and failure paths. The audit subsystem reads via `GET /api/v1/audit/activities` (list + detail) per 6.16.3, with optional `resource_type` filter per 6.16.5 and optional `actor_user_id` filter per 6.16.6. The per-route extractor mapping (FN-AB-66 closure) is the maintenance surface for adding a new audited resource_type. Step 6.16.6 followed up post-closure with the actor filter required for frontend drawer integration (PlatformUserDetailDrawer.Activity, TenantUserDetailDrawer.Activity, RecentActivityPanel).
 
-Each sub-step's step doc (under `docs/implementation-steps/`) references back to this design document instead of redocumenting principles. This document is updated at each sub-step's commit if implementation surfaces a design correction or addition.
-
-## Related documents
-
-- `docs/architecture_RBAC.md` : RBAC subsystem; D-29 OR-branch RLS pattern reused here.
-- `docs/implementation-steps/step-6_8_1-split-user-role-assignments-2026-05-08.md` : architectural template for the two-table split with mixed RLS posture.
-- `CLAUDE.md` : running record of project decisions, conventions, and FN-AB items.
-- `BUILD_PLAN.md` : step-level plan including the Step 6.16 sub-step split.
+This document is updated whenever implementation surfaces a design correction or addition.

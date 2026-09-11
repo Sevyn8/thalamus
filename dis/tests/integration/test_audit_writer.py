@@ -261,7 +261,7 @@ async def test_fire_and_forget_swallows_real_backend_failure(
 async def test_fire_and_forget_refuses_tenantless_event(
     engine: AsyncEngine, caplog: pytest.LogCaptureFixture
 ) -> None:
-    # Product rule D43: no tenant-less audit path. A None tenant is refused loudly (logged),
+    # Product rule: no tenant-less audit path. A None tenant is refused loudly (logged),
     # never a silent drop; the writer still does not raise to the caller.
     event = AuditEvent(
         event_timestamp=now_utc(),

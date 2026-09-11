@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "ithina.dis.contracts.pubsub.csv.received.v1",
   "title": "csv.received",
-  "description": "Published by dis-ui-server once a tenant's CSV upload is saved in GCS (Slice 8: the file streams synchronously through dis-ui-server, which writes the object itself — no signed PUT URL, no upload-session object, no completion detection). Consumed by the csv-ingest-worker to begin Phase 2 ingest (preflight, PII gate, bronze write, ingress.ready publish). This is the trigger boundary between the UI-facing Phase 1 (dis-ui-server's csv-uploads endpoint, which mints trace_id and writes the object) and the asynchronous Phase 2 worker. Distinct from ingress.ready: csv.received precedes the bronze write and carries no bronze_ref; ingress.ready is published by the worker after bronze lands.",
+  "description": "Published by dis-ui-server once a tenant's CSV upload is saved in GCS (the file streams synchronously through dis-ui-server, which writes the object itself — no signed PUT URL, no upload-session object, no completion detection). Consumed by the csv-ingest-worker to begin Phase 2 ingest (preflight, PII gate, bronze write, ingress.ready publish). This is the trigger boundary between the UI-facing Phase 1 (dis-ui-server's csv-uploads endpoint, which mints trace_id and writes the object) and the asynchronous Phase 2 worker. Distinct from ingress.ready: csv.received precedes the bronze write and carries no bronze_ref; ingress.ready is published by the worker after bronze lands.",
   "type": "object",
   "required": [
     "schema_version",
@@ -51,12 +51,12 @@
     "template_id": {
       "type": "string",
       "format": "uuid",
-      "description": "The mapping template (config.source_mappings template lineage, D68) this CSV was uploaded against, validated ACTIVE for the token tenant at Phase 1. Carried end to end (worker passes it to ingress.ready and persists it to bronze for replay lineage) but NOT consumed for mapping selection until Slice 8a (D71: the streaming consumer remains template-unaware; hard gate, no second ACTIVE template per source before 8a)."
+      "description": "The mapping template (config.source_mappings template lineage) this CSV was uploaded against, validated ACTIVE for the token tenant at upload time. Carried end to end: the worker passes it to ingress.ready and persists it to bronze for replay lineage, and the streaming consumer selects the ACTIVE mapping by (tenant_id, source_id, template_id)."
     },
     "upload_session_id": {
       "type": "string",
       "pattern": "^us_[a-z0-9]{12}$",
-      "description": "The idempotency/lineage id for the tenant's upload action (the source_payload_id component of the worker's D58 dedup key). Since Slice 8 there is no upload-session object: dis-ui-server derives this deterministically per logical upload (us_ + first 12 lowercase-hex chars of SHA-256 over tenant_id|store_id|template_id|payload_sha256), so a client retry of the same bytes re-derives the same id and the worker's 24h dedup collapses it. The worker does NOT resolve identity from this (identity is carried on this message and trusted). Distinct from trace_id: trace_id traces this pipeline run, upload_session_id traces the tenant's upload action."
+      "description": "The idempotency/lineage id for the tenant's upload action (the source_payload_id component of the worker's dedup key). There is no upload-session object: dis-ui-server derives this deterministically per logical upload (us_ + first 12 lowercase-hex chars of SHA-256 over tenant_id|store_id|template_id|payload_sha256), so a client retry of the same bytes re-derives the same id and the worker's 24h dedup collapses it. The worker does NOT resolve identity from this (identity is carried on this message and trusted). Distinct from trace_id: trace_id traces this pipeline run, upload_session_id traces the tenant's upload action."
     },
     "gcs_uri": {
       "type": "string",
@@ -73,12 +73,12 @@
       "minLength": 1,
       "maxLength": 1,
       "default": ",",
-      "description": "The single-character CSV field separator. Additive/optional field (Slice 16f): the schema and model carry it for contract symmetry with ingress.ready, but dis-ui-server does NOT populate it yet (it is detected downstream by the worker's preflight, which is the single delimiter detector — Approach B). Defaults to ',' on every real csv.received message until a future dis-ui slice populates it; the worker never reads this field (it detects fresh in preflight)."
+      "description": "The single-character CSV field separator. Additive/optional field: the schema and model carry it for contract symmetry with ingress.ready, but dis-ui-server does NOT populate it (the worker's preflight is the single delimiter detector). Defaults to ','; the worker never reads this field (it detects fresh in preflight)."
     },
     "file_name": {
       "type": "string",
       "maxLength": 512,
-      "description": "The uploaded file's original name from the multipart Content-Disposition (Slice 51a / D120). Additive/optional: dis-ui-server populates it when the upload part carried a filename (truncated to 512 chars); absent when none was provided or from a pre-Slice-51a producer. The worker persists it to bronze.data_ingress_events.original_filename for the Ingestion Runs surface. Display metadata only — NOT identity, NOT the dedup key; the worker never resolves anything from it."
+      "description": "The uploaded file's original name from the multipart Content-Disposition. Additive/optional: dis-ui-server populates it when the upload part carried a filename (truncated to 512 chars); absent when none was provided (older producers never sent it). The worker persists it to bronze.data_ingress_events.original_filename for the Ingestion Runs surface. Display metadata only — NOT identity, NOT the dedup key; the worker never resolves anything from it."
     }
   },
   "additionalProperties": false

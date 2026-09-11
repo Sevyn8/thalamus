@@ -14,7 +14,7 @@
 --     PRE_MAPPING_VALIDATED, MAPPING_EXECUTED, POST_MAPPING_VALIDATED,
 --     CANONICAL_WRITTEN, QUARANTINED).
 --   - services/daily-compute (SIGNAL_COMPUTED).
---   - services/nightly-batch (BQ_EXPORTED, PARTITION_DROPPED).
+--   - a future export job (BQ_EXPORTED, PARTITION_DROPPED) — not implemented.
 --   - services/quarantine-drainer, dis-ui-server, mirror-sync-consumer.
 --
 -- Read by:
@@ -22,7 +22,10 @@
 --   - DIS engineering for ops investigations.
 --   - dbt source-freshness checks on pipeline health.
 --
--- Tenant scoping is APPLICATION-ENFORCED via libs/dis-core BqClient wrapper.
+-- BQ has no row-level access policy on this table, and no application-level
+-- enforcement wrapper is currently implemented. Tenant isolation must be
+-- explicitly designed and enforced before this asset becomes a production
+-- serving path.
 --
 -- ----------------------------------------------------------------------------
 -- Audit volume model (Option B from architecture decision)
@@ -85,11 +88,11 @@
 --    queries should always include event_date filter). Per-user daily quota.
 --    Alerting on any single query exceeding $10.
 --
--- 7. BqClient ENFORCEMENT REQUIRED.
---    libs/dis-core BqClient wrapper is the only allowed BQ client in services.
---    Auto-injects WHERE tenant_id = :tenant_id (for tenant-scoped audit reads).
---    Admin queries (cross-tenant ops investigation) use an explicit
---    admin-mode flag on BqClient requiring elevated auth.
+-- 7. TENANT-SCOPING ENFORCEMENT REQUIRED (NOT YET IMPLEMENTED).
+--    No BigQuery application client exists in this repository. Before any
+--    service reads this table, a single enforced access path must inject
+--    tenant scoping for tenant-scoped reads and gate cross-tenant admin
+--    queries behind elevated auth.
 --
 -- 8. SOURCE FRESHNESS CHECK.
 --    dbt source freshness on the most recent event_date partition: must
@@ -131,7 +134,7 @@
 -- Dependencies
 -- ----------------------------------------------------------------------------
 --   - dataset: audit (must exist)
---   - emitter: libs/dis-core BqClient (or a libs/dis-audit lib if it grows)
+--   - emitter: none currently implemented (audit writes land in Cloud SQL)
 --   - reader:  services/dis-ui-server audit handler; dbt source-freshness tests
 -- ============================================================================
 
@@ -151,8 +154,8 @@ CREATE TABLE `audit.audit_events`
     trace_id                        STRING      NOT NULL OPTIONS(description="End-to-end trace identifier propagated from the receiver. Joins all audit events (and canonical rows, quarantine rows, bronze rows) for one ingress event lifecycle. Cluster key 4."),
 
     -- ---------- Identity (cluster key 1) ----------
-    tenant_id                       STRING               OPTIONS(description="The tenant this event pertains to. NULL for system-level events that precede tenant identification (e.g., pre-auth receiver errors). Cluster key 1. Tenant scoping is application-enforced via BqClient."),
-    data_ingress_event_id           STRING               OPTIONS(description="Reference to bronze.data_ingress_events.id. NULL for events outside the ingress lifecycle (e.g., scheduled jobs like daily-compute and nightly-batch)."),
+    tenant_id                       STRING               OPTIONS(description="The tenant this event pertains to. NULL for system-level events that precede tenant identification (e.g., pre-auth receiver errors). Cluster key 1. No application-level tenant-scoping enforcement is currently implemented."),
+    data_ingress_event_id           STRING               OPTIONS(description="Reference to bronze.data_ingress_events.id. NULL for events outside the ingress lifecycle (e.g., scheduled jobs)."),
 
     -- ---------- Stage identification (cluster keys 2-3) ----------
     service_name                    STRING      NOT NULL OPTIONS(description="The DIS service that emitted this event. Cluster key 2. Vocabulary: csv_ingest_worker, receiver_api, receiver_csv_erp, receiver_reverse_api, streaming_consumer, quarantine_drainer, daily_compute, nightly_batch, dis_ui_server, mirror_sync_consumer."),
@@ -194,6 +197,6 @@ CREATE TABLE `audit.audit_events`
 PARTITION BY event_date
 CLUSTER BY tenant_id, service_name, stage, trace_id
 OPTIONS(
-    description = "End-to-end audit trail of every ingress event flowing through the DIS pipeline. Emitted by every DIS service at each pipeline stage. Partitioned by event_date; clustered by (tenant_id, service_name, stage, trace_id). Audit volume scales with failure rate, not row count (Option B: INGRESS_EVENT-scoped + ROW-scoped failures). No partition expiration (audit is permanent). Tenant scoping is application-enforced via libs/dis-core BqClient.",
+    description = "End-to-end audit trail of every ingress event flowing through the DIS pipeline. Emitted by every DIS service at each pipeline stage. Partitioned by event_date; clustered by (tenant_id, service_name, stage, trace_id). Audit volume scales with failure rate, not row count (Option B: INGRESS_EVENT-scoped + ROW-scoped failures). No partition expiration (audit is permanent). No application-level tenant-scoping enforcement is currently implemented.",
     labels = [("system", "dis"), ("layer", "audit")]
 );

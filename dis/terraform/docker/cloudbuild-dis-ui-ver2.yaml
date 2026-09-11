@@ -1,11 +1,7 @@
 # Cloud Build: build + push the dis-ui-ver2 SPA image.
 #
-# This file describes the build that ACTUALLY produces the serving image. It
-# previously described one nobody performs: it pushed to a "dis-images" repo that
-# does not exist in this project, passed three dead VITE_STUB_TOKEN_* args, omitted
-# VITE_CM_LAUNCHER_URL, and tagged $SHORT_SHA + `latest` while every real push tags
-# vN - which is how thalamus-images/dis-ui-ver2:latest came to point at v7 while v15
-# was serving.
+# This file describes the build that ACTUALLY produces the serving image: it
+# pushes to thalamus-images and tags vN (never $SHORT_SHA or `latest`).
 #
 # Run from dis/ (NOT the monorepo root - the -f path and the context below both
 # resolve from dis/, and dis/.gcloudignore is what filters the upload):

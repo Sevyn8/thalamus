@@ -59,8 +59,6 @@ keys/
 docs/
 *.md
 README.md
-CLAUDE.md
-BUILD_PLAN.md
 
 # Re-include README.md (required by pyproject.toml's `readme = "README.md"`;
 # hatchling reads it when `uv sync` builds the project wheel in the Dockerfile).

@@ -39,17 +39,10 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 
 # Build-time Vite vars (ARG -> ENV -> baked by `vite build`). Mode defaults to
-# 'fixture' (safe); staging passes 'real' via cloudbuild substitutions.
-# VITE_STUB_TOKEN_TENANT / VITE_STUB_TOKEN_OPS / VITE_STUB_TOKEN_TENANT2 are the pre-supplied
-# dev-login persona tokens (staging only); pass via .env.local or build-arg, never committed.
+# 'fixture' (safe); staging passes 'real' via cloudbuild substitutions. Dev-login
+# persona tokens are minted at runtime (src/auth/dev/signStubToken.ts), not baked.
 ARG VITE_DIS_UI_SERVER_MODE="fixture"
-ARG VITE_STUB_TOKEN_TENANT=""
-ARG VITE_STUB_TOKEN_OPS=""
-ARG VITE_STUB_TOKEN_TENANT2=""
 ENV VITE_DIS_UI_SERVER_MODE=${VITE_DIS_UI_SERVER_MODE}
-ENV VITE_STUB_TOKEN_TENANT=${VITE_STUB_TOKEN_TENANT}
-ENV VITE_STUB_TOKEN_OPS=${VITE_STUB_TOKEN_OPS}
-ENV VITE_STUB_TOKEN_TENANT2=${VITE_STUB_TOKEN_TENANT2}
 # Auth0 SPA config (real mode). Public PKCE client, so no secret is baked; these
 # are safe build args inlined into the static bundle by vite build. Empty defaults
 # keep a plain (fixture) build working; staging passes real values via cloudbuild.

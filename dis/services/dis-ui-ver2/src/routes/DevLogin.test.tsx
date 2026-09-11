@@ -9,13 +9,11 @@ import { signStubToken } from '../auth/dev/signStubToken'
 import { writeToken } from '../auth/storage'
 import { AppRoutes } from './AppRoutes'
 
-// Drives auth through the STORAGE seam, not the /dev/login button. pick() reads the per-persona
-// token from Vite-inlined `import.meta.env.VITE_STUB_TOKEN_*`, which is baked at transform time
-// and is NOT overridable by vi.stubEnv in a unit test; that button path is covered by the browser
-// smoke / E2E. Here: a minted stub token (sub = persona.sub) restored by AuthProvider lands the
-// user on the Shell + Dashboard (index); logout (Shell topbar) returns to /dev/login. Both
-// personas reach the Dashboard (it does not depend on /me, so the D37 ops gap is not exercised
-// here; that gap is covered by me.test.ts).
+// Drives auth through the STORAGE seam, not the /dev/login button; the button path
+// (runtime signStubToken minting) is covered by the browser smoke / E2E. Here: a minted
+// stub token (sub = persona.sub) restored by AuthProvider lands the user on the Shell +
+// Dashboard (index); logout (Shell topbar) returns to /dev/login. Both personas reach
+// the Dashboard.
 
 // Dashboard + Shell read via TanStack Query (fixture mode), so the tree needs a QueryClient.
 function renderApp() {

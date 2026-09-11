@@ -1,7 +1,7 @@
 [project]
 name = "dis-audit"
 version = "0.0.0"
-description = "DIS audit-event model + fire-and-forget Cloud SQL writer for audit.events, with a deferred BigQuery archive path. Owns the stage/scope/outcome vocabulary its service consumers import."
+description = "DIS audit-event model + fire-and-forget Cloud SQL writer for audit.events. Owns the stage/scope/outcome vocabulary its service consumers import."
 requires-python = ">=3.12"
 dependencies = [
   # DisError root + UUIDv7 + UTC timestamps + structured logging.

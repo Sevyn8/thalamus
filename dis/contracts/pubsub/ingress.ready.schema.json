@@ -51,7 +51,7 @@
     "template_id": {
       "type": "string",
       "format": "uuid",
-      "description": "The mapping template (config.source_mappings template lineage, D68) this payload was uploaded against. Passed through verbatim from csv.received by the worker and persisted to bronze for replay lineage. NOT consumed for mapping selection until Slice 8a (D71: the streaming consumer parses but ignores it; hard gate, no second ACTIVE template per source before 8a)."
+      "description": "The mapping template (config.source_mappings template lineage) this payload was uploaded against. Passed through verbatim from csv.received by the worker and persisted to bronze for replay lineage. The streaming consumer selects the ACTIVE mapping by (tenant_id, source_id, template_id); a partial unique index guarantees at most one ACTIVE mapping per that key."
     },
     "bronze_ref": {
       "type": "string",
@@ -73,7 +73,7 @@
       "minLength": 1,
       "maxLength": 1,
       "default": ",",
-      "description": "The single-character CSV field separator the worker's DuckDB preflight detected (comma, semicolon, tab, pipe — whatever sniff_csv returned). The streaming consumer parses the chunk with this separator (Slice 16f). Optional and additive: a pre-16f or replayed message lacking it is read as ',' (backward-compatible); the worker always sets it going forward, on the fresh and the resume publish paths."
+      "description": "The single-character CSV field separator the worker's DuckDB preflight detected (comma, semicolon, tab, pipe — whatever sniff_csv returned). The streaming consumer parses the chunk with this separator. Optional and additive: an older or replayed message lacking it is read as ',' (backward-compatible); the worker always sets it, on the fresh and the resume publish paths."
     },
     "replay": {
       "type": "boolean",

@@ -96,8 +96,10 @@ known weak points, so operators reason from facts. Nothing here is aspirational.
 - Weak point: cm-frontend and dis-ui-ver2 run as the **default compute service
   account**, which holds `secretAccessor` on real credentials — the frontends'
   identity is not least-privilege.
-- `cm-backend/keys/jwt_private.pem` is a git-tracked RSA private key used by
-  the local stub-auth flow. It must never be reused for anything real.
+- cm-backend's local stub-auth flow uses an RS256 development keypair under
+  `cm-backend/keys/` — **local, git-ignored material** (`keys/` and `*.pem`
+  are in `cm-backend/.gitignore`; nothing under `keys/` is tracked). It exists
+  only on developer machines and must never be reused for anything real.
 
 ## PII
 
@@ -124,7 +126,8 @@ object path and expire in about 15 minutes.
 
 - dis docker-compose runs `identity-service-fake`; dis-ui-ver2 ships dev
   personas and a runtime stub-token mint used only in stub mode; cm-backend has
-  a `StubAuthClient` (HS256/local keys) selected by settings.
+  a `StubAuthClient` (RS256, verifying against a local git-ignored dev
+  keypair; `make_test_jwt` signs with the same keypair) selected by settings.
 - Gating is by environment configuration: the staging Terraform wires AUTH0
   mode and real DSNs. dis-ui-server's STUB mode additionally refuses non-local
   databases (see above); the other stub surfaces have no equivalent structural

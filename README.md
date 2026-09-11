@@ -36,7 +36,11 @@ the frontends.
 
 ```bash
 # DIS stack (Postgres + Pub/Sub emulator + topics + migrations)
-cd dis && make sync && make run-local && make check
+cd dis
+cp .env.example .env
+make sync
+make run-local
+make check
 
 # Customer Master
 cd cm-backend && docker compose up -d && uv sync && uv run alembic upgrade head

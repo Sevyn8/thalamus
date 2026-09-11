@@ -55,7 +55,7 @@
         "name": { "type": "string" },
         "status": {
           "type": "string",
-          "description": "Lifecycle status replicated verbatim from Customer Master (tenants: e.g. ACTIVE/SUSPENDED/TERMINATED/ONBOARDING; stores: e.g. ACTIVE/INACTIVE/CLOSED). Replaces the prior is_active boolean; identity_mirror stores lifecycle as status, not is_active (decisions.md D46)."
+          "description": "Lifecycle status replicated verbatim from Customer Master (tenants: e.g. ACTIVE/SUSPENDED/TERMINATED/ONBOARDING; stores: e.g. ACTIVE/INACTIVE/CLOSED). identity_mirror stores lifecycle as status, not an is_active boolean."
         },
         "display_code": {
           "type": "string",

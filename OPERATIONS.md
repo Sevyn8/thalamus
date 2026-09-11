@@ -102,10 +102,12 @@ Cloud Logging files them at DEFAULT and no log-based alert can match them.
 
 ## Local development
 
-- DIS (uv workspace root, includes synapse/axon/connectors):
+- DIS (uv workspace root, includes synapse/axon/connectors): first
+  `cp dis/.env.example dis/.env` — the Makefile does `include .env`, so the
+  file must exist before any target runs. Then `make -C dis sync`,
   `make -C dis run-local` (docker compose Postgres + Pub/Sub emulator, topics,
   migrations), `make -C dis check` (pre-flight script), `make -C dis seed`
-  (test fixtures). `dis/.env` carries the local defaults the Makefile includes.
+  (test fixtures).
 - cm-backend: `docker compose up` (local Postgres), `uv sync`,
   `alembic upgrade head`, `scripts/check_setup.sh` for a full pre-flight;
   `scripts/seed_dev_data` loads the dev seed workbook (refuses

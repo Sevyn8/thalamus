@@ -84,10 +84,10 @@ enum IdentitySource {
 //
 // Field constraints (validated server-side, not in proto):
 //   tenant_id: internal tenant UUID (lowercase 8-4-4-4-12), identical to
-//              Customer Master core.tenants.id (decisions.md D37/D52).
+//              Customer Master core.tenants.id.
 //   store_id:  internal store UUID, identical to core.stores.id.
 // The invented t_*/s_* external form is retired; the authoritative external
-// codes ride alongside as display_code/store_code (D55), readability only.
+// codes ride alongside as display_code/store_code, readability only.
 message Identity {
   string tenant_id = 1;
   string store_id = 2;
@@ -137,8 +137,8 @@ message ResolveFromEndpointRequest {
 }
 
 message ValidateRequest {
-  string tenant_id = 1;  // Internal tenant UUID (D37/D52).
-  string store_id = 2;   // Internal store UUID (D37/D52).
+  string tenant_id = 1;  // Internal tenant UUID.
+  string store_id = 2;   // Internal store UUID.
 }
 
 message ValidateResponse {
