@@ -1,5 +1,5 @@
 -- ============================================================
--- core schema dump
+-- core schema dump — HISTORICAL SNAPSHOT, NOT THE CURRENT SCHEMA
 -- ============================================================
 -- Generated: 2026-05-23T14:36:25Z
 --
@@ -7,15 +7,28 @@
 -- Postgres version:  PostgreSQL 15.17 (Debian 15.17-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
 -- DATABASE_URL host: localhost (Docker container ithina-postgres)
 --
--- Alembic head:      7a3c8e9d2f5b
--- Alembic current:   7a3c8e9d2f5b
--- (head == current verified at Step 6.16.7 pre-flight)
+-- Alembic revision captured: 7a3c8e9d2f5b
 --
--- This file represents the LOCAL Postgres schema at alembic head.
--- Cloud SQL is verified separately via operator deployment workflow.
+-- DO NOT READ THE BODY BELOW AS THE SHAPE OF THE DATABASE TODAY. It is a true
+-- pg_dump of the core schema as it stood at revision 7a3c8e9d2f5b on the date
+-- above, and it has not been regenerated since. Eight revisions have landed on
+-- top of it. Measured against a real dump of a database at b7e3c95a1d84:
+-- 630 diff lines, of which 563 are objects that exist and are absent here —
+-- including six whole tables (tenant_billing_profile, tenant_contacts,
+-- tenant_documents, tenant_legal_profile, tenant_onboarding,
+-- tenant_tax_registrations) with their indexes and triggers — plus the DIS
+-- module_code_enum value and the CHANNELS resource_enum value.
 --
--- Regenerated on each run of prompts/refresh-schema-docs-prompt.md;
--- git diff between runs shows schema deltas.
+-- In particular, the module_code_enum below still lists ROOS. That value was
+-- retired by migration 0fdfbc8871a8; it is part of this snapshot's history,
+-- not of the live vocabulary. The migration chain under migrations/versions/
+-- is the authority on the current schema, and a live database answers faster
+-- than any file here.
+--
+-- Regeneration: pg_dump --schema-only --schema=core --no-owner --no-privileges.
+-- The prompt this file's header used to name no longer exists. Regenerating in
+-- place would fold all 630 lines of accumulated drift into whatever change is
+-- in flight, so it is deliberately left to a dedicated refresh.
 -- ============================================================
 
 --
