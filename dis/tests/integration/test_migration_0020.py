@@ -37,12 +37,8 @@ pytestmark = pytest.mark.integration
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _MIGRATION_PATH = _REPO_ROOT / "alembic" / "versions" / "0020_retire_roos_narrative_metadata.py"
-_CANONICAL_FILE = (
-    _REPO_ROOT / "schemas" / "postgres" / "canonical" / "store_sku_current_position.sql"
-)
-_STAGING_FILE = (
-    _REPO_ROOT / "schemas" / "postgres" / "staging" / "store_sku_current_position.sql"
-)
+_CANONICAL_FILE = _REPO_ROOT / "schemas" / "postgres" / "canonical" / "store_sku_current_position.sql"
+_STAGING_FILE = _REPO_ROOT / "schemas" / "postgres" / "staging" / "store_sku_current_position.sql"
 
 _TABLE = "store_sku_current_position"
 _COL = "yesterday_retail_price"
@@ -161,9 +157,7 @@ def test_the_old_constants_are_what_the_migration_replaces() -> None:
     ("schema", "path"),
     [("canonical", _CANONICAL_FILE), ("staging", _STAGING_FILE)],
 )
-def test_resident_column_comment_matches_schema_file(
-    admin_engine: Engine, schema: str, path: Path
-) -> None:
+def test_resident_column_comment_matches_schema_file(admin_engine: Engine, schema: str, path: Path) -> None:
     live = _column_comment(admin_engine, schema)
     assert live is not None, f"{schema}.{_TABLE}.{_COL} has no comment at all"
     assert live == _schema_file_column_comment(path, schema)
@@ -190,9 +184,10 @@ def test_no_dis_comment_anywhere_still_names_the_retired_module(admin_engine: En
     look for.
     """
     with admin_engine.connect() as conn:
-        hits = conn.execute(
-            text(
-                """
+        hits = (
+            conn.execute(
+                text(
+                    """
                 SELECT n.nspname || '.' || c.relname AS obj
                   FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
                  WHERE obj_description(c.oid, 'pg_class') ILIKE :pat
@@ -203,18 +198,19 @@ def test_no_dis_comment_anywhere_still_names_the_retired_module(admin_engine: En
                   JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0
                  WHERE col_description(c.oid, a.attnum) ILIKE :pat
                 """
-            ),
-            {"pat": f"%{_RETIRED}%"},
-        ).scalars().all()
+                ),
+                {"pat": f"%{_RETIRED}%"},
+            )
+            .scalars()
+            .all()
+        )
     assert hits == [], f"database comments still name the retired module: {hits}"
 
 
 # --- Fresh == migrated --------------------------------------------------------
 
 
-def test_fresh_bootstrap_converges_with_delta_path(
-    scratch_db: ScratchDB, admin_engine: Engine
-) -> None:
+def test_fresh_bootstrap_converges_with_delta_path(scratch_db: ScratchDB, admin_engine: Engine) -> None:
     """The chain upgrades clean to head and lands identical text on a fresh scratch DB."""
     with scratch_db.engine.connect() as conn:
         head = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
