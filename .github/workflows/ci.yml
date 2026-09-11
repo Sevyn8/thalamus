@@ -173,6 +173,22 @@ jobs:
   # its own Postgres on 5432. The RS256 keypair its stub auth verifies against is
   # git-ignored development material, so CI generates a throwaway one per run —
   # it signs nothing that outlives the job.
+  #
+  # TWO IDENTITIES, AND THE SPLIT IS THE POINT. The container's POSTGRES_USER is a
+  # bootstrap superuser that does only what a non-superuser cannot: install ltree and
+  # pgcrypto, and create the application role. It is NEVER the identity under test.
+  #
+  # user_admin_backend is created explicitly as NOSUPERUSER NOBYPASSRLS, because that
+  # is the privilege boundary production runs on and the one
+  # assert_app_role_no_bypassrls() refuses to start without. Naming it as
+  # POSTGRES_USER instead — as the local compose file does — would have the official
+  # image create it as a SUPERUSER, and a superuser bypasses RLS regardless of FORCE
+  # on the tables. The whole tenant-isolation suite would then be passing against a
+  # database that cannot enforce the thing it is asserting.
+  #
+  # It owns the database so its own migrations create the schema and own the tables
+  # they then apply FORCE RLS and policies to — ownership, not elevation, is what
+  # makes that work.
   # ---------------------------------------------------------------------------
   cm-backend:
     name: cm-backend
@@ -180,14 +196,15 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: postgres:15
+        # postgres:15
+        image: postgres:15@sha256:9b1d34adbce1dd07ee6e94b4a2cf698884b89bd44a6c9c12f5da8f3acbfe4957
         env:
-          POSTGRES_USER: user_admin_backend
-          POSTGRES_PASSWORD: password_admin_backend
+          POSTGRES_USER: ci_bootstrap
+          POSTGRES_PASSWORD: ci_bootstrap_only
           POSTGRES_DB: ithina_platform_db
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U user_admin_backend -d ithina_platform_db"
+          --health-cmd "pg_isready -U ci_bootstrap -d ithina_platform_db"
           --health-interval 5s --health-timeout 3s --health-retries 20
     env:
       DATABASE_URL: postgresql+psycopg://user_admin_backend:password_admin_backend@localhost:5432/ithina_platform_db
@@ -210,17 +227,47 @@ jobs:
           mkdir -p keys
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out keys/jwt_private.pem
           openssl rsa -in keys/jwt_private.pem -pubout -out keys/jwt_public.pem
-      - name: Database extensions (ltree, pgcrypto) and schema
-        # CREATE EXTENSION needs a superuser; the application role is deliberately
-        # NOSUPERUSER NOBYPASSRLS, so this mirrors the documented one-time setup.
+      - name: Bootstrap the database (privileged identity, one time)
+        # Everything a NOSUPERUSER role cannot do for itself, and nothing else.
         env:
-          PGPASSWORD: password_admin_backend
+          PGPASSWORD: ci_bootstrap_only
         run: |
-          psql -h localhost -U user_admin_backend -d ithina_platform_db \
-            -c "CREATE EXTENSION IF NOT EXISTS ltree; CREATE EXTENSION IF NOT EXISTS pgcrypto;"
-      - name: Apply migrations
+          psql -v ON_ERROR_STOP=1 -h localhost -U ci_bootstrap -d ithina_platform_db <<'SQL'
+          CREATE EXTENSION IF NOT EXISTS ltree;
+          CREATE EXTENSION IF NOT EXISTS pgcrypto;
+          CREATE ROLE user_admin_backend LOGIN PASSWORD 'password_admin_backend'
+            NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+          ALTER DATABASE ithina_platform_db OWNER TO user_admin_backend;
+          SQL
+
+      - name: Assert the application role cannot bypass RLS
+        # The gate this job exists to protect. A SUPERUSER or BYPASSRLS role reads
+        # through FORCE ROW LEVEL SECURITY, so every tenant-isolation assertion
+        # downstream would pass without proving anything. rolconfig is checked too:
+        # a role-level search_path is exactly the mask production forbids, and it
+        # would hide schema-qualification bugs the repository has been bitten by.
+        env:
+          PGPASSWORD: ci_bootstrap_only
+        run: |
+          read -r super bypass config <<<"$(psql -tA -F' ' -h localhost -U ci_bootstrap \
+            -d ithina_platform_db -c "SELECT rolsuper, rolbypassrls, \
+            coalesce(array_to_string(rolconfig, ','), 'none') \
+            FROM pg_roles WHERE rolname = 'user_admin_backend';")"
+          echo "user_admin_backend: rolsuper=$super rolbypassrls=$bypass rolconfig=$config"
+          if [ "$super" != "f" ] || [ "$bypass" != "f" ] || [ "$config" != "none" ]; then
+            echo "::error::user_admin_backend must be NOSUPERUSER, NOBYPASSRLS and carry no role-level config"
+            exit 1
+          fi
+
+      - name: Apply migrations as the non-superuser application role
         working-directory: cm-backend
         run: uv run alembic upgrade head
+      - name: Seed the development fixtures
+        # --reset is load-bearing, not tidiness: it is what retires the ROOS lookups
+        # row that the migration chain still seeds, which the module-catalog and
+        # lookups tests assert is gone.
+        working-directory: cm-backend
+        run: uv run python -m scripts.seed_dev_data --reset
       - name: mypy --strict
         working-directory: cm-backend
         run: uv run mypy --strict src/admin_backend
@@ -327,7 +374,7 @@ jobs:
       - name: gitleaks detect
         run: |
           docker run --rm -v "$PWD:/repo" -w /repo \
-            zricethezav/gitleaks:v8.28.0 \
+            zricethezav/gitleaks:v8.28.0@sha256:cdbb7c955abce02001a9f6c9f602fb195b7fadc1e812065883f695d1eeaba854 \
             detect --source=/repo --config=/repo/.gitleaks.toml \
                    --redact --no-banner --exit-code 1
 
@@ -342,9 +389,14 @@ jobs:
   # force a blanket suppression, and a suppressed scanner reports a security
   # posture the repository does not have.
   #
-  # The exit criterion is triage, not tuning: work the findings down, then flip
-  # these steps to blocking and add the job to the ruleset. Until then it exists so
-  # the numbers are visible on every PR and cannot quietly grow.
+  # WHAT THIS JOB DOES NOT DO. It does not enforce non-regression. Every step below
+  # is continue-on-error, and there is no accepted-findings baseline to diff against,
+  # so a pull request that ADDS a vulnerable dependency still goes green — the new
+  # finding is printed in the log and nothing fails. Reading this job as a ratchet
+  # would be wrong; it publishes numbers a reviewer has to look at.
+  #
+  # The exit criterion is triage, not tuning: work the findings down, add a baseline
+  # of accepted IDs, then flip these steps to blocking and add the job to the ruleset.
   # ---------------------------------------------------------------------------
   supply-chain-report:
     name: supply-chain-report
@@ -388,5 +440,6 @@ jobs:
         continue-on-error: true # transitional: see job header
         run: |
           docker run --rm -v "$PWD:/repo" -w /repo \
-            aquasec/trivy:0.58.2 config --quiet --severity HIGH,CRITICAL \
+            aquasec/trivy:0.58.2@sha256:665030f4d33a82c1e8d9d5e0453365842236723c1ee5cc3becca698268e66a56 \
+            config --quiet --severity HIGH,CRITICAL \
             --exit-code 1 infra dis/terraform/docker cm-backend cm-frontend

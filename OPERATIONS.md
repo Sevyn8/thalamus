@@ -17,8 +17,12 @@ Required checks: `contracts`, `dis-static`, `dis-tests`, `axon`, `cm-backend`,
 
 `supply-chain-report` is **transitional and must not be made a required check**
 in its current form: dependency and IaC scanning runs in reporting mode because
-the repository has untriaged historical findings. Work them down, then flip those
-steps to blocking and add the job to the ruleset.
+the repository has untriaged historical findings. It **reports only — it does not
+enforce non-regression**: every step is `continue-on-error` and there is no
+accepted-findings baseline, so a pull request that adds a vulnerable dependency
+still goes green with the new finding printed in the log. Treat it as numbers a
+reviewer must read, not as a ratchet. Work the findings down, add a baseline of
+accepted IDs, then flip those steps to blocking and add the job to the ruleset.
 
 Releases still deploy by the manual flow below; CI gates the merge, not the
 release.

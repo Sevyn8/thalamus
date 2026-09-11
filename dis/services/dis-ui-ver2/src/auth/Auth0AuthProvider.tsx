@@ -51,12 +51,16 @@ export function Auth0AuthProvider({ children }: { children: ReactNode }) {
     logout,
     error,
   } = useAuth0()
-  // The result of the access-token fetch below. Non-null ONLY once a token has been
-  // fetched and written to storage. Nothing resets it when Auth0 reports
-  // unauthenticated: the two values consumers see are DERIVED from it during render
-  // (below), because syncing derived state back through an effect is the pattern
-  // react-hooks/set-state-in-effect exists to reject.
-  const [fetchedSnapshot, setFetchedSnapshot] = useState<AuthSnapshot | null>(null)
+  // ONE AUTHENTICATED EPISODE. Not the user's identity: a sign-out and a sign-in as
+  // the SAME subject are two different sessions, and the second must not inherit the
+  // first one's bearer. `isAuthenticated` flipping is what separates them; `sub` is
+  // carried too so a direct swap between users is also a boundary.
+  const sessionKey = `${isAuthenticated}:${user?.sub ?? ''}`
+  // The access-token fetch result, held together with the session that fetched it.
+  const [session, setSession] = useState<{ key: string; snapshot: AuthSnapshot | null }>({
+    key: sessionKey,
+    snapshot: null,
+  })
 
   // Loop guard for the silent-authorize attempt below. Computed once per page load:
   // true when the URL carries an Auth0 redirect result (?code/?state on success,
@@ -74,9 +78,9 @@ export function Auth0AuthProvider({ children }: { children: ReactNode }) {
   const [authorizeFailed, setAuthorizeFailed] = useState(false)
 
   useEffect(() => {
-    // Nothing to fetch while unauthenticated. No reset here: `snapshot` /
-    // `tokenReady` below already read as null / false whenever isAuthenticated is
-    // false, so a stored result is unreachable rather than cleared.
+    // Nothing to fetch while unauthenticated. No reset here either: the session tag
+    // below is what makes the previous episode's result unreadable, so this effect
+    // never writes state it did not fetch.
     if (!isAuthenticated) {
       return
     }
@@ -92,19 +96,19 @@ export function Auth0AuthProvider({ children }: { children: ReactNode }) {
           return
         }
         writeToken(token)
-        setFetchedSnapshot(snapshotFromToken(token))
+        setSession({ key: sessionKey, snapshot: snapshotFromToken(token) })
       })
       .catch(() => {
         if (!active) {
           return
         }
         clearToken()
-        setFetchedSnapshot(null)
+        setSession({ key: sessionKey, snapshot: null })
       })
     return () => {
       active = false
     }
-  }, [isAuthenticated, getAccessTokenSilently])
+  }, [isAuthenticated, getAccessTokenSilently, sessionKey])
 
   // Single-login-entry: when the SDK has DEFINITIVELY resolved to no session, attempt
   // a silent (prompt=none) Auth0 authorize FIRST. If the CM-established SSO session
@@ -127,15 +131,26 @@ export function Auth0AuthProvider({ children }: { children: ReactNode }) {
     })
   }, [isLoading, isAuthenticated, error, returningFromCallback, loginWithRedirect])
 
-  // DERIVED, not synced. A fetched snapshot is only the current one while Auth0 still
-  // reports an authenticated session, so logging out makes it unreachable without an
-  // effect writing null back into state.
-  const snapshot = isAuthenticated ? fetchedSnapshot : null
-  // The access token is fetched asynchronously after Auth0 reports authenticated;
-  // until it is written to storage, client.ts would have no bearer, so status is held
-  // at 'loading' rather than prematurely 'authenticated'. This is exactly
-  // "a snapshot exists": every path that produced a snapshot also meant the token was
-  // written, and every path that cleared one also meant it was not.
+  // CROSSING A SESSION BOUNDARY DISCARDS THE PREVIOUS EPISODE'S RESULT, here in
+  // render rather than from an effect. This is React's documented way to reset state
+  // when an input changes, and it is what react-hooks/set-state-in-effect steers
+  // toward; the reset lands before anything can observe the old value, and no effect
+  // writes state it did not fetch.
+  //
+  // CLEARED AT THE BOUNDARY, NOT COMPARED AT READ TIME. Comparing a stored tag
+  // against the current one looks equivalent and is not: sign out and back in as the
+  // SAME subject returns the key to a value it already had, so a comparison would
+  // hand the new session the old session's snapshot. Clearing as the boundary is
+  // crossed has no such hole — there is nothing left to match.
+  let snapshot = session.snapshot
+  if (session.key !== sessionKey) {
+    setSession({ key: sessionKey, snapshot: null })
+    snapshot = null
+  }
+  // THE CURRENT SESSION'S bearer is in storage. writeToken() happens immediately
+  // before the tagged write above and only on the resolve path, so a readable
+  // snapshot and a usable bearer are the same fact; a pending or failed fetch, or a
+  // result belonging to a finished session, all read as not-ready.
   const tokenReady = snapshot !== null
 
   // While the silent authorize is pending (unauthenticated, no error, not returning

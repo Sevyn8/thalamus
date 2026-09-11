@@ -110,7 +110,10 @@ known weak points, so operators reason from facts. Nothing here is aspirational.
   (`supply-chain-report`), because untriaged historical findings exist today:
   61 npm advisories in cm-frontend (2 critical, 24 high), 21 in dis-ui-ver2, and
   12 HIGH Terraform misconfigurations. This is a known gap, not a clean bill of
-  health; the job exists so the numbers are visible and cannot quietly grow.
+  health. It **does not enforce non-regression**: every step is
+  `continue-on-error` and no accepted-findings baseline exists, so a change that
+  adds a vulnerable dependency still goes green and the finding is only printed
+  in the log. Someone has to read it.
 
 ## PII
 

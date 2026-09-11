@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:15
+    image: postgres:15@sha256:9b1d34adbce1dd07ee6e94b4a2cf698884b89bd44a6c9c12f5da8f3acbfe4957
     environment:
       POSTGRES_USER: ithina_dis_admin
       POSTGRES_PASSWORD: ithina_dis_admin_password
@@ -17,13 +17,13 @@ services:
       retries: 10
 
   pubsub:
-    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators@sha256:45a15cc163d2df13137478856b4b9bb90426100fa8aec542269460c10110b727
     command: gcloud beta emulators pubsub start --host-port=0.0.0.0:8085 --project=local-dis
     ports:
       - "8085:8085"
 
   gcs:
-    image: fsouza/fake-gcs-server:latest
+    image: fsouza/fake-gcs-server:latest@sha256:797ce226d62f947c009dc40246b30cfb456b8473d8241407f9d6f2c04e4d69ef
     command: -scheme http -public-host localhost:4443 -port 4443
     ports:
       - "4443:4443"
@@ -31,7 +31,7 @@ services:
       - gcs-data:/storage
 
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
     ports:
       - "6379:6379"
 
