@@ -100,6 +100,20 @@ known weak points, so operators reason from facts. Nothing here is aspirational.
   `cm-backend/keys/` — **local, git-ignored material** (`keys/` and `*.pem`
   are in `cm-backend/.gitignore`; nothing under `keys/` is tracked). It exists
   only on developer machines and must never be reused for anything real.
+  CI generates a throwaway keypair per run rather than consuming one.
+- Secret scanning is a **blocking** pull-request gate (`security-secrets` in
+  `.github/workflows/ci.yml`): gitleaks over full history, configured by
+  `.gitleaks.toml`. Every pre-existing finding was triaged individually and is
+  recorded there with the reason it is not a credential; none was a production
+  credential. A new finding fails the PR — rotate the value, do not allowlist it.
+- Dependency and IaC vulnerability scanning runs in **reporting mode only**
+  (`supply-chain-report`), because untriaged historical findings exist today:
+  61 npm advisories in cm-frontend (2 critical, 24 high), 21 in dis-ui-ver2, and
+  12 HIGH Terraform misconfigurations. This is a known gap, not a clean bill of
+  health. It **does not enforce non-regression**: every step is
+  `continue-on-error` and no accepted-findings baseline exists, so a change that
+  adds a vulnerable dependency still goes green and the finding is only printed
+  in the log. Someone has to read it.
 
 ## PII
 

@@ -63,5 +63,5 @@ cd dis/services/dis-ui-ver2 && pnpm install && pnpm dev
 | contracts | — | `python3 contracts/conformance/validate.py` | — |
 
 DIS integration tests need the docker-compose stack (`make -C dis run-local`);
-synapse integration tests skip without a database DSN. There is no CI — these
-commands are the gate.
+synapse integration tests skip without a database DSN. `.github/workflows/ci.yml`
+runs these same commands on every pull request against `main`.

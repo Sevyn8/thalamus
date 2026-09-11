@@ -1,9 +1,10 @@
 # Synapse — the analytics + actions plane. A PEER of dis/, not part of it.
 #
-# There is no CI in this repo (no .github/workflows, no root Makefile), so these
-# targets are the only automation. They shell into dis/ because that is where the uv
-# workspace root lives — Synapse is a member of it, so `uv run` there resolves
-# synapse, dis-canonical and dis-rls together.
+# These targets shell into dis/ because that is where the uv workspace root lives —
+# Synapse is a member of it, so `uv run` there resolves synapse, dis-canonical and
+# dis-rls together. Synapse's lint and tests reach CI through dis's own targets
+# (`make -C dis lint` / `make -C dis test` both span ../synapse), which is what
+# .github/workflows/ci.yml runs.
 
 .PHONY: help test conformance lint format
 
@@ -16,8 +17,8 @@ help:
 test:
 	cd ../dis && uv run pytest -c pyproject.toml ../synapse
 
-# Also run by tests/unit/test_contracts_conformance.py so `make test` covers it —
-# there is no CI to attach it to.
+# Also run by tests/unit/test_contracts_conformance.py so `make test` covers it, and
+# directly by the `contracts` job in .github/workflows/ci.yml.
 conformance:
 	cd ../dis && uv run python ../contracts/synapse/validate.py
 

@@ -1,0 +1,445 @@
+# Mandatory pull-request validation for the Thalamus monorepo.
+#
+# This is the repository's ONLY CI. Every gate here already exists as a canonical
+# local command (a Makefile target or a package.json script); this workflow runs
+# those commands rather than reimplementing them, so a green PR and a green
+# `make lint` mean the same thing.
+#
+# RULES THIS FILE HOLDS ITSELF TO:
+#   - No deployment, no cloud credentials, no Auth0 staging secrets. Nothing here
+#     mutates anything outside the runner.
+#   - permissions: contents: read, at the workflow level. No job widens it.
+#   - Locked dependencies only (uv.lock via UV_FROZEN, pnpm --frozen-lockfile).
+#   - No `|| true` and no continue-on-error on a mandatory gate. The ONE job that
+#     is allowed to fail is `supply-chain-report`, which is explicitly transitional
+#     and explicitly NOT a required check (see its header).
+#   - No path filters. A required status check that disappears on some PRs is a
+#     gate that is not one, so every job runs on every PR.
+#   - Third-party actions are pinned to immutable commit SHAs. Where a shell
+#     command is enough (pnpm via corepack), no action is used at all.
+#
+# Job names are the branch-protection contract. Renaming one silently drops a
+# required check, so rename only together with the ruleset.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # Supersede in-flight PR runs, but never abandon a main run half-finished: the
+  # protected branch stays continuously verified.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Fail rather than silently re-resolve if a lockfile is out of date.
+  UV_FROZEN: "1"
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+  PNPM_VERSION: "10.33.0"
+  UV_VERSION: "0.11.8"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Cross-language contract harnesses. Pure Python, no services, seconds to run.
+  # Both validators run inside DIS's locked environment so the jsonschema version
+  # is the one uv.lock pins, not whatever the runner happens to ship.
+  # ---------------------------------------------------------------------------
+  contracts:
+    name: contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Install locked dependencies
+        working-directory: dis
+        run: uv sync --frozen
+      - name: C6 pack contract conformance
+        working-directory: dis
+        run: uv run python ../contracts/conformance/validate.py
+      - name: Synapse capability/signal contract conformance
+        working-directory: dis
+        run: uv run python ../contracts/synapse/validate.py
+
+  # ---------------------------------------------------------------------------
+  # Static analysis for the DIS uv workspace, which includes connectors and
+  # synapse as members. `make lint` is mypy --strict over 24 packages + ruff check
+  # + import-linter; the format check is run alongside it because dis's own lint
+  # target does not include one (synapse's and axon's do).
+  # No database, no emulators — this job is pure static analysis.
+  # ---------------------------------------------------------------------------
+  dis-static:
+    name: dis-static
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Provide the local env contract
+        # dis/Makefile opens with `include .env`, so no target runs without it.
+        working-directory: dis
+        run: cp .env.example .env
+      - name: Install locked dependencies
+        working-directory: dis
+        run: uv sync --frozen
+      - name: ruff format --check (dis + connectors + synapse)
+        working-directory: dis
+        run: uv run ruff format --check --config pyproject.toml . ../connectors ../synapse
+      - name: make lint (mypy --strict, ruff check, import-linter)
+        working-directory: dis
+        run: make lint
+
+  # ---------------------------------------------------------------------------
+  # The DIS test suite: dis + connectors + synapse, against the repository's OWN
+  # docker-compose stack rather than hand-rolled service containers. That is
+  # deliberate — the compose file mounts infra/local/postgres-init.sql, which is
+  # what creates the non-superuser app role and the synapse roles the RLS and
+  # tenant-isolation tests depend on. Reproducing that as `services:` blocks would
+  # be a second definition of the local environment, free to drift from the one
+  # developers run.
+  # ---------------------------------------------------------------------------
+  dis-tests:
+    name: dis-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Provide the local env contract
+        working-directory: dis
+        run: cp .env.example .env
+      - name: Bring up the local stack (Postgres, Pub/Sub + GCS emulators, fakes)
+        working-directory: dis
+        # make run-local waits on pg_isready in an unbounded loop; bound it here so
+        # a stack that never becomes ready fails in minutes instead of hours.
+        run: timeout 900 make run-local
+      # scripts/check_setup.sh is deliberately NOT a gate here. It asserts
+      # developer-machine facts rather than repository health — a ~/.dbt/profiles.yml,
+      # container names from a previous compose project (ithina-dis-*, now dis-*), and
+      # a dis/docs/ directory removed in the documentation cleanup. It fails 9 checks
+      # on a correctly working stack today, so gating on it would be permanently red.
+      - name: make test (DIS + connectors + synapse)
+        working-directory: dis
+        run: make test
+      - name: Stack logs on failure
+        if: failure()
+        working-directory: dis
+        run: docker compose logs --tail=200
+
+  # ---------------------------------------------------------------------------
+  # Axon: its own lint and offline test targets. Separate from dis-static/dis-tests
+  # because axon is a peer plane with its own Makefile, and a module whose checks
+  # live in another module's target is a module whose checks get skipped.
+  # ---------------------------------------------------------------------------
+  axon:
+    name: axon
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Install locked dependencies
+        # axon's targets shell into dis/, which is where the uv workspace root is.
+        # They invoke `uv run` directly rather than dis's Makefile, so no .env.
+        working-directory: dis
+        run: uv sync --frozen
+      - name: make lint (ruff, ruff format --check, mypy --strict)
+        run: make -C axon lint
+      - name: make test (offline; no database, no provider)
+        run: make -C axon test
+
+  # ---------------------------------------------------------------------------
+  # Customer Master backend. Its own uv project (not a DIS workspace member) and
+  # its own Postgres on 5432. The RS256 keypair its stub auth verifies against is
+  # git-ignored development material, so CI generates a throwaway one per run —
+  # it signs nothing that outlives the job.
+  #
+  # TWO IDENTITIES, AND THE SPLIT IS THE POINT. The container's POSTGRES_USER is a
+  # bootstrap superuser that does only what a non-superuser cannot: install ltree and
+  # pgcrypto, and create the application role. It is NEVER the identity under test.
+  #
+  # user_admin_backend is created explicitly as NOSUPERUSER NOBYPASSRLS, because that
+  # is the privilege boundary production runs on and the one
+  # assert_app_role_no_bypassrls() refuses to start without. Naming it as
+  # POSTGRES_USER instead — as the local compose file does — would have the official
+  # image create it as a SUPERUSER, and a superuser bypasses RLS regardless of FORCE
+  # on the tables. The whole tenant-isolation suite would then be passing against a
+  # database that cannot enforce the thing it is asserting.
+  #
+  # It owns the database so its own migrations create the schema and own the tables
+  # they then apply FORCE RLS and policies to — ownership, not elevation, is what
+  # makes that work.
+  # ---------------------------------------------------------------------------
+  cm-backend:
+    name: cm-backend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        # postgres:15
+        image: postgres:15@sha256:9b1d34adbce1dd07ee6e94b4a2cf698884b89bd44a6c9c12f5da8f3acbfe4957
+        env:
+          POSTGRES_USER: ci_bootstrap
+          POSTGRES_PASSWORD: ci_bootstrap_only
+          POSTGRES_DB: ithina_platform_db
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ci_bootstrap -d ithina_platform_db"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgresql+psycopg://user_admin_backend:password_admin_backend@localhost:5432/ithina_platform_db
+      DB_SCHEMA: core
+      JWT_ISSUER: https://ithina.com
+      JWT_AUDIENCE: ithina-admin-api
+      ENVIRONMENT: local
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - name: Install locked dependencies
+        working-directory: cm-backend
+        run: uv sync --frozen
+      - name: Generate a throwaway RS256 dev keypair
+        working-directory: cm-backend
+        run: |
+          mkdir -p keys
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out keys/jwt_private.pem
+          openssl rsa -in keys/jwt_private.pem -pubout -out keys/jwt_public.pem
+      - name: Bootstrap the database (privileged identity, one time)
+        # Everything a NOSUPERUSER role cannot do for itself, and nothing else.
+        env:
+          PGPASSWORD: ci_bootstrap_only
+        run: |
+          psql -v ON_ERROR_STOP=1 -h localhost -U ci_bootstrap -d ithina_platform_db <<'SQL'
+          CREATE EXTENSION IF NOT EXISTS ltree;
+          CREATE EXTENSION IF NOT EXISTS pgcrypto;
+          CREATE ROLE user_admin_backend LOGIN PASSWORD 'password_admin_backend'
+            NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+          ALTER DATABASE ithina_platform_db OWNER TO user_admin_backend;
+          SQL
+
+      - name: Assert the application role cannot bypass RLS
+        # The gate this job exists to protect. A SUPERUSER or BYPASSRLS role reads
+        # through FORCE ROW LEVEL SECURITY, so every tenant-isolation assertion
+        # downstream would pass without proving anything. rolconfig is checked too:
+        # a role-level search_path is exactly the mask production forbids, and it
+        # would hide schema-qualification bugs the repository has been bitten by.
+        env:
+          PGPASSWORD: ci_bootstrap_only
+        run: |
+          read -r super bypass config <<<"$(psql -tA -F' ' -h localhost -U ci_bootstrap \
+            -d ithina_platform_db -c "SELECT rolsuper, rolbypassrls, \
+            coalesce(array_to_string(rolconfig, ','), 'none') \
+            FROM pg_roles WHERE rolname = 'user_admin_backend';")"
+          echo "user_admin_backend: rolsuper=$super rolbypassrls=$bypass rolconfig=$config"
+          if [ "$super" != "f" ] || [ "$bypass" != "f" ] || [ "$config" != "none" ]; then
+            echo "::error::user_admin_backend must be NOSUPERUSER, NOBYPASSRLS and carry no role-level config"
+            exit 1
+          fi
+
+      - name: Apply migrations as the non-superuser application role
+        working-directory: cm-backend
+        run: uv run alembic upgrade head
+      - name: Seed the development fixtures
+        # --reset is load-bearing, not tidiness: it is what retires the ROOS lookups
+        # row that the migration chain still seeds, which the module-catalog and
+        # lookups tests assert is gone.
+        working-directory: cm-backend
+        run: uv run python -m scripts.seed_dev_data --reset
+      - name: mypy --strict
+        working-directory: cm-backend
+        run: uv run mypy --strict src/admin_backend
+      - name: pytest
+        working-directory: cm-backend
+        run: uv run pytest
+
+  # ---------------------------------------------------------------------------
+  # Customer Master frontend. `pnpm build` is not just a build: it chains the four
+  # assert-* scripts (dynamic routes, em-dash copy rule, launcher tiles, channel
+  # credential safety), so the build IS the assertion suite for this package.
+  # ---------------------------------------------------------------------------
+  cm-frontend:
+    name: cm-frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Activate the declared pnpm
+        run: corepack enable && corepack prepare pnpm@${{ env.PNPM_VERSION }} --activate
+      - name: Install locked dependencies
+        working-directory: cm-frontend
+        run: pnpm install --frozen-lockfile
+      - name: eslint (--max-warnings 0, unused disable directives reported)
+        working-directory: cm-frontend
+        run: pnpm lint
+      - name: next build + assert-* gates
+        working-directory: cm-frontend
+        run: pnpm build
+
+  # ---------------------------------------------------------------------------
+  # DIS UI v2 (Vite/React SPA). Lint, typecheck, unit tests, production build.
+  # ---------------------------------------------------------------------------
+  dis-ui-ver2:
+    name: dis-ui-ver2
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: dis/services/dis-ui-ver2
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version-file: dis/services/dis-ui-ver2/.nvmrc
+      - name: Activate the declared pnpm
+        run: corepack enable && corepack prepare pnpm@${{ env.PNPM_VERSION }} --activate
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: eslint
+        run: pnpm lint
+      - name: tsc --noEmit
+        run: pnpm tsc
+      - name: vitest
+        run: pnpm test
+      - name: production build
+        run: pnpm build
+
+  # ---------------------------------------------------------------------------
+  # Terraform: formatting and static validation only. `-backend=false` means no
+  # remote state is read and no credentials are needed; nothing is planned and
+  # nothing is applied.
+  # ---------------------------------------------------------------------------
+  terraform:
+    name: terraform
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+      - name: terraform fmt -check
+        run: terraform fmt -check -recursive infra
+      - name: validate infra/envs/staging
+        working-directory: infra/envs/staging
+        run: |
+          terraform init -backend=false -input=false -no-color
+          terraform validate -no-color
+      - name: validate infra/bootstrap
+        working-directory: infra/bootstrap
+        run: |
+          terraform init -backend=false -input=false -no-color
+          terraform validate -no-color
+
+  # ---------------------------------------------------------------------------
+  # Secret scanning. BLOCKING, and honestly so: every pre-existing finding was
+  # triaged individually and recorded in .gitleaks.toml with the reason it is not
+  # a credential. The scan covers full history, so a secret cannot be laundered by
+  # committing and then deleting it.
+  # ---------------------------------------------------------------------------
+  security-secrets:
+    name: security-secrets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0 # full history: gitleaks detect scans commits, not just the tip
+      - name: gitleaks detect
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo \
+            zricethezav/gitleaks:v8.28.0@sha256:cdbb7c955abce02001a9f6c9f602fb195b7fadc1e812065883f695d1eeaba854 \
+            detect --source=/repo --config=/repo/.gitleaks.toml \
+                   --redact --no-banner --exit-code 1
+
+  # ---------------------------------------------------------------------------
+  # TRANSITIONAL, AND NOT A REQUIRED CHECK. Do not add this job to branch
+  # protection while it is in this state.
+  #
+  # Dependency and infrastructure scanning is reporting-only because the repository
+  # has untriaged historical findings TODAY: 61 advisories in cm-frontend's tree
+  # (2 critical, 24 high), 21 in dis-ui-ver2, and 12 HIGH Terraform
+  # misconfigurations. Making this blocking now would either wedge every PR or
+  # force a blanket suppression, and a suppressed scanner reports a security
+  # posture the repository does not have.
+  #
+  # WHAT THIS JOB DOES NOT DO. It does not enforce non-regression. Every step below
+  # is continue-on-error, and there is no accepted-findings baseline to diff against,
+  # so a pull request that ADDS a vulnerable dependency still goes green — the new
+  # finding is printed in the log and nothing fails. Reading this job as a ratchet
+  # would be wrong; it publishes numbers a reviewer has to look at.
+  #
+  # The exit criterion is triage, not tuning: work the findings down, add a baseline
+  # of accepted IDs, then flip these steps to blocking and add the job to the ruleset.
+  # ---------------------------------------------------------------------------
+  supply-chain-report:
+    name: supply-chain-report
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: ${{ env.UV_VERSION }}
+      - run: corepack enable && corepack prepare pnpm@${{ env.PNPM_VERSION }} --activate
+
+      - name: npm advisories (cm-frontend)
+        continue-on-error: true # transitional: see job header
+        working-directory: cm-frontend
+        run: pnpm audit --audit-level=high
+
+      - name: npm advisories (dis-ui-ver2)
+        continue-on-error: true # transitional: see job header
+        working-directory: dis/services/dis-ui-ver2
+        run: pnpm audit --audit-level=high
+
+      - name: PyPI advisories (DIS workspace lockfile)
+        continue-on-error: true # transitional: see job header
+        working-directory: dis
+        run: |
+          uv export --format requirements-txt --no-emit-project --no-hashes > /tmp/dis-requirements.txt
+          uvx --python ${{ env.PYTHON_VERSION }} pip-audit -r /tmp/dis-requirements.txt --no-deps
+
+      - name: PyPI advisories (Customer Master backend lockfile)
+        continue-on-error: true # transitional: see job header
+        working-directory: cm-backend
+        run: |
+          uv export --format requirements-txt --no-emit-project --no-hashes > /tmp/cm-requirements.txt
+          uvx --python ${{ env.PYTHON_VERSION }} pip-audit -r /tmp/cm-requirements.txt --no-deps
+
+      - name: Terraform and Dockerfile misconfiguration
+        continue-on-error: true # transitional: see job header
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo \
+            aquasec/trivy:0.58.2@sha256:665030f4d33a82c1e8d9d5e0453365842236723c1ee5cc3becca698268e66a56 \
+            config --quiet --severity HIGH,CRITICAL \
+            --exit-code 1 infra dis/terraform/docker cm-backend cm-frontend

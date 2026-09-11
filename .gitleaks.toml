@@ -1,0 +1,19 @@
+# Secret-scanning configuration for the mandatory CI gate (.github/workflows/ci.yml).
+#
+# The gate is BLOCKING. Nothing is allowlisted here: the default ruleset runs as-is,
+# and the seven triaged pre-existing findings are suppressed individually by
+# fingerprint in .gitleaksignore, where each one records what the value is and why it
+# is not a credential.
+#
+# THIS FILE DELIBERATELY CARRIES NO PATH ALLOWLIST. An earlier version exempted whole
+# live files — the Cloud Build config, a unit test, the contract fixtures, the
+# dev-token scripts — on the strength of one benign match in each. That is a hole
+# rather than an exception: a real credential committed anywhere in those files would
+# have been waved through silently, which contradicts the very claim a blocking gate
+# makes. Fingerprints pin commit, path, rule and line, so the exception covers the
+# finding that was triaged and nothing else.
+#
+# If the gate fails on a new finding, remove the secret and rotate it.
+
+[extend]
+useDefault = true

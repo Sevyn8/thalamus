@@ -4,7 +4,6 @@ to one channel must not return the other channel's row - proven on live 5433."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -12,6 +11,7 @@ import pytest
 
 from csv_ingest_worker.bronze import BronzeRow, find_prior, insert_row
 from dis_core.ids import new_uuid7
+from dis_core.timestamps import now_utc
 from dis_rls import rls_session
 from dis_testing.fixtures import DEFAULT_SOURCE_ID, PRIMARY_STORE, PRIMARY_TENANT
 
@@ -41,7 +41,10 @@ def _row(bronze_id: UUID, trace_id: UUID, channel: str) -> BronzeRow:
         source_payload_id=_SPID,
         template_id=new_uuid7(),
         original_filename=None,
-        received_at=datetime(2026, 7, 18, 10, 0, tzinfo=UTC),
+        # INSIDE the dedup window, relative to now: find_prior filters
+        # received_at >= now() - DEDUP_WINDOW_HOURS, so a fixed date would rot
+        # into a permanent no-prior-found failure once it aged past the window.
+        received_at=now_utc(),
         processing_status="RECEIVED",
         dis_channel=channel,
     )

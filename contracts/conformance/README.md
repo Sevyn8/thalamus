@@ -15,5 +15,5 @@ and a missing signature block must be rejected), and asserts the scope guard
 python3 conformance/validate.py
 ```
 
-Needs Python 3 and `jsonschema`. Exits non-zero if any check fails, so it can
-gate CI when the repo wires one.
+Needs Python 3 and `jsonschema`. Exits non-zero if any check fails; the
+`contracts` job in `.github/workflows/ci.yml` runs it on every pull request.

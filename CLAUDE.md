@@ -52,4 +52,6 @@ that exists now, not how it was built.
 13. Do not change message acknowledgement, retry, idempotency, deduplication, or
     transaction semantics as a side effect of another change.
 14. Run the subsystem's own gates (Makefile targets, package.json scripts)
-    before declaring work done. There is no CI; the local gates are the gate.
+    before declaring work done. `.github/workflows/ci.yml` runs those same
+    commands on every pull request, so a local gate you skipped is a red PR, not
+    a saved minute.

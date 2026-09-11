@@ -1,0 +1,44 @@
+# Triaged pre-existing secret-scan findings, suppressed ONE AT A TIME.
+#
+# Each line is a Gitleaks fingerprint: commit:path:rule:line. That is as narrow as
+# suppression gets — it pins the exact match in the exact commit. A new secret in
+# any of these same files produces a different fingerprint and still fails the
+# `security-secrets` gate, which is the property that makes a blocking gate honest.
+#
+# This replaced a set of path-level allowlists. Those exempted whole LIVE files, so
+# a real credential committed next to a benign match would have been waved through.
+#
+# Adding a line here is not a way to make CI green. It requires the same triage: say
+# what the value is and why it is not a credential. If it IS a credential, rotate it.
+
+# Auth0 SPA client ID (_VITE_AUTH0_CLIENT_ID). A public PKCE client has no secret
+# and its client ID is inlined into the browser bundle by design — see the build-arg
+# comment in dis-ui-ver2.Dockerfile. A public identifier, not a credential.
+f1a895f14399a1992239cc17c94b3fbf68e8356a:dis/terraform/docker/cloudbuild-dis-ui-ver2.yaml:generic-api-key:51
+
+# A fabricated refresh-token string asserted against an in-memory vault in a unit
+# test. No provider ever issued it.
+3689dbb3d6b753af3e5830d1248bcb55d2eee0b5:connectors/clover-oauth/tests/unit/test_vault.py:generic-api-key:149
+
+# A React `key:` prop matched by the generic-api-key heuristic. The file was deleted
+# as archived dead code; it survives only in history, so a history scan keeps
+# re-finding it.
+73e0b38e0f6e114b49d733b7e47cb67a6858d149:cm-frontend/archive/dis-legacy/components/dis/admin/FleetHealthMatrix.tsx:generic-api-key:69
+
+# A contract fixture object whose field is literally named "key"
+# ("lead_to_qualified", a funnel-stage identifier). Benign vocabulary.
+73e0b38e0f6e114b49d733b7e47cb67a6858d149:contracts/pack/fixtures/insurance-cac/payload.json:generic-api-key:82
+
+# TEST_RSA_PRIVATE_KEY_PEM: a throwaway RSA key committed on purpose so the shared
+# test-fixtures library can sign test JWTs offline (issuer customer-master.local,
+# audience dis). It authenticates nothing that exists. Suppressed as this one
+# fingerprint — a different private key in the same file is a different finding and
+# still fails.
+73e0b38e0f6e114b49d733b7e47cb67a6858d149:dis/libs/dis-testing/src/dis_testing/fixtures.py:private-key:65
+
+# Header-comment prose in the dev-token generator scripts, explaining that the
+# tokens they produce are DEV-STUB and HS256-signed with the published constant the
+# dis-ui-server verifier checks. The match is the explanation, not a token; the
+# generated tokens/ output directory is git-ignored.
+73e0b38e0f6e114b49d733b7e47cb67a6858d149:dis/scripts/jwt/gen_dis_jwt_90d.sh:generic-api-key:10
+73e0b38e0f6e114b49d733b7e47cb67a6858d149:dis/scripts/jwt/gen_dis_jwt_90d_v1.sh:generic-api-key:10

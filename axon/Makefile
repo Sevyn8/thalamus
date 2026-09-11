@@ -2,8 +2,9 @@
 # targets for the same reason it has its own alembic chain: a module whose checks live in
 # another module's Makefile is a module whose checks get skipped when that one is refactored.
 #
-# There is no CI in this repository, so these targets are the only automation. They shell into
-# dis/ because that is where the uv workspace root lives.
+# These targets are what `.github/workflows/ci.yml`'s `axon` job runs, so local and CI
+# agree by construction. They shell into dis/ because that is where the uv workspace
+# root lives.
 #
 # NOTE WHERE THE MAIL-COPY GUARD IS NOT. test_no_em_dash_in_axon_copy.py lives in
 # synapse-ui-server's suite, not here, because the copy it walks is composed there and because
