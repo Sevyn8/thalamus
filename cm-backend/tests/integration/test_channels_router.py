@@ -82,8 +82,8 @@ def channels_permissions_present(axon_channel_connections: None) -> None:
     THIS FIXTURE EXISTS BECAUSE OF A REAL OPERATIONAL GAP, NOT BECAUSE OF A TEST INCONVENIENCE
     =============================================================================================
     Migration b7e3c95a1d84 INSERTS the three CHANNELS permissions. It has been applied here: the
-    local ``core.alembic_version`` reads b7e3c95a1d84. And the rows are gone: ``core.permissions``
-    holds 37 rows and none of them is a CHANNELS tuple.
+    local ``core.alembic_version`` is at or past b7e3c95a1d84. And the rows are gone:
+    ``core.permissions`` holds 37 rows and none of them is a CHANNELS tuple.
 
     The cause is that ``scripts/seed_dev_data --reset`` TRUNCATEs ``core.permissions`` and
     reloads the workbook, which does not contain these three rows. Alembic will never restore

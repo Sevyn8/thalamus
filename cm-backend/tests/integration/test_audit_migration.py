@@ -59,10 +59,10 @@ async def test_at_n1_new_revision_is_at_alembic_head(
     """LOAD-BEARING: the migration chain is applied to the current head.
 
     The head advances whenever a new migration lands on top; this constant is
-    bumped in lockstep. The channels permission catalogue migration
-    (``b7e3c95a1d84``: adds CHANNELS to ``resource_enum``, three permission rows
-    and four role grants) landed on top of the DIS module catalog migration
-    (``a1c4e7f09d2b``), so the head is now ``b7e3c95a1d84``.
+    bumped in lockstep. The ROOS removal migration (``0fdfbc8871a8``: rebuilds
+    ``module_code_enum`` without ROOS and deletes every row that referenced it)
+    landed on top of the channels permission catalogue migration
+    (``b7e3c95a1d84``), so the head is now ``0fdfbc8871a8``.
     """
     schema = get_settings().db_schema
     async for session in get_tenant_session(platform_auth, session_factory):
@@ -70,7 +70,7 @@ async def test_at_n1_new_revision_is_at_alembic_head(
             text(f"SELECT version_num FROM {schema}.alembic_version")
         )
         head = result.scalar_one()
-    assert head == "b7e3c95a1d84"
+    assert head == "0fdfbc8871a8"
 
 
 # ---------------------------------------------------------------------------

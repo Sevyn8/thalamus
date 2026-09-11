@@ -51,12 +51,11 @@ from admin_backend.models.tenant_module_access import (
 )
 
 
-# Locked module ordering post-Step-6.7 (seed migration ``2fdc4bc9f4cb``),
-# minus ROOS retired on 2026-05-12. Mirrors the live ``lookups`` row
-# set after the seed loader's ROOS cleanup; assertions on
-# position-alignment anchor on this sequence. display_order values
-# remain at 2-6 (no renumber); the sequence is contiguous on order
-# even though the underlying integers skip 1.
+# Locked module ordering post-Step-6.7 (seed migration ``2fdc4bc9f4cb``).
+# Mirrors the live ``lookups`` row set; assertions on position-alignment
+# anchor on this sequence. display_order values run 2-7 (no renumber when
+# 0fdfbc8871a8 deleted the retired row at 1); the sequence is contiguous on
+# order even though the underlying integers skip 1.
 _EXPECTED_MODULE_ORDER: list[str] = [
     "GOAL_CONSOLE",
     "PRICING_OS",
@@ -407,12 +406,12 @@ async def test_x2_matrix_cell_synthesis_under_rls(
     make_tenant_module_access,
     super_admin_jwt,
 ):
-    """LOAD-BEARING: ``cells[]`` is always 5 (post-ROOS-retirement
-    2026-05-12), with absent + DISABLED rows both rendering as DISABLED.
+    """LOAD-BEARING: ``cells[]`` is always 6 (one per supported module),
+    with absent + DISABLED rows both rendering as DISABLED.
 
     Tenant T has 3 ENABLED rows (PRICING_OS, GOAL_CONSOLE, ADMIN).
-    Expected: cells[] has 5 entries; those 3 codes are ENABLED, the
-    other 2 (PERISHABLES_ASSISTANT, PROMOTIONS_ASSISTANT) are
+    Expected: cells[] has 6 entries; those 3 codes are ENABLED, the
+    other 3 (PERISHABLES_ASSISTANT, PROMOTIONS_ASSISTANT, DIS) are
     DISABLED — synthesised by the CROSS JOIN, not present in
     tenant_module_access at all.
     """
@@ -466,7 +465,7 @@ async def test_x3_matrix_platform_envelope(
     app_client, settings, make_tenant,
     super_admin_jwt,
 ):
-    """N rows, each with 5 cells (ROOS retired 2026-05-12), plus
+    """N rows, each with 6 cells (one per supported module), plus
     pagination block."""
     await make_tenant(name="X3-T", status=TenantStatus.ACTIVE)
     resp = app_client.get(

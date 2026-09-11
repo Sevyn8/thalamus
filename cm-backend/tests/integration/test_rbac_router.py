@@ -59,13 +59,11 @@ from admin_backend.models.permission import (
 # PermissionMatrixRepo for the SQL). The seed data for
 # ``list_name='module_code'`` defines this order; mirroring it here
 # keeps the test contract aligned with the live SQL.
-# Migration `2fdc4bc9f4cb` re-ordered to match the locked
-# screenshot sequence: ROOS, GOAL_CONSOLE, PRICING_OS, PERISHABLES,
-# PROMOTIONS, ADMIN. ROOS retired from Python vocabulary 2026-05-12;
-# the seed loader's --reset deletes the ROOS lookups row so local DB
-# carries 5 rows at display_order 2-6 (no renumber — aligned with
-# cloud per operator decision). Values below mirror live local DB
-# verbatim. If the seed changes again, update this map.
+# Migration `2fdc4bc9f4cb` re-ordered to match the locked screenshot
+# sequence; migration `0fdfbc8871a8` deleted the retired row that held
+# display_order 1, leaving the catalogue at display_order 2-7 (no
+# renumber — aligned with cloud per operator decision). Values below
+# mirror live local DB verbatim. If the seed changes again, update this map.
 _MODULE_DISPLAY_ORDER: dict[str, int] = {
     "GOAL_CONSOLE": 2,
     "PRICING_OS": 3,
