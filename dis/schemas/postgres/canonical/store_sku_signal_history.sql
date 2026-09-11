@@ -5,14 +5,14 @@
 -- per store per day. One row per (tenant, store, sku, variant, lot, as_of_date).
 -- NO WRITER EXISTS: no job or service populates this table today (0 rows in
 -- both schemas). The intended shape is append-only daily rows, read by:
---   - ROOS agents for backtesting and time-series analytics.
+--   - Downstream analytics consumers, for backtesting and time-series analytics.
 --   - The nightly Cloud SQL → BigQuery export, after which old partitions are
 --     dropped from Postgres.
 --
 -- The current values of these signals also live as columns on
 -- canonical.store_sku_current_position. This table preserves the historical
 -- daily values so the compute job can run incrementally (yesterday + 1 day
--- of new events) instead of full-window recomputation, and so ROOS can
+-- of new events) instead of full-window recomputation, and so consumers can
 -- inspect any past day's signals without recomputing.
 --
 -- ----------------------------------------------------------------------------

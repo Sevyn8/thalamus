@@ -296,7 +296,7 @@ COMMENT ON COLUMN staging.store_sku_current_position.promo_price IS
 'Promotional price per unit of sale when an active promo applies. Same tax-treatment scope question as unit_cost.';
 
 COMMENT ON COLUMN staging.store_sku_current_position.yesterday_retail_price IS
-'Previous-day retail price for change-detection by ROOS agents. Clock semantics for "yesterday" (tenant local / store local / UTC) TBD.';
+'Previous-day retail price for downstream change-detection. Clock semantics for "yesterday" (tenant local / store local / UTC) TBD.';
 
 COMMENT ON COLUMN staging.store_sku_current_position.tax_treatment IS
 'Whether retail prices on this row are tax-inclusive or tax-exclusive. Denormalized from store.';

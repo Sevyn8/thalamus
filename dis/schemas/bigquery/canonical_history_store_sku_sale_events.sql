@@ -13,7 +13,7 @@
 --   - services/daily-compute on the slow/bootstrap path when yesterday's
 --     signal_history row is missing in Cloud SQL.
 --   - services/dis-ui-server for tenant-facing historical analytics queries.
---   - DIS analytics consumers (ROOS-side; future).
+--   - DIS analytics consumers (future).
 --   - DIS engineering for ad-hoc ops investigations.
 --
 -- BQ has no row-level access policy on this table, and no application-level

@@ -90,8 +90,8 @@ PROVENANCE: dict[type[BaseModel], ColumnProvenance] = {
                 "unit_cost_trend_30day",
                 "attribute_staleness_map",
                 # OPERATOR-CONFIRMED JUDGMENT, not introspected fact: live comment
-                # says "Previous-day retail price for change-detection by ROOS
-                # agents ... TBD" — no source asserts yesterday's price, so it is
+                # says "Previous-day retail price for downstream change-detection
+                # ... TBD" — no source asserts yesterday's price, so it is
                 # classified compute-owned (owned by daily-compute). Revisitable.
                 "yesterday_retail_price",
                 # Per-attribute change signals. "Compute-owned" here means
