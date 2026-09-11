@@ -2,10 +2,26 @@
 
 Single environment: GCP project `sevyn8-thalamus-staging`, region `asia-south1`.
 All infrastructure is Terraform under `infra/envs/staging` (state in the shared
-`sevyn8-tfstate` bucket, prefix `thalamus/staging`). There is **no CI**: every
-gate in this repository is run by hand (see README for the per-subsystem
-commands), and nothing runs the test suites or the contract conformance
-harnesses automatically.
+`sevyn8-tfstate` bucket, prefix `thalamus/staging`).
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every pull request against `main` and on every
+push to `main`. It runs the repository's own canonical commands (Makefile targets
+and package.json scripts), so CI and a local run are the same gate. It validates
+only: it performs no deployment, holds no cloud or Auth0 credentials, and reads no
+remote Terraform state (`terraform validate` runs with `-backend=false`).
+
+Required checks: `contracts`, `dis-static`, `dis-tests`, `axon`, `cm-backend`,
+`cm-frontend`, `dis-ui-ver2`, `terraform`, `security-secrets`.
+
+`supply-chain-report` is **transitional and must not be made a required check**
+in its current form: dependency and IaC scanning runs in reporting mode because
+the repository has untriaged historical findings. Work them down, then flip those
+steps to blocking and add the job to the ruleset.
+
+Releases still deploy by the manual flow below; CI gates the merge, not the
+release.
 
 ## Deployment
 
