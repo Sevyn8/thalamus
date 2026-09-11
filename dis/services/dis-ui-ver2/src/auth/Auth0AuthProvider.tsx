@@ -62,6 +62,20 @@ export function Auth0AuthProvider({ children }: { children: ReactNode }) {
     snapshot: null,
   })
 
+  // THE TOKEN EPOCH. A monotonic counter naming the authentication attempt a token
+  // request belongs to. Every request captures the epoch it was created under and
+  // re-checks it before touching storage or state, so abandoning outstanding work is
+  // a single synchronous increment.
+  //
+  // WHY THE EFFECT-LOCAL `active` FLAG IS NOT ENOUGH. Cleanup only runs when a
+  // dependency changes, and logout does not change one: the Auth0 SDK reports
+  // isAuthenticated=false some time AFTER logout begins. In that window the old
+  // request is still considered live, and a resolve lands writeToken() — putting the
+  // credential the user just signed out of back into storage. The epoch closes that
+  // window because logout can invalidate synchronously, at the moment of intent,
+  // without waiting for the SDK to catch up.
+  const tokenEpochRef = useRef(0)
+
   // Loop guard for the silent-authorize attempt below. Computed once per page load:
   // true when the URL carries an Auth0 redirect result (?code/?state on success,
   // ?error on prompt=none failure). When returning from a callback we must NOT fire
@@ -84,6 +98,10 @@ export function Auth0AuthProvider({ children }: { children: ReactNode }) {
     if (!isAuthenticated) {
       return
     }
+    // This request's epoch. Taken before the call so anything that invalidates
+    // afterwards — logout, or Auth0 reporting no session — leaves it behind.
+    const epoch = ++tokenEpochRef.current
+    // Retained as a second, narrower guard for the ordinary dependency-change case.
     let active = true
     // Fetch the access token and write it into the SAME localStorage slot the stub
     // path uses, so client.ts (sessionToken -> readToken) is unchanged. Re-runs when
@@ -92,14 +110,18 @@ export function Auth0AuthProvider({ children }: { children: ReactNode }) {
     // wiring is out of scope for the built-not-wired step.
     getAccessTokenSilently()
       .then((token) => {
-        if (!active) {
+        // A stale SUCCESS must not write the bearer, the snapshot, or the status.
+        if (!active || epoch !== tokenEpochRef.current) {
           return
         }
         writeToken(token)
         setSession({ key: sessionKey, snapshot: snapshotFromToken(token) })
       })
       .catch(() => {
-        if (!active) {
+        // A stale FAILURE is the more dangerous half: its error path CLEARS storage
+        // and the snapshot, so an unguarded late rejection from an abandoned request
+        // signs the current session out. Same epoch check, same reason.
+        if (!active || epoch !== tokenEpochRef.current) {
           return
         }
         clearToken()
@@ -109,6 +131,19 @@ export function Auth0AuthProvider({ children }: { children: ReactNode }) {
       active = false
     }
   }, [isAuthenticated, getAccessTokenSilently, sessionKey])
+
+  // A SESSION CAN END WITHOUT PASSING THROUGH logout() — an SDK-side expiry, a sign
+  // out in another tab. When Auth0 has definitively resolved to no session, abandon
+  // any outstanding request and make sure the bearer is not still sitting in storage
+  // for client.ts to attach to the next request. Storage only; the snapshot is
+  // already handled by the session-boundary reset during render.
+  useEffect(() => {
+    if (isLoading || isAuthenticated) {
+      return
+    }
+    tokenEpochRef.current += 1
+    clearToken()
+  }, [isLoading, isAuthenticated])
 
   // Single-login-entry: when the SDK has DEFINITIVELY resolved to no session, attempt
   // a silent (prompt=none) Auth0 authorize FIRST. If the CM-established SSO session
@@ -204,7 +239,18 @@ export function Auth0AuthProvider({ children }: { children: ReactNode }) {
         window.location.href = import.meta.env.VITE_CM_LOGIN_URL ?? window.location.origin
       },
       logout() {
+        // ORDER IS THE WHOLE POINT. Invalidate FIRST, synchronously, so every
+        // request created before this moment is already dead before anything else
+        // happens — including the ones that will resolve during the gap before the
+        // SDK reports isAuthenticated=false. Clearing storage first and invalidating
+        // afterwards leaves exactly the window where a late resolve restores the
+        // credential the user just discarded.
+        tokenEpochRef.current += 1
         clearToken()
+        // Drop the snapshot now rather than waiting for the SDK: logout is the
+        // intent, and until Auth0 catches up the boundary reset has nothing to fire
+        // on. Functional form so this does not capture sessionKey.
+        setSession((previous) => ({ key: previous.key, snapshot: null }))
         void logout({ logoutParams: { returnTo: window.location.origin } })
       },
     }),
