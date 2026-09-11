@@ -48,8 +48,16 @@ database and short by one in production is precisely the failure this shape refu
 unconverted column would keep a dangling dependency on the legacy type and ``DROP TYPE`` would
 fail late, mid-migration. The same read reports column DEFAULTS; there are none today, and a
 default would have to be dropped before the type change and restored after, so the migration
-REFUSES rather than silently discarding one. Dependent views, materialized views and functions
-are refused for the same reason — none exist, and ``DROP ... CASCADE`` is never used here.
+REFUSES rather than silently discarding one.
+
+Everything else that could block the rebuild — views, materialized views, rules and functions —
+is refused by ``blocking_dependents``, which runs TWO catalogue scans because neither finds what
+the other does: one over dependents of the TYPE, one over dependents of the enum-typed COLUMNS.
+A view that casts the column instead of exposing it (``WHERE module::text = 'ADMIN'``) records
+no dependency on the type at all and is invisible to the first scan, yet still makes Postgres
+refuse the ``ALTER``. Both scans and that asymmetry were measured against a live catalogue
+rather than reasoned about; see the header comment on ``_BLOCKING_DEPENDENTS`` and
+``tests/integration/test_roos_migration_guard.py``. ``DROP ... CASCADE`` is never used here.
 
 Both dependent columns are NOT NULL with no default, so the ``USING column::text::new_type``
 cast preserves NULL semantics trivially (there are no NULLs to preserve) and cannot encounter a
@@ -150,51 +158,138 @@ def _dependent_columns(bind: sa.engine.Connection) -> list[tuple[str, str, str |
     return [(r.table_name, r.column_name, r.default_expr) for r in rows]
 
 
-def _assert_no_exotic_dependents(bind: sa.engine.Connection) -> None:
-    """Refuse views, materialized views and functions that depend on the type.
-
-    None exist. If one is ever added, converting the columns underneath it would either fail or
-    silently leave the dependent pinned to the legacy type, and the only safe handling is to
-    recreate it deliberately — which is a decision for whoever adds it, not a CASCADE here.
+# Objects that depend on the enum TYPE or on the enum-typed COLUMNS and that this migration
+# does not know how to recreate. Two scans, because neither finds what the other does.
+#
+# READ THE DIRECTION OF pg_depend CAREFULLY. `refclassid`/`refobjid` identify the REFERENCED
+# object; `classid`/`objid` identify the DEPENDENT, and `classid` is what says which catalog
+# `objid` is to be read against. Joining pg_class on `refobjid` — the type's OID — asks whether
+# a relation happens to share an OID with a type, which is not a dependency question at all and
+# returns nothing however many dependents exist.
+#
+# SCAN 1, dependents of the TYPE. Views and materialized views that expose a column OF the type
+# appear here as pg_class rows; a view that only CASTS to the type appears as a pg_rewrite row
+# and must be resolved to its owning relation through `pg_rewrite.ev_class`. Functions appear as
+# pg_proc, column defaults as pg_attrdef. The array type `_module_code_enum` is an internal
+# dependency (deptype 'i') and is renamed with its element type, so it is skipped. Ordinary
+# tables (relkind 'r') are skipped too: they are the columns this migration converts, and
+# `_EXPECTED_COLUMNS` is what proves that set is the one expected.
+#
+# SCAN 2, dependents of the COLUMNS. A view whose rule reads the column without mentioning the
+# type — `WHERE module::text = 'ADMIN'` — creates NO dependency on the type and is invisible to
+# scan 1, yet it still makes Postgres refuse with "cannot alter type of a column used by a view
+# or rule". Measured, not assumed: that exact view was built on a database at the previous head
+# and scan 1 missed it while scan 2 caught it. Only pg_rewrite and pg_proc are treated as
+# blocking here — the UNIQUE constraints over these columns also depend on them, and
+# ALTER COLUMN TYPE rebuilds constraints and indexes itself.
+_BLOCKING_DEPENDENTS = sa.text(
     """
-    dependents = bind.execute(
-        sa.text(
-            """
-            SELECT DISTINCT c.relname AS name, c.relkind::text AS kind
-              FROM pg_depend d
-              JOIN pg_class  c ON c.oid = d.refobjid
-             WHERE d.refobjid IN (
-                     SELECT oid FROM pg_type
-                      WHERE typname = :enum
-                        AND typnamespace = current_schema()::regnamespace)
-               AND c.relkind IN ('v', 'm')
-            """
-        ),
-        {"enum": _ENUM},
-    ).all()
-    functions = bind.execute(
-        sa.text(
-            """
-            SELECT n.nspname || '.' || p.proname AS name
-              FROM pg_proc p
-              JOIN pg_namespace n ON n.oid = p.pronamespace
-             WHERE p.prokind = 'f'
-               AND n.nspname = current_schema()
-               AND (p.prorettype = (SELECT oid FROM pg_type
-                                     WHERE typname = :enum
-                                       AND typnamespace = current_schema()::regnamespace)
-                 OR (SELECT oid FROM pg_type
-                      WHERE typname = :enum
-                        AND typnamespace = current_schema()::regnamespace) = ANY (p.proargtypes))
-            """
-        ),
-        {"enum": _ENUM},
-    ).all()
-    blocking = [f"{r.kind}:{r.name}" for r in dependents] + [f"f:{r.name}" for r in functions]
+    WITH target AS (
+        SELECT oid AS typoid
+          FROM pg_type
+         WHERE typname = :enum
+           AND typnamespace = current_schema()::regnamespace
+    ),
+    cols AS (
+        SELECT a.attrelid, a.attnum
+          FROM pg_attribute a
+          JOIN pg_class     c ON c.oid = a.attrelid AND c.relkind = 'r'
+          JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = current_schema()
+         WHERE a.atttypid = (SELECT typoid FROM target)
+           AND a.attnum > 0
+           AND NOT a.attisdropped
+    )
+    -- SCAN 1: dependents of the type itself.
+    SELECT 'type' AS via,
+           d.classid::regclass::text AS catalog,
+           CASE d.classid
+               WHEN 'pg_class'::regclass THEN
+                   (SELECT c.relkind::text || ':' || n.nspname || '.' || c.relname
+                      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                     WHERE c.oid = d.objid)
+               WHEN 'pg_rewrite'::regclass THEN
+                   (SELECT 'rule on ' || c.relkind::text || ':' || n.nspname || '.' || c.relname
+                      FROM pg_rewrite r
+                      JOIN pg_class c ON c.oid = r.ev_class
+                      JOIN pg_namespace n ON n.oid = c.relnamespace
+                     WHERE r.oid = d.objid)
+               WHEN 'pg_proc'::regclass THEN
+                   (SELECT 'function ' || n.nspname || '.' || p.proname
+                      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                     WHERE p.oid = d.objid)
+               WHEN 'pg_attrdef'::regclass THEN
+                   (SELECT 'default on ' || c.relname || '.' || a.attname
+                      FROM pg_attrdef ad
+                      JOIN pg_class c ON c.oid = ad.adrelid
+                      JOIN pg_attribute a ON a.attrelid = ad.adrelid AND a.attnum = ad.adnum
+                     WHERE ad.oid = d.objid)
+               WHEN 'pg_constraint'::regclass THEN
+                   (SELECT 'constraint ' || con.conname
+                      FROM pg_constraint con WHERE con.oid = d.objid)
+               ELSE d.objid::text
+           END AS obj
+      FROM pg_depend d
+     WHERE d.refclassid = 'pg_type'::regclass
+       AND d.refobjid = (SELECT typoid FROM target)
+       AND d.deptype <> 'i'
+       AND NOT (
+             d.classid = 'pg_class'::regclass
+         AND EXISTS (SELECT 1 FROM pg_class c
+                      WHERE c.oid = d.objid AND c.relkind = 'r')
+       )
+
+    UNION
+
+    -- SCAN 2: dependents of the enum-typed columns that the type scan cannot see.
+    SELECT 'column' AS via,
+           d.classid::regclass::text AS catalog,
+           CASE d.classid
+               WHEN 'pg_rewrite'::regclass THEN
+                   (SELECT 'rule on ' || c.relkind::text || ':' || n.nspname || '.' || c.relname
+                      FROM pg_rewrite r
+                      JOIN pg_class c ON c.oid = r.ev_class
+                      JOIN pg_namespace n ON n.oid = c.relnamespace
+                     WHERE r.oid = d.objid)
+               WHEN 'pg_proc'::regclass THEN
+                   (SELECT 'function ' || n.nspname || '.' || p.proname
+                      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                     WHERE p.oid = d.objid)
+               ELSE d.objid::text
+           END AS obj
+      FROM pg_depend d
+      JOIN cols ON cols.attrelid = d.refobjid AND cols.attnum = d.refobjsubid
+     WHERE d.refclassid = 'pg_class'::regclass
+       AND d.classid IN ('pg_rewrite'::regclass, 'pg_proc'::regclass)
+    """
+)
+
+
+def blocking_dependents(bind: sa.engine.Connection) -> list[str]:
+    """Describe every object that would make the type rebuild unsafe. Empty list means safe.
+
+    Public rather than underscore-private because
+    ``tests/integration/test_roos_migration_guard.py`` imports it and builds real views,
+    materialized views and functions against a live catalogue to prove it fires. A guard whose
+    only evidence is that it returned nothing is indistinguishable from a guard that cannot
+    return anything, which is exactly what the first implementation of this check was.
+    """
+    rows = bind.execute(_BLOCKING_DEPENDENTS, {"enum": _ENUM}).all()
+    return sorted(f"{row.via}/{row.catalog}: {row.obj}" for row in rows)
+
+
+def _assert_no_exotic_dependents(bind: sa.engine.Connection) -> None:
+    """Refuse anything depending on the type or the columns that this migration cannot rebuild.
+
+    None exist today. If one is ever added, converting the columns underneath it would fail
+    partway or leave the dependent pinned to the legacy type, and the only safe handling is to
+    recreate it deliberately — a decision for whoever added it, not a CASCADE here.
+    """
+    blocking = blocking_dependents(bind)
     if blocking:
         raise RuntimeError(
-            f"0fdfbc8871a8: {_ENUM} has dependents this migration does not know how to "
-            f"recreate: {sorted(blocking)}. Handle them explicitly — CASCADE would drop them."
+            f"0fdfbc8871a8: {_ENUM} (or a column of it) has dependents this migration does not "
+            f"know how to recreate: {blocking}. Drop and recreate them around this migration "
+            "deliberately — CASCADE would drop them silently."
         )
 
 
