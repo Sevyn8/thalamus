@@ -42,25 +42,22 @@
 #      does not. It is the first one, which makes fixing the others a precedent
 #      rather than a proposal.
 #
-#   2. IT NOW NAMES cm-frontend's OWN ACCOUNT — but read on before treating
-#      "restricted to cm-frontend" as true today. P1-IAM-001A gave cm-frontend a
-#      dedicated runtime identity (cm-frontend-sa, created at the staging root)
-#      and this module binds invoker to it. That binding is the target posture.
+#   2. IT NAMES cm-frontend's OWN ACCOUNT, AND THAT IS NOW THE WHOLE MEMBER
+#      LIST. "Restricted to cm-frontend" is a true statement about this service
+#      as of P1-IAM-001B. It was not true before: the binding used to name the
+#      project's DEFAULT COMPUTE identity, which cm-frontend and dis-ui-ver2
+#      shared, so it admitted every default-compute workload in the project
+#      rather than one service.
 #
-#   3. A SECOND, BROAD MEMBER IS STILL BOUND, ON PURPOSE AND TEMPORARILY. The
-#      project's DEFAULT COMPUTE identity keeps roles/run.invoker for the length
-#      of the migration, because the cm-frontend revision SERVING RIGHT NOW runs
-#      as it. So until Stage B lands, any workload running as default compute in
-#      this project can still invoke this service, and "restricted to
-#      cm-frontend" remains a FALSE STATEMENT. See
-#      google_cloud_run_v2_service_iam_member.legacy_default_compute_invoker.
-#
-# WHAT CLOSES IT. P1-IAM-001B deletes that legacy member after a revision running
-# as cm-frontend-sa has been observed calling this service. It is a separate
-# change with its own window for the reason it always was: the two cm-frontend-*
-# Auth0 secretAccessor grants were made OUT OF BAND and the dedicated account
-# needs them BEFORE its first revision boots, so the cutover and the revocation
-# cannot safely share an apply. P1-IAM-001 is NOT closed by this module.
+#   3. HOW IT GOT HERE, because the intermediate state explains the shape.
+#      P1-IAM-001A created cm-frontend-sa, bound it here ALONGSIDE the legacy
+#      default-compute member, and rolled cm-frontend onto the new identity. The
+#      overlap existed so the serving revision was never refused before its
+#      replacement was ready. P1-IAM-001B removed the legacy member once a
+#      revision running as cm-frontend-sa had been observed calling this service
+#      successfully. A single binding now, deliberately — see
+#      google_cloud_run_v2_service_iam_member.dedicated_frontend_invoker, which
+#      is the only invoker resource in this module and should stay that way.
 #
 # NOT granted here, by design:
 #   - No secretAccessor on the WRITER DSN. The write path this service has is
@@ -453,121 +450,16 @@ resource "google_cloud_run_v2_service" "synapse_ui_server" {
   }
 }
 
-# =============================================================================
-# TEMPORARY P1-IAM-001A MIGRATION COMPATIBILITY.
-# REMOVE IN P1-IAM-001B AFTER LIVE CM FRONTEND VERIFICATION.
-# =============================================================================
-# This grants invoke to the project's DEFAULT COMPUTE identity, which means EVERY
-# default-compute workload in the project and not cm-frontend alone. That is the
-# standing finding P1-IAM-001 exists to close, and it is retained here ON PURPOSE
-# for the length of one migration.
+# THE ONLY INVOKER BINDING ON THIS SERVICE, and the only one there should be.
+# It names cm-frontend's dedicated runtime identity, so this service is reachable
+# by exactly one workload.
 #
-# WHY IT IS STILL HERE. The cm-frontend revision serving right now runs as the
-# default compute SA and mints its Synapse ID token for that account. Removing
-# this member in the same apply that rolls the new revision would create a window
-# where the SERVING revision is refused before its replacement is ready — the
-# console 403s on every page load and the plan says nothing about it. Stage A
-# adds the dedicated caller and leaves this one; Stage B deletes this resource
-# once a revision running as cm-frontend-sa has been observed calling Synapse.
-#
-# THE RESOURCE WAS RENAMED, NOT REPLACED. It was `frontend_invoker`, a generic
-# name for what is actually a broad shared identity — exactly the kind of naming
-# that let this sit unnoticed. The `moved` block below carries the existing state
-# across so the live binding is never destroyed and recreated: a destroy/create
-# on the member that the serving revision depends on is the outage this whole
-# staged rollout is shaped to avoid.
-moved {
-  from = google_cloud_run_v2_service_iam_member.frontend_invoker
-  to   = google_cloud_run_v2_service_iam_member.legacy_default_compute_invoker
-}
-
-resource "google_cloud_run_v2_service_iam_member" "legacy_default_compute_invoker" {
-  project  = var.project_id
-  location = google_cloud_run_v2_service.synapse_ui_server.location
-  name     = google_cloud_run_v2_service.synapse_ui_server.name
-  role     = "roles/run.invoker"
-  member   = "serviceAccount:${var.legacy_caller_service_account_email}"
-
-  # THE REPLACEMENT FOR INGRESS, AND IT IS CHECKED RATHER THAN WRITTEN DOWN.
-  #
-  # Ingress used to fail closed if somebody added an anonymous invoker binding.
-  # It is gone (see the header), so this asserts the same property directly and
-  # at the only moment that matters: terraform plan REFUSES, before apply.
-  #
-  # It reads the INTERPOLATED member string — the value actually sent to the API
-  # — not the variable, so a caller email of "allUsers" or any construction that
-  # renders to one is caught. Assert the artifact, not the intent: the same
-  # standard as the Dockerfile resolving $ASGI_TARGET through uvicorn's own
-  # importer, and the build refusing a prerendered console.
-  #
-  # THERE ARE THREE WAYS IN AND THEY NEED DIFFERENT CHECKS. Each of the two
-  # blocks below was verified against real terraform in a provider-free harness
-  # (terraform_data + lifecycle), because which one fires AT PLAN and which only
-  # at APPLY is a property of value-knownness, not of intent — and the first
-  # version of this guard was written as a postcondition that silently deferred:
-  #
-  #   1. var.caller_service_account_email is set to an anonymous principal.
-  #      -> the PRECONDITION below. Proven to refuse at PLAN.
-  #   2. the member line here is EDITED to a literal ("allUsers"), bypassing the
-  #      variable entirely. The precondition cannot see this: it evaluates its
-  #      own expression, not the resource's attribute. That gap was found by
-  #      testing the guard, not by reading it.
-  #      -> the POSTCONDITION below, which reads self.member — the value actually
-  #      sent to the API. Refuses at plan when the value is known, at apply
-  #      otherwise; either way the binding is never created.
-  #   3. a SECOND iam_member resource is added elsewhere in this module.
-  #      Neither block above is on its path.
-  #      -> tests/test_deployment_posture.py, which greps the whole file.
-  lifecycle {
-    precondition {
-      condition = !contains(
-        ["allUsers", "allAuthenticatedUsers"],
-        trimprefix(trimprefix(var.legacy_caller_service_account_email, "serviceAccount:"), "user:")
-      )
-      error_message = <<-EOT
-        synapse-ui-server would be granted roles/run.invoker to an ANONYMOUS principal.
-
-        This service has ingress = INGRESS_TRAFFIC_ALL, so IAM is the only network-layer
-        control. allUsers/allAuthenticatedUsers here makes it publicly invocable and
-        reproduces the standing HIGH finding that every other HTTP service in this estate
-        carries. The Auth0 PLATFORM check in auth.py is NOT a substitute: it is a check on
-        the person, not on whether the service should be reachable at all.
-
-        If public invocation is genuinely wanted, remove this precondition in its own
-        commit with the reason, so the decision is visible in a diff.
-      EOT
-    }
-
-    # ASSERTS THE ARTIFACT. self.member is the string this resource actually sends,
-    # so this holds however the value got there — variable, literal, local or
-    # interpolation. The precondition above is the earlier, friendlier gate; this
-    # is the one that cannot be routed around.
-    postcondition {
-      condition = !contains(
-        ["allUsers", "allAuthenticatedUsers"],
-        trimprefix(trimprefix(self.member, "serviceAccount:"), "user:")
-      )
-      error_message = <<-EOT
-        synapse-ui-server's invoker binding resolved to an ANONYMOUS principal.
-
-        This reads the member string as applied, so it fired even though the precondition
-        did not — meaning the value did not come through var.caller_service_account_email.
-        Check for a hardcoded member on google_cloud_run_v2_service_iam_member.legacy_default_compute_invoker.
-
-        Ingress is INGRESS_TRAFFIC_ALL; IAM is the only network-layer control this service has.
-      EOT
-    }
-  }
-}
-
-# The DEDICATED cm-frontend caller (P1-IAM-001A). This is the binding that
-# survives Stage B; the legacy one above does not.
-#
-# WHY IT IS A SEPARATE RESOURCE rather than a second element of one list: the two
-# members have different lifetimes and different meanings. One is the target
-# posture, the other is a migration crutch with a removal date. A `for_each` over
-# a set of caller emails would render them identical in the plan and let the
-# broad one outlive its reason by being invisible.
+# DO NOT ADD A SECOND MEMBER HERE, and in particular do not widen this into a
+# `for_each` over a set of caller emails. There were two members during the
+# P1-IAM-001A migration — this one and the project's default-compute identity —
+# and the thing that kept the broad one visible was that it was a separate,
+# explicitly-named resource with a removal date rather than one more string in a
+# list. A set would have rendered them identical in every plan.
 #
 # SERVICE-SCOPED, not project-wide. A project-level roles/run.invoker would let
 # cm-frontend call every Cloud Run service in the estate - cm-backend, the DIS
@@ -579,11 +471,19 @@ resource "google_cloud_run_v2_service_iam_member" "dedicated_frontend_invoker" {
   role     = "roles/run.invoker"
   member   = "serviceAccount:${var.caller_service_account_email}"
 
-  # THE SAME TWO GUARDS AS THE LEGACY BINDING, AND FOR THE SAME REASON. Ingress is
-  # INGRESS_TRAFFIC_ALL, so IAM is the only network-layer control this service
-  # has. A guard that covered one of two invoker bindings would leave the newer,
-  # more-edited one unprotected - and this is the binding a future change is most
-  # likely to touch, because it is the one that stays.
+  # TWO GUARDS ON THE SOLE INVOKER BINDING, AND THEY ARE THE CALLER RESTRICTION.
+  # Ingress is INGRESS_TRAFFIC_ALL, so nothing at the network layer limits who can
+  # reach this service; the member below is the entire restriction. If it ever
+  # resolved to allUsers or allAuthenticatedUsers this service would be anonymously
+  # invocable with no other control behind it.
+  #
+  # The precondition reads the VARIABLE and refuses at plan; the postcondition
+  # reads `self.member`, the string actually sent to the API, so it also catches a
+  # value that never passed through the variable -- a hardcoded member, a local, an
+  # interpolation. Neither can see a SECOND iam_member resource added elsewhere in
+  # this module, which is the third way in; the posture suites in
+  # synapse-ui-server/tests and cm-backend/tests/unit assert that this remains the
+  # only invoker binding on the service.
   lifecycle {
     precondition {
       condition = !contains(

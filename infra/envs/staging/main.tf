@@ -160,14 +160,14 @@ module "migrate_cm_job" {
 # `allUsers` binding with the JWT as the sole gate — the standing HIGH finding.
 # A new service is the cheapest moment not to inherit it.
 #
-# READ THE MODULE HEADER on what the invoker binding is worth TODAY. It now names
-# cm-frontend's dedicated identity, which is the target posture - but a SECOND,
-# broad member is still bound during the P1-IAM-001A migration: the default
-# compute identity the currently-serving revision runs as. Until P1-IAM-001B
-# removes it, this service is still reachable by every default-compute workload
-# in the project, so "caller-restricted" is not yet a true statement.
+# THE INVOKER BINDING NAMES ONE WORKLOAD, and as of P1-IAM-001B that is the
+# complete member list: cm-frontend's dedicated identity, created just below.
+# "Caller-restricted" is finally a true statement about this service. It was not
+# while the binding named the project's default compute identity, which
+# cm-frontend and dis-ui-ver2 shared - that admitted every default-compute
+# workload in the project. See the module header for the migration that closed it.
 # =============================================================================
-# P1-IAM-001A: cm-frontend's dedicated runtime identity.
+# cm-frontend's dedicated runtime identity (introduced by P1-IAM-001A).
 #
 # OWNED HERE, AT THE ROOT, AND NOT INSIDE module.cm_frontend_service. That is a
 # dependency-graph decision, not a stylistic one. cm-frontend already depends on
@@ -218,16 +218,6 @@ module "synapse_ui_server" {
   # project. Passed as a resource reference, not a literal, so the binding and
   # the runtime identity below cannot drift into naming different accounts.
   caller_service_account_email = google_service_account.cm_frontend.email
-
-  # TEMPORARY P1-IAM-001A MIGRATION COMPATIBILITY.
-  # REMOVE IN P1-IAM-001B AFTER LIVE CM FRONTEND VERIFICATION.
-  #
-  # The revision serving RIGHT NOW runs as the default compute SA and calls
-  # Synapse with an ID token minted for it. It keeps invoker until the dedicated
-  # identity has been proven live, because the alternative is a window where the
-  # serving revision is refused before its replacement is ready. This is a
-  # migration state, not the target posture.
-  legacy_caller_service_account_email = "697546531605-compute@developer.gserviceaccount.com"
 
   # The BFF verifies the SAME Auth0 tokens cm-frontend issues, so issuer and
   # audience are the frontend's values. A BFF pointed at a different directory
