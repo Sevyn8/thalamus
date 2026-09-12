@@ -99,3 +99,18 @@ output "clover_connector_service_account_email" {
   value       = module.clover_connector_job.service_account_email
   description = "clover-connector runtime SA (secretAccessor on dis-database-url + clover-app-secret, project cloverTokenVaultRefresher incl. the D5 prune, objectAdmin on bronze, publisher on the ingress topic; deliberately no pubsub.viewer)."
 }
+
+# --- P1-IAM-001A: dedicated frontend runtime identities ---
+#
+# Exported so the two identities are visible without reading module internals,
+# and so a Stage-B reviewer can see at a glance which accounts must hold the
+# grants before the default compute SA's are revoked.
+output "cm_frontend_service_account_email" {
+  value       = google_service_account.cm_frontend.email
+  description = "cm-frontend's dedicated Cloud Run runtime identity. Holds secretAccessor on the two cm-frontend-auth0-* secrets and run.invoker on synapse-ui-server."
+}
+
+output "dis_ui_ver2_service_account_email" {
+  value       = module.dis_ui_ver2_service.service_account_email
+  description = "dis-ui-ver2's dedicated Cloud Run runtime identity. Holds no application IAM by design."
+}

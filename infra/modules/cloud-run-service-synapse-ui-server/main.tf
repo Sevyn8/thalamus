@@ -42,23 +42,25 @@
 #      does not. It is the first one, which makes fixing the others a precedent
 #      rather than a proposal.
 #
-#   2. IT DOES NOT RESTRICT THE CALLER TO cm-frontend. cm-frontend has NO
-#      DEDICATED SERVICE ACCOUNT — it runs as the project's DEFAULT COMPUTE
-#      identity, recorded as a ledger item in
-#      infra/modules/cloud-run-service-cm-frontend/main.tf. dis-ui-ver2 runs as
-#      the same identity.
+#   2. IT NOW NAMES cm-frontend's OWN ACCOUNT — but read on before treating
+#      "restricted to cm-frontend" as true today. P1-IAM-001A gave cm-frontend a
+#      dedicated runtime identity (cm-frontend-sa, created at the staging root)
+#      and this module binds invoker to it. That binding is the target posture.
 #
-#   3. SO ANY WORKLOAD RUNNING AS DEFAULT COMPUTE IN THIS PROJECT CAN INVOKE
-#      THIS SERVICE, and "restricted to cm-frontend" would be a FALSE STATEMENT.
-#      It is not written anywhere in this module for that reason.
+#   3. A SECOND, BROAD MEMBER IS STILL BOUND, ON PURPOSE AND TEMPORARILY. The
+#      project's DEFAULT COMPUTE identity keeps roles/run.invoker for the length
+#      of the migration, because the cm-frontend revision SERVING RIGHT NOW runs
+#      as it. So until Stage B lands, any workload running as default compute in
+#      this project can still invoke this service, and "restricted to
+#      cm-frontend" remains a FALSE STATEMENT. See
+#      google_cloud_run_v2_service_iam_member.legacy_default_compute_invoker.
 #
-# The real fix is giving cm-frontend a dedicated service account, which closes
-# the ledger item and makes the member below mean what it appears to mean. That
-# is ITS OWN SLICE WITH A WINDOW, not a side effect of a UI build: the two
-# cm-frontend-* Auth0 secretAccessor grants were made OUT OF BAND, so a new
-# service account must have them re-granted before the frontend can boot. Doing
-# it silently here would risk an outage on a running frontend to improve a
-# comment.
+# WHAT CLOSES IT. P1-IAM-001B deletes that legacy member after a revision running
+# as cm-frontend-sa has been observed calling this service. It is a separate
+# change with its own window for the reason it always was: the two cm-frontend-*
+# Auth0 secretAccessor grants were made OUT OF BAND and the dedicated account
+# needs them BEFORE its first revision boots, so the cutover and the revocation
+# cannot safely share an apply. P1-IAM-001 is NOT closed by this module.
 #
 # NOT granted here, by design:
 #   - No secretAccessor on the WRITER DSN. The write path this service has is
@@ -451,15 +453,40 @@ resource "google_cloud_run_v2_service" "synapse_ui_server" {
   }
 }
 
-# See the header. This grants invoke to the DEFAULT COMPUTE identity because that
-# is what cm-frontend runs as — which means every default-compute workload in the
-# project, not cm-frontend alone.
-resource "google_cloud_run_v2_service_iam_member" "frontend_invoker" {
+# =============================================================================
+# TEMPORARY P1-IAM-001A MIGRATION COMPATIBILITY.
+# REMOVE IN P1-IAM-001B AFTER LIVE CM FRONTEND VERIFICATION.
+# =============================================================================
+# This grants invoke to the project's DEFAULT COMPUTE identity, which means EVERY
+# default-compute workload in the project and not cm-frontend alone. That is the
+# standing finding P1-IAM-001 exists to close, and it is retained here ON PURPOSE
+# for the length of one migration.
+#
+# WHY IT IS STILL HERE. The cm-frontend revision serving right now runs as the
+# default compute SA and mints its Synapse ID token for that account. Removing
+# this member in the same apply that rolls the new revision would create a window
+# where the SERVING revision is refused before its replacement is ready — the
+# console 403s on every page load and the plan says nothing about it. Stage A
+# adds the dedicated caller and leaves this one; Stage B deletes this resource
+# once a revision running as cm-frontend-sa has been observed calling Synapse.
+#
+# THE RESOURCE WAS RENAMED, NOT REPLACED. It was `frontend_invoker`, a generic
+# name for what is actually a broad shared identity — exactly the kind of naming
+# that let this sit unnoticed. The `moved` block below carries the existing state
+# across so the live binding is never destroyed and recreated: a destroy/create
+# on the member that the serving revision depends on is the outage this whole
+# staged rollout is shaped to avoid.
+moved {
+  from = google_cloud_run_v2_service_iam_member.frontend_invoker
+  to   = google_cloud_run_v2_service_iam_member.legacy_default_compute_invoker
+}
+
+resource "google_cloud_run_v2_service_iam_member" "legacy_default_compute_invoker" {
   project  = var.project_id
   location = google_cloud_run_v2_service.synapse_ui_server.location
   name     = google_cloud_run_v2_service.synapse_ui_server.name
   role     = "roles/run.invoker"
-  member   = "serviceAccount:${var.caller_service_account_email}"
+  member   = "serviceAccount:${var.legacy_caller_service_account_email}"
 
   # THE REPLACEMENT FOR INGRESS, AND IT IS CHECKED RATHER THAN WRITTEN DOWN.
   #
@@ -495,7 +522,7 @@ resource "google_cloud_run_v2_service_iam_member" "frontend_invoker" {
     precondition {
       condition = !contains(
         ["allUsers", "allAuthenticatedUsers"],
-        trimprefix(trimprefix(var.caller_service_account_email, "serviceAccount:"), "user:")
+        trimprefix(trimprefix(var.legacy_caller_service_account_email, "serviceAccount:"), "user:")
       )
       error_message = <<-EOT
         synapse-ui-server would be granted roles/run.invoker to an ANONYMOUS principal.
@@ -525,7 +552,69 @@ resource "google_cloud_run_v2_service_iam_member" "frontend_invoker" {
 
         This reads the member string as applied, so it fired even though the precondition
         did not — meaning the value did not come through var.caller_service_account_email.
-        Check for a hardcoded member on google_cloud_run_v2_service_iam_member.frontend_invoker.
+        Check for a hardcoded member on google_cloud_run_v2_service_iam_member.legacy_default_compute_invoker.
+
+        Ingress is INGRESS_TRAFFIC_ALL; IAM is the only network-layer control this service has.
+      EOT
+    }
+  }
+}
+
+# The DEDICATED cm-frontend caller (P1-IAM-001A). This is the binding that
+# survives Stage B; the legacy one above does not.
+#
+# WHY IT IS A SEPARATE RESOURCE rather than a second element of one list: the two
+# members have different lifetimes and different meanings. One is the target
+# posture, the other is a migration crutch with a removal date. A `for_each` over
+# a set of caller emails would render them identical in the plan and let the
+# broad one outlive its reason by being invisible.
+#
+# SERVICE-SCOPED, not project-wide. A project-level roles/run.invoker would let
+# cm-frontend call every Cloud Run service in the estate - cm-backend, the DIS
+# services, every job's service - to solve one service-to-service hop.
+resource "google_cloud_run_v2_service_iam_member" "dedicated_frontend_invoker" {
+  project  = var.project_id
+  location = google_cloud_run_v2_service.synapse_ui_server.location
+  name     = google_cloud_run_v2_service.synapse_ui_server.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${var.caller_service_account_email}"
+
+  # THE SAME TWO GUARDS AS THE LEGACY BINDING, AND FOR THE SAME REASON. Ingress is
+  # INGRESS_TRAFFIC_ALL, so IAM is the only network-layer control this service
+  # has. A guard that covered one of two invoker bindings would leave the newer,
+  # more-edited one unprotected - and this is the binding a future change is most
+  # likely to touch, because it is the one that stays.
+  lifecycle {
+    precondition {
+      condition = !contains(
+        ["allUsers", "allAuthenticatedUsers"],
+        trimprefix(trimprefix(var.caller_service_account_email, "serviceAccount:"), "user:")
+      )
+      error_message = <<-EOT
+        synapse-ui-server would be granted roles/run.invoker to an ANONYMOUS principal.
+
+        This service has ingress = INGRESS_TRAFFIC_ALL, so IAM is the only network-layer
+        control. allUsers/allAuthenticatedUsers here makes it publicly invocable and
+        reproduces the standing HIGH finding that every other HTTP service in this estate
+        carries.
+
+        If public invocation is genuinely wanted, remove this precondition in its own
+        commit with the reason, so the decision is visible in a diff.
+      EOT
+    }
+
+    postcondition {
+      condition = !contains(
+        ["allUsers", "allAuthenticatedUsers"],
+        trimprefix(trimprefix(self.member, "serviceAccount:"), "user:")
+      )
+      error_message = <<-EOT
+        synapse-ui-server's dedicated invoker binding resolved to an ANONYMOUS principal.
+
+        This reads the member string as applied, so it fired even though the precondition
+        did not — meaning the value did not come through var.caller_service_account_email.
+        Check for a hardcoded member on
+        google_cloud_run_v2_service_iam_member.dedicated_frontend_invoker.
 
         Ingress is INGRESS_TRAFFIC_ALL; IAM is the only network-layer control this service has.
       EOT
