@@ -56,17 +56,23 @@
 #     (service-<num>@serverless-robot-prod...), not the runtime identity.
 #
 # WHAT TERRAFORM DOES NOT OWN HERE, AND WHY THAT MATTERS TO A READER CHECKING
-# THIS FILE AGAINST THE LIVE POLICY. The project's default compute SA also held
-# secretAccessor on both of these secrets, granted OUT OF BAND before this
-# repository described the service. Terraform never managed those two bindings,
-# so deleting code could not remove them and an authoritative
-# `_iam_binding` would have removed unrelated members with them. P1-IAM-001B
-# revokes them with two explicit `gcloud secrets remove-iam-policy-binding`
-# calls against the named member, run after this configuration is applied.
+# THIS FILE AGAINST THE LIVE POLICY. Both secrets were created OUT OF BAND,
+# before this repository described the service, and so were the project default
+# compute SA's historical secretAccessor grants on them. Terraform has never
+# managed those members: it manages exactly the two dedicated cm-frontend-sa
+# members declared below and nothing else on either policy.
 #
-# CONSEQUENCE FOR THIS FILE: the member list on either secret may legitimately be
-# longer than what this module declares. That is a property of additive IAM, not
-# drift, and `terraform plan` will not report it either way.
+# THIS FILE CANNOT TELL YOU WHETHER THE HISTORICAL MEMBERS STILL EXIST. Removing
+# them is the closing step of P1-IAM-001B and is performed as an explicit live
+# IAM operation (`gcloud secrets remove-iam-policy-binding` against the named
+# member), not by anything in this configuration. No code change here records
+# it, `terraform plan` does not observe it, and no assertion in this repository
+# can establish it. THE LIVE IAM POLICY IS THE ONLY AUTHORITY ON THAT FACT --
+# read it with `gcloud secrets get-iam-policy` rather than inferring it from
+# this file in either direction.
+#
+# CONSEQUENCE: the member list on either secret may legitimately be longer than
+# what this module declares. That is a property of additive IAM, not drift.
 ###############################################################################
 
 # Existing secrets (created out-of-band). The data sources resolve the secret
@@ -87,14 +93,17 @@ data "google_secret_manager_secret" "auth0_secret" {
 # including cm-backend's DSN and the per-tenant channel vault.
 #
 # ADDITIVE (`_iam_member`), NOT AUTHORITATIVE (`_iam_binding`), AND IT STAYS THAT
-# WAY. During the P1-IAM-001A cutover the reason was immediate: the default
-# compute SA held the same role on both secrets, the serving revision read them
-# with it, and an authoritative binding would have computed the member list from
-# this file alone and deleted that grant on apply — blacking out the live service
-# before its replacement revision existed. That specific member is gone now
-# (P1-IAM-001B), but the reasoning outlives it: these secrets were created out of
-# band and Terraform does not own their policies. Switching to `_iam_binding`
-# here would silently assert ownership of every member on them.
+# WAY, because Terraform does not own these policies. An `_iam_binding` computes
+# the complete member list from this file alone and deletes everyone it does not
+# find here -- on secrets created out of band, that means silently asserting
+# ownership of members this repository has never seen.
+#
+# THE COST WAS CONCRETE DURING THE P1-IAM-001A CUTOVER, and is worth keeping as
+# the worked example: the project default compute SA held the same role on both
+# secrets and the then-serving revision read them with it, so an authoritative
+# binding would have deleted that grant on apply and blacked out the live service
+# before its replacement revision existed. The reasoning is not specific to that
+# member or to that migration; it follows from who owns the policy.
 resource "google_secret_manager_secret_iam_member" "auth0_client_secret" {
   project   = var.project_id
   secret_id = data.google_secret_manager_secret.auth0_client_secret.secret_id

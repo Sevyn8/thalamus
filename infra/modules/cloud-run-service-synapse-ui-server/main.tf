@@ -471,11 +471,19 @@ resource "google_cloud_run_v2_service_iam_member" "dedicated_frontend_invoker" {
   role     = "roles/run.invoker"
   member   = "serviceAccount:${var.caller_service_account_email}"
 
-  # THE SAME TWO GUARDS AS THE LEGACY BINDING, AND FOR THE SAME REASON. Ingress is
-  # INGRESS_TRAFFIC_ALL, so IAM is the only network-layer control this service
-  # has. A guard that covered one of two invoker bindings would leave the newer,
-  # more-edited one unprotected - and this is the binding a future change is most
-  # likely to touch, because it is the one that stays.
+  # TWO GUARDS ON THE SOLE INVOKER BINDING, AND THEY ARE THE CALLER RESTRICTION.
+  # Ingress is INGRESS_TRAFFIC_ALL, so nothing at the network layer limits who can
+  # reach this service; the member below is the entire restriction. If it ever
+  # resolved to allUsers or allAuthenticatedUsers this service would be anonymously
+  # invocable with no other control behind it.
+  #
+  # The precondition reads the VARIABLE and refuses at plan; the postcondition
+  # reads `self.member`, the string actually sent to the API, so it also catches a
+  # value that never passed through the variable -- a hardcoded member, a local, an
+  # interpolation. Neither can see a SECOND iam_member resource added elsewhere in
+  # this module, which is the third way in; the posture suites in
+  # synapse-ui-server/tests and cm-backend/tests/unit assert that this remains the
+  # only invoker binding on the service.
   lifecycle {
     precondition {
       condition = !contains(
