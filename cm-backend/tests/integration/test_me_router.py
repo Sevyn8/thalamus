@@ -698,9 +698,10 @@ def test_mc5_missing_query_param_returns_422(app_client, settings):
 def test_mc6_invalid_module_enum_returns_422(app_client, settings):
     """T_MC6: bogus module value → 422.
 
-    Uses a clearly-invented value ('NOT_A_MODULE'); avoiding 'ROOS'
-    which sits in a different category (DB enum has it but the Python
-    ModuleCode enum doesn't post-9462e11).
+    Uses a clearly-invented value ('NOT_A_MODULE') so the test asserts
+    the validation boundary and nothing else. Retired codes are covered
+    separately by ``test_permission_enum_parity.py``, which proves they
+    are absent from both the type and the Python enum.
     """
     resp = app_client.get(
         "/api/v1/me/can-do",

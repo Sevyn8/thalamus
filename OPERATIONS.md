@@ -142,8 +142,13 @@ Cloud Logging files them at DEFAULT and no log-based alert can match them.
   refresh `cm-backend/docs/endpoints/openapi.json` from the running app;
   cm-frontend consumes a copy at `cm-frontend/docs/openapi.json` via
   `pnpm gen:types` → `types/openapi-generated.ts`.
-- `cm-backend/docs/schema/current_schema.sql` is the generated schema
-  snapshot (`scripts/verify_cloud_schema.py` compares live vs expected).
+- `cm-backend/docs/schema/current_schema.sql` is a `pg_dump` snapshot captured at
+  revision `7a3c8e9d2f5b` and **not** regenerated since — it is eight revisions
+  stale and missing six tables, as its own header now records. Nothing reads it:
+  no test, no gate, and `scripts/verify_cloud_schema.py` does not reference it.
+  Treat `migrations/versions/` as the authority on schema and refresh the dump
+  deliberately (`pg_dump --schema-only --schema=core --no-owner --no-privileges`)
+  rather than inside an unrelated change.
 
 ## Contract conformance
 

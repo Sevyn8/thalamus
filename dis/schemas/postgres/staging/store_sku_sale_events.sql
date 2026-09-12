@@ -81,7 +81,7 @@ CREATE TABLE staging.store_sku_sale_events (
     -- ---------- When the sale happened at source ----------
     source_sale_timestamp       TIMESTAMPTZ                         NOT NULL,
         -- POS terminal time at the source, normalized to UTC at ingest.
-        -- THE analytics anchor: ROOS reads "sales in last 7 days" using this.
+        -- THE analytics anchor: "sales in last 7 days" is computed from this.
         -- event_date is derived from this column at ingest.
 
     -- ---------- Transaction context ----------

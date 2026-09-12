@@ -6,18 +6,17 @@ in DDL order. Platform-global; no RLS. Both user types see all rows.
 The four enum columns reference Postgres enum types maintained by the
 DDL plus a series of cleanup migrations:
 
-  - ``module_code_enum`` (6 values: ADMIN, PRICING_OS,
-    PERISHABLES_ASSISTANT, PROMOTIONS_ASSISTANT, ROOS, GOAL_CONSOLE)
-    — migration ``cec8fae734e0`` re-pointed ``permissions.module``
+  - ``module_code_enum`` (6 values: PRICING_OS,
+    PERISHABLES_ASSISTANT, PROMOTIONS_ASSISTANT, GOAL_CONSOLE, ADMIN,
+    DIS) — migration ``cec8fae734e0`` re-pointed ``permissions.module``
     from the (now-dropped) narrow ``module_enum`` to
     ``module_code_enum``, the same enum that
     ``tenant_module_access.module`` uses. The ``ModuleCode`` Python
     enum is imported from ``models/tenant_module_access`` rather than
     redeclared here — single source of truth across both consumer
     columns.
-    ROOS is retained in the DB enum but retired from the Python
-    ``ModuleCode`` class; PG cleanup deferred to the future rename
-    migration when ROOS's replacement is decided.
+    Migration ``a1c4e7f09d2b`` added DIS; ``0fdfbc8871a8`` retired
+    ROOS from the type and deleted every row that referenced it.
 
   - ``permission_scope_enum`` (3 values: GLOBAL, TENANT, STORE) —
     migration ``90cd038ae618`` dropped REGION.

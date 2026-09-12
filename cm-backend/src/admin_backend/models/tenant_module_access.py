@@ -29,18 +29,15 @@ from admin_backend.config import get_settings
 from admin_backend.db.base import Base
 
 
-# ROOS retired from Python vocabulary on 2026-05-12. The DB enum
-# ``core.module_code_enum`` still contains ROOS as its first value
-# (PG enum cleanup deferred to the future rename migration when
-# ROOS's replacement module name is decided). The narrowing creates
-# a one-way drift: any DB row with ``module='ROOS'`` would crash
-# Pydantic validation at the read boundary. The operator-run cloud
-# cleanup SQL deletes the lookups and tenant_module_access rows that
-# reference ROOS so no live row triggers the crash.
+# MEMBERSHIP AND ORDER BOTH MIRROR ``core.module_code_enum`` EXACTLY, and
+# ``tests/integration/test_permission_enum_parity.py`` asserts it in both
+# directions. A member added here without an accompanying migration is
+# unwritable; a label added to the type without a member here crashes
+# validation at the read boundary. Adding a value is additive (``ALTER TYPE
+# ... ADD VALUE``, see ``a1c4e7f09d2b``); removing one needs the
+# rename-recreate-cast dance (see ``0fdfbc8871a8``).
 class ModuleCode(str, Enum):
-    """Platform-fixed module codes. Mirrors ``module_code_enum`` in DDL,
-    minus ROOS (retired from Python vocabulary 2026-05-12; see comment
-    above)."""
+    """Platform-fixed module codes. Mirrors ``module_code_enum`` in DDL."""
 
     PRICING_OS = "PRICING_OS"
     PERISHABLES_ASSISTANT = "PERISHABLES_ASSISTANT"

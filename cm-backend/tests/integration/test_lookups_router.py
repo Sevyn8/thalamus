@@ -119,10 +119,9 @@ def test_l1_get_lookups_returns_all_requested_lists(app_client, settings):
     # tenant_industry: 6 rows.
     assert len(lookups["tenant_industry"]) == 6
 
-    # module_code: 6 rows. Post-2026-05-12 ROOS retirement left 5 (the
-    # seed loader's --reset deletes the ROOS lookups row); the DIS module
-    # catalog migration (a1c4e7f09d2b) added DIS, bringing the wire
-    # vocabulary to 6 (ModuleCodeLiteral matches).
+    # module_code: 6 rows — the supported module set, matching
+    # ModuleCodeLiteral. Migration a1c4e7f09d2b added DIS; 0fdfbc8871a8
+    # deleted the retired ROOS catalogue row.
     assert len(lookups["module_code"]) == 6
 
 

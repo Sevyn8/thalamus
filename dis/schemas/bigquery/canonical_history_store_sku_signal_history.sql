@@ -18,7 +18,7 @@
 --     signals when Cloud SQL retention has aged them out).
 --   - services/dis-ui-server for tenant-facing time-series queries
 --     ("how did velocity_7day evolve daily for SKU X?").
---   - DIS analytics consumers (ROOS-side backtesting; future).
+--   - DIS analytics consumers (backtesting; future).
 --
 -- BQ has no row-level access policy on this table, and no application-level
 -- enforcement wrapper is currently implemented. Tenant isolation must be

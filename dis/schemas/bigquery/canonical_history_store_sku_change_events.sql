@@ -17,7 +17,7 @@
 --   - services/daily-compute on the slow/bootstrap path (stock_age_days from
 --     INVENTORY RECEIPT events; unit_cost_trend_30day from COST events).
 --   - services/dis-ui-server for tenant-facing historical analytics.
---   - DIS analytics consumers (ROOS-side; future).
+--   - DIS analytics consumers (future).
 --   - DIS engineering for ad-hoc ops investigations.
 --
 -- BQ has no row-level access policy on this table, and no application-level
