@@ -55,11 +55,18 @@
 #   - Artifact Registry reader: image pulls use the Cloud Run service agent
 #     (service-<num>@serverless-robot-prod...), not the runtime identity.
 #
-# STAGE-A MIGRATION STATE, stated plainly: the default compute SA still holds
-# secretAccessor on both secrets, granted out of band. Those grants are NOT
-# removed here. They are removed in P1-IAM-001B, after a revision running as the
-# dedicated identity has been proven live. P1-IAM-001 is NOT closed by this
-# module.
+# WHAT TERRAFORM DOES NOT OWN HERE, AND WHY THAT MATTERS TO A READER CHECKING
+# THIS FILE AGAINST THE LIVE POLICY. The project's default compute SA also held
+# secretAccessor on both of these secrets, granted OUT OF BAND before this
+# repository described the service. Terraform never managed those two bindings,
+# so deleting code could not remove them and an authoritative
+# `_iam_binding` would have removed unrelated members with them. P1-IAM-001B
+# revokes them with two explicit `gcloud secrets remove-iam-policy-binding`
+# calls against the named member, run after this configuration is applied.
+#
+# CONSEQUENCE FOR THIS FILE: the member list on either secret may legitimately be
+# longer than what this module declares. That is a property of additive IAM, not
+# drift, and `terraform plan` will not report it either way.
 ###############################################################################
 
 # Existing secrets (created out-of-band). The data sources resolve the secret
@@ -74,18 +81,20 @@ data "google_secret_manager_secret" "auth0_secret" {
   secret_id = var.secret_auth0_secret
 }
 
-# P1-IAM-001A. Least-privilege: the dedicated runtime SA gets secretAccessor on
-# exactly these two secrets, at the SECRET level. No project-wide grant - a
-# project-level secretAccessor would hand this identity every credential in the
-# estate, including cm-backend's DSN and the per-tenant channel vault.
+# Least-privilege: the dedicated runtime SA gets secretAccessor on exactly these
+# two secrets, at the SECRET level. No project-wide grant - a project-level
+# secretAccessor would hand this identity every credential in the estate,
+# including cm-backend's DSN and the per-tenant channel vault.
 #
-# ADDITIVE (`_iam_member`), NOT AUTHORITATIVE (`_iam_binding`), and that choice is
-# load-bearing during this migration: the default compute SA holds the same role
-# on both secrets today, granted out of band, and the revision serving RIGHT NOW
-# reads them with it. An authoritative binding would compute the member list from
-# this file alone and delete that grant on apply, blacking out the live service
-# before its replacement revision exists. P1-IAM-001B removes the legacy member
-# deliberately, after the new identity is proven live.
+# ADDITIVE (`_iam_member`), NOT AUTHORITATIVE (`_iam_binding`), AND IT STAYS THAT
+# WAY. During the P1-IAM-001A cutover the reason was immediate: the default
+# compute SA held the same role on both secrets, the serving revision read them
+# with it, and an authoritative binding would have computed the member list from
+# this file alone and deleted that grant on apply — blacking out the live service
+# before its replacement revision existed. That specific member is gone now
+# (P1-IAM-001B), but the reasoning outlives it: these secrets were created out of
+# band and Terraform does not own their policies. Switching to `_iam_binding`
+# here would silently assert ownership of every member on them.
 resource "google_secret_manager_secret_iam_member" "auth0_client_secret" {
   project   = var.project_id
   secret_id = data.google_secret_manager_secret.auth0_client_secret.secret_id

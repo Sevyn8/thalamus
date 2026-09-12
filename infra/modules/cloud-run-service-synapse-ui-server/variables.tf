@@ -28,17 +28,12 @@ variable "service_account_id" {
 
 variable "caller_service_account_email" {
   type        = string
-  description = "The identity permitted to invoke this service: cm-frontend's DEDICATED runtime account (P1-IAM-001A). Created at the staging root, not in cm-frontend's module, because that module already depends on this one and owning the account there would make the two modules reference each other. This binding is the target posture and survives P1-IAM-001B."
+  description = "The identity permitted to invoke this service: cm-frontend's DEDICATED runtime account. Created at the staging root, not in cm-frontend's module, because that module already depends on this one and owning the account there would make the two modules reference each other. This is the ONLY caller; the project default-compute identity that shared this binding during the P1-IAM-001A migration was removed in P1-IAM-001B."
 
   validation {
     condition     = !can(regex("-compute@developer\\.gserviceaccount\\.com$", var.caller_service_account_email))
-    error_message = "The dedicated Synapse caller must not be a default Compute Engine service account - that binding admits every default-compute workload in the project. The legacy member has its own variable (legacy_caller_service_account_email) so it stays visible and dated."
+    error_message = "The Synapse caller must not be a default Compute Engine service account - that binding would admit every default-compute workload in the project rather than cm-frontend alone. That was the pre-P1-IAM-001 posture and it is not returning."
   }
-}
-
-variable "legacy_caller_service_account_email" {
-  type        = string
-  description = "TEMPORARY P1-IAM-001A MIGRATION COMPATIBILITY. REMOVE IN P1-IAM-001B AFTER LIVE CM FRONTEND VERIFICATION. The project's DEFAULT COMPUTE service account, which the currently-serving cm-frontend revision runs as. Retained only so that revision keeps invoker until a revision running as the dedicated identity has been proven live; dropping it in the same apply that rolls the new revision would refuse the serving one before its replacement is ready. This variable exists SEPARATELY, and is named for what it is, so the broad member cannot hide behind a generic name."
 }
 
 variable "vpc_connector_id" {
