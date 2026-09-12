@@ -12,13 +12,16 @@
 # Shape adapted from infra/modules/cloud-run-service-cm with five deliberate
 # divergences, all of them RECORDED FACTS about the live service rather than
 # choices made here:
-#   1. It runs as the DEFAULT COMPUTE SA, not a dedicated one. This module
-#      therefore creates NO service account and asserts the default compute
-#      identity. That is a finding, not an endorsement: every Terraform-managed
-#      service in this tree has a dedicated SA, and this one holds
-#      secretAccessor on both cm-frontend-* secrets. It is on the ledger to fix
-#      before production. Changing it is a live-config change and is deliberately
-#      out of this slice.
+#   1. Its runtime identity is created OUTSIDE this module, at the staging root,
+#      and passed in as var.service_account_email. Every other service in this
+#      tree creates its own; this one cannot, because Synapse's invoker binding
+#      must name the same account while cm-frontend already depends on Synapse,
+#      and owning the account here would close that into a graph cycle. The
+#      variable has no default, so there is no path back to the shared identity
+#      by omission. (P1-IAM-001A. Before it, this ran as the project's DEFAULT
+#      COMPUTE SA - the shared identity dis-ui-ver2 also used, which meant
+#      Synapse's invoker binding admitted every default-compute workload in the
+#      project rather than this service.)
 #   2. No VPC connector. The frontend talks to cm-backend over public HTTPS
 #      (API_BASE_URL), never to Cloud SQL, so it needs no private egress.
 #   3. A PUBLIC invoker binding exists and is declared below. Unlike cm-backend
@@ -33,15 +36,30 @@
 #   5. A TCP startup probe on the app port, not cm-backend's HTTP /health probe.
 #      Next.js exposes no health endpoint; the live probe is tcpSocket.
 #
+# GRANTED here, and nothing more (P1-IAM-001A):
+#   - roles/secretmanager.secretAccessor on cm-frontend-auth0-client-secret and
+#     cm-frontend-auth0-secret, secret-scoped. See the resources below.
+#   The Synapse roles/run.invoker grant this identity also holds lives in
+#   cloud-run-service-synapse-ui-server, next to the service it admits access to.
+#
 # NOT granted here, by design:
-#   - No service account is created, so no runtime IAM is granted. The secret
-#     accessor grants on cm-frontend-auth0-client-secret and
-#     cm-frontend-auth0-secret are held by the default compute SA and were made
-#     out of band; this module does not manage them. Importing the service does
-#     not import those grants, and this slice deliberately does not touch IAM
-#     beyond declaring the invoker binding that is already live.
+#   - Nothing project-wide. No project-level secretAccessor, no project-level
+#     run.invoker, no Editor/Viewer.
+#   - No service account key. Cloud Run attaches the identity to the revision and
+#     the metadata server mints tokens; a key would be a downloadable long-lived
+#     credential for a workload that cannot use one.
+#   - Nothing for the ID token it mints against SYNAPSE_BFF_URL. Asking the
+#     metadata server for an identity token is not an IAM-gated action on the
+#     caller side - the token is only useful where the AUDIENCE service has
+#     granted this identity invoker, which is precisely the Synapse binding.
 #   - Artifact Registry reader: image pulls use the Cloud Run service agent
 #     (service-<num>@serverless-robot-prod...), not the runtime identity.
+#
+# STAGE-A MIGRATION STATE, stated plainly: the default compute SA still holds
+# secretAccessor on both secrets, granted out of band. Those grants are NOT
+# removed here. They are removed in P1-IAM-001B, after a revision running as the
+# dedicated identity has been proven live. P1-IAM-001 is NOT closed by this
+# module.
 ###############################################################################
 
 # Existing secrets (created out-of-band). The data sources resolve the secret
@@ -54,6 +72,32 @@ data "google_secret_manager_secret" "auth0_client_secret" {
 data "google_secret_manager_secret" "auth0_secret" {
   project   = var.project_id
   secret_id = var.secret_auth0_secret
+}
+
+# P1-IAM-001A. Least-privilege: the dedicated runtime SA gets secretAccessor on
+# exactly these two secrets, at the SECRET level. No project-wide grant - a
+# project-level secretAccessor would hand this identity every credential in the
+# estate, including cm-backend's DSN and the per-tenant channel vault.
+#
+# ADDITIVE (`_iam_member`), NOT AUTHORITATIVE (`_iam_binding`), and that choice is
+# load-bearing during this migration: the default compute SA holds the same role
+# on both secrets today, granted out of band, and the revision serving RIGHT NOW
+# reads them with it. An authoritative binding would compute the member list from
+# this file alone and delete that grant on apply, blacking out the live service
+# before its replacement revision exists. P1-IAM-001B removes the legacy member
+# deliberately, after the new identity is proven live.
+resource "google_secret_manager_secret_iam_member" "auth0_client_secret" {
+  project   = var.project_id
+  secret_id = data.google_secret_manager_secret.auth0_client_secret.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${var.service_account_email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "auth0_secret" {
+  project   = var.project_id
+  secret_id = data.google_secret_manager_secret.auth0_secret.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${var.service_account_email}"
 }
 
 resource "google_cloud_run_v2_service" "cm_frontend" {
@@ -86,8 +130,11 @@ resource "google_cloud_run_v2_service" "cm_frontend" {
   }
 
   template {
-    # The DEFAULT COMPUTE SA (divergence 1). Not a dedicated identity; this
-    # module asserts what is live and creates nothing.
+    # The dedicated runtime identity (divergence 1), created at the root and
+    # passed in. Changing this field rolls a revision, which is the entire
+    # mechanism of the P1-IAM-001A cutover: the new revision's metadata server
+    # starts minting ID tokens for THIS account, so Synapse begins seeing
+    # cm-frontend-sa as the caller rather than the shared default-compute one.
     service_account = var.service_account_email
 
     scaling {
@@ -187,6 +234,22 @@ resource "google_cloud_run_v2_service" "cm_frontend" {
     type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
     percent = 100
   }
+
+  # THE GRANTS MUST EXIST BEFORE THE REVISION THAT READS THEM, AND NOTHING ELSE
+  # IN THIS FILE SAYS SO. The env blocks above reference
+  # `data.google_secret_manager_secret.*.secret_id` - the DATA SOURCE. Terraform
+  # sees an edge to the data source and NO EDGE AT ALL to the secret_iam_member
+  # resources, so without this list it is free to roll the revision onto the new
+  # identity before that identity can read either secret. The container then
+  # starts without AUTH0_CLIENT_SECRET/AUTH0_SECRET, the apply is green, and the
+  # plan says nothing. Same failure this estate already paid for on
+  # synapse-ui-server; `test_every_secret_iam_member_is_listed_in_the_services_depends_on`
+  # in cm-backend/tests/unit/test_frontend_runtime_identities.py is what keeps a
+  # future third secret from being added without its edge.
+  depends_on = [
+    google_secret_manager_secret_iam_member.auth0_client_secret,
+    google_secret_manager_secret_iam_member.auth0_secret,
+  ]
 }
 
 # PUBLIC invoker binding, declared because it is LIVE - allUsers holds

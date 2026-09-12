@@ -35,8 +35,12 @@ variable "image" {
 
 variable "service_account_email" {
   type        = string
-  description = "Runtime identity. This is the DEFAULT COMPUTE SA, which is what the live service runs as - NOT a dedicated identity like every other service in this tree. It holds secretAccessor on both cm-frontend-* secrets. Recorded, on the ledger, and deliberately not changed in this slice."
-  default     = "697546531605-compute@developer.gserviceaccount.com"
+  description = "Runtime identity: the email of cm-frontend's DEDICATED service account. Created at the staging root rather than in this module because Synapse's invoker binding must name the same account and cm-frontend already depends on Synapse - owning it here would close that loop into a graph cycle. NO DEFAULT ON PURPOSE (P1-IAM-001A): this used to default to the project's default compute SA, and a default is exactly how a caller silently falls back to the shared identity this slice exists to leave."
+
+  validation {
+    condition     = !can(regex("-compute@developer\\.gserviceaccount\\.com$", var.service_account_email))
+    error_message = "cm-frontend must not run as a default Compute Engine service account (P1-IAM-001). Pass its dedicated runtime identity."
+  }
 }
 
 # --- gcloud provenance (see main.tf divergence 4) ---

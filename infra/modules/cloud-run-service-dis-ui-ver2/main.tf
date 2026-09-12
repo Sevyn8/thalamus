@@ -49,11 +49,11 @@
 #
 # Divergences from cloud-run-service-cm (the module both frontends are shaped
 # after), all of them RECORDED FACTS about the live service:
-#   1. Runs as the DEFAULT COMPUTE SA, not a dedicated one. This module creates
-#      no service account. A finding, not an endorsement: every Terraform-managed
-#      service in this tree has a dedicated SA. On the ledger as HIGH (the same
-#      item covers cm-frontend). Changing it rolls a revision, so it is
-#      deliberately out of this slice.
+#   1. (CLOSED by P1-IAM-001A.) This ran as the DEFAULT COMPUTE SA - the same
+#      shared identity cm-frontend used, which is why Synapse's invoker binding
+#      could not tell the two apart. It now has its own, created below. The
+#      account is bare: sharing the default compute identity had given this
+#      service reach it never needed, and the dedicated one gives it none.
 #   2. No VPC connector. Traffic to dis-ui-server goes over public HTTPS.
 #   3. A PUBLIC invoker binding exists and is declared below.
 #   4. `client` / `client_version` are declared - the service was created by
@@ -65,10 +65,34 @@
 #   6. No secrets at all. The single env var is a plain URL.
 #
 # NOT granted here, by design:
-#   - No service account is created, so no runtime IAM is granted.
+#   - NO application IAM AT ALL, and that is the finished state rather than a
+#     stage of one. This service reads no secret, calls no Google API, and
+#     reaches dis-ui-server over public HTTPS carrying the BROWSER's Auth0
+#     bearer - it presents no Google credential of its own, so there is nothing
+#     for a role to authorise. Do not grant it Synapse invoker (that is
+#     cm-frontend's, and only cm-frontend's) and do not grant it Secret Manager
+#     access "to match cm-frontend".
+#   - No service account key. The identity is attached to the revision.
 #   - Artifact Registry reader: image pulls use the Cloud Run service agent
 #     (service-<num>@serverless-robot-prod...), not the runtime identity.
 ###############################################################################
+
+# Dedicated runtime identity (P1-IAM-001A). Created here, unlike cm-frontend's,
+# because this service is nobody's caller: no other module needs to name this
+# account, so owning it locally creates no cross-module edge and no cycle.
+#
+# It is deliberately BARE. An account with no role bindings is the least
+# privilege a Cloud Run workload can run with, and it is a real improvement over
+# the shared default compute identity even though no grant moves with it: the
+# default compute SA carries whatever the project has accumulated on it,
+# including secretAccessor on both cm-frontend-auth0-* secrets, and this service
+# had silent access to all of it purely by sharing the identity.
+resource "google_service_account" "dis_ui_ver2" {
+  project      = var.project_id
+  account_id   = var.service_account_id
+  display_name = "DIS UI v2 (dis-ui-ver2) Cloud Run runtime SA"
+  description  = "Runtime identity for the dis-ui-ver2 Cloud Run service. Holds no application IAM by design; the nginx proxy forwards the browser's Auth0 token and presents no Google credential."
+}
 
 resource "google_cloud_run_v2_service" "dis_ui_ver2" {
   # Staging: allow teardown. The live service reports no deletionProtection,
@@ -103,7 +127,11 @@ resource "google_cloud_run_v2_service" "dis_ui_ver2" {
   template {
     # The DEFAULT COMPUTE SA (divergence 1). Not a dedicated identity; this
     # module asserts what is live and creates nothing.
-    service_account = var.service_account_email
+    # The dedicated runtime identity (P1-IAM-001A). This is a template field, so
+    # changing it rolls a revision - which is the whole cutover for this service,
+    # and it carries no IAM consequence because the account holds no grants and
+    # the request path to dis-ui-server uses the browser's token, not this one.
+    service_account = google_service_account.dis_ui_ver2.email
 
     scaling {
       min_instance_count = var.min_instances

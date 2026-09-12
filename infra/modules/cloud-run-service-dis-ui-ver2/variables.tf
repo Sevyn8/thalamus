@@ -53,10 +53,10 @@ variable "image" {
   default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-ver2:v16"
 }
 
-variable "service_account_email" {
+variable "service_account_id" {
   type        = string
-  description = "Runtime identity. This is the DEFAULT COMPUTE SA, which is what the live service runs as - NOT a dedicated identity like every other service in this tree. Recorded, on the ledger as HIGH, and deliberately not changed in this slice (it is a template field, so changing it rolls a revision)."
-  default     = "697546531605-compute@developer.gserviceaccount.com"
+  description = "Account id for this service's DEDICATED runtime identity (P1-IAM-001A). It holds NO application IAM: this service reads no secret, calls no Google API, and talks to dis-ui-server over public HTTPS forwarding the browser's Auth0 bearer rather than a credential of its own. Serving static files, writing to stdout and having an image pulled by the Cloud Run service agent are not IAM-gated on the runtime identity, so an empty permission set is the correct one - not an oversight to be topped up later."
+  default     = "dis-ui-ver2-sa"
 }
 
 # --- The coupled backend URL (see the COUPLING block in main.tf) ---

@@ -149,10 +149,10 @@ module "migrate_cm_job" {
 # used to produce no CM frontend at all. The module was written against the LIVE
 # v2 API config and imported; its acceptance test is a plan with no changes.
 #
-# Runs as the DEFAULT COMPUTE SA (not a dedicated identity like every other
-# service here) and is publicly callable via an allUsers invoker binding. Both
-# are recorded facts about the live service, declared so Terraform describes
-# reality; the SA is on the ledger to fix before production.
+# Runs as its OWN dedicated identity since P1-IAM-001A (google_service_account
+# .cm_frontend below), no longer the shared default compute SA. It remains
+# publicly callable via an allUsers invoker binding - that is a separate standing
+# finding and is deliberately untouched here.
 # --- Synapse: the read-only BFF behind the superadmin console ---
 #
 # INTERNAL INGRESS + AN IAM INVOKER BINDING, so this is the FIRST service in this
@@ -160,11 +160,51 @@ module "migrate_cm_job" {
 # `allUsers` binding with the JWT as the sole gate — the standing HIGH finding.
 # A new service is the cheapest moment not to inherit it.
 #
-# READ THE MODULE HEADER on what the invoker binding is actually worth: it names
-# the DEFAULT COMPUTE identity, because that is what cm-frontend runs as, so it
-# admits every default-compute workload in the project rather than cm-frontend
-# alone. That is anonymous-access removed, not caller-restricted. The real fix is
-# a dedicated SA for cm-frontend, which is its own slice with a window.
+# READ THE MODULE HEADER on what the invoker binding is worth TODAY. It now names
+# cm-frontend's dedicated identity, which is the target posture - but a SECOND,
+# broad member is still bound during the P1-IAM-001A migration: the default
+# compute identity the currently-serving revision runs as. Until P1-IAM-001B
+# removes it, this service is still reachable by every default-compute workload
+# in the project, so "caller-restricted" is not yet a true statement.
+# =============================================================================
+# P1-IAM-001A: cm-frontend's dedicated runtime identity.
+#
+# OWNED HERE, AT THE ROOT, AND NOT INSIDE module.cm_frontend_service. That is a
+# dependency-graph decision, not a stylistic one. cm-frontend already depends on
+# synapse_ui_server twice — it reads `service_url` for SYNAPSE_BFF_URL and it
+# carries an explicit `depends_on` so the invoker binding exists before the
+# revision rolls. Synapse in turn must name the frontend's identity in its
+# invoker binding. If that identity were an output of module.cm_frontend_service
+# the two modules would reference each other:
+#
+#     module.synapse_ui_server -> module.cm_frontend_service   (caller email)
+#     module.cm_frontend_service -> module.synapse_ui_server   (url + depends_on)
+#
+# which is a cycle terraform refuses to graph. Hoisting the account to the root
+# breaks it: the SA has no inbound edge from either module, and both read it.
+#
+#     google_service_account.cm_frontend
+#              |                    |
+#              v                    v
+#     module.cm_frontend_service   module.synapse_ui_server
+#                      \                 ^
+#                       \________________/
+#                        (url + depends_on, one direction only)
+#
+# dis-ui-ver2's SA is NOT hoisted — it has no cross-module caller, so it lives in
+# its own module the way every other service's does.
+#
+# NO KEY IS CREATED. Cloud Run attaches this identity to the revision; tokens
+# come from the metadata server. A google_service_account_key here would be a
+# downloadable long-lived credential for a workload that never needs one.
+# =============================================================================
+resource "google_service_account" "cm_frontend" {
+  project      = var.project_id
+  account_id   = "cm-frontend-sa"
+  display_name = "CM frontend (cm-frontend) Cloud Run runtime SA"
+  description  = "Runtime identity for the cm-frontend Cloud Run service. Holds secretAccessor on the two cm-frontend-auth0-* secrets and run.invoker on synapse-ui-server, and nothing else."
+}
+
 module "synapse_ui_server" {
   source = "../../modules/cloud-run-service-synapse-ui-server"
 
@@ -173,11 +213,21 @@ module "synapse_ui_server" {
   image            = var.synapse_ui_server_image
   vpc_connector_id = module.network.vpc_connector_id
 
-  # The identity permitted to invoke. Deliberately the SAME literal the frontend
-  # module defaults its runtime identity to, so the two cannot drift into naming
-  # different accounts — if cm-frontend ever gains a dedicated SA, both change
-  # together or the binding stops matching the caller and the console 403s.
-  caller_service_account_email = "697546531605-compute@developer.gserviceaccount.com"
+  # The identity permitted to invoke: cm-frontend's OWN account, so this binding
+  # now admits one workload rather than every default-compute workload in the
+  # project. Passed as a resource reference, not a literal, so the binding and
+  # the runtime identity below cannot drift into naming different accounts.
+  caller_service_account_email = google_service_account.cm_frontend.email
+
+  # TEMPORARY P1-IAM-001A MIGRATION COMPATIBILITY.
+  # REMOVE IN P1-IAM-001B AFTER LIVE CM FRONTEND VERIFICATION.
+  #
+  # The revision serving RIGHT NOW runs as the default compute SA and calls
+  # Synapse with an ID token minted for it. It keeps invoker until the dedicated
+  # identity has been proven live, because the alternative is a window where the
+  # serving revision is refused before its replacement is ready. This is a
+  # migration state, not the target posture.
+  legacy_caller_service_account_email = "697546531605-compute@developer.gserviceaccount.com"
 
   # The BFF verifies the SAME Auth0 tokens cm-frontend issues, so issuer and
   # audience are the frontend's values. A BFF pointed at a different directory
@@ -219,6 +269,12 @@ module "cm_frontend_service" {
   project_id = var.project_id
   region     = var.region
   image      = var.cm_frontend_image
+
+  # P1-IAM-001A: the dedicated runtime identity, created at the root (see the
+  # comment above module.synapse_ui_server for why it is not created in here).
+  # The module has NO default for this, so there is no path back to the default
+  # compute SA by omission.
+  service_account_email = google_service_account.cm_frontend.email
 
   # A RESOURCE REFERENCE, NOT A COPIED STRING. This value doubles as the
   # ID-token audience the frontend mints against, so a hand-copied URL that
