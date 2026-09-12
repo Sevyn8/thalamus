@@ -9,7 +9,7 @@ parsing HCL. cm-backend's unit suite already owns Terraform IAM posture for this
 request. Splitting these across three homes to satisfy ownership would put two of them somewhere
 CI does not look. If cm-frontend ever gains a Python suite, move these.
 
-WHAT THIS IS GUARDING, AND IT IS A MIGRATION NOT A STATE. Before P1-IAM-001A both frontends ran as
+WHAT THIS IS GUARDING. Before P1-IAM-001 both frontends ran as
 ``<project-number>-compute@developer.gserviceaccount.com`` - the project's default Compute Engine
 identity. Two consequences, both structural:
 
@@ -19,10 +19,18 @@ identity. Two consequences, both structural:
   2. dis-ui-ver2 shared an identity holding secretAccessor on both cm-frontend-auth0-* secrets. It
      needs neither, and had silent reach to both purely by sharing the account.
 
-Stage A gives each a dedicated identity. It deliberately does NOT revoke the legacy grants - that
-is Stage B, after a revision running as the new identity has been proven live. So these tests
-assert the NEW posture exists, not that the old one is gone; a test demanding the legacy member's
-absence would fail today by design and would be deleted rather than believed.
+Stage A (P1-IAM-001A) gave each a dedicated identity and deliberately left the legacy grants in
+place so the serving revision was never refused before its replacement was ready. Stage B
+(P1-IAM-001B) removed them. These tests now assert the FINAL state: the dedicated identities
+exist AND the transitional scaffolding is gone.
+
+ONE THING THESE TESTS CANNOT PROVE, AND IT IS NOT AN OVERSIGHT. The two legacy
+``secretmanager.secretAccessor`` grants on the cm-frontend-auth0-* secrets were made OUT OF BAND
+and Terraform never owned them, so no configuration file records their removal and no static test
+can observe it. They are revoked operationally with ``gcloud secrets remove-iam-policy-binding``
+after this configuration is applied. A test asserting they are gone would be asserting something
+it cannot see, and would pass whether or not the revocation ever happened. Their absence is
+verified against the live policy instead, and recorded in the P1-IAM-001B pull request.
 
 ASSERTED AGAINST THE HCL, NOT A PLAN. No credentials are available in CI, so `terraform plan` is
 not a gate here. That is a real limit and is stated rather than papered over: these read the
@@ -195,8 +203,9 @@ def test_cm_frontend_secret_grants_are_additive_not_authoritative() -> None:
     """
     code = _code(_CM_FRONTEND / "main.tf")
     assert "google_secret_manager_secret_iam_binding" not in code, (
-        "cm-frontend uses an authoritative secret IAM binding. During P1-IAM-001A that deletes "
-        "the legacy default-compute grant the serving revision depends on."
+        "cm-frontend uses an authoritative secret IAM binding. These secrets were created out "
+        "of band and Terraform does not own their policies; an authoritative binding silently "
+        "asserts ownership of every member on them."
     )
     assert "google_secret_manager_secret_iam_policy" not in code
 
@@ -310,3 +319,56 @@ def test_neither_frontend_loses_its_public_invoker_binding() -> None:
         assert re.search(r'member\s*=\s*"allUsers"', code), (
             f"{path}'s public invoker no longer names allUsers"
         )
+
+
+# --- P1-IAM-001B: the transitional scaffolding is gone ----------------------------------------
+
+
+def test_no_stage_a_migration_scaffolding_remains_in_terraform() -> None:
+    """The overlap constructs existed to survive one cutover and have a removal date.
+
+    Asserted across the staging root and the Synapse module together, because the scaffolding was
+    a pair: a variable at the call site and a resource in the module. Removing one and leaving
+    the other is the half-done state this catches.
+    """
+    for path in (_STAGING, _SYNAPSE / "main.tf", _SYNAPSE / "variables.tf"):
+        code = _code(path)
+        assert "legacy_default_compute_invoker" not in code, (
+            f"the legacy default-compute invoker binding is back in {path}"
+        )
+        assert "legacy_caller_service_account_email" not in code, (
+            f"the legacy caller variable is back in {path}"
+        )
+
+
+def test_no_default_compute_address_appears_in_live_terraform() -> None:
+    """No literal default-compute principal anywhere in the live configuration, any project.
+
+    The last live reference was the staging root argument that supplied the legacy Synapse
+    caller. With it gone the address should not appear in any .tf file the estate applies.
+    """
+    offenders = []
+    for path in sorted(_INFRA.rglob("*.tf")):
+        for n, line in enumerate(_code(path).splitlines(), start=1):
+            if _DEFAULT_COMPUTE.search(line):
+                offenders.append(f"{path.relative_to(_INFRA)}:{n}: {line.strip()}")
+    assert offenders == [], (
+        f"a default Compute Engine service account is referenced in live terraform: {offenders}"
+    )
+
+
+def test_synapse_has_exactly_one_invoker_and_it_is_the_cm_frontend_account() -> None:
+    """The final Synapse posture, asserted from this side too.
+
+    synapse-ui-server's own suite owns this invariant; it is repeated here because this file is
+    what a reviewer reads when asking "who can reach what" across the two frontends, and an
+    answer that lives only in another package's tests is an answer nobody checks here.
+    """
+    code = _code(_SYNAPSE / "main.tf")
+    bindings = re.findall(
+        r'resource\s+"google_cloud_run_v2_service_iam_member"\s+"([a-z0-9_]+)"', code
+    )
+    assert bindings == ["dedicated_frontend_invoker"], (
+        f"expected exactly one Synapse invoker binding, found {bindings}"
+    )
+    assert "var.caller_service_account_email" in code

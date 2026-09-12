@@ -246,83 +246,52 @@ def test_the_dedicated_caller_is_not_a_default_compute_account() -> None:
     )
 
 
-def test_the_legacy_member_is_named_for_what_it_is_and_marked_temporary() -> None:
-    """THE POINT OF THE NAMING, AND IT IS NOT COSMETIC.
+def test_no_legacy_default_compute_invoker_remains() -> None:
+    """THE POINT OF P1-IAM-001B, ASSERTED BY ABSENCE.
 
-    This member was called `frontend_invoker` while holding the project's default compute
-    identity, which is how a binding that admits every default-compute workload read as "the
-    frontend's binding" for months. Stage A renames it to say what it is and dates it. A rename
-    back, or a removal of the removal-date comment, is how this quietly becomes permanent.
+    During the P1-IAM-001A migration this module carried a SECOND invoker binding naming the
+    project's default compute identity, so that the then-serving cm-frontend revision was not
+    refused before its replacement was ready. It was removed once a revision running as
+    cm-frontend-sa had been observed calling this service successfully.
+
+    A temporary broad grant becomes permanent by nobody checking. This is the check.
     """
     code = _terraform_code()
-    assert 'resource "google_cloud_run_v2_service_iam_member" "legacy_default_compute_invoker"' in code, (
-        "the legacy member is no longer declared under its explicit name. If Stage B removed it, "
-        "delete this test in the same commit; if it was merely renamed, put the name back."
+    assert "legacy_default_compute_invoker" not in code, (
+        "the legacy default-compute invoker binding is back in this module. It admits every "
+        "default-compute workload in the project, which is the posture P1-IAM-001 closed."
     )
-    # The RAW file, not _terraform_code(): the marker is deliberately a comment, and
-    # _terraform_code() strips comments so that prose about allUsers cannot trip the scan above.
-    assert "REMOVE IN P1-IAM-001B" in _MODULE.read_text(encoding="utf-8"), (
-        "the legacy invoker lost its removal marker. A temporary broad grant with no stated end "
-        "is a permanent broad grant."
-    )
-    assert "var.legacy_caller_service_account_email" in code, (
-        "the legacy member no longer reads its own variable. Sharing the caller variable would "
-        "hide the broad principal behind the dedicated one's name."
+    assert "legacy_caller_service_account_email" not in code, (
+        "the legacy caller variable is back. It exists only to name a broad shared identity."
     )
 
 
-def test_the_default_compute_address_appears_only_on_the_legacy_path() -> None:
-    """A literal default-compute address anywhere else in this module would be a second broad
-    grant wearing a different name. The legacy binding reads a variable, so the address itself
-    should not be written in this file at all."""
+def test_exactly_one_invoker_binding_exists_and_it_carries_both_guards() -> None:
+    """ONE CALLER, ONE BINDING, AND IT IS GUARDED.
+
+    Ingress is INGRESS_TRAFFIC_ALL, so IAM is the only network-layer control this service has.
+    The count is asserted as well as the guards: a second binding is how a broad member returns
+    without touching the one that is protected, and that is exactly the shape P1-IAM-001A had.
+    """
+    code = _terraform_code()
+    bindings = re.findall(r'resource\s+"google_cloud_run_v2_service_iam_member"\s+"([a-z0-9_]+)"', code)
+    assert bindings == ["dedicated_frontend_invoker"], (
+        f"expected exactly one invoker binding (dedicated_frontend_invoker), found {bindings}"
+    )
+    assert code.count("precondition") == 1, "the sole invoker binding lost its precondition"
+    assert code.count("postcondition") == 1, "the sole invoker binding lost its postcondition"
+
+
+def test_no_default_compute_address_appears_anywhere_in_the_module() -> None:
+    """No literal default-compute principal, by any project number.
+
+    The address is not merely absent from the current member: it should not appear in this file
+    at all, so a reviewer scanning for it finds nothing rather than finding it in a comment and
+    having to decide whether that one is live.
+    """
     offenders = [
         f"line {n}: {line.strip()}"
         for n, line in enumerate(_terraform_code().splitlines(), start=1)
         if _DEFAULT_COMPUTE.search(line)
     ]
-    assert offenders == [], (
-        f"a default-compute service account address is hardcoded in this module: {offenders}. "
-        "The legacy member is passed in as legacy_caller_service_account_email precisely so the "
-        "address appears once, at the call site, where it is reviewed."
-    )
-
-
-def test_both_invoker_bindings_carry_the_anonymous_principal_guard() -> None:
-    """TWO BINDINGS NOW, SO TWO GUARDS.
-
-    The original precondition/postcondition pair protected the only invoker binding in the file.
-    Adding a second one without its own guard would leave the newer binding - the one that stays
-    after Stage B, and therefore the one future changes will touch - unprotected, while the file
-    still visibly contained a guard.
-    """
-    code = _terraform_code()
-    bindings = re.findall(r'resource\s+"google_cloud_run_v2_service_iam_member"\s+"([a-z0-9_]+)"', code)
-    assert len(bindings) == 2, f"expected exactly two invoker bindings during Stage A, found {bindings}"
-    assert code.count("precondition") == len(bindings), (
-        f"{len(bindings)} invoker bindings but {code.count('precondition')} preconditions; one "
-        "binding can be granted an anonymous principal without any guard refusing"
-    )
-    assert code.count("postcondition") == len(bindings), (
-        f"{len(bindings)} invoker bindings but {code.count('postcondition')} postconditions; a "
-        "hardcoded member would bypass the remaining guard"
-    )
-
-
-def test_the_legacy_rename_carries_its_state_across() -> None:
-    """A `moved` block, not a destroy and recreate.
-
-    Renaming an iam_member resource without one deletes the binding and creates it again. The
-    member being deleted is the one the SERVING cm-frontend revision depends on, so the window
-    between the two operations is a window where the live console 403s - the exact outage this
-    staged rollout is shaped to avoid.
-    """
-    code = _terraform_code()
-    assert "moved {" in code, (
-        "the legacy invoker was renamed with no moved block. Terraform would destroy the live "
-        "binding and create a new one, and the serving revision loses Synapse access in between."
-    )
-    moved = re.search(r"moved\s*\{(.*?)\n\}", code, re.DOTALL)
-    assert moved is not None
-    assert "frontend_invoker" in moved.group(1) and "legacy_default_compute_invoker" in moved.group(1), (
-        "the moved block does not map the old invoker address to the legacy one"
-    )
+    assert offenders == [], f"a default-compute service account address appears here: {offenders}"
