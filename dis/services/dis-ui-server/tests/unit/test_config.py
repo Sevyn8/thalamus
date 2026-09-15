@@ -25,6 +25,9 @@ def _set_all_required(monkeypatch: pytest.MonkeyPatch) -> None:
     # and an audience; these tests want the HS256 stub, and the URL above is loopback, which
     # is what the stub guard requires.
     monkeypatch.setenv("DIS_AUTH_MODE", "STUB")
+    # STUB also requires the explicit local/test declaration (P1-SEC-001); this module builds
+    # its own environment, so it declares it here the way conftest's unit env does.
+    monkeypatch.setenv("DIS_ALLOW_STUB_AUTH", "1")
     monkeypatch.setenv("GCS_BUCKET_BRONZE", "ithina-bronze-raw")
     monkeypatch.setenv("PUBSUB_PROJECT_ID", "local-dis")
 

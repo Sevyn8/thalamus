@@ -10,9 +10,13 @@
 # BUILD-TIME vars (Vite bakes import.meta.env.VITE_* into the static JS at build,
 # NOT at runtime). The UI reads exactly ONE mode var, so it MUST be passed as a build
 # arg and baked here; a runtime Cloud Run env var does nothing for an already-built SPA:
-#   VITE_DIS_UI_SERVER_MODE      'real' calls dis-ui-server; anything else is fixtures.
-# The mode defaults to 'fixture' so a plain, un-parameterized build is never
-# accidentally broken-real.
+#   VITE_DIS_UI_SERVER_MODE      'real' calls dis-ui-server.
+# THE DEFAULT IS 'real' AND IT USED TO BE 'fixture' (P1-SEC-001). The old default was
+# chosen so a plain build was never "broken-real"; the security finding inverts that
+# trade. A fixture build ships the persona picker and the published HS256 stub constant,
+# which dis-ui-server accepts in STUB mode, so an un-parameterized build must not be able
+# to produce one. vite.config.ts now REFUSES a production build that explicitly asks for
+# fixture, and resolves anything else to the real-only module graph.
 #
 # The dis-ui-server base URL is NOT a build var: the SPA calls same-origin "/api/..." and
 # nginx proxies /api to the backend, so the URL is a RUNTIME env (DIS_UI_SERVER_BASE_URL)
@@ -38,10 +42,12 @@ RUN pnpm install --frozen-lockfile
 
 COPY . .
 
-# Build-time Vite vars (ARG -> ENV -> baked by `vite build`). Mode defaults to
-# 'fixture' (safe); staging passes 'real' via cloudbuild substitutions. Dev-login
-# persona tokens are minted at runtime (src/auth/dev/signStubToken.ts), not baked.
-ARG VITE_DIS_UI_SERVER_MODE="fixture"
+# Build-time Vite vars (ARG -> ENV -> baked by `vite build`). Staging passes 'real' via
+# cloudbuild substitutions; the default matches so a plain build is reproducible. Dev-login
+# personas and the stub signer are not in this artifact at all (see vite.config.ts's
+# @devAuthSeam alias), and `pnpm build` runs scripts/assert-no-dev-auth.mjs, which fails the
+# image build if any of that material reaches dist/.
+ARG VITE_DIS_UI_SERVER_MODE="real"
 ENV VITE_DIS_UI_SERVER_MODE=${VITE_DIS_UI_SERVER_MODE}
 # Auth0 SPA config (real mode). Public PKCE client, so no secret is baked; these
 # are safe build args inlined into the static bundle by vite build. Empty defaults

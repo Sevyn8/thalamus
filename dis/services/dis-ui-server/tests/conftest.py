@@ -73,8 +73,12 @@ def set_unit_env(monkeypatch: pytest.MonkeyPatch) -> None:
     # and an audience), so a suite that wants the HS256 dev stub has to ask for it.
     #
     # STUB is refused against a non-loopback database; UNREACHABLE_POSTGRES_URL above
-    # being 127.0.0.1 satisfies that guard.
+    # being 127.0.0.1 satisfies that guard. It is ALSO refused without an explicit local/test
+    # declaration (P1-SEC-001), because a loopback database proves nothing about where the
+    # process runs — a Cloud SQL Auth Proxy sidecar is loopback inside a deployed container.
+    # This suite is a sanctioned test posture, so it declares itself one.
     monkeypatch.setenv("DIS_AUTH_MODE", "STUB")
+    monkeypatch.setenv("DIS_ALLOW_STUB_AUTH", "1")
     monkeypatch.setenv("GCS_BUCKET_BRONZE", "ithina-bronze-raw")
     monkeypatch.setenv("PUBSUB_PROJECT_ID", "local-dis")
     monkeypatch.setenv("PUBSUB_EMULATOR_HOST", "127.0.0.1:9")  # construction guard only

@@ -5,15 +5,17 @@ import type { ReactNode } from 'react'
 import { BrowserRouter, useNavigate } from 'react-router'
 
 import { Auth0AuthProvider } from './auth/Auth0AuthProvider'
-import { AuthProvider } from './auth/AuthProvider'
+import { renderFixtureApp } from '@devAuthSeam'
 import { isRealMode } from './lib/dis-ui-server/mode'
 import { queryClient } from './lib/queryClient'
 import { AppRoutes } from './routes/AppRoutes'
 
-// Auth mode split (mirrors the backend STUB|AUTH0): real mode wraps the tree in the
-// Auth0 SDK provider + the Auth0->AuthContextValue adapter; fixture/stub mode renders
-// exactly as before (the persona-picker path, no Auth0Provider), so the stub path is
-// untouched. isRealMode() reads VITE_DIS_UI_SERVER_MODE, inlined by Vite at build.
+// Auth mode split (mirrors the backend STUB|AUTH0). Real mode wraps the tree in the Auth0
+// SDK provider + the Auth0->AuthContextValue adapter. Fixture mode is reachable ONLY through
+// '@devAuthSeam', which vite.config.ts resolves at BUILD time: the dev variant returns the
+// persona-picker tree, the production variant returns null and imports no fixture code at all.
+// A production artifact therefore contains no path to it, rather than a path it declines to
+// take. isRealMode() reads VITE_DIS_UI_SERVER_MODE, inlined by Vite at build.
 
 // Auth0Provider needs useNavigate for onRedirectCallback, so it lives INSIDE
 // BrowserRouter via this wrapper (the idiomatic @auth0/auth0-react + react-router
@@ -66,21 +68,20 @@ function RealModeApp() {
   )
 }
 
-function StubApp() {
-  return (
-    <AuthProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
-    </AuthProvider>
-  )
-}
-
 function App() {
+  // `?? <RealModeApp />` is the fail-closed half. In a production build renderFixtureApp
+  // always returns null, so ANY mode string - 'real', missing, or misspelled - lands on the
+  // Auth0 tree. Fixture mode cannot be reached by getting a build variable wrong.
+  const fixture = isRealMode()
+    ? null
+    : renderFixtureApp(
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>,
+      )
+
   return (
-    <QueryClientProvider client={queryClient}>
-      {isRealMode() ? <RealModeApp /> : <StubApp />}
-    </QueryClientProvider>
+    <QueryClientProvider client={queryClient}>{fixture ?? <RealModeApp />}</QueryClientProvider>
   )
 }
 

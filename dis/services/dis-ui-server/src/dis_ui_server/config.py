@@ -71,6 +71,9 @@ _PUBSUB_PROJECT_ID = "PUBSUB_PROJECT_ID"
 # only in AUTH0 mode; AUTH0_JWKS_URL is optional and derived from the issuer when
 # unset (the Auth0 convention, mirroring Customer Master).
 _DIS_AUTH_MODE = "DIS_AUTH_MODE"
+# The explicit local/test opt-in that STUB additionally requires (P1-SEC-001). See
+# _refuse_stub_without_explicit_local_permission.
+_DIS_ALLOW_STUB_AUTH = "DIS_ALLOW_STUB_AUTH"
 _JWT_ISSUER = "JWT_ISSUER"
 _JWT_AUDIENCE = "JWT_AUDIENCE"
 _AUTH0_JWKS_URL = "AUTH0_JWKS_URL"
@@ -203,6 +206,47 @@ def _optional_int_env(name: str) -> int | None:
 # forbidden hosts is a list somebody has to keep current, and the one it misses is the one
 # that matters.
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+# The only values that count as "yes, this is a sanctioned local or test process". Anything
+# else - unset, empty, "0", "false", "no", a typo - is a no.
+_STUB_PERMISSION_GRANTED = frozenset({"1", "true", "yes"})
+
+
+def _refuse_stub_without_explicit_local_permission() -> None:
+    """Refuse the HS256 dev stub unless this process was explicitly told it is local.
+
+    =============================================================================================
+    WHY THE DATABASE HOST IS NOT ENOUGH ON ITS OWN
+    =============================================================================================
+    _refuse_stub_against_a_remote_database asks "is the database loopback?" and treats a yes as
+    evidence that the process is a developer laptop. That inference is not sound. A Cloud SQL
+    Auth Proxy sidecar listens on 127.0.0.1 inside the very same container, which is the
+    supported way to reach a managed database from Cloud Run - so a deployed process can answer
+    "yes, loopback" while talking to production data. Database topology is a property of the
+    connection, not a declaration of where the application is running.
+
+    So locality has to be DECLARED, explicitly, by whoever starts the process. This variable is
+    that declaration and nothing else sets it: it is absent from the Terraform module, absent
+    from every deployment definition, and set only by local/test tooling.
+
+    FAIL CLOSED BY DEFAULT. Absent is a refusal, so a deployment that somehow requested STUB
+    crashloops rather than accepting tokens signed with a published constant. Both conditions
+    are required, not either: the declaration says "local", the loopback check says "and the
+    data is local too", and a forged token needs both to be wrong before it reaches real rows.
+    """
+    granted = (os.environ.get(_DIS_ALLOW_STUB_AUTH) or "").strip().lower()
+    if granted in _STUB_PERMISSION_GRANTED:
+        return
+    raise DisError(
+        f"{_DIS_AUTH_MODE}=STUB was requested but {_DIS_ALLOW_STUB_AUTH} is not set to an "
+        f"explicit opt-in (one of: {', '.join(sorted(_STUB_PERMISSION_GRANTED))}). The HS256 "
+        "dev stub accepts tokens signed with a constant that ships publicly, and its claims "
+        "drive RLS, so it runs only where a human has declared the process local. A loopback "
+        "database is NOT that declaration: a Cloud SQL Auth Proxy sidecar is loopback inside a "
+        "deployed container. Set it in local tooling only; it must never appear in a "
+        "deployment definition."
+    )
 
 
 def _refuse_stub_against_a_remote_database(postgres_url: str) -> None:
@@ -384,6 +428,10 @@ class UiServerConfig:
         if auth_mode not in ("STUB", "AUTH0"):
             raise DisError(f"{_DIS_AUTH_MODE}={auth_mode!r} is not a recognized mode; expected STUB or AUTH0")
         if auth_mode == "STUB":
+            # ORDER IS DELIBERATE: the declaration is checked first, so a deployed process that
+            # asked for STUB is refused for the reason that actually applies to it rather than
+            # being told its database is the wrong shape.
+            _refuse_stub_without_explicit_local_permission()
             _refuse_stub_against_a_remote_database(postgres_url)
         jwt_issuer = os.environ.get(_JWT_ISSUER) or None
         jwt_audience = os.environ.get(_JWT_AUDIENCE) or None

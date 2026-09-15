@@ -1,32 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { PERSONAS } from '../auth/dev/personas'
 import { signStubToken } from '../auth/dev/signStubToken'
 import { useAuth } from '../auth/useAuth'
 import { isRealMode } from '../lib/dis-ui-server/mode'
+import { SignIn } from './SignIn'
 
-// Real mode (Auth0): no persona picker. Auto-fire the login() redirect (which
-// Auth0AuthProvider wires to the CM login URL); the rawToken arg is ignored in real
-// mode. Shown only for the moment before redirect.
-function RealModeSignIn() {
-  const { status, login } = useAuth()
-  useEffect(() => {
-    // Defense-in-depth, mirroring AuthBoundary's loading gate: fire the CM-login
-    // redirect ONLY once the Auth0 SDK has definitively resolved to no session.
-    // During 'loading' the SSO handshake may still complete into an authenticated
-    // session; redirecting then would bounce an active session to CM login.
-    if (status === 'unauthenticated') {
-      void login('')
-    }
-  }, [status, login])
-  return (
-    <section className="mx-auto mt-16 max-w-md px-4">
-      <p className="text-sm text-gray-500">Redirecting to sign in...</p>
-    </section>
-  )
-}
-
+// Real mode from a DEV build (e.g. `vite dev` against a live backend): no persona picker,
+// just the production sign-in component. Production builds never reach this module at all.
 // Dev-only login. Mints the chosen persona's dev-stub token AT RUNTIME via
 // signStubToken (HMAC, byte-identical secret/iss/aud to the backend verifier), hands
 // it to AuthProvider via login(), and navigates to the protected home. Runtime minting
@@ -41,7 +23,7 @@ export function DevLogin() {
 
   // Real mode: skip the persona picker and auto-redirect to Auth0 sign-in.
   if (isRealMode()) {
-    return <RealModeSignIn />
+    return <SignIn />
   }
 
   async function pick(personaId: string): Promise<void> {
