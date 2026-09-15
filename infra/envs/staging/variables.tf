@@ -189,7 +189,7 @@ variable "cm_documents_frontend_origin" {
 variable "dis_ui_server_image" {
   type        = string
   description = "dis-ui-server container image (the BFF). Built from dis/terraform/docker/dis-ui-server.Dockerfile with the dis/ WORKSPACE ROOT as build context; bump this in the same commit as any deploy. v8 added GET /tenant-self, which the ver2 topbar reads for the tenant name."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-server:v9"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-server:v10"
 }
 
 variable "synapse_ui_server_image" {
@@ -225,7 +225,7 @@ variable "dis_migrate_image" {
 variable "dis_ui_ver2_image" {
   type        = string
   description = "dis-ui-ver2 (SPA) container image. The tag live on the imported service. Built by dis/terraform/docker/cloudbuild-dis-ui-ver2.yaml with an explicit _TAG=vN and no floating `latest`; bump this in the same commit as any deploy."
-  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-ver2:v18"
+  default     = "asia-south1-docker.pkg.dev/sevyn8-thalamus-staging/thalamus-images/dis-ui-ver2:v19"
 }
 
 variable "csv_ingest_worker_image" {
