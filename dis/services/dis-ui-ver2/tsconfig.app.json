@@ -7,8 +7,15 @@
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom", "node"],
     "skipLibCheck": true,
 
-    /* Path alias (bundler resolution: paths resolve relative to this file, no baseUrl) */
-    "paths": { "@/*": ["./src/*"] },
+    /* Path aliases (bundler resolution: paths resolve relative to this file, no baseUrl).
+       @devAuthSeam is type-checked against the DEV variant because it is the superset: it
+       carries the real component types, so App.tsx/AppRoutes.tsx are checked against the
+       richer shape. Both variants implement src/auth/seam/types.ts, and vite.config.ts is
+       what chooses between them per build. */
+    "paths": {
+      "@/*": ["./src/*"],
+      "@devAuthSeam": ["./src/auth/seam/devAuthSeam.dev.tsx"]
+    },
 
     /* Bundler mode */
     "moduleResolution": "bundler",

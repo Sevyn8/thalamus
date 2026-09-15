@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router'
 
+import { devRoutes } from '@devAuthSeam'
 import { AuthBoundary } from '../auth/AuthBoundary'
 import { Shell } from '../components/Shell'
 import { Audit } from './Audit'
@@ -17,16 +18,19 @@ import { ConnectorHealth } from './ConnectorHealth'
 import { Credentials } from './Credentials'
 import { Dashboard } from './Dashboard'
 import { DataQuality } from './DataQuality'
-import { DevLogin } from './DevLogin'
 import { IngestionRuns } from './IngestionRuns'
 import { NotificationsRoute } from './NotificationsRoute'
 import { OnboardSquare } from './OnboardSquare'
 import { SchemaDrift } from './SchemaDrift'
+import { SignIn } from './SignIn'
 import { SourceTemplates } from './SourceTemplates'
 import { Sources } from './Sources'
 import { TemplateDetail } from './TemplateDetail'
 
-// Router-agnostic route registry. /dev/login is public (bare, no Shell). Everything under
+// Router-agnostic route registry. ONE registry for every build; the only variable part is
+// devRoutes, which '@devAuthSeam' resolves at build time - the dev variant contributes
+// /dev/login (public, bare, no Shell) and the production variant contributes nothing, so no
+// production chunk carries the persona picker. Everything under
 // AuthBoundary renders inside the Shell. Ingestion Runs (GET /api/v1/runs, over bronze) and
 // Canonical Explorer (GET /api/v1/canonical/store-sku-positions) are wired to real endpoints.
 // Connector Health is wired to GET /api/v1/connector-health under a premium lock
@@ -34,7 +38,9 @@ import { TemplateDetail } from './TemplateDetail'
 export function AppRoutes() {
   return (
     <Routes>
-      <Route path="/dev/login" element={<DevLogin />} />
+      {devRoutes}
+      {/* Production sign-in entry point; public, outside AuthBoundary. */}
+      <Route path="/signin" element={<SignIn />} />
       {/* Auth0 redirect target (real mode); public, outside AuthBoundary. */}
       <Route path="/callback" element={<Callback />} />
       <Route element={<AuthBoundary />}>

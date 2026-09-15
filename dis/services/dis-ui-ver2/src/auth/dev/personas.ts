@@ -1,4 +1,8 @@
-// DEV ONLY. The personas offered at /dev/login. Each models the Customer Master
+// DEV ONLY, and physically absent from production builds: reachable only through
+// '@devAuthSeam' (see vite.config.ts), with scripts/assert-no-dev-auth.mjs failing the build
+// if these identities reach dist/. They shipped publicly until P1-SEC-001.
+//
+// The personas offered at /dev/login. Each models the Customer Master
 // token claim set (sub, tenant_id, store_id, roles -
 // a PROVISIONAL shape). The name/email/roleLabel/tenantName fields
 // below are DEV-ONLY presentation data for the login cards, NOT token claims.

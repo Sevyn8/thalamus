@@ -16,9 +16,11 @@ export class TokenInvalidError extends Error {
   }
 }
 
-// HMAC key for the dev stub. Real-mode seam: the production swap is a JWKS remote
-// key set (jose createRemoteJWKSet) keyed by the Customer Master issuer/audience.
-// The claim-to-snapshot mapping below stays the same either way.
+// HMAC key for the dev stub. This module is DEV-ONLY: real mode verifies nothing here (the
+// Auth0 SDK owns the token) and production builds never import it — App.tsx reaches the
+// fixture provider that uses it only through '@devAuthSeam'. Real-mode seam for a future
+// Customer Master JWKS verifier: jose createRemoteJWKSet keyed by issuer/audience; the
+// claim-to-snapshot mapping below stays the same either way.
 const KEY = new TextEncoder().encode(STUB_SECRET)
 
 function isStringArray(value: unknown): value is string[] {

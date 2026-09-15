@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 
+import { tenantSelfFixtures } from '@devAuthSeam'
 import type { AuthSnapshot } from '../../auth/AuthSnapshot'
 import { getJson } from './client'
 import { isRealMode } from './mode'
@@ -27,17 +28,9 @@ export type TenantSelf = {
   display_code: string | null // nullable at source, served as-is
 }
 
-// Fixture rows keyed by tenant_id, so a fixture persona resolves the same way a real token
-// would. Only the tenant persona's id is present: the ops persona is PLATFORM and never calls
-// this. 'Żabka Group' matches the persona's own tenantName so the two do not disagree on
-// screen.
-const TENANT_SELF_FIXTURES: Record<string, TenantSelf> = {
-  '019e5e3c-b5d6-7eed-93f9-3778a7a7a160': {
-    tenant_id: '019e5e3c-b5d6-7eed-93f9-3778a7a7a160',
-    name: 'Żabka Group',
-    display_code: 'ZAB',
-  },
-}
+// Fixture rows live behind '@devAuthSeam' (P1-SEC-001). They carry the seeded tenant UUID
+// that the dev persona's token asserts, so they are dev material and resolve to {} in a
+// production build rather than shipping in the bundle.
 
 export async function getTenantSelf(tenantId: string): Promise<TenantSelf> {
   if (isRealMode()) {
@@ -47,7 +40,7 @@ export async function getTenantSelf(tenantId: string): Promise<TenantSelf> {
   // the same shape the real endpoint serves for an unmirrored tenant, so the fallback chain
   // in the topbar is exercised locally instead of only in production.
   return (
-    TENANT_SELF_FIXTURES[tenantId] ?? { tenant_id: tenantId, name: null, display_code: null }
+    tenantSelfFixtures[tenantId] ?? { tenant_id: tenantId, name: null, display_code: null }
   )
 }
 
